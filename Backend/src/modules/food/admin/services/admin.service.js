@@ -3005,6 +3005,7 @@ export async function getFoods(query) {
         image: f.image || '',
         foodType: f.foodType || 'Non-Veg',
         isAvailable: f.isAvailable !== false,
+        isRecommended: f.isRecommended === true,
         preparationTime: f.preparationTime || '',
         approvalStatus: f.approvalStatus || 'approved',
         createdAt: f.createdAt,
@@ -3146,6 +3147,7 @@ export async function createFood(body) {
         image: typeof body.image === 'string' ? body.image.trim() : '',
         foodType,
         isAvailable: body.isAvailable !== false,
+        isRecommended: body.isRecommended === true,
         preparationTime: typeof body.preparationTime === 'string' ? body.preparationTime.trim() : '',
         approvalStatus: 'approved'
     });
@@ -3181,6 +3183,7 @@ export async function updateFood(id, body) {
     if (body.image !== undefined) doc.image = String(body.image || '').trim();
     if (body.foodType !== undefined) doc.foodType = targetFoodType;
     if (body.isAvailable !== undefined) doc.isAvailable = body.isAvailable !== false;
+    if (body.isRecommended !== undefined) doc.isRecommended = body.isRecommended === true;
     if (body.preparationTime !== undefined) doc.preparationTime = String(body.preparationTime || '').trim();
     if (body.categoryId !== undefined || body.categoryName !== undefined || body.category !== undefined || body.foodType !== undefined) {
         const nextCategoryName = body.categoryName !== undefined

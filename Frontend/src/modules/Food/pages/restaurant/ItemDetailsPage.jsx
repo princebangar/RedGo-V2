@@ -670,6 +670,7 @@ export default function ItemDetailsPage() {
           image: allImageUrls.length > 0 ? allImageUrls[0] : "",
           foodType: foodType,
           isAvailable: isInStock,
+          isRecommended: isRecommended === true,
           preparationTime: preparationTime || "",
           categoryId: categoryId || undefined,
           categoryName,
@@ -694,6 +695,7 @@ export default function ItemDetailsPage() {
           image: allImageUrls.length > 0 ? allImageUrls[0] : "",
           foodType: foodType,
           isAvailable: isInStock,
+          isRecommended: isRecommended === true,
           preparationTime: preparationTime || "",
           categoryId: categoryId || undefined,
           categoryName,
@@ -853,13 +855,25 @@ export default function ItemDetailsPage() {
                   </>
                 )}
 
-                {/* Delete image button */}
-                <button
-                  onClick={() => handleImageDelete(currentImageIndex)}
-                  className="absolute top-4 right-4 w-10 h-10 bg-white/90 backdrop-blur-sm rounded-full flex items-center justify-center shadow-lg hover:bg-white transition-all z-10"
-                >
-                  <Trash2 className="w-5 h-5 text-gray-900" />
-                </button>
+                {/* Delete Item button (Top Right) */}
+                {!isNewItem && (
+                  <button
+                    onClick={handleDelete}
+                    className="absolute top-4 right-4 w-10 h-10 bg-[#1a1a1a] rounded-full flex items-center justify-center shadow-lg hover:bg-black transition-all z-20"
+                  >
+                    <Trash2 className="w-5 h-5 text-red-500" />
+                  </button>
+                )}
+
+                {/* Delete current image button (if multiple images) - optional/secondary */}
+                {images.length > 1 && (
+                  <button
+                    onClick={() => handleImageDelete(currentImageIndex)}
+                    className="absolute top-4 right-16 w-10 h-10 bg-white/90 backdrop-blur-sm rounded-full flex items-center justify-center shadow-lg hover:bg-white transition-all z-10"
+                  >
+                    <X className="w-5 h-5 text-gray-900" />
+                  </button>
+                )}
 
                 {/* Image counter */}
                 {images.length > 1 && (
@@ -1224,24 +1238,22 @@ export default function ItemDetailsPage() {
           </div>
 
           {/* Recommend and In Stock */}
-          <div className="flex items-center justify-between py-3 border-t border-gray-200">
-            <button
-              onClick={() => setIsRecommended(!isRecommended)}
-              className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-colors ${isRecommended
-                ? "bg-blue-100 text-blue-700"
-                : "bg-gray-100 text-gray-700 hover:bg-gray-200"
-                }`}
-            >
-              <ThumbsUp className="w-4 h-4" />
-              <span>Recommend</span>
-            </button>
-            <div className="flex items-center gap-2">
+          <div className="space-y-4 py-4 border-t border-gray-200">
+            <div className="flex items-center justify-between">
+              <span className="text-sm font-medium text-gray-700">Recommended</span>
+              <Switch
+                checked={isRecommended}
+                onCheckedChange={setIsRecommended}
+                className="data-[state=checked]:bg-green-600"
+              />
+            </div>
+            <div className="flex items-center justify-between">
+              <span className="text-sm font-medium text-gray-700">In stock</span>
               <Switch
                 checked={isInStock}
                 onCheckedChange={setIsInStock}
-                className="data-[state=unchecked]:bg-gray-300"
+                className="data-[state=checked]:bg-green-600"
               />
-              <span className="text-sm text-gray-700">In stock</span>
             </div>
           </div>
 
@@ -1398,27 +1410,22 @@ export default function ItemDetailsPage() {
         className="fixed left-0 right-0 bg-white border-t border-gray-200 z-40"
         style={{ bottom: `${keyboardInset}px` }}
       >
-        <div className={`flex gap-3 px-4 py-4 ${isNewItem ? 'justify-end' : ''}`}>
-          {!isNewItem && (
-            <button
-              onClick={handleDelete}
-              className="flex-1 py-3 px-4 border border-black rounded-lg text-sm font-semibold text-black bg-white hover:bg-gray-50 transition-colors"
-            >
-              Delete
-            </button>
-          )}
+        <div className="flex gap-3 px-4 py-4">
+          <button
+            onClick={goBack}
+            className="flex-1 py-3 px-4 border border-gray-300 rounded-lg text-sm font-bold text-gray-900 bg-white hover:bg-gray-50 transition-colors uppercase"
+          >
+            Cancel
+          </button>
           <button
             onClick={handleSave}
             disabled={uploadingImages}
-            className={`${isNewItem ? 'w-full' : 'flex-1'} py-3 px-4 rounded-lg text-sm font-semibold transition-colors flex items-center justify-center gap-2 ${!uploadingImages
-              ? "bg-black text-white hover:bg-black"
-              : "bg-gray-300 text-gray-500 cursor-not-allowed"
-              }`}
+            className="flex-1 py-3 px-4 rounded-lg text-sm font-bold transition-colors flex items-center justify-center gap-2 uppercase bg-[#1a1a1a] text-white hover:bg-black disabled:bg-gray-300 disabled:text-gray-500 disabled:cursor-not-allowed"
           >
             {uploadingImages ? (
               <>
                 <Loader2 className="w-4 h-4 animate-spin" />
-                <span>Uploading...</span>
+                <span>Saving...</span>
               </>
             ) : (
               "Save"

@@ -207,6 +207,7 @@ export async function createRestaurantFood(restaurantId, body = {}) {
         image,
         foodType,
         isAvailable,
+        isRecommended: body.isRecommended === true,
         preparationTime,
         approvalStatus: 'pending',
         requestedAt: new Date()
@@ -258,6 +259,7 @@ export async function updateRestaurantFood(restaurantId, foodId, body = {}) {
     }
     Object.assign(update, getUpdatedFoodPricing(existing, body));
     if (body.isAvailable !== undefined) update.isAvailable = body.isAvailable !== false;
+    if (body.isRecommended !== undefined) update.isRecommended = body.isRecommended === true;
     if (body.preparationTime !== undefined) update.preparationTime = toStr(body.preparationTime);
 
     const targetFoodType = body.foodType !== undefined ? normalizeFoodType(body.foodType) : normalizeFoodType(existing.foodType);

@@ -2363,6 +2363,11 @@ export default function Inventory() {
                                     <span className={`rounded-full px-2 py-0.5 sm:px-2.5 sm:py-1 text-[9px] sm:text-[10px] font-black uppercase tracking-wider border shadow-sm ${approvalMeta.className.replace('text-', 'text-').replace('bg-', 'bg-white border-')}`}>
                                       {approvalMeta.label}
                                     </span>
+                                    {item.isRecommended && (
+                                      <span className="rounded-full px-2 py-0.5 sm:px-2.5 sm:py-1 text-[9px] sm:text-[10px] font-black uppercase tracking-wider bg-blue-50 text-blue-600 border border-blue-100 shadow-sm">
+                                        Recommended
+                                      </span>
+                                    )}
                                   </div>
                                   
                                   <div className="flex items-center gap-3 sm:gap-4 mt-1">
@@ -2393,21 +2398,7 @@ export default function Inventory() {
                                 </div>
                               </div>
 
-                              <div className="flex shrink-0 flex-col items-center gap-3 sm:gap-4">
-                                <button
-                                  onClick={(e) => {
-                                    e.stopPropagation()
-                                    handleRecommendToggle(category.id, item.id)
-                                  }}
-                                  className={`w-8 h-8 sm:w-10 sm:h-10 flex items-center justify-center rounded-[14px] sm:rounded-2xl transition-all shadow-sm border ${
-                                    item.isRecommended
-                                      ? "bg-blue-600 border-blue-600 text-white rotate-12 scale-110"
-                                      : "bg-white border-slate-100 text-slate-300 hover:border-slate-200 hover:text-slate-600"
-                                  }`}
-                                >
-                                  <ThumbsUp className="w-4 h-4 sm:w-5 sm:h-5" />
-                                </button>
-                                
+                              <div className="flex shrink-0 flex-col items-center justify-center gap-3 sm:gap-4">
                                 <div
                                   onClick={(e) => e.stopPropagation()}
                                   className="scale-100 sm:scale-125 origin-right"

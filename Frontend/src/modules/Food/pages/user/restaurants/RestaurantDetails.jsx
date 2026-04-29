@@ -59,6 +59,8 @@ import {
 import fssaiLogo from "@food/assets/fssai.png"
 import { RestaurantDetailSkeleton } from "@food/components/ui/loading-skeletons"
 
+
+
 const debugLog = (...args) => {}
 const debugWarn = (...args) => {}
 const debugError = (...args) => {}
@@ -66,8 +68,31 @@ const debugError = (...args) => {}
 
 
 const FOOD_IMAGE_FALLBACK = "https://picsum.photos/seed/food-fallback/800/600"
-const RUPEE_SYMBOL = "\u20B9"
+const RUPEE_SYMBOL = "₹"
 const RESTAURANT_DETAILS_FILTERS_STORAGE_KEY = "food-restaurant-details-filters"
+
+// Optimized Image for Dishes
+const DishImage = ({ src, alt, className }) => (
+  <div className={`relative overflow-hidden ${className}`}>
+    {src ? (
+      <img
+        src={src}
+        alt={alt}
+        className="w-full h-full object-cover transition-transform duration-500 hover:scale-110"
+        onError={(e) => {
+          e.target.src = FOOD_IMAGE_FALLBACK
+        }}
+      />
+    ) : (
+      <div className="w-full h-full bg-gray-100 dark:bg-gray-800 flex items-center justify-center text-xs text-gray-400">
+        No image
+      </div>
+    )}
+  </div>
+)
+
+
+
 
 function RestaurantDetailsContent() {
   const { slug } = useParams()
@@ -90,7 +115,7 @@ function RestaurantDetailsContent() {
   const [showFilterSheet, setShowFilterSheet] = useState(false)
   const [showLocationSheet, setShowLocationSheet] = useState(false)
   const [showScheduleSheet, setShowScheduleSheet] = useState(false)
-  const [showOffersSheet, setShowOffersSheet] = useState(false)
+
   const [selectedDate, setSelectedDate] = useState(null)
   const [selectedTimeSlot, setSelectedTimeSlot] = useState(null)
   const [expandedCoupons, setExpandedCoupons] = useState(new Set())
@@ -846,21 +871,19 @@ function RestaurantDetailsContent() {
                   })
                   const matchedItem = allItemsInMenu.find(item => String(item.id || item._id || "").trim() === targetDishId)
                   if (matchedItem) {
-                    searchedDishSection = { 
-                      name: "Result for your search", 
-                      items: [matchedItem], 
-                      subsections: [],
-                      isSearchResult: true 
-                    }
+                    // We don't inject a new section anymore, we just let the scroll logic find it in the existing sections
+                    debugLog('Found matched item for scroll:', matchedItem.name)
                   }
                 }
 
-                let finalMenuSections = [...menuSections]
-                if (hasPreviousOrderForRestaurant) {
+                // Deduplicate "Recommended for you" sections
+                let finalMenuSections = menuSections.filter(s => {
+                  const name = (s.name || s.title || "").toLowerCase().trim()
+                  return name !== "recommended" && name !== "recommended for you"
+                })
+
+                if (recommendedItems.length > 0) {
                   finalMenuSections = [{ name: "Recommended for you", items: recommendedItems, subsections: [] }, ...finalMenuSections]
-                }
-                if (searchedDishSection) {
-                  finalMenuSections = [searchedDishSection, ...finalMenuSections]
                 }
 
                 setRestaurant(prev => ({
@@ -2148,54 +2171,7 @@ function RestaurantDetailsContent() {
             </div>
           )}
 
-          {/* Offers */}
-          <button
-            type="button"
-            onClick={() => setShowOffersSheet(true)}
-            className="w-full rounded-2xl border border-gray-900/20 dark:border-gray-800 bg-white dark:bg-[#1a1a1a] px-4 py-3 text-left shadow-[0_12px_30px_rgba(15,23,42,0.18)] transition-all hover:shadow-[0_16px_36px_rgba(15,23,42,0.24)]"
-          >
-            <div className="flex items-start gap-3">
-              <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-orange-100 dark:bg-orange-900/30 text-orange-600 dark:text-orange-400">
-                <Percent className="h-5 w-5" />
-              </div>
-              <div className="min-w-0 flex-1">
-                <div className="relative h-5 overflow-hidden">
-                  <AnimatePresence mode="wait">
-                    <motion.span
-                      key={highlightIndex}
-                      initial={{ y: 16, opacity: 0 }}
-                      animate={{ y: 0, opacity: 1 }}
-                      exit={{ y: -16, opacity: 0 }}
-                      transition={{ duration: 0.3 }}
-                      className="text-sm font-semibold text-gray-900 dark:text-white"
-                    >
-                      {offerHeadline}
-                    </motion.span>
-                  </AnimatePresence>
-                </div>
-                <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">{offerSubline}</p>
-              </div>
-              <div className="flex flex-col items-end gap-1">
-                <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 dark:bg-emerald-950/30 px-2.5 py-1 text-xs font-semibold text-emerald-700 dark:text-emerald-400">
-                  <Star className="h-3 w-3 fill-emerald-700 dark:fill-emerald-400 text-emerald-700 dark:text-emerald-400" />
-                  {Number(restaurant?.rating || 4.5).toFixed(1)}
-                </span>
-                <span className="text-[10px] text-gray-400 dark:text-gray-500">
-                  {(restaurant.reviews || 0).toLocaleString()}+ ratings
-                </span>
-              </div>
-            </div>
-            <div className="mt-3 flex items-center gap-1.5">
-              {Array.from({ length: offerIndicatorCount }).map((_, index) => (
-                <span
-                  key={`offer-dot-${index}`}
-                  className={`h-1.5 w-1.5 rounded-full ${
-                    index === activeOfferIndicator ? "bg-orange-500" : "bg-gray-200 dark:bg-gray-700"
-                  }`}
-                />
-              ))}
-            </div>
-          </button>
+
 
           {/* Filter/Category Buttons */}
           <div className="border-y border-gray-200 py-3 -mx-4 px-4 overflow-x-auto scrollbar-hide">
@@ -2331,72 +2307,42 @@ function RestaurantDetailsContent() {
 
               return (
                 <div key={sectionIndex} id={sectionId} className="space-y-1 scroll-mt-20">
-                  {/* Section Header */}
-                  {isRecommended && (
-                    <div className="flex items-center justify-between">
+                  <div className="flex items-center justify-between">
+                    <div className="space-y-1">
                       <h2 className="text-lg font-bold text-gray-900 dark:text-white">
-                        Recommended for you
+                        {(section?.name && typeof section.name === 'string' && section.name.trim())
+                          ? section.name.trim()
+                          : (section?.title && typeof section.title === 'string' && section.title.trim())
+                            ? section.title.trim()
+                            : "Unnamed Section"}
                       </h2>
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation()
-                          setExpandedSections(prev => {
-                            const newSet = new Set(prev)
-                            if (newSet.has(originalIndex)) {
-                              newSet.delete(originalIndex)
-                            } else {
-                              newSet.add(originalIndex)
-                            }
-                            return newSet
-                          })
-                        }}
-                        className="p-1 hover:bg-gray-100 dark:hover:bg-gray-800 rounded transition-colors"
-                      >
-                        <ChevronDown
-                          className={`h-5 w-5 text-gray-600 dark:text-gray-400 transition-transform duration-200 ${isExpanded ? '' : '-rotate-90'
-                            }`}
-                        />
-                      </button>
+                      {section.subtitle && (
+                        <button className="text-sm text-blue-600 dark:text-blue-400 underline">
+                          {section.subtitle}
+                        </button>
+                      )}
                     </div>
-                  )}
-                  {!isRecommended && (
-                    <div className="flex items-center justify-between">
-                      <div className="space-y-1">
-                        <h2 className="text-lg font-bold text-gray-900 dark:text-white">
-                          {(section?.name && typeof section.name === 'string' && section.name.trim())
-                            ? section.name.trim()
-                            : (section?.title && typeof section.title === 'string' && section.title.trim())
-                              ? section.title.trim()
-                              : "Unnamed Section"}
-                        </h2>
-                        {section.subtitle && (
-                          <button className="text-sm text-blue-600 dark:text-blue-400 underline">
-                            {section.subtitle}
-                          </button>
-                        )}
-                      </div>
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation()
-                          setExpandedSections(prev => {
-                            const newSet = new Set(prev)
-                            if (newSet.has(originalIndex)) {
-                              newSet.delete(originalIndex)
-                            } else {
-                              newSet.add(originalIndex)
-                            }
-                            return newSet
-                          })
-                        }}
-                        className="p-1 hover:bg-gray-100 dark:hover:bg-gray-800 rounded transition-colors"
-                      >
-                        <ChevronDown
-                          className={`h-5 w-5 text-gray-600 dark:text-gray-400 transition-transform duration-200 ${isExpanded ? '' : '-rotate-90'
-                            }`}
-                        />
-                      </button>
-                    </div>
-                  )}
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        setExpandedSections(prev => {
+                          const newSet = new Set(prev)
+                          if (newSet.has(originalIndex)) {
+                            newSet.delete(originalIndex)
+                          } else {
+                            newSet.add(originalIndex)
+                          }
+                          return newSet
+                        })
+                      }}
+                      className="p-1 hover:bg-gray-100 dark:hover:bg-gray-800 rounded transition-colors"
+                    >
+                      <ChevronDown
+                        className={`h-5 w-5 text-gray-600 dark:text-gray-400 transition-transform duration-200 ${isExpanded ? '' : '-rotate-90'
+                          }`}
+                      />
+                    </button>
+                  </div>
 
                   {/* Direct Items */}
                   {isExpanded && isRecommended && !loadingMenuItems && sectionItems.length === 0 && (
@@ -2434,36 +2380,25 @@ function RestaurantDetailsContent() {
                                 delete dishCardRefs.current[item.id]
                               }
                             }}
-                            className={`flex gap-4 p-4 border-b border-gray-100 dark:border-gray-800 last:border-none relative cursor-pointer transition-all duration-300 ${highlightedDishId === item.id ? "bg-[#DC262605] ring-2 ring-[#DC2626] ring-inset dark:bg-[#DC262610]" : ""}`}
+                            className={`flex gap-4 p-4 border-b border-gray-100 dark:border-gray-800 last:border-none relative cursor-pointer transition-all duration-300 ${highlightedDishId === item.id ? "bg-[#DC262605] ring-2 ring-[#DC2626] ring-inset dark:bg-[#DC262610] rounded-2xl" : ""}`}
                             onClick={() => handleItemClick(item)}
                           >
                             {/* Left Side - Details */}
                             <div className="flex-1 min-w-0">
-                              {/* Veg Icon & Spicy Indicator */}
-                              <div className="flex items-center gap-2 mb-1">
+                              <h3 className="font-bold text-gray-800 dark:text-white text-lg leading-tight flex items-center gap-2">
                                 {isVeg ? (
-                                  <div className="w-4 h-4 border-2 border-green-600 flex items-center justify-center rounded-sm flex-shrink-0">
-                                    <div className="w-2 h-2 bg-green-600 rounded-full"></div>
+                                  <div className="w-4 h-4 border-2 border-green-600 flex items-center justify-center rounded-sm flex-shrink-0 p-[2px]">
+                                    <div className="w-full h-full bg-green-600 rounded-full"></div>
                                   </div>
                                 ) : (
-                                  <div className="w-4 h-4 border-2 border-red-600 flex items-center justify-center rounded-sm flex-shrink-0">
-                                    <div className="w-2 h-2 bg-red-600 rounded-full"></div>
+                                  <div className="w-4 h-4 border-2 border-red-600 flex items-center justify-center rounded-sm flex-shrink-0 p-[2px]">
+                                    <div className="w-full h-full bg-red-600 rounded-full"></div>
                                   </div>
                                 )}
-                                {item.isSpicy && <span className="text-xs font-semibold text-red-500">Spicy</span>}
-                              </div>
+                                {item.name}
+                              </h3>
 
-                              <h3 className="font-bold text-gray-800 dark:text-white text-lg leading-tight">{item.name}</h3>
-
-                              {/* Highly Reordered Progress Bar - Show if recommended */}
-                              {isRecommendedItem(item) && (
-                                <div className="flex items-center gap-2 mt-1">
-                                  <div className="h-1.5 w-16 bg-gray-200 dark:bg-gray-700 rounded-full overflow-hidden">
-                                    <div className="h-full bg-[#DC2626] w-3/4"></div>
-                                  </div>
-                                  <span className="text-xs text-gray-500 dark:text-gray-400 font-medium">Highly reordered</span>
-                                </div>
-                              )}
+                              {/* Highly Reordered Progress Bar - Removed static version */}
 
                               <div className="flex items-center gap-3 mt-1">
                                 <p className="font-semibold text-gray-900 dark:text-white">{getFoodPriceLabel(item)}</p>
@@ -2655,36 +2590,25 @@ function RestaurantDetailsContent() {
                                           delete dishCardRefs.current[item.id]
                                         }
                                       }}
-                                      className={`flex gap-4 p-4 border-b border-gray-100 dark:border-gray-800 last:border-none relative cursor-pointer transition-all duration-300 ${highlightedDishId === item.id ? "bg-[#DC262605] ring-2 ring-[#DC2626] ring-inset dark:bg-[#DC262610]" : ""}`}
+                                      className={`flex gap-4 p-4 border-b border-gray-100 dark:border-gray-800 last:border-none relative cursor-pointer transition-all duration-300 ${highlightedDishId === item.id ? "bg-[#DC262605] ring-2 ring-[#DC2626] ring-inset dark:bg-[#DC262610] rounded-2xl" : ""}`}
                                       onClick={() => handleItemClick(item)}
                                     >
                                       {/* Left Side - Details */}
                                       <div className="flex-1 min-w-0">
-                                        {/* Veg Icon & Spicy Indicator */}
-                                        <div className="flex items-center gap-2 mb-1">
+                                        <h3 className="font-bold text-gray-800 dark:text-white text-lg leading-tight flex items-center gap-2">
                                           {isVeg ? (
-                                            <div className="w-4 h-4 border-2 border-[#8CC63F] flex items-center justify-center rounded-sm flex-shrink-0">
-                                              <div className="w-2 h-2 bg-[#8CC63F] rounded-full"></div>
+                                            <div className="w-4 h-4 border-2 border-[#8CC63F] flex items-center justify-center rounded-sm flex-shrink-0 p-[2px]">
+                                              <div className="w-full h-full bg-[#8CC63F] rounded-full"></div>
                                             </div>
                                           ) : (
-                                            <div className="w-4 h-4 border-2 border-[#DC2626] flex items-center justify-center rounded-sm flex-shrink-0">
-                                              <div className="w-2 h-2 bg-[#DC2626] rounded-full"></div>
+                                            <div className="w-4 h-4 border-2 border-[#DC2626] flex items-center justify-center rounded-sm flex-shrink-0 p-[2px]">
+                                              <div className="w-full h-full bg-[#DC2626] rounded-full"></div>
                                             </div>
                                           )}
-                                          {item.isSpicy && <span className="text-xs font-semibold text-red-500">Spicy</span>}
-                                        </div>
+                                          {item.name}
+                                        </h3>
 
-                                        <h3 className="font-bold text-gray-800 dark:text-white text-lg leading-tight">{item.name}</h3>
-
-                                        {/* Highly Reordered Progress Bar - Show if recommended */}
-                                        {isRecommendedItem(item) && (
-                                          <div className="flex items-center gap-2 mt-1">
-                                            <div className="h-1.5 w-16 bg-gray-200 dark:bg-gray-700 rounded-full overflow-hidden">
-                                              <div className="h-full bg-[#DC2626] w-3/4"></div>
-                                            </div>
-                                            <span className="text-xs text-gray-500 dark:text-gray-400 font-medium">Highly reordered</span>
-                                          </div>
-                                        )}
+                                        {/* Highly Reordered Progress Bar - Removed static version */}
 
                                         <div className="flex items-center gap-3 mt-1">
                                           <p className="font-semibold text-gray-900 dark:text-white">{getFoodPriceLabel(item)}</p>
@@ -3452,17 +3376,7 @@ function RestaurantDetailsContent() {
                       {selectedItem.description}
                     </p>
 
-                    {/* Highly Reordered Progress Bar */}
-                    {isRecommendedItem(selectedItem) && (
-                      <div className="flex items-center gap-2 mb-4">
-                        <div className="flex-1 h-0.5 bg-gray-200 dark:bg-gray-700 rounded-full overflow-hidden">
-                          <div className="h-full bg-green-500 dark:bg-green-400 rounded-full" style={{ width: '50%' }} />
-                        </div>
-                        <span className="text-xs text-gray-600 dark:text-gray-400 font-medium whitespace-nowrap">
-                          highly reordered
-                        </span>
-                      </div>
-                    )}
+                    {/* Highly Reordered Progress Bar - Removed static version */}
 
                     {/* Not Eligible for Coupons */}
                     {selectedItem.notEligibleForCoupons && (
@@ -3710,158 +3624,7 @@ function RestaurantDetailsContent() {
           document.body
         )}
 
-      {/* Offers Bottom Sheet - Rendered via Portal */}
-      {typeof window !== "undefined" &&
-        createPortal(
-          <AnimatePresence>
-            {showOffersSheet && (
-              <>
-                {/* Backdrop */}
-                <motion.div
-                  className="fixed inset-0 bg-black/40 z-[9999]"
-                  initial={{ opacity: 0 }}
-                  animate={{ opacity: 1 }}
-                  exit={{ opacity: 0 }}
-                  transition={{ duration: 0.15 }}
-                  onClick={() => setShowOffersSheet(false)}
-                />
 
-                {/* Offers Bottom Sheet */}
-                <motion.div
-                  className="fixed left-0 right-0 bottom-0 md:left-1/2 md:right-auto md:-translate-x-1/2 md:bottom-auto md:top-1/2 md:-translate-y-1/2 z-[10000] bg-white dark:bg-[#1a1a1a] rounded-t-3xl md:rounded-3xl shadow-2xl max-h-[85vh] md:max-h-[90vh] md:max-w-lg w-full md:w-auto flex flex-col"
-                  initial={{ y: "100%" }}
-                  animate={{ y: 0 }}
-                  exit={{ y: "100%" }}
-                  transition={{ duration: 0.2, type: "spring", damping: 30, stiffness: 400 }}
-                  style={{ willChange: "transform" }}
-                >
-                  {/* Header */}
-                  <div className="px-4 pt-6 pb-4 border-b border-gray-200 dark:border-gray-800">
-                    <h2 className="text-lg font-bold text-gray-900 dark:text-white">
-                      Offers at {restaurant?.name || "Unknown Restaurant"}
-                    </h2>
-                  </div>
-
-                  {/* Scrollable Content */}
-                  <div className="flex-1 overflow-y-auto px-4 py-4">
-                    {/* Gold Exclusive Offer Section */}
-                    {restaurant?.restaurantOffers?.goldOffer && (
-                      <div className="mb-6">
-                        <h3 className="text-sm font-semibold text-gray-900 dark:text-white mb-3">
-                          {restaurant.restaurantOffers.goldOffer?.title || "Gold exclusive offer"}
-                        </h3>
-                        <div className="bg-gray-50 dark:bg-gray-800 rounded-lg p-4 flex items-start justify-between gap-4 border border-gray-100 dark:border-gray-700 shadow-md">
-                          <div className="flex items-start gap-3 flex-1">
-                            <Lock className="h-5 w-5 text-yellow-600 dark:text-yellow-500 flex-shrink-0 mt-0.5" />
-                            <div className="flex-1">
-                              <p className="text-sm font-medium text-gray-900 dark:text-white mb-1">
-                                {restaurant.restaurantOffers.goldOffer?.description || "Free delivery above ₹99"}
-                              </p>
-                              <p className="text-xs text-gray-500 dark:text-gray-400">
-                                {restaurant.restaurantOffers.goldOffer?.unlockText || "join Gold to unlock"}
-                              </p>
-                            </div>
-                          </div>
-                          <Button
-                            className="bg-red-500 hover:bg-red-600 text-white text-sm px-4 py-2 rounded-lg whitespace-nowrap"
-                            onClick={() => {
-                              // Handle add gold
-                            }}
-                          >
-                            {restaurant.restaurantOffers.goldOffer?.buttonText || "Add Gold - ₹1"}
-                          </Button>
-                        </div>
-                      </div>
-                    )}
-
-                    {/* Restaurant Coupons Section */}
-                    {restaurant?.restaurantOffers?.coupons && Array.isArray(restaurant.restaurantOffers.coupons) && restaurant.restaurantOffers.coupons.length > 0 && (
-                      <div>
-                        <h3 className="text-sm font-semibold text-gray-900 dark:text-white mb-3">
-                          Restaurant coupons
-                        </h3>
-                        <div className="space-y-3">
-                          {restaurant.restaurantOffers.coupons.map((coupon, couponIndex) => {
-                            const couponKey = coupon?.id || coupon?.code || `coupon-${couponIndex}`
-                            const isExpanded = expandedCoupons.has(couponKey)
-                            return (
-                              <div
-                                key={couponKey}
-                                className="border border-gray-200 dark:border-gray-700 rounded-lg overflow-hidden shadow-sm"
-                              >
-                                <button
-                                  className="w-full flex items-center gap-3 p-4 hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors"
-                                  onClick={() => {
-                                    setExpandedCoupons((prev) => {
-                                      const newSet = new Set(prev)
-                                      if (newSet.has(couponKey)) {
-                                        newSet.delete(couponKey)
-                                      } else {
-                                        newSet.add(couponKey)
-                                      }
-                                      return newSet
-                                    })
-                                  }}
-                                >
-                                  <Percent className="h-5 w-5 text-blue-600 dark:text-blue-400 flex-shrink-0" />
-                                  <div className="flex-1 text-left">
-                                    <p className="text-sm font-medium text-gray-900 dark:text-white mb-1">
-                                      {coupon?.title || "Restaurant coupon"}
-                                    </p>
-                                    <p className="text-xs text-gray-500 dark:text-gray-400">
-                                      Use code {coupon?.code || "N/A"}
-                                    </p>
-                                  </div>
-                                  <div className="flex items-center gap-2">
-                                    <button
-                                      className="px-3 py-1 bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300 text-xs font-medium rounded"
-                                      onClick={(e) => {
-                                        e.stopPropagation()
-                                        // Copy code to clipboard
-                                        if (coupon?.code) {
-                                          navigator.clipboard.writeText(coupon.code)
-                                        }
-                                      }}
-                                    >
-                                      {coupon?.code || "Copy"}
-                                    </button>
-                                    <ChevronDown
-                                      className={`h-4 w-4 text-gray-500 dark:text-gray-400 transition-transform ${isExpanded ? "rotate-180" : ""
-                                        }`}
-                                    />
-                                  </div>
-                                </button>
-                                {isExpanded && (
-                                  <div className="px-4 pb-4 pt-2 border-t border-gray-100 dark:border-gray-800">
-                                    <p className="text-xs text-gray-600 dark:text-gray-400">
-                                      Terms and conditions apply
-                                    </p>
-                                  </div>
-                                )}
-                              </div>
-                            )
-                          })}
-                        </div>
-                      </div>
-                    )}
-                  </div>
-
-                  {/* Close Button */}
-                  <div className="border-t border-gray-200 dark:border-gray-800 px-4 py-4 bg-white dark:bg-[#1a1a1a]">
-                    <Button
-                      className="w-full bg-[#DC2626] hover:bg-[#991B1B] text-white border-0 flex items-center justify-center gap-2 py-6 rounded-xl font-bold transition-all shadow-lg text-sm"
-                      onClick={() => setShowOffersSheet(false)}
-                    >
-                      <X className="h-4 w-4" />
-                      Close
-                    </Button>
-                  </div>
-                </motion.div>
-              </>
-            )}
-          </AnimatePresence>,
-          document.body
-        )}
 
       {/* Menu Options Bottom Sheet - Rendered via Portal */}
       {typeof window !== "undefined" &&

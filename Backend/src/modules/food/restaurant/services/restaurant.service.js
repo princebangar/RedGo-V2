@@ -5,6 +5,8 @@ import mongoose from 'mongoose';
 import { FoodZone } from '../../admin/models/zone.model.js';
 import { FoodOffer } from '../../admin/models/offer.model.js';
 import { FoodDiningRestaurant } from '../../dining/models/diningRestaurant.model.js';
+import { FoodItem } from '../../admin/models/food.model.js';
+import { getFoodDisplayPrice } from '../../admin/services/foodVariant.service.js';
 
 const normalizeName = (value) =>
     String(value || '')
@@ -1306,7 +1308,35 @@ export const listApprovedRestaurants = async (query = {}) => {
         ]);
 
         const total = totalDocs?.[0]?.count || 0;
-        return { restaurants: pageDocs, total, page, limit };
+ 
+        // Attach recommended dishes to each restaurant
+        const restaurantIds = pageDocs.map(r => r._id);
+        const allRecommended = await FoodItem.find({
+            restaurantId: { $in: restaurantIds },
+            isRecommended: true,
+            isAvailable: true,
+            approvalStatus: 'approved'
+        }).lean();
+ 
+        const recommendedMap = allRecommended.reduce((acc, item) => {
+            const rid = String(item.restaurantId);
+            if (!acc[rid]) acc[rid] = [];
+            acc[rid].push({
+                id: String(item._id),
+                name: item.name,
+                price: getFoodDisplayPrice(item),
+                image: item.image,
+                foodType: item.foodType
+            });
+            return acc;
+        }, {});
+ 
+        const restaurants = pageDocs.map(r => ({
+            ...r,
+            recommendedDishes: recommendedMap[String(r._id)] || []
+        }));
+ 
+        return { restaurants, total, page, limit };
     }
 
     // Non-geo path: normal query + sort.
@@ -1329,6 +1359,28 @@ export const listApprovedRestaurants = async (query = {}) => {
         FoodRestaurant.countDocuments(filter)
     ]);
 
+    // Attach recommended dishes to each restaurant
+    const restaurantIds = restaurantsRaw.map(r => r._id);
+    const allRecommended = await FoodItem.find({
+        restaurantId: { $in: restaurantIds },
+        isRecommended: true,
+        isAvailable: true,
+        approvalStatus: 'approved'
+    }).lean();
+ 
+    const recommendedMap = allRecommended.reduce((acc, item) => {
+        const rid = String(item.restaurantId);
+        if (!acc[rid]) acc[rid] = [];
+        acc[rid].push({
+            id: String(item._id),
+            name: item.name,
+            price: getFoodDisplayPrice(item),
+            image: item.image,
+            foodType: item.foodType
+        });
+        return acc;
+    }, {});
+ 
     const restaurants = (restaurantsRaw || []).map((r) => ({
         ...r,
         // Frontend user app expects `name` and often checks `profileImage.url`
@@ -1343,7 +1395,8 @@ export const listApprovedRestaurants = async (query = {}) => {
         closingTime: r.closingTime || null,
         openDays: Array.isArray(r.openDays) ? r.openDays : [],
         // Keep menuImages as an array for fallbacks; allow both string and {url} on client.
-        menuImages: Array.isArray(r.menuImages) ? r.menuImages : []
+        menuImages: Array.isArray(r.menuImages) ? r.menuImages : [],
+        recommendedDishes: recommendedMap[String(r._id)] || []
     }));
 
     return { restaurants, total, page, limit };

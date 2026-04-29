@@ -1,4 +1,4 @@
-import { Outlet, useLocation, useNavigate } from "react-router-dom"
+import { Outlet, useLocation, useNavigate, useNavigationType } from "react-router-dom"
 import { useEffect, useState, createContext, useContext } from "react"
 import { ProfileProvider } from "@food/context/ProfileContext"
 import LocationPrompt from "./LocationPrompt"
@@ -11,6 +11,7 @@ const debugError = (...args) => {}
 import SearchOverlay from "./SearchOverlay"
 import BottomNavigation from "./BottomNavigation"
 import DesktopNavbar from "./DesktopNavbar"
+import BackToTop from "./BackToTop"
 import { useUserNotifications } from "../../hooks/useUserNotifications"
 
 // Create SearchOverlay context with default value
@@ -103,10 +104,36 @@ function LocationSelectorProvider({ children }) {
 export default function UserLayout() {
   const location = useLocation()
 
+  const navigationType = useNavigationType()
+
+  // Global Refresh Handler - Scroll to top ONLY on browser refresh
+  useEffect(() => {
+    // Detect browser reload using modern and legacy Performance APIs
+    const isReload = 
+      performance.getEntriesByType('navigation')[0]?.type === 'reload' || 
+      window.performance?.navigation?.type === 1;
+
+    if (isReload) {
+      // Force scroll to top on refresh
+      window.scrollTo({ top: 0, left: 0, behavior: 'instant' });
+      
+      // Clear Home-page specific scroll persistence to prevent it from out-scrolling us
+      sessionStorage.removeItem("homeScrollY");
+      sessionStorage.removeItem("homeVisibleCount");
+    }
+  }, []);
+
   useEffect(() => {
     // Reset scroll to top whenever location changes (pathname, search, or hash)
-    window.scrollTo({ top: 0, left: 0, behavior: 'auto' })
-  }, [location.pathname, location.search, location.hash])
+    // but skip on POP navigation (back/forward) to allow native scroll restoration.
+    // Also skip if we are on the Home page root paths, as they handle their own restoration.
+    const rootPaths = ["/", "/user", "/food", "/dining", "/user/dining", "/takeaway", "/user/takeaway"];
+    const isAtRoot = rootPaths.includes(location.pathname);
+    
+    if (navigationType !== 'POP' && !isAtRoot) {
+      window.scrollTo({ top: 0, left: 0, behavior: 'instant' });
+    }
+  }, [location.pathname, location.search, location.hash, navigationType]);
 
   useUserNotifications()
 
@@ -151,6 +178,7 @@ export default function UserLayout() {
                 <main className={showBottomNav ? "md:pt-40" : ""}>
                   <Outlet />
                 </main>
+                {(normalizedPath === "/" || normalizedPath === "" || normalizedPath === "/user") && <BackToTop />}
                 {showBottomNav && <BottomNavigation />}
               </LocationSelectorProvider>
             </SearchOverlayProvider>

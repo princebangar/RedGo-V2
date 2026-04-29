@@ -25,6 +25,7 @@ const buildMenuFromFoods = async (foods = []) => {
         : [];
     const categoryMap = new Map(categoryDocs.map((doc) => [String(doc._id), doc]));
 
+    const recommendedDishes = [];
     const byCategory = new Map();
     for (const food of foods) {
         const categoryId = food?.categoryId ? String(food.categoryId) : '';
@@ -42,7 +43,7 @@ const buildMenuFromFoods = async (foods = []) => {
             });
         }
 
-        byCategory.get(groupKey).items.push({
+        const item = {
             id: String(food._id),
             _id: food._id,
             categoryId: categoryId || null,
@@ -64,9 +65,16 @@ const buildMenuFromFoods = async (foods = []) => {
             approvedAt: food.approvedAt,
             rejectedAt: food.rejectedAt,
             preparationTime: food.preparationTime || '',
+            isRecommended: food.isRecommended === true,
             createdAt: food.createdAt,
             updatedAt: food.updatedAt
-        });
+        };
+
+        if (food.isRecommended === true && food.isAvailable !== false && food.approvalStatus === 'approved') {
+            recommendedDishes.push(item);
+        }
+
+        byCategory.get(groupKey).items.push(item);
     }
 
     const orderedGroups = Array.from(byCategory.values()).sort((a, b) => {
@@ -98,7 +106,7 @@ const buildMenuFromFoods = async (foods = []) => {
         itemCount: section.itemCount || 0
     }));
 
-    return { sections, categories };
+    return { sections, categories, recommendedDishes };
 };
 
 export async function getRestaurantMenu(restaurantId) {
