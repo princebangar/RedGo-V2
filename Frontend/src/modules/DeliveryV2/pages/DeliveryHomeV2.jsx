@@ -710,7 +710,7 @@ export default function DeliveryHomeV2({ tab = 'feed' }) {
                 onClick={() => navigate('/food/delivery/profile')}
                 className="w-10 h-10 rounded-full border border-white/20 p-0.5 shadow-xl overflow-hidden bg-white/5 cursor-pointer active:scale-95 transition-all"
              >
-                <img src={profileImage || "https://i.ibb.co/3m2Yh7r/Appzeto-Brand-Image.png"} alt="Profile" className="w-full h-full object-cover rounded-full" />
+                <img src={profileImage || "https://i.ibb.co/3m2Yh7r/Appzeto-Brand-Image.png"} alt="RedGo Profile" className="w-full h-full object-cover rounded-full" />
              </div>
               <button 
                 onClick={async () => {

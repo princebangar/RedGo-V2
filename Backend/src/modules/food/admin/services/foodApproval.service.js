@@ -6,6 +6,7 @@ import { FoodRestaurant } from '../../restaurant/models/restaurant.model.js';
 import { syncMenuItemApprovalStatus } from '../../restaurant/services/restaurantMenu.service.js';
 import { getFoodDisplayPrice, serializeFoodVariants } from './foodVariant.service.js';
 
+
 const toRestaurantDisplayId = (mongoId) => {
     const s = String(mongoId || '');
     return s.length >= 5 ? s.slice(-5) : s;

@@ -60,9 +60,9 @@ export default function Home() {
               </div>
             )}
           </div>
-          <CardTitle className="text-3xl font-bold text-center">{companyName || "Appzeto Food"}</CardTitle>
+          <CardTitle className="text-3xl font-bold text-center">{companyName || "RedGo"}</CardTitle>
           <CardDescription className="text-lg">
-            Welcome to the Food Delivery Platform
+            Welcome to the RedGo Delivery Platform
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
