@@ -42,7 +42,7 @@ app.use(helmet({
     referrerPolicy: { policy: 'strict-origin-when-cross-origin' }
 }));
 app.use(cors());
-app.use(morgan('dev'));
+// app.use(morgan('dev'));
 app.use(express.json({
     verify: (req, res, buf) => {
         // ✅ Store rawBody for signature verification (Razorpay Webhooks)
@@ -66,7 +66,7 @@ app.use(xssClean());
 app.use('/api', apiRateLimiter);
 
 // Optional: log API response time (method, path, status, duration) - no sensitive data
-app.use('/api', responseTimeLogger);
+// app.use('/api', responseTimeLogger);
 
 // API Routes
 app.use('/api', routes);

@@ -8,7 +8,7 @@ let io = null;
 
 function logDeliverySocket(message, extra = {}) {
     const suffix = Object.keys(extra).length ? ` ${JSON.stringify(extra)}` : '';
-    logger.info(`[DeliverySocket] ${message}${suffix}`);
+    // logger.info(`[DeliverySocket] ${message}${suffix}`);
 }
 
 function getTokenFromHandshake(socket) {
@@ -68,16 +68,16 @@ export const initSocket = async (server) => {
                 });
                 return next(new Error('AUTH_MISSING'));
             }
-            logger.info(`[DeliverySocket] Handshake token received`, {
+            /* logger.info(`[DeliverySocket] Handshake token received`, {
                 socketId: socket.id,
                 origin: socket?.handshake?.headers?.origin || null,
                 host: socket?.handshake?.headers?.host || null,
                 transport: socket?.handshake?.query?.transport || null,
                 tokenPreview: maskToken(token),
-            });
+            }); */
             const decoded = verifyAccessToken(token);
             socket.user = { userId: decoded.userId, role: decoded.role };
-            logger.info(`Socket auth success: ${decoded.role}:${decoded.userId} for socket ${socket.id}`);
+            // logger.info(`Socket auth success: ${decoded.role}:${decoded.userId} for socket ${socket.id}`);
             return next();
         } catch (err) {
             logger.error(`Socket auth failed for socket ${socket.id}: ${err.message}`);
@@ -113,7 +113,7 @@ export const initSocket = async (server) => {
     io.on('connection', (socket) => {
         const userId = socket.user?.userId;
         const role = socket.user?.role;
-        logger.info(`Socket client connected: ${socket.id} (${role || 'UNKNOWN'}:${userId || '-'})`);
+        // logger.info(`Socket client connected: ${socket.id} (${role || 'UNKNOWN'}:${userId || '-'})`);
 
         // Auto-join role rooms (lets us emit without a custom join).
         if (userId && role) {
@@ -179,7 +179,7 @@ export const initSocket = async (server) => {
             if (role !== 'USER' && role !== 'RESTAURANT' && role !== 'DELIVERY_PARTNER') return;
             const room = roomNames.tracking(orderId);
             socket.join(room);
-            logger.info(`Socket ${socket.id} (${role}:${userId}) joined tracking room ${room}`);
+            // logger.info(`Socket ${socket.id} (${role}:${userId}) joined tracking room ${room}`);
             socket.emit('tracking-room-joined', { room, orderId: String(orderId) });
         });
 
@@ -312,7 +312,7 @@ export const initSocket = async (server) => {
         });
 
         socket.on('disconnect', () => {
-            logger.info(`Socket client disconnected: ${socket.id}`);
+            // logger.info(`Socket client disconnected: ${socket.id}`);
             if (role === 'DELIVERY_PARTNER') {
                 logDeliverySocket('Delivery socket disconnected', {
                     socketId: socket.id,
