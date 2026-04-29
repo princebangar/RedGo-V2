@@ -1,5 +1,5 @@
 export const APP_CONFIG = {
-  NAME: 'Foodelo',
+  NAME: 'RedGo',
   VERSION: '1.0.0',
 };
 

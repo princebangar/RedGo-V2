@@ -241,7 +241,7 @@ export default function DiningRestaurantDetails() {
   const handleShare = async () => {
     const shareData = {
       title: restaurantName,
-      text: `Check out ${restaurantName} on Foodelo!`,
+      text: `Check out ${restaurantName} on RedGo!`,
       url: window.location.href,
     }
 

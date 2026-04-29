@@ -8,7 +8,7 @@ dotenv.config();
 
 async function check() {
   try {
-    await mongoose.connect(process.env.MONGODB_URI || 'mongodb://localhost:27017/foodelo');
+    await mongoose.connect(process.env.MONGODB_URI || 'mongodb://localhost:27017/Redgo');
     const doc = await FoodDiningRestaurant.findOne({ restaurantId: '69b8f156f1ecccbb2e25d030' }).lean();
     fs.writeFileSync('dining_doc_result.txt', JSON.stringify(doc, null, 2));
     await mongoose.disconnect();

@@ -7,7 +7,7 @@ import apiClient from "@food/api/axios";
 import { API_ENDPOINTS } from "@food/api/config";
 import { publicGetOnce } from "@food/api";
 
-const SETTINGS_KEY = 'food_business_settings';
+const SETTINGS_KEY = 'redgo_business_settings';
 
 // Initialize from localStorage immediately so it's available for components on mount
 let cachedSettings = (() => {
@@ -97,8 +97,8 @@ export const updateFavicon = (url) => {
  * Update page title
  */
 export const updateTitle = (companyName) => {
-  if (companyName && typeof document !== 'undefined') {
-    document.title = companyName;
+  if (typeof document !== 'undefined') {
+    document.title = (companyName && companyName !== "Foodelo") ? companyName : "RedGo";
   }
 };
 
@@ -136,22 +136,23 @@ export const getCachedSettings = () => {
 
 /**
  * Get company name from business settings with fallback
- * @returns {string} Company name or default "Foodelo Food"
+ * @returns {string} Company name or default "RedGo"
  */
 export const getCompanyName = () => {
   const settings = getCachedSettings();
-  return settings?.companyName || "Foodelo";
+  const name = settings?.companyName || "RedGo";
+  return name === "Foodelo" ? "RedGo" : name;
 };
 
 /**
  * Get company name asynchronously (loads if not cached)
- * @returns {Promise<string>} Company name or default "Foodelo Food"
+ * @returns {Promise<string>} Company name or default "RedGo"
  */
 export const getCompanyNameAsync = async () => {
   try {
     const settings = await loadBusinessSettings();
-    return settings?.companyName || "Foodelo";
+    return settings?.companyName || "RedGo";
   } catch (error) {
-    return "Foodelo";
+    return "RedGo";
   }
 };
