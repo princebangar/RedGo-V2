@@ -1,8 +1,8 @@
 {
-  "name": "redgo-backend",
+  "name": "appzeto-backend",
   "version": "1.0.0",
   "type": "module",
-  "description": "RedGo Backend",
+  "description": "AppZeto Master Product Backend",
   "main": "server.js",
   "scripts": {
     "start": "node server.js",

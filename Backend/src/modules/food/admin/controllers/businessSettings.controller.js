@@ -8,8 +8,8 @@ export async function getBusinessSettings(req, res, next) {
         if (!settings) {
             // Create default settings if none exist
             settings = await FoodBusinessSettings.create({
-                companyName: 'RedGo',
-                email: 'admin@redgo.com'
+                companyName: 'Appzeto',
+                email: 'admin@appzeto.com'
             });
         }
         return sendResponse(res, 200, 'Business settings fetched successfully', settings);
