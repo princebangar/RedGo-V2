@@ -918,7 +918,7 @@ export default function Under250() {
           </div>
         )}
         {bannerImages.length === 0 && !loadingBanner && (
-          <div className="absolute top-0 left-0 right-0 bottom-0 z-0 bg-gradient-to-br from-[#fcf4f9] to-[#f5e8f1] dark:from-[#3c0f3d] dark:to-[#55254b] overflow-hidden" />
+          <div className="absolute top-0 left-0 right-0 bottom-0 z-0 bg-gradient-to-br from-[#fcf4f9] to-[#f5e8f1] dark:from-[#7F1D1D] dark:to-[#991B1B] overflow-hidden" />
         )}
       </div>
 
@@ -943,12 +943,12 @@ export default function Under250() {
                 whileTap={{ scale: 0.95 }}
                 transition={{ type: "spring", stiffness: 300, damping: 20 }}
               >
-                <div className={`w-14 h-14 sm:w-20 sm:h-20 md:w-24 md:h-24 rounded-full overflow-hidden shadow-md transition-all flex items-center justify-center bg-white ${!activeCategory ? 'ring-2 ring-[#7e3866] ring-offset-2' : ''}`}>
-                   <div className={`w-full h-full flex items-center justify-center ${!activeCategory ? 'bg-[#7e3866]/10 text-[#7e3866]' : 'bg-gray-50 text-gray-400'}`}>
+                <div className={`w-14 h-14 sm:w-20 sm:h-20 md:w-24 md:h-24 rounded-full overflow-hidden shadow-md transition-all flex items-center justify-center bg-white ${!activeCategory ? 'ring-2 ring-[#DC2626] ring-offset-2' : ''}`}>
+                   <div className={`w-full h-full flex items-center justify-center ${!activeCategory ? 'bg-[#DC2626]/10 text-[#DC2626]' : 'bg-gray-50 text-gray-400'}`}>
                       <UtensilsCrossed className="w-6 h-6 sm:w-10 sm:h-10 md:w-12 md:h-12" />
                    </div>
                 </div>
-                <span className={`text-xs sm:text-sm md:text-base font-semibold text-gray-800 dark:text-gray-200 text-center pb-1 ${!activeCategory ? 'text-[#7e3866]' : ''}`}>
+                <span className={`text-xs sm:text-sm md:text-base font-semibold text-gray-800 dark:text-gray-200 text-center pb-1 ${!activeCategory ? 'text-[#DC2626]' : ''}`}>
                   All
                 </span>
               </motion.div>
@@ -963,7 +963,7 @@ export default function Under250() {
                       whileTap={{ scale: 0.95 }}
                       transition={{ type: "spring", stiffness: 300, damping: 20 }}
                     >
-                      <div className={`w-14 h-14 sm:w-20 sm:h-20 md:w-24 md:h-24 rounded-full overflow-hidden shadow-md transition-all ${isActive ? 'ring-2 ring-[#7e3866] ring-offset-2' : ''}`}>
+                      <div className={`w-14 h-14 sm:w-20 sm:h-20 md:w-24 md:h-24 rounded-full overflow-hidden shadow-md transition-all ${isActive ? 'ring-2 ring-[#DC2626] ring-offset-2' : ''}`}>
                         <OptimizedImage
                           src={category.image}
                           alt={category.name}
@@ -973,7 +973,7 @@ export default function Under250() {
                           placeholder="blur"
                         />
                       </div>
-                      <span className={`text-xs sm:text-sm md:text-base font-semibold text-gray-800 dark:text-gray-200 text-center pb-1 ${isActive ? 'text-[#7e3866]' : ''}`}>
+                      <span className={`text-xs sm:text-sm md:text-base font-semibold text-gray-800 dark:text-gray-200 text-center pb-1 ${isActive ? 'text-[#DC2626]' : ''}`}>
                         {category.name.length > 7 ? `${category.name.slice(0, 7)}...` : category.name}
                       </span>
                     </motion.div>
@@ -1000,7 +1000,7 @@ export default function Under250() {
               variant="outline"
               onClick={() => setUnder30MinsFilter(!under30MinsFilter)}
               className={`h-8 sm:h-9 md:h-10 px-3 sm:px-4 md:px-5 rounded-md flex items-center gap-1.5 whitespace-nowrap flex-shrink-0 font-medium transition-all text-sm md:text-base ${under30MinsFilter
-                ? 'bg-[#7e3866] text-white border border-[#7e3866] hover:bg-[#55254b]'
+                ? 'bg-[#DC2626] text-white border border-[#DC2626] hover:bg-[#991B1B]'
                 : 'bg-white dark:bg-[#1a1a1a] border border-gray-200 dark:border-gray-800 hover:bg-gray-50 dark:hover:bg-gray-800 text-gray-600 dark:text-gray-300'
                 }`}
             >
@@ -1145,7 +1145,7 @@ export default function Under250() {
                                     <Button
                                       variant={"ghost"}
                                       size="sm"
-                                      className="bg-[#7e3866] text-white hover:bg-[#55254b] h-7 md:h-8 lg:h-9 px-3 md:px-4 lg:px-5 text-xs md:text-sm lg:text-base font-bold shadow-md transition-all active:scale-95"
+                                      className="bg-[#DC2626] text-white hover:bg-[#991B1B] h-7 md:h-8 lg:h-9 px-3 md:px-4 lg:px-5 text-xs md:text-sm lg:text-base font-bold shadow-md transition-all active:scale-95"
                                     >
                                       View cart
                                     </Button>
@@ -1157,7 +1157,7 @@ export default function Under250() {
                                     disabled={shouldShowGrayscale}
                                     className={`h-7 md:h-8 lg:h-9 px-3 md:px-4 lg:px-5 text-xs md:text-sm lg:text-base font-bold shadow-md transition-all active:scale-95 ${shouldShowGrayscale
                                       ? 'bg-gray-100 dark:bg-gray-800 text-gray-400 border-gray-300 dark:border-gray-700 cursor-not-allowed opacity-50'
-                                      : 'bg-[#7e3866] text-white hover:bg-[#55254b]'
+                                      : 'bg-[#DC2626] text-white hover:bg-[#991B1B]'
                                       }`}
                                     onClick={(e) => {
                                       e.stopPropagation()
@@ -1228,7 +1228,7 @@ export default function Under250() {
                 <h2 className="text-lg md:text-xl lg:text-2xl font-bold text-gray-900 dark:text-white">Sort By</h2>
                 <button
                   onClick={handleClearAll}
-                  className="text-[#7e3866] dark:text-[#b18da5] font-medium text-sm md:text-base"
+                  className="text-[#DC2626] dark:text-[#FEE2E2] font-medium text-sm md:text-base"
                 >
                   Clear all
                 </button>
@@ -1242,11 +1242,11 @@ export default function Under250() {
                       key={option.id || 'relevance'}
                       onClick={() => setDraftSelectedSort(option.id)}
                       className={`px-4 md:px-5 lg:px-6 py-3 md:py-4 rounded-xl border text-left transition-colors ${draftSelectedSort === option.id
-                        ? 'border-[#7e3866] bg-[#fdfafc] dark:bg-[#7e3866]/20'
-                        : 'border-gray-200 dark:border-gray-800 hover:border-[#7e3866]'
+                        ? 'border-[#DC2626] bg-[#fdfafc] dark:bg-[#DC2626]/20'
+                        : 'border-gray-200 dark:border-gray-800 hover:border-[#DC2626]'
                         }`}
                     >
-                      <span className={`text-sm md:text-base lg:text-lg font-medium ${draftSelectedSort === option.id ? 'text-[#7e3866] dark:text-[#b18da5]' : 'text-gray-700 dark:text-gray-300'}`}>
+                      <span className={`text-sm md:text-base lg:text-lg font-medium ${draftSelectedSort === option.id ? 'text-[#DC2626] dark:text-[#FEE2E2]' : 'text-gray-700 dark:text-gray-300'}`}>
                         {option.label}
                       </span>
                     </button>
@@ -1264,7 +1264,7 @@ export default function Under250() {
                 </button>
                 <button
                   onClick={handleApply}
-                  className="flex-1 py-3 md:py-4 font-semibold rounded-xl transition-colors text-sm md:text-base bg-[#7e3866] text-white hover:bg-[#55254b]"
+                  className="flex-1 py-3 md:py-4 font-semibold rounded-xl transition-colors text-sm md:text-base bg-[#DC2626] text-white hover:bg-[#991B1B]"
                 >
                   Apply
                 </button>
@@ -1409,7 +1409,7 @@ export default function Under250() {
                 {selectedItem.customisable && (
                   <div className="flex items-center gap-2 mb-4">
                     <div className="flex-1 h-0.5 bg-gray-200 rounded-full overflow-hidden">
-                      <div className="h-full bg-[#7e3866]" style={{ width: '50%' }} />
+                      <div className="h-full bg-[#DC2626]" style={{ width: '50%' }} />
                     </div>
                     <span className="text-xs text-gray-600 dark:text-gray-400 font-medium whitespace-nowrap">
                       highly reordered
@@ -1475,7 +1475,7 @@ export default function Under250() {
                   <Button
                     className={`flex-1 h-[44px] md:h-[50px] lg:h-[56px] rounded-lg md:rounded-xl font-semibold flex items-center justify-center gap-2 text-sm md:text-base lg:text-lg ${shouldShowGrayscale
                       ? 'bg-gray-300 dark:bg-gray-700 text-gray-500 dark:text-gray-600 cursor-not-allowed opacity-50'
-                      : 'bg-[#7e3866] hover:bg-[#55254b] dark:bg-[#7e3866] dark:hover:bg-[#55254b] text-white'
+                      : 'bg-[#DC2626] hover:bg-[#991B1B] dark:bg-[#DC2626] dark:hover:bg-[#991B1B] text-white'
                       }`}
                     onClick={(e) => {
                       if (!shouldShowGrayscale) {
@@ -1545,7 +1545,7 @@ export default function Under250() {
                   <button
                     key={option.id}
                     onClick={() => handleShareOption(option.id)}
-                    className="rounded-2xl border border-gray-200 dark:border-gray-700 px-4 py-3 text-sm font-medium text-gray-800 dark:text-gray-200 hover:border-[#7e3866] hover:text-[#7e3866] transition-colors"
+                    className="rounded-2xl border border-gray-200 dark:border-gray-700 px-4 py-3 text-sm font-medium text-gray-800 dark:text-gray-200 hover:border-[#DC2626] hover:text-[#DC2626] transition-colors"
                   >
                     {option.label}
                   </button>

@@ -429,7 +429,7 @@ export default function EditProfile() {
             <button
               onClick={handleProfileImageAction}
               disabled={isUploadingImage}
-              className="absolute bottom-0 right-0 w-8 h-8 bg-primary rounded-full flex items-center justify-center shadow-lg border-2 border-white hover:bg-[#55254b] transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              className="absolute bottom-0 right-0 w-8 h-8 bg-primary rounded-full flex items-center justify-center shadow-lg border-2 border-white hover:bg-[#991B1B] transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
             >
               {isUploadingImage ? (
                 <Loader2 className="h-4 w-4 text-white animate-spin" />
@@ -540,7 +540,7 @@ export default function EditProfile() {
                             borderColor: '#9ca3af',
                           },
                           '&.Mui-focused fieldset': {
-                            borderColor: '#7e3866',
+                            borderColor: '#DC2626',
                             borderWidth: '1px',
                           },
                         },
@@ -581,7 +581,7 @@ export default function EditProfile() {
                             borderColor: '#9ca3af',
                           },
                           '&.Mui-focused fieldset': {
-                            borderColor: '#7e3866',
+                            borderColor: '#DC2626',
                             borderWidth: '1px',
                           },
                         },
@@ -625,7 +625,7 @@ export default function EditProfile() {
           onClick={handleUpdate}
           disabled={!hasChanges || isSaving || isUploadingImage}
           className={`w-full h-14 rounded-xl font-semibold text-base transition-all mb-2 ${hasChanges && !isSaving && !isUploadingImage
-            ? 'bg-primary hover:bg-[#55254b] text-white'
+            ? 'bg-primary hover:bg-[#991B1B] text-white'
             : 'bg-gray-200 text-gray-400 cursor-not-allowed'
             }`}
         >

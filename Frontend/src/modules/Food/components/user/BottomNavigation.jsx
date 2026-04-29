@@ -1,6 +1,7 @@
 import { Link, useLocation } from "react-router-dom"
-import { Tag, User, Truck, UtensilsCrossed } from "lucide-react"
+import { Tag, Truck, UtensilsCrossed } from "lucide-react"
 import { useState, useEffect } from "react"
+import { motion, AnimatePresence } from "framer-motion"
 import api from "@food/api"
 
 export default function BottomNavigation() {
@@ -25,103 +26,81 @@ export default function BottomNavigation() {
     return () => { cancelled = true }
   }, [])
 
-  // Check active routes - support both /user/* and /* paths
-  const isDining = pathname === "/food/dining" || pathname.startsWith("/food/user/dining")
-  const isUnder250 = pathname === "/food/under-250" || pathname.startsWith("/food/user/under-250")
-  const isProfile = pathname.startsWith("/food/profile") || pathname.startsWith("/food/user/profile")
-  const isDelivery =
-    !isDining &&
-    !isUnder250 &&
-    !isProfile &&
-    (pathname === "/food" ||
-      pathname === "/food/" ||
-      pathname === "/food/user" ||
-      (pathname.startsWith("/food/user") &&
-        !pathname.includes("/dining") &&
-        !pathname.includes("/under-250") &&
-        !pathname.includes("/profile")))
+  // Normalize pathname by removing trailing slash for consistent comparison
+  const normalizedPath = pathname.replace(/\/$/, "") || "/";
+  
+  // Check active routes
+  const isDining = normalizedPath === "/food/dining" || normalizedPath.startsWith("/food/user/dining");
+  const isUnder250 = normalizedPath === "/food/under-250" || normalizedPath.startsWith("/food/user/under-250");
+  const isProfile = normalizedPath.startsWith("/food/profile") || normalizedPath.startsWith("/food/user/profile");
+  
+  // Delivery is the default active state for the food module if nothing else is active
+  const isDelivery = !isDining && !isUnder250 && !isProfile && (
+    normalizedPath === "/food" || 
+    normalizedPath === "/food/user" || 
+    normalizedPath.startsWith("/food/user") ||
+    normalizedPath.startsWith("/food/restaurants") ||
+    normalizedPath.startsWith("/food/user/restaurants")
+  );
+
+  const navItems = [
+    {
+      id: 'delivery',
+      label: 'Delivery',
+      icon: Truck,
+      to: '/food/user',
+      active: isDelivery
+    },
+    {
+      id: 'dining',
+      label: 'Dining',
+      icon: UtensilsCrossed,
+      to: '/food/user/dining',
+      active: isDining
+    },
+    {
+      id: 'under250',
+      label: `Under ₹${under250PriceLimit}`,
+      icon: Tag,
+      to: '/food/user/under-250',
+      active: isUnder250
+    }
+  ]
 
   return (
-    <div
-      className="md:hidden fixed bottom-0 left-0 right-0 bg-white dark:bg-[#1a1a1a] border-t border-gray-200 dark:border-gray-800 z-50 shadow-lg"
-    >
-      <div className="flex items-center justify-around h-auto px-2 sm:px-4">
-        {/* Delivery Tab */}
-        <Link
-          to="/"
-          className={`flex flex-1 flex-col items-center gap-1.5 px-2 sm:px-3 py-2 transition-all duration-200 relative ${isDelivery
-              ? "text-[#7e3866]"
-              : "text-gray-600 dark:text-gray-400"
-            }`}
-        >
-          < Truck className={`h-5 w-5 ${isDelivery ? "text-[#7e3866] fill-[#7e3866]/10" : "text-gray-600 dark:text-gray-400"}`} strokeWidth={2} />
-          <span className={`text-xs sm:text-sm font-medium ${isDelivery ? "text-[#7e3866] font-bold" : "text-gray-600 dark:text-gray-400"}`}>
-            Delivery
-          </span>
-          {isDelivery && (
-            <div className="absolute top-0 left-0 right-0 h-0.5 bg-[#7e3866] rounded-b-full" />
-          )}
-        </Link>
-
-        {/* Divider */}
-        <div className="h-8 w-px bg-gray-300 dark:bg-gray-700" />
-
-        {/* Dining Tab */}
-        <Link
-          to="/food/user/dining"
-          className={`flex flex-1 flex-col items-center gap-1.5 px-2 sm:px-3 py-2 transition-all duration-200 relative ${isDining
-              ? "text-[#7e3866]"
-              : "text-gray-600 dark:text-gray-400"
-            }`}
-        >
-          <UtensilsCrossed className={`h-5 w-5 ${isDining ? "text-[#7e3866]" : "text-gray-600 dark:text-gray-400"}`} strokeWidth={2} />
-          <span className={`text-xs sm:text-sm font-medium ${isDining ? "text-[#7e3866] font-bold" : "text-gray-600 dark:text-gray-400"}`}>
-            Dining
-          </span>
-          {isDining && (
-            <div className="absolute top-0 left-0 right-0 h-0.5 bg-[#7e3866] rounded-b-full" />
-          )}
-        </Link>
-
-        {/* Divider */}
-        <div className="h-8 w-px bg-gray-300 dark:bg-gray-700" />
-
-        {/* Under 250 Tab */}
-        <Link
-          to="/food/user/under-250"
-          className={`flex flex-1 flex-col items-center gap-1.5 px-2 sm:px-3 py-2 transition-all duration-200 relative ${isUnder250
-              ? "text-[#7e3866]"
-              : "text-gray-600 dark:text-gray-400"
-            }`}
-        >
-          <Tag className={`h-5 w-5 ${isUnder250 ? "text-[#7e3866] fill-[#7e3866]/10" : "text-gray-600 dark:text-gray-400"}`} strokeWidth={2} />
-          <span className={`text-xs sm:text-sm font-medium ${isUnder250 ? "text-[#7e3866] font-bold" : "text-gray-600 dark:text-gray-400"}`}>
-            Under ₹{under250PriceLimit}
-          </span>
-          {isUnder250 && (
-            <div className="absolute top-0 left-0 right-0 h-0.5 bg-[#7e3866] rounded-b-full" />
-          )}
-        </Link>
-
-        {/* Divider */}
-        <div className="h-8 w-px bg-gray-300 dark:bg-gray-700" />
-
-        {/* Profile Tab */}
-        <Link
-          to="/food/user/profile"
-          className={`flex flex-1 flex-col items-center gap-1.5 px-2 sm:px-3 py-2 transition-all duration-200 relative ${isProfile
-              ? "text-[#7e3866]"
-              : "text-gray-600 dark:text-gray-400"
-            }`}
-        >
-          <User className={`h-5 w-5 ${isProfile ? "text-[#7e3866] fill-[#7e3866]/10" : "text-gray-600 dark:text-gray-400"}`} />
-          <span className={`text-xs sm:text-sm font-medium ${isProfile ? "text-[#7e3866] font-bold" : "text-gray-600 dark:text-gray-400"}`}>
-            Profile
-          </span>
-          {isProfile && (
-            <div className="absolute top-0 left-0 right-0 h-0.5 bg-[#7e3866] rounded-b-full" />
-          )}
-        </Link>
+    <div className="md:hidden fixed bottom-6 left-0 right-0 z-50 px-6 pointer-events-none antialiased">
+      <div 
+        className="max-w-md mx-auto h-18 bg-white dark:bg-[#1a1a1a] border border-gray-100 dark:border-white/10 shadow-[0_15px_40px_-10px_rgba(0,0,0,0.3)] flex items-center justify-around px-2 pointer-events-auto rounded-[2rem] overflow-hidden"
+      >
+        <AnimatePresence>
+          {navItems.map((item) => (
+            <Link
+              key={item.id}
+              to={item.to}
+              className={`flex flex-col items-center justify-center gap-1 h-14 w-full relative transition-all duration-300 ${
+                item.active ? "text-[#DC2626]" : "text-gray-600 dark:text-gray-400"
+              }`}
+            >
+              {item.active && (
+                <motion.div
+                  layoutId="active-nav-bg"
+                  className="absolute inset-x-1 inset-y-1 bg-[#FFF5F5] dark:bg-[#DC2626]/10 rounded-[1.5rem] z-0"
+                  transition={{ type: "spring", stiffness: 400, damping: 30 }}
+                />
+              )}
+              
+              <div className="relative z-10 flex flex-col items-center gap-0.5">
+                <item.icon 
+                  className={`h-5 w-5 transition-transform duration-300 ${item.active ? "scale-110" : ""}`} 
+                  strokeWidth={item.active ? 2.5 : 2} 
+                />
+                <span className={`text-[10px] font-black tracking-tight uppercase leading-none ${item.active ? "opacity-100" : "text-gray-900/70 dark:text-gray-300/60"}`}>
+                  {item.id === 'under250' ? 'Under 250' : item.label}
+                </span>
+              </div>
+            </Link>
+          ))}
+        </AnimatePresence>
       </div>
     </div>
   )

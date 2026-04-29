@@ -165,7 +165,7 @@ export default function SignIn() {
             <Button
               type="submit"
               form="user-signin-form"
-              className="w-full h-12 md:h-14 bg-primary hover:bg-[#55254b] text-white font-bold text-base md:text-lg rounded-lg transition-all hover:shadow-lg active:scale-[0.98]"
+              className="w-full h-12 md:h-14 bg-primary hover:bg-[#991B1B] text-white font-bold text-base md:text-lg rounded-lg transition-all hover:shadow-lg active:scale-[0.98]"
               disabled={isLoading}
             >
               {isLoading ? (

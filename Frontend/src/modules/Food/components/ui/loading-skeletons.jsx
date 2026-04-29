@@ -75,30 +75,20 @@ function CategoryChipRowSkeleton({ count = 8, className }) {
   )
 }
 
-function ExploreTileSkeleton({ index }) {
+function ExploreTileSkeleton() {
   return (
-    <div
-      className={cn(
-        "rounded-2xl border border-[#f1e3d6] bg-white p-4 shadow-[0_10px_30px_rgba(15,23,42,0.04)]",
-        index % 4 === 0 ? "bg-[#fffaf4]" : ""
-      )}
-    >
-      <div className="flex items-center gap-4">
-        <Skeleton className="h-14 w-14 rounded-2xl" />
-        <div className="flex-1 space-y-2">
-          <Skeleton className="h-4 w-3/4 rounded-full" />
-          <Skeleton className="h-3 w-1/2 rounded-full" />
-        </div>
-      </div>
+    <div className="flex flex-col items-center gap-2 w-20 sm:w-24 flex-shrink-0">
+      <Skeleton className="h-20 w-20 sm:h-24 sm:w-24 rounded-2xl" />
+      <Skeleton className="h-3 w-12 rounded-full" />
     </div>
   )
 }
 
-function ExploreGridSkeleton({ count = 4, className }) {
+function ExploreGridSkeleton({ count = 6, className }) {
   return (
-    <div className={cn("grid grid-cols-2 gap-3 md:grid-cols-4 md:gap-4", className)}>
+    <div className={cn("flex gap-4 overflow-hidden", className)}>
       {Array.from({ length: count }, (_, index) => (
-        <ExploreTileSkeleton key={`explore-${index}`} index={index} />
+        <ExploreTileSkeleton key={`explore-${index}`} />
       ))}
     </div>
   )

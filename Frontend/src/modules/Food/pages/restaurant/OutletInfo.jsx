@@ -44,11 +44,11 @@ const CUISINES_STORAGE_KEY = "restaurant_cuisines"
 const ActionButton = ({ icon: Icon, label, onClick }) => (
   <button 
     onClick={onClick}
-    className="w-full flex items-center justify-between p-4 bg-white rounded-2xl border border-gray-100 hover:border-[#7e3866]/30 hover:bg-[#7e3866]/5 transition-all active:scale-[0.98] shadow-sm"
+    className="w-full flex items-center justify-between p-4 bg-white rounded-2xl border border-gray-100 hover:border-[#DC2626]/30 hover:bg-[#DC2626]/5 transition-all active:scale-[0.98] shadow-sm"
   >
     <div className="flex items-center gap-4">
-      <div className="bg-[#7e3866]/5 p-2.5 rounded-xl">
-        <Icon className="w-5 h-5 text-[#7e3866]" />
+      <div className="bg-[#DC2626]/5 p-2.5 rounded-xl">
+        <Icon className="w-5 h-5 text-[#DC2626]" />
       </div>
       <span className="text-[15px] font-bold text-gray-800 tracking-tight">{label}</span>
     </div>
@@ -366,14 +366,14 @@ export default function OutletInfo() {
             <div className="flex items-center gap-2 flex-1">
               <button 
                 onClick={goBack} 
-                className="p-2 hover:bg-[#7e3866]/5 rounded-xl transition-all active:scale-95"
+                className="p-2 hover:bg-[#DC2626]/5 rounded-xl transition-all active:scale-95"
               >
-                <ArrowLeft className="w-5 h-5 text-[#7e3866]" />
+                <ArrowLeft className="w-5 h-5 text-[#DC2626]" />
               </button>
               <h1 className="text-[17px] font-bold text-gray-900 tracking-tight">Outlet Information</h1>
             </div>
-            <div className="bg-[#7e3866]/5 px-3 py-1.5 rounded-full border border-[#7e3866]/10">
-              <p className="text-[11px] font-bold text-[#7e3866] uppercase tracking-wider">
+            <div className="bg-[#DC2626]/5 px-3 py-1.5 rounded-full border border-[#DC2626]/10">
+              <p className="text-[11px] font-bold text-[#DC2626] uppercase tracking-wider">
                 ID: {loading ? "..." : (restaurantMongoId && restaurantMongoId.length >= 5 ? restaurantMongoId.slice(-5) : (restaurantId || "N/A"))}
               </p>
             </div>
@@ -412,7 +412,7 @@ export default function OutletInfo() {
                 <button
                   onClick={() => handleImageClick('profile', profileImageInputRef, "Update Profile Photo")}
                   disabled={uploadingImage}
-                  className="absolute -bottom-1 -right-1 bg-[#7e3866] p-2 rounded-xl text-white shadow-lg shadow-[#7e3866]/30 hover:scale-105 transition-all border-2 border-white active:scale-90"
+                  className="absolute -bottom-1 -right-1 bg-[#DC2626] p-2 rounded-xl text-white shadow-lg shadow-[#DC2626]/30 hover:scale-105 transition-all border-2 border-white active:scale-90"
                 >
                   <Pencil className="w-3.5 h-3.5" />
                 </button>
@@ -457,15 +457,15 @@ export default function OutletInfo() {
               onClick={handleOpenEditDialog}
             >
               <div className="absolute top-0 right-0 p-2 opacity-20 group-hover:opacity-100 transition-opacity">
-                <div className="bg-[#7e3866] p-1.5 rounded-lg">
+                <div className="bg-[#DC2626] p-1.5 rounded-lg">
                   <Edit className="w-3 h-3 text-white" />
                 </div>
               </div>
-              <p className="text-[10px] text-[#7e3866] font-black uppercase tracking-widest mb-1.5 flex items-center gap-1.5">
-                <span className="w-1.5 h-1.5 bg-[#7e3866] rounded-full"></span>
+              <p className="text-[10px] text-[#DC2626] font-black uppercase tracking-widest mb-1.5 flex items-center gap-1.5">
+                <span className="w-1.5 h-1.5 bg-[#DC2626] rounded-full"></span>
                 Official Name
               </p>
-              <p className="text-lg font-black text-gray-900 group-hover:text-[#7e3866] transition-colors">
+              <p className="text-lg font-black text-gray-900 group-hover:text-[#DC2626] transition-colors">
                 {loading ? "Loading..." : (restaurantName || "N/A")}
               </p>
             </motion.div>
@@ -479,7 +479,7 @@ export default function OutletInfo() {
               onClick={() => navigate("/food/restaurant/edit-cuisines")}
             >
               <div className="absolute top-0 right-0 p-2 opacity-20 group-hover:opacity-100 transition-opacity">
-                <div className="bg-[#7e3866] p-1.5 rounded-lg">
+                <div className="bg-[#DC2626] p-1.5 rounded-lg">
                   <Edit className="w-3 h-3 text-white" />
                 </div>
               </div>
@@ -501,7 +501,7 @@ export default function OutletInfo() {
               onClick={() => navigate("/food/restaurant/edit-address")}
             >
               <div className="absolute top-0 right-0 p-2 opacity-20 group-hover:opacity-100 transition-opacity">
-                <div className="bg-[#7e3866] p-1.5 rounded-lg">
+                <div className="bg-[#DC2626] p-1.5 rounded-lg">
                   <MapPin className="w-3 h-3 text-white" />
                 </div>
               </div>
@@ -511,7 +511,7 @@ export default function OutletInfo() {
               </p>
               <div className="flex items-start gap-3">
                 <div className="bg-white p-2 rounded-xl shadow-sm border border-gray-100 shrink-0">
-                  <MapPin className="w-5 h-5 text-[#7e3866]" />
+                  <MapPin className="w-5 h-5 text-[#DC2626]" />
                 </div>
                 <p className="text-[15px] font-bold text-gray-700 leading-snug">
                   {loading ? "Loading..." : (address || "No address found")}
@@ -560,15 +560,15 @@ export default function OutletInfo() {
                 value={editNameValue} 
                 onChange={(e) => setEditNameValue(e.target.value)} 
                 placeholder="Ex: RedGo Express" 
-                className="w-full h-14 px-5 rounded-2xl border-2 border-gray-100 focus:border-[#7e3866] focus:ring-0 transition-all font-bold text-lg bg-gray-50 group-hover:bg-white" 
+                className="w-full h-14 px-5 rounded-2xl border-2 border-gray-100 focus:border-[#DC2626] focus:ring-0 transition-all font-bold text-lg bg-gray-50 group-hover:bg-white" 
               />
-              <Pencil className="absolute right-5 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-300 group-hover:text-[#7e3866] transition-colors" />
+              <Pencil className="absolute right-5 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-300 group-hover:text-[#DC2626] transition-colors" />
             </div>
             <p className="text-[10px] font-bold text-gray-400 px-1 italic">* This will be visible to all customers on the app.</p>
           </div>
           <DialogFooter className="p-6 bg-gray-50/50 flex flex-row gap-3">
             <Button variant="ghost" onClick={() => setShowEditNameDialog(false)} className="flex-1 h-12 rounded-2xl font-bold text-gray-500">Discard</Button>
-            <Button onClick={handleSaveName} disabled={!editNameValue.trim()} className="flex-[2] h-12 bg-[#7e3866] text-white hover:bg-[#6a2f56] rounded-2xl font-bold shadow-lg shadow-[#7e3866]/20 transition-all active:scale-95 disabled:opacity-50">Save Changes</Button>
+            <Button onClick={handleSaveName} disabled={!editNameValue.trim()} className="flex-[2] h-12 bg-[#DC2626] text-white hover:bg-[#6a2f56] rounded-2xl font-bold shadow-lg shadow-[#DC2626]/20 transition-all active:scale-95 disabled:opacity-50">Save Changes</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

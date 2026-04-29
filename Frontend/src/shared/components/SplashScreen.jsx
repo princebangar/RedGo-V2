@@ -27,7 +27,7 @@ export default function SplashScreen({ onFinish }) {
   ];
 
   return (
-    <div className="fixed inset-0 z-[99999] flex items-center justify-center overflow-hidden bg-[#7e3866]">
+    <div className="fixed inset-0 z-[99999] flex items-center justify-center overflow-hidden bg-[#DC2626]">
       <AnimatePresence mode="wait">
         {!isFinishing && (
           <motion.div

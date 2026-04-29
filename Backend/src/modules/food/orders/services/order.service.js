@@ -256,15 +256,15 @@ export async function createOrder(userId, dto) {
     customerPhone: dto.customerPhone || deliveryAddress.phone || "",
     pricing: normalizedPricing,
     payment,
-    orderStatus: "created",
+    orderStatus: (isCash || isWallet) ? "confirmed" : "created",
     dispatch: { modeAtCreation: dispatchMode, status: "unassigned" },
     statusHistory: [
       {
         at: new Date(),
         byRole: "SYSTEM",
         from: "",
-        to: "created",
-        note: "Order placed",
+        to: (isCash || isWallet) ? "confirmed" : "created",
+        note: (isCash || isWallet) ? "Order placed and confirmed" : "Order placed",
       },
     ],
     note: dto.note || "",
@@ -414,14 +414,15 @@ export async function verifyPayment(userId, dto) {
   );
   if (!valid) throw new ValidationError("Payment verification failed");
 
+  order.orderStatus = "confirmed";
   order.payment.status = "paid";
   order.payment.razorpay.paymentId = dto.razorpayPaymentId;
   order.payment.razorpay.signature = dto.razorpaySignature;
   pushStatusHistory(order, {
     byRole: "USER",
     byId: userId,
-    from: order.orderStatus,
-    to: "created",
+    from: "created",
+    to: "confirmed",
     note: "Payment verified",
   });
   await order.save();

@@ -170,13 +170,13 @@ export default function SearchOverlay({ isOpen, onClose, searchValue, onSearchCh
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
           <form onSubmit={handleSearchSubmit} className="flex items-center gap-4">
             <div className="flex-1 relative">
-              <Search className="absolute left-5 top-1/2 transform -translate-y-1/2 h-5 w-5 text-[#7e3866] dark:text-[#a05485] z-10" strokeWidth={2.5} />
+              <Search className="absolute left-5 top-1/2 transform -translate-y-1/2 h-5 w-5 text-[#DC2626] dark:text-[#F87171] z-10" strokeWidth={2.5} />
               <Input
                 ref={inputRef}
                 value={searchValue}
                 onChange={(e) => onSearchChange(e.target.value)}
                 placeholder="Search dishes or restaurants"
-                className="pl-14 pr-16 h-13 w-full bg-white dark:bg-[#1a1a1a] border-gray-200 dark:border-gray-800 focus:ring-2 focus:ring-[#7e3866]/20 focus:border-[#7e3866] dark:focus:border-[#7e3866] rounded-2xl text-base dark:text-white placeholder:text-gray-400 dark:placeholder:text-gray-500 shadow-sm transition-all duration-200"
+                className="pl-14 pr-16 h-13 w-full bg-white dark:bg-[#1a1a1a] border-gray-200 dark:border-gray-800 focus:ring-2 focus:ring-[#DC2626]/20 focus:border-[#DC2626] dark:focus:border-[#DC2626] rounded-2xl text-base dark:text-white placeholder:text-gray-400 dark:placeholder:text-gray-500 shadow-sm transition-all duration-200"
               />
               <div className="absolute right-4 top-1/2 transform -translate-y-1/2 flex items-center gap-3">
                 <div className="h-6 w-[1px] bg-gray-200 dark:bg-gray-700" />
@@ -192,7 +192,7 @@ export default function SearchOverlay({ isOpen, onClose, searchValue, onSearchCh
                   <button
                     type="button"
                     onClick={startListening}
-                    className="p-2.5 rounded-xl hover:bg-gray-100 dark:hover:bg-gray-800 text-[#7e3866] dark:text-[#a05485] transition-all active:scale-90"
+                    className="p-2.5 rounded-xl hover:bg-gray-100 dark:hover:bg-gray-800 text-[#DC2626] dark:text-[#F87171] transition-all active:scale-90"
                   >
                     <Mic className="h-5 w-5" />
                   </button>
@@ -221,7 +221,7 @@ export default function SearchOverlay({ isOpen, onClose, searchValue, onSearchCh
           }}
         >
           <h3 className="text-sm sm:text-base font-semibold text-gray-700 dark:text-gray-300 mb-4 flex items-center gap-2">
-            <Clock className="h-4 w-4 text-[#7e3866]" />
+            <Clock className="h-4 w-4 text-[#DC2626]" />
             Recent Searches
           </h3>
           <div className="flex gap-2 sm:gap-3 flex-wrap">
@@ -229,12 +229,12 @@ export default function SearchOverlay({ isOpen, onClose, searchValue, onSearchCh
               <button
                 key={suggestion}
                 onClick={() => handleSuggestionClick(suggestion)}
-                className="inline-flex items-center gap-2 px-3 sm:px-4 py-2 rounded-full bg-orange-50 dark:bg-orange-900/20 hover:bg-orange-100 dark:hover:bg-orange-900/30 border border-orange-200 dark:border-orange-800 hover:border-orange-300 dark:hover:border-orange-700 text-gray-700 dark:text-gray-300 hover:text-[#7e3866] dark:hover:text-orange-400 transition-all duration-200 text-xs sm:text-sm font-medium shadow-sm hover:shadow-md"
+                className="inline-flex items-center gap-2 px-3 sm:px-4 py-2 rounded-full bg-orange-50 dark:bg-orange-900/20 hover:bg-orange-100 dark:hover:bg-orange-900/30 border border-orange-200 dark:border-orange-800 hover:border-orange-300 dark:hover:border-orange-700 text-gray-700 dark:text-gray-300 hover:text-[#DC2626] dark:hover:text-orange-400 transition-all duration-200 text-xs sm:text-sm font-medium shadow-sm hover:shadow-md"
                 style={{
                   animation: `scaleIn 0.3s ease-out ${0.1 + index * 0.02}s both`
                 }}
               >
-                <Clock className="h-3 w-3 sm:h-4 sm:w-4 text-[#7e3866] flex-shrink-0" />
+                <Clock className="h-3 w-3 sm:h-4 sm:w-4 text-[#DC2626] flex-shrink-0" />
                 <span>{suggestion}</span>
               </button>
             ))}
@@ -276,7 +276,7 @@ export default function SearchOverlay({ isOpen, onClose, searchValue, onSearchCh
                     )}
                   </div>
                   <div className="px-1 sm:px-2 text-center">
-                    <span className="text-xs sm:text-sm font-semibold text-gray-800 dark:text-gray-200 group-hover:text-[#7e3866] dark:group-hover:text-orange-400 transition-colors line-clamp-2">
+                    <span className="text-xs sm:text-sm font-semibold text-gray-800 dark:text-gray-200 group-hover:text-[#DC2626] dark:group-hover:text-orange-400 transition-colors line-clamp-2">
                       {food.name}
                     </span>
                   </div>

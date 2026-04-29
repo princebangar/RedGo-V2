@@ -1,6 +1,6 @@
 .restaurant-theme {
-  --rt-primary: #7e3866;
-  --rt-primary-strong: #55254b;
+  --rt-primary: #DC2626;
+  --rt-primary-strong: #991B1B;
   --rt-primary-soft: #f9f0f7;
   --rt-surface: #ffffff;
   --rt-border: #ead6e3;
@@ -40,7 +40,7 @@
 .restaurant-theme .hover\:bg-amber-600:hover,
 .restaurant-theme .hover\:bg-green-600:hover,
 .restaurant-theme .hover\:bg-emerald-600:hover,
-.restaurant-theme [class*="hover:bg-[#55254b]"]:hover,
+.restaurant-theme [class*="hover:bg-[#991B1B]"]:hover,
 .restaurant-theme [class*="hover:bg-[#d84f0a]"]:hover,
 .restaurant-theme [class*="hover:bg-[#00A055]"]:hover {
   background-color: var(--rt-primary-strong) !important;
@@ -66,8 +66,8 @@
 .restaurant-theme .bg-orange-500\/10,
 .restaurant-theme .bg-green-500\/10,
 .restaurant-theme .bg-emerald-500\/10,
-.restaurant-theme [class*="bg-[#7e3866]/5"],
-.restaurant-theme [class*="bg-[#7e3866]/10"] {
+.restaurant-theme [class*="bg-[#DC2626]/5"],
+.restaurant-theme [class*="bg-[#DC2626]/10"] {
   background-color: var(--rt-primary-soft) !important;
 }
 

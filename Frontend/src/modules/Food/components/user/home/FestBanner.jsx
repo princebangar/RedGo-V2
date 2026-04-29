@@ -66,17 +66,7 @@ export default function FestBanner({ isVegMode, videoUrl = "", hideFoodImages = 
       )}
 
       <div className="relative z-10 flex flex-col items-center text-center space-y-4">
-        {/* Mission Text at Top */}
-        <motion.div
-          initial={{ y: -20, opacity: 0 }}
-          animate={{ y: 0, opacity: 1 }}
-          transition={{ delay: 0.2 }}
-          className="flex items-center gap-2 bg-white/10 backdrop-blur-md px-3 py-1 rounded-full border border-white/10 shadow-sm font-bold"
-        >
-          <Sparkles className="h-2.5 w-2.5 text-[#fff200] animate-pulse" />
-          <span className="text-[9px] font-black text-white uppercase tracking-[0.2em]">RedGo Missions</span>
-          <Sparkles className="h-2.5 w-2.5 text-[#fff200] animate-pulse" />
-        </motion.div>
+
 
         <motion.div
           key={isVegMode ? 'veg-title' : 'nonveg-title'}

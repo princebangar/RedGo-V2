@@ -346,7 +346,7 @@ export default function TableBooking() {
         <section className="rounded-[22px] bg-white p-4 shadow-[0_8px_24px_rgba(15,23,42,0.06)]">
           <div className="flex items-center justify-between gap-3 mb-4">
             <span className="text-sm font-medium text-[#2f3545]">Select number of guests</span>
-            <span className="text-xs font-bold text-[#7e3866] bg-[#fdfafc] px-2 py-1 rounded-lg">
+            <span className="text-xs font-bold text-[#DC2626] bg-[#fdfafc] px-2 py-1 rounded-lg">
                 {remainingSeats} left
             </span>
           </div>

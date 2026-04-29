@@ -455,7 +455,7 @@ export default function Profile() {
               <motion.div
                 whileHover={{ scale: 1.1, rotate: 5 }}
                 transition={{ duration: 0.3, type: "spring", stiffness: 300 }}>
-                <Avatar className="h-16 w-16 bg-[#7e3866]/20 border-0">
+                <Avatar className="h-16 w-16 bg-[#DC2626]/20 border-0">
                   {userProfile?.profileImage && (
                     <AvatarImage
                       src={
@@ -467,7 +467,7 @@ export default function Profile() {
                       alt={displayName}
                     />
                   )}
-                  <AvatarFallback className="bg-[#7e3866] text-white text-2xl font-semibold">
+                  <AvatarFallback className="bg-[#DC2626] text-white text-2xl font-semibold">
                     {avatarInitial}
                   </AvatarFallback>
                 </Avatar>
@@ -503,7 +503,7 @@ export default function Profile() {
 
         {/* Account Options */}
         <div className="space-y-2 mb-3 mt-3">
-          <Link to="/user/wallet" className="block">
+          <Link to="/food/user/wallet" state={{ from: "/food/user/profile" }} className="block">
             <motion.div
               whileHover={{ x: 4, scale: 1.01 }}
               transition={{ duration: 0.2, type: "spring", stiffness: 300 }}>
@@ -625,7 +625,7 @@ export default function Profile() {
                       e.stopPropagation();
                       handleShareReferral();
                     }}
-                    className="inline-flex items-center gap-1 text-xs text-[#7e3866] font-medium ml-2 px-2 py-1 rounded-md"
+                    className="inline-flex items-center gap-1 text-xs text-[#DC2626] font-medium ml-2 px-2 py-1 rounded-md"
                     disabled={!referralLink}>
                     <Share2 className="h-3.5 w-3.5" />
                     Refer
@@ -693,8 +693,8 @@ export default function Profile() {
                   <div className="flex items-center gap-2">
                     <motion.span
                       className={`text-xs font-medium px-2 py-1 rounded transition-colors ${isComplete
-                          ? "bg-[#7e3866] text-white shadow-sm"
-                          : "bg-[#7e386615] text-[#7e3866] border border-[#7e3866]/10"
+                          ? "bg-[#DC2626] text-white shadow-sm"
+                          : "bg-[#DC262615] text-[#DC2626] border border-[#DC2626]/10"
                         }`}
                       whileHover={{ scale: 1.1 }}
                       transition={{ duration: 0.2 }}>
@@ -785,7 +785,7 @@ export default function Profile() {
         {/* Collections Section */}
         <div className="mb-3">
           <div className="flex items-center gap-2 mb-2 px-1">
-            <div className="w-1 h-4 bg-[#7e3866] rounded"></div>
+            <div className="w-1 h-4 bg-[#DC2626] rounded"></div>
             <h3 className="text-base font-semibold text-gray-900 dark:text-white">
               Collections
             </h3>
@@ -821,7 +821,7 @@ export default function Profile() {
         {/* Dining Section */}
         <div className="mb-3">
           <div className="flex items-center gap-2 mb-2 px-1">
-            <div className="w-1 h-4 bg-[#7e3866] rounded"></div>
+            <div className="w-1 h-4 bg-[#DC2626] rounded"></div>
             <h3 className="text-base font-semibold text-gray-900 dark:text-white">
               Dining Bookings
             </h3>
@@ -860,7 +860,7 @@ export default function Profile() {
         {/* Food Orders Section */}
         <div className="mb-3">
           <div className="flex items-center gap-2 mb-2 px-1">
-            <div className="w-1 h-4 bg-[#7e3866] rounded"></div>
+            <div className="w-1 h-4 bg-[#DC2626] rounded"></div>
             <h3 className="text-base font-semibold text-gray-900 dark:text-white">
               Food Orders
             </h3>
@@ -898,7 +898,7 @@ export default function Profile() {
         {/* More Section */}
         <div className="mb-8 pb-8">
           <div className="flex items-center gap-2 mb-2 px-1">
-            <div className="w-1 h-4 bg-[#7e3866] rounded"></div>
+            <div className="w-1 h-4 bg-[#DC2626] rounded"></div>
             <h3 className="text-base font-semibold text-gray-900 dark:text-white">
               More
             </h3>
@@ -1093,12 +1093,12 @@ export default function Profile() {
                 setVegModeOpen(false);
               }}
               className={`w-full p-3 rounded-xl border-2 transition-all flex items-center justify-between ${!vegMode
-                  ? "border-[#55254b] bg-[#fdfafc] dark:bg-[#3c0f3d]/10"
+                  ? "border-[#991B1B] bg-[#fdfafc] dark:bg-[#7F1D1D]/10"
                   : "border-gray-200 dark:border-gray-800 bg-white hover:border-gray-300"
                 }`}>
               <div className="flex items-center gap-3">
                 <div
-                  className={`w-5 h-5 rounded-full border-2 flex items-center justify-center ${!vegMode ? "border-[#55254b] bg-[#55254b]" : "border-gray-300"
+                  className={`w-5 h-5 rounded-full border-2 flex items-center justify-center ${!vegMode ? "border-[#991B1B] bg-[#991B1B]" : "border-gray-300"
                     }`}>
                   {!vegMode && <Check className="h-3 w-3 text-white" />}
                 </div>
@@ -1136,7 +1136,7 @@ export default function Profile() {
               </Button>
               <Button
                 type="button"
-                className="flex-1 rounded-xl bg-[#55254b] hover:bg-[#3c0f3d] text-white"
+                className="flex-1 rounded-xl bg-[#991B1B] hover:bg-[#7F1D1D] text-white"
                 onClick={() => {
                   setLogoutConfirmOpen(false);
                   handleLogout();
@@ -1168,12 +1168,12 @@ export default function Profile() {
                 setAppearanceOpen(false);
               }}
               className={`w-full p-3 rounded-xl border-2 transition-all flex items-center gap-3 ${appearance === "light"
-                  ? "border-[#7e3866] bg-[#fdfafc] dark:border-[#b18da5] dark:bg-[#3c0f3d]/20"
+                  ? "border-[#DC2626] bg-[#fdfafc] dark:border-[#FEE2E2] dark:bg-[#7F1D1D]/20"
                   : "border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 hover:border-gray-300 dark:hover:border-gray-600"
                 }`}>
               <div
                 className={`w-5 h-5 rounded-full border-2 flex items-center justify-center flex-shrink-0 ${appearance === "light"
-                    ? "border-[#7e3866] bg-[#7e3866] dark:border-[#b18da5] dark:bg-[#b18da5]"
+                    ? "border-[#DC2626] bg-[#DC2626] dark:border-[#FEE2E2] dark:bg-[#FEE2E2]"
                     : "border-gray-300 dark:border-gray-600"
                   }`}>
                 {appearance === "light" && (
@@ -1196,12 +1196,12 @@ export default function Profile() {
                 setAppearanceOpen(false);
               }}
               className={`w-full p-3 rounded-xl border-2 transition-all flex items-center gap-3 ${appearance === "dark"
-                  ? "border-[#7e3866] dark:border-[#b18da5] bg-[#fdfafc] dark:bg-[#3c0f3d]/20"
+                  ? "border-[#DC2626] dark:border-[#FEE2E2] bg-[#fdfafc] dark:bg-[#7F1D1D]/20"
                   : "border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 hover:border-gray-300 dark:hover:border-gray-600"
                 }`}>
               <div
                 className={`w-5 h-5 rounded-full border-2 flex items-center justify-center flex-shrink-0 ${appearance === "dark"
-                    ? "border-[#7e3866] bg-[#7e3866] dark:border-[#b18da5] dark:bg-[#b18da5]"
+                    ? "border-[#DC2626] bg-[#DC2626] dark:border-[#FEE2E2] dark:bg-[#FEE2E2]"
                     : "border-gray-300 dark:border-gray-600"
                   }`}>
                 {appearance === "dark" && (

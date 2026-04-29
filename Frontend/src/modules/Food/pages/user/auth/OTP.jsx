@@ -496,7 +496,7 @@ export default function OTP() {
                       type="button"
                       onClick={handleResend}
                       disabled={isLoading}
-                      className="text-primary hover:text-[#55254b] font-bold transition-colors disabled:opacity-50"
+                      className="text-primary hover:text-[#991B1B] font-bold transition-colors disabled:opacity-50"
                     >
                       Resend SMS
                     </button>
@@ -531,7 +531,7 @@ export default function OTP() {
               <Button
                 onClick={handleSubmitName}
                 disabled={isLoading}
-                className="w-full h-12 md:h-14 bg-primary hover:bg-[#55254b] text-white font-bold text-lg rounded-xl transition-all hover:shadow-lg active:scale-[0.98]"
+                className="w-full h-12 md:h-14 bg-primary hover:bg-[#991B1B] text-white font-bold text-lg rounded-xl transition-all hover:shadow-lg active:scale-[0.98]"
               >
                 {isLoading ? "Getting things ready..." : "Finish Registration"}
               </Button>

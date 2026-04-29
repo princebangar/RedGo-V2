@@ -48,7 +48,7 @@ const resolveBackPath = ({ pathname, search, state }) => {
   }
 
   if (normalizedPath === "/user/wallet") {
-    return "/food/user/profile"
+    return explicitBackPath || "/food/user/profile"
   }
 
   if (normalizedPath === "/user/notifications") {

@@ -1003,9 +1003,9 @@ export default function PageNavbar({
     openLocationSelector()
   }
 
-  const textColorClass = textColor === "white" ? "text-white" : "text-[#7e3866]"
-  const iconFill = textColor === "white" ? "white" : "#7e3866"
-  const ringColor = textColor === "white" ? "ring-white/30" : "ring-[#7e3866]/30"
+  const textColorClass = textColor === "white" ? "text-white" : "text-[#DC2626]"
+  const iconFill = textColor === "white" ? "white" : "#DC2626"
+  const ringColor = textColor === "white" ? "ring-white/30" : "ring-[#DC2626]/30"
 
   const zIndexClass = zIndex === 50 ? "z-50" : "z-20"
 
@@ -1087,7 +1087,7 @@ export default function PageNavbar({
               title="Wallet"
             >
               <div className={`h-full w-full rounded-full bg-transparent flex items-center justify-center shadow-md border border-gray-100/50 dark:border-white/10`}>
-                <Wallet className={`h-4.5 w-4.5 sm:h-5.5 sm:w-5.5 ${textColor === "white" ? "text-white" : "text-[#7e3866] dark:text-[#a14b84]"}`} strokeWidth={3} />
+                <Wallet className={`h-4.5 w-4.5 sm:h-5.5 sm:w-5.5 ${textColor === "white" ? "text-white" : "text-[#DC2626] dark:text-[#a14b84]"}`} strokeWidth={3} />
               </div>
             </Button>
           </Link>
@@ -1100,10 +1100,10 @@ export default function PageNavbar({
               title="Cart"
             >
               <div className={`h-full w-full rounded-full bg-transparent flex items-center justify-center shadow-md border border-gray-100/50 dark:border-white/10`}>
-                <ShoppingCart className={`h-4.5 w-4.5 sm:h-5.5 sm:w-5.5 ${textColor === "white" ? "text-white" : "text-[#7e3866] dark:text-[#a14b84]"}`} strokeWidth={3} />
+                <ShoppingCart className={`h-4.5 w-4.5 sm:h-5.5 sm:w-5.5 ${textColor === "white" ? "text-white" : "text-[#DC2626] dark:text-[#a14b84]"}`} strokeWidth={3} />
               </div>
               {cartCount > 0 && (
-                <span className="absolute -top-1 -right-1 w-4.5 h-4.5 bg-[#7e3866] rounded-full flex items-center justify-center ring-2 ring-white">
+                <span className="absolute -top-1 -right-1 w-4.5 h-4.5 bg-[#DC2626] rounded-full flex items-center justify-center ring-2 ring-white">
                   <span className="text-[10px] font-black text-white">{cartCount > 99 ? "99+" : cartCount}</span>
                 </span>
               )}
@@ -1120,7 +1120,7 @@ export default function PageNavbar({
                 title="Profile"
               >
                 <div className={`h-full w-full rounded-full bg-transparent flex items-center justify-center shadow-md border border-gray-100/50 dark:border-white/10`}>
-                  <span className={`text-sm sm:text-base font-black ${textColor === "white" ? "text-white" : "text-[#7e3866] dark:text-[#a14b84]"}`}>
+                  <span className={`text-sm sm:text-base font-black ${textColor === "white" ? "text-white" : "text-[#DC2626] dark:text-[#a14b84]"}`}>
                     A
                   </span>
                 </div>

@@ -480,10 +480,10 @@ export default function RestaurantNavbar({
       {/* Real-time Dining Booking Popup */}
       {newReservation && (
         <div className="fixed top-20 left-4 right-4 z-[100] animate-in slide-in-from-top duration-300">
-          <div className="bg-white rounded-3xl shadow-[0_20px_50px_rgba(0,0,0,0.15)] border border-[#7e3866]/10 overflow-hidden">
+          <div className="bg-white rounded-3xl shadow-[0_20px_50px_rgba(0,0,0,0.15)] border border-[#DC2626]/10 overflow-hidden">
             <div className="p-4 flex items-center gap-4">
               <div className="w-12 h-12 rounded-2xl bg-purple-50 flex items-center justify-center shrink-0">
-                <Utensils className="w-6 h-6 text-[#7e3866]" />
+                <Utensils className="w-6 h-6 text-[#DC2626]" />
               </div>
               <div className="flex-1 min-w-0">
                 <h4 className="font-black text-slate-900 text-sm">New Table Request!</h4>
@@ -504,7 +504,7 @@ export default function RestaurantNavbar({
                   clearNewReservation();
                   navigate("/food/restaurant/dining-reservations");
                 }}
-                className="flex-1 h-10 bg-[#7e3866] text-white text-xs font-bold rounded-xl uppercase tracking-widest shadow-lg shadow-purple-200"
+                className="flex-1 h-10 bg-[#DC2626] text-white text-xs font-bold rounded-xl uppercase tracking-widest shadow-lg shadow-purple-200"
               >
                 View Request
               </button>

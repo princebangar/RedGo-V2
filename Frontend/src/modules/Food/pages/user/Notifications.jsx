@@ -18,7 +18,7 @@ const DEFAULT_NOTIFICATIONS = [
     timestamp: Date.now() - 120000,
     read: false,
     icon: "CheckCircle2",
-    iconColor: "text-[#7e3866]"
+    iconColor: "text-[#DC2626]"
   },
   {
     id: "2",
@@ -29,7 +29,7 @@ const DEFAULT_NOTIFICATIONS = [
     timestamp: Date.now() - 3600000,
     read: false,
     icon: "Tag",
-    iconColor: "text-[#7e3866]"
+    iconColor: "text-[#DC2626]"
   }
 ]
 
@@ -76,7 +76,7 @@ export default function Notifications() {
         timestamp: Date.now(),
         read: false,
         icon: isCancelled ? "AlertCircle" : "CheckCircle2",
-        iconColor: isCancelled ? "text-red-600" : "text-[#7e3866]"
+        iconColor: isCancelled ? "text-red-600" : "text-[#DC2626]"
       }
       setNotificationsList(prev => [newNotification, ...prev])
     }
@@ -92,7 +92,7 @@ export default function Notifications() {
         timestamp: Date.now(),
         read: false,
         icon: "AlertCircle",
-        iconColor: "text-#55254b"
+        iconColor: "text-#991B1B"
       }
       setNotificationsList(prev => [newNotification, ...prev])
     }
@@ -172,10 +172,10 @@ export default function Notifications() {
             </Button>
           </Link>
           <div className="flex items-center gap-2 sm:gap-3 flex-1">
-            <Bell className="h-5 w-5 sm:h-6 sm:w-6 text-[#7e3866] fill-[#7e3866]" />
+            <Bell className="h-5 w-5 sm:h-6 sm:w-6 text-[#DC2626] fill-[#DC2626]" />
             <h1 className="text-lg sm:text-xl md:text-2xl lg:text-3xl font-bold text-gray-800 dark:text-white">Notifications</h1>
             {unreadCount > 0 && (
-              <Badge className="bg-[#7e3866] text-white text-xs md:text-sm">
+              <Badge className="bg-[#DC2626] text-white text-xs md:text-sm">
                 {unreadCount}
               </Badge>
             )}
@@ -206,7 +206,7 @@ export default function Notifications() {
               >
                 {/* Unread Dot - Top Right */}
                 {!notification.read && (
-                  <div className="absolute top-2 right-2 w-2.5 h-2.5 md:w-3 md:h-3 bg-[#7e3866] rounded-full" />
+                  <div className="absolute top-2 right-2 w-2.5 h-2.5 md:w-3 md:h-3 bg-[#DC2626] rounded-full" />
                 )}
 
                 <CardContent className="p-3 md:p-4 lg:p-5">
