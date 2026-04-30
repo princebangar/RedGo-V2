@@ -3654,224 +3654,232 @@ export default function Home() {
       </AnimatePresence>
 
       {/* Veg Mode Popup */}
-      <AnimatePresence>
-        {showVegModePopup && (
-          <>
-            {/* Backdrop */}
-            <motion.div
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-              transition={{ duration: 0.2 }}
-              onClick={() => {
-                setShowVegModePopup(false);
-                // Revert veg mode to OFF if popup is closed without applying
-                setVegModeContext(false);
-                setPrevVegMode(false);
-              }}
-              className="fixed inset-0 bg-black/30 z-[9998] backdrop-blur-sm"
-            />
+      {typeof window !== "undefined" &&
+        createPortal(
+          <AnimatePresence>
+            {showVegModePopup && (
+              <>
+                {/* Backdrop */}
+                <motion.div
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  exit={{ opacity: 0 }}
+                  transition={{ duration: 0.2 }}
+                  onClick={() => {
+                    setShowVegModePopup(false);
+                    // Revert veg mode to OFF if popup is closed without applying
+                    setVegModeContext(false);
+                    setPrevVegMode(false);
+                  }}
+                  className="fixed inset-0 bg-black/30 z-[9998] backdrop-blur-sm"
+                />
 
-            {/* Popup */}
-            <motion.div
-              initial={{ opacity: 0, scale: 0.5, y: -20 }}
-              animate={{ opacity: 1, scale: 1, y: 0 }}
-              exit={{ opacity: 0, scale: 0.5, y: -20 }}
-              transition={{
-                type: "spring",
-                damping: 25,
-                stiffness: 400,
-                mass: 0.8,
-              }}
-              className="fixed z-[9999] bg-white dark:bg-[#1a1a1a] rounded-2xl shadow-2xl p-4 w-[calc(100%-2rem)] max-w-xs"
-              style={{
-                top: `${popupPosition.top}px`,
-                left: `${popupPosition.left}px`,
-                transformOrigin: `${popupPosition.triangleLeft}px -10px`
-              }}
-              onClick={(e) => e.stopPropagation()}>
-              {/* Pointer Triangle */}
-              <div
-                className="absolute -top-2 w-3 h-3 bg-white dark:bg-[#1a1a1a] transform rotate-45"
-                style={{
-                  left: `${popupPosition.triangleLeft - 6}px`,
-                  boxShadow: "-2px -2px 4px rgba(0,0,0,0.1)",
-                }}
-              />
+                {/* Popup */}
+                <motion.div
+                  initial={{ opacity: 0, scale: 0.5, y: -20 }}
+                  animate={{ opacity: 1, scale: 1, y: 0 }}
+                  exit={{ opacity: 0, scale: 0.5, y: -20 }}
+                  transition={{
+                    type: "spring",
+                    damping: 25,
+                    stiffness: 400,
+                    mass: 0.8,
+                  }}
+                  className="fixed z-[9999] bg-white dark:bg-[#1a1a1a] rounded-2xl shadow-2xl p-4 w-[calc(100%-2rem)] max-w-xs"
+                  style={{
+                    top: `${popupPosition.top}px`,
+                    left: `${popupPosition.left}px`,
+                    transformOrigin: `${popupPosition.triangleLeft}px -10px`
+                  }}
+                  onClick={(e) => e.stopPropagation()}>
+                  {/* Pointer Triangle */}
+                  <div
+                    className="absolute -top-2 w-3 h-3 bg-white dark:bg-[#1a1a1a] transform rotate-45"
+                    style={{
+                      left: `${popupPosition.triangleLeft - 6}px`,
+                      boxShadow: "-2px -2px 4px rgba(0,0,0,0.1)",
+                    }}
+                  />
 
-              {/* Title */}
-              <h3 className="text-base font-bold text-gray-900 dark:text-white mb-3">
-                See veg dishes from
-              </h3>
+                  {/* Title */}
+                  <h3 className="text-base font-bold text-gray-900 dark:text-white mb-3">
+                    See veg dishes from
+                  </h3>
 
-              {/* Radio Options */}
-              <div className="space-y-2 mb-4">
-                {/* All restaurants */}
-                <label
-                  className="flex items-center gap-2.5 cursor-pointer p-1.5 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors"
-                  onClick={() => setVegModeOption("all")}>
-                  <div className="relative flex items-center justify-center">
-                    <input
-                      type="radio"
-                      name="vegModeOption"
-                      value="all"
-                      checked={vegModeOption === "all"}
-                      onChange={() => setVegModeOption("all")}
-                      className="sr-only"
-                    />
-                    <div
-                      className={`w-4 h-4 rounded-full border-2 flex items-center justify-center transition-all ${vegModeOption === "all"
-                        ? "border-green-600 dark:border-green-500 bg-green-600 dark:bg-green-500"
-                        : "border-gray-300 dark:border-gray-600 bg-white dark:bg-[#2a2a2a]"
-                        }`}>
-                      {vegModeOption === "all" && (
-                        <div className="w-1.5 h-1.5 rounded-full bg-white dark:bg-white" />
-                      )}
-                    </div>
+                  {/* Radio Options */}
+                  <div className="space-y-2 mb-4">
+                    {/* All restaurants */}
+                    <label
+                      className="flex items-center gap-2.5 cursor-pointer p-1.5 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors"
+                      onClick={() => setVegModeOption("all")}>
+                      <div className="relative flex items-center justify-center">
+                        <input
+                          type="radio"
+                          name="vegModeOption"
+                          value="all"
+                          checked={vegModeOption === "all"}
+                          onChange={() => setVegModeOption("all")}
+                          className="sr-only"
+                        />
+                        <div
+                          className={`w-4 h-4 rounded-full border-2 flex items-center justify-center transition-all ${vegModeOption === "all"
+                            ? "border-green-600 dark:border-green-500 bg-green-600 dark:bg-green-500"
+                            : "border-gray-300 dark:border-gray-600 bg-white dark:bg-[#2a2a2a]"
+                            }`}>
+                          {vegModeOption === "all" && (
+                            <div className="w-1.5 h-1.5 rounded-full bg-white dark:bg-white" />
+                          )}
+                        </div>
+                      </div>
+                      <span className="text-sm font-medium text-gray-900 dark:text-white">
+                        All restaurants
+                      </span>
+                    </label>
+
+                    {/* Pure Veg restaurants only */}
+                    <label
+                      className="flex items-center gap-2.5 cursor-pointer p-1.5 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors"
+                      onClick={() => setVegModeOption("pure-veg")}>
+                      <div className="relative flex items-center justify-center">
+                        <input
+                          type="radio"
+                          name="vegModeOption"
+                          value="pure-veg"
+                          checked={vegModeOption === "pure-veg"}
+                          onChange={() => setVegModeOption("pure-veg")}
+                          className="sr-only"
+                        />
+                        <div
+                          className={`w-4 h-4 rounded-full border-2 flex items-center justify-center transition-all ${vegModeOption === "pure-veg"
+                            ? "border-green-600 dark:border-green-500 bg-green-600 dark:bg-green-500"
+                            : "border-gray-300 dark:border-gray-600 bg-white dark:bg-[#2a2a2a]"
+                            }`}>
+                          {vegModeOption === "pure-veg" && (
+                            <div className="w-1.5 h-1.5 rounded-full bg-white dark:bg-white" />
+                          )}
+                        </div>
+                      </div>
+                      <span className="text-sm font-medium text-gray-900 dark:text-white">
+                        Pure Veg restaurants only
+                      </span>
+                    </label>
                   </div>
-                  <span className="text-sm font-medium text-gray-900 dark:text-white">
-                    All restaurants
-                  </span>
-                </label>
 
-                {/* Pure Veg restaurants only */}
-                <label
-                  className="flex items-center gap-2.5 cursor-pointer p-1.5 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors"
-                  onClick={() => setVegModeOption("pure-veg")}>
-                  <div className="relative flex items-center justify-center">
-                    <input
-                      type="radio"
-                      name="vegModeOption"
-                      value="pure-veg"
-                      checked={vegModeOption === "pure-veg"}
-                      onChange={() => setVegModeOption("pure-veg")}
-                      className="sr-only"
-                    />
-                    <div
-                      className={`w-4 h-4 rounded-full border-2 flex items-center justify-center transition-all ${vegModeOption === "pure-veg"
-                        ? "border-green-600 dark:border-green-500 bg-green-600 dark:bg-green-500"
-                        : "border-gray-300 dark:border-gray-600 bg-white dark:bg-[#2a2a2a]"
-                        }`}>
-                      {vegModeOption === "pure-veg" && (
-                        <div className="w-1.5 h-1.5 rounded-full bg-white dark:bg-white" />
-                      )}
-                    </div>
-                  </div>
-                  <span className="text-sm font-medium text-gray-900 dark:text-white">
-                    Pure Veg restaurants only
-                  </span>
-                </label>
-              </div>
-
-              {/* Apply Button */}
-              <button
-                onClick={() => {
-                  setShowVegModePopup(false);
-                  setIsApplyingVegMode(true);
-                  // Confirm veg mode is ON by updating context and prevVegMode
-                  setVegModeContext(true);
-                  setPrevVegMode(true);
-                  // Simulate applying veg mode settings
-                  setTimeout(() => {
-                    setIsApplyingVegMode(false);
-                  }, 2000);
-                }}
-                className="w-full bg-[#DC2626] text-white font-semibold py-2.5 rounded-xl hover:bg-[#991B1B] transition-colors mb-2 text-sm">
-                Apply
-              </button>
-            </motion.div>
-          </>
-        )}
-      </AnimatePresence>
-
-      {/* Switch Off Veg Mode Popup */}
-      <AnimatePresence>
-        {showSwitchOffPopup && (
-          <>
-            {/* Backdrop */}
-            <motion.div
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-              transition={{ duration: 0.2 }}
-              onClick={() => {
-                setShowSwitchOffPopup(false);
-                isHandlingSwitchOff.current = false;
-                setVegModeContext(true);
-                // prevVegMode stays true (from before), which is correct
-              }}
-              className="fixed inset-0 bg-black/50 z-[9998] backdrop-blur-sm"
-            />
-
-            {/* Popup */}
-            <motion.div
-              initial={{ opacity: 0, scale: 0.9 }}
-              animate={{ opacity: 1, scale: 1 }}
-              exit={{ opacity: 0, scale: 0.9 }}
-              transition={{
-                type: "spring",
-                damping: 25,
-                stiffness: 300,
-                mass: 0.8,
-              }}
-              className="fixed inset-0 z-[9999] flex dark:bg-[#lalala] dark:text-white items-center justify-center p-4"
-              onClick={(e) => e.stopPropagation()}>
-              <div className="bg-white dark:bg-[#lalala] dark:text-white rounded-2xl shadow-2xl w-[85%] max-w-sm p-6">
-                {/* Warning Icon */}
-                <div className="flex justify-center mb-4">
-                  <div className="w-20 h-20 rounded-full bg-pink-100 flex items-center justify-center">
-                    <AlertCircle
-                      className="w-20 h-20 text-white bg-red-500/90 rounded-full p-2"
-                      strokeWidth={2.5}
-                    />
-                  </div>
-                </div>
-
-                {/* Title */}
-                <h2 className="text-2xl font-bold text-gray-900  text-center mb-2">
-                  Switch off Veg Mode?
-                </h2>
-
-                {/* Description */}
-                <p className="text-gray-600 text-center mb-6 text-sm">
-                  You'll see all restaurants, including those serving non-veg
-                  dishes
-                </p>
-
-                {/* Buttons */}
-                <div className="space-y-3">
+                  {/* Apply Button */}
                   <button
                     onClick={() => {
-                      setShowSwitchOffPopup(false);
-                      setIsSwitchingOffVegMode(true);
-                      // Simulate switching off veg mode
+                      setShowVegModePopup(false);
+                      setIsApplyingVegMode(true);
+                      // Confirm veg mode is ON by updating context and prevVegMode
+                      setVegModeContext(true);
+                      setPrevVegMode(true);
+                      // Simulate applying veg mode settings
                       setTimeout(() => {
-                        setIsSwitchingOffVegMode(false);
-                        isHandlingSwitchOff.current = false;
-                        setVegModeContext(false);
-                        setPrevVegMode(false); // Set to false to match current state (veg mode is OFF)
+                        setIsApplyingVegMode(false);
                       }, 2000);
                     }}
-                    className="w-full bg-transparent text-red-600 font-normal py-1 text-normal rounded-xl hover:bg-red-50 transition-colors text-base">
-                    Switch off
+                    className="w-full bg-[#DC2626] text-white font-semibold py-2.5 rounded-xl hover:bg-[#991B1B] transition-colors mb-2 text-sm">
+                    Apply
                   </button>
-
-                  <button
-                    onClick={() => {
-                      setShowSwitchOffPopup(false);
-                      isHandlingSwitchOff.current = false;
-                      setVegModeContext(true);
-                      // prevVegMode stays true (from before), which is correct
-                    }}
-                    className="w-full text-gray-900 font-normal py-1 text-center rounded-xl hover:bg-gray-200 transition-colors text-base">
-                    Keep using this mode
-                  </button>
-                </div>
-              </div>
-            </motion.div>
-          </>
+                </motion.div>
+              </>
+            )}
+          </AnimatePresence>,
+          document.body
         )}
-      </AnimatePresence>
+
+      {/* Switch Off Veg Mode Popup */}
+      {typeof window !== "undefined" &&
+        createPortal(
+          <AnimatePresence>
+            {showSwitchOffPopup && (
+              <>
+                {/* Backdrop */}
+                <motion.div
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  exit={{ opacity: 0 }}
+                  transition={{ duration: 0.2 }}
+                  onClick={() => {
+                    setShowSwitchOffPopup(false);
+                    isHandlingSwitchOff.current = false;
+                    setVegModeContext(true);
+                    // prevVegMode stays true (from before), which is correct
+                  }}
+                  className="fixed inset-0 bg-black/50 z-[9998] backdrop-blur-sm"
+                />
+
+                {/* Popup */}
+                <motion.div
+                  initial={{ opacity: 0, scale: 0.9 }}
+                  animate={{ opacity: 1, scale: 1 }}
+                  exit={{ opacity: 0, scale: 0.9 }}
+                  transition={{
+                    type: "spring",
+                    damping: 25,
+                    stiffness: 300,
+                    mass: 0.8,
+                  }}
+                  className="fixed inset-0 z-[9999] flex dark:bg-[#lalala] dark:text-white items-center justify-center p-4"
+                  onClick={(e) => e.stopPropagation()}>
+                  <div className="bg-white dark:bg-[#lalala] dark:text-white rounded-2xl shadow-2xl w-[85%] max-w-sm p-6">
+                    {/* Warning Icon */}
+                    <div className="flex justify-center mb-4">
+                      <div className="w-20 h-20 rounded-full bg-pink-100 flex items-center justify-center">
+                        <AlertCircle
+                          className="w-20 h-20 text-white bg-red-500/90 rounded-full p-2"
+                          strokeWidth={2.5}
+                        />
+                      </div>
+                    </div>
+
+                    {/* Title */}
+                    <h2 className="text-2xl font-bold text-gray-900  text-center mb-2">
+                      Switch off Veg Mode?
+                    </h2>
+
+                    {/* Description */}
+                    <p className="text-gray-600 text-center mb-6 text-sm">
+                      You'll see all restaurants, including those serving non-veg
+                      dishes
+                    </p>
+
+                    {/* Buttons */}
+                    <div className="space-y-3">
+                      <button
+                        onClick={() => {
+                          setShowSwitchOffPopup(false);
+                          setIsSwitchingOffVegMode(true);
+                          // Simulate switching off veg mode
+                          setTimeout(() => {
+                            setIsSwitchingOffVegMode(false);
+                            isHandlingSwitchOff.current = false;
+                            setVegModeContext(false);
+                            setPrevVegMode(false); // Set to false to match current state (veg mode is OFF)
+                          }, 2000);
+                        }}
+                        className="w-full bg-transparent text-red-600 font-normal py-1 text-normal rounded-xl hover:bg-red-50 transition-colors text-base">
+                        Switch off
+                      </button>
+
+                      <button
+                        onClick={() => {
+                          setShowSwitchOffPopup(false);
+                          isHandlingSwitchOff.current = false;
+                          setVegModeContext(true);
+                          // prevVegMode stays true (from before), which is correct
+                        }}
+                        className="w-full text-gray-900 font-normal py-1 text-center rounded-xl hover:bg-gray-200 transition-colors text-base">
+                        Keep using this mode
+                      </button>
+                    </div>
+                  </div>
+                </motion.div>
+              </>
+            )}
+          </AnimatePresence>,
+          document.body
+        )}
 
       {/* All Categories Modal */}
       <AnimatePresence>

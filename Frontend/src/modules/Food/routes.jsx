@@ -1,5 +1,5 @@
+import React, { useEffect, Suspense, lazy } from "react"
 import { Routes, Route, Navigate, useLocation } from "react-router-dom"
-import { useEffect, Suspense, lazy } from "react"
 import ProtectedRoute from "@food/components/ProtectedRoute"
 import AuthRedirect from "@food/components/AuthRedirect"
 import Loader from "@food/components/Loader"

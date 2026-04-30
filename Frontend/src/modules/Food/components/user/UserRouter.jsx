@@ -1,8 +1,9 @@
+import React, { Suspense, lazy } from "react"
 import { Routes, Route, Navigate } from "react-router-dom"
 import UserLayout from "./UserLayout"
-import { Suspense, lazy } from "react"
 import Loader from "@food/components/Loader"
 import ProtectedRoute from "@food/components/ProtectedRoute"
+import AuthRedirect from "@food/components/AuthRedirect"
 
 // Lazy Loading Pages
 
@@ -96,7 +97,11 @@ export default function UserRouter() {
   return (
     <Suspense fallback={<Loader />}>
       <Routes>
-        <Route element={<UserLayout />}>
+        <Route element={
+          <ProtectedRoute requiredRole="user" loginPath="/user/auth/login">
+            <UserLayout />
+          </ProtectedRoute>
+        }>
           {/* Home & Discovery */}
           <Route path="" element={<Home />} />
           <Route path="dining" element={<Dining />} />
@@ -113,11 +118,7 @@ export default function UserRouter() {
           <Route path="dining/edit-user" element={<TableEditUserPage />} />
           <Route
             path="bookings"
-            element={
-              <ProtectedRoute requiredRole="user" loginPath="/user/auth/login">
-                <MyBookings />
-              </ProtectedRoute>
-            }
+            element={<MyBookings />}
           />
           <Route path="under-250" element={<Under250 />} />
           <Route path="categories" element={<Categories />} />
@@ -127,7 +128,7 @@ export default function UserRouter() {
           <Route path="search" element={<SearchResults />} />
           <Route path="product/:id" element={<ProductDetail />} />
 
-          {/* Cart - Now Public */}
+          {/* Cart */}
           <Route path="cart" element={<Cart />} />
           <Route path="cart/checkout" element={<Checkout />} />
           <Route path="cart/select-address" element={<SelectAddress />} />
@@ -136,35 +137,19 @@ export default function UserRouter() {
           {/* Orders - Protected (require user auth) */}
           <Route
             path="orders"
-            element={
-              <ProtectedRoute requiredRole="user" loginPath="/user/auth/login">
-                <Orders />
-              </ProtectedRoute>
-            }
+            element={<Orders />}
           />
           <Route
             path="orders/:orderId"
-            element={
-              <ProtectedRoute requiredRole="user" loginPath="/user/auth/login">
-                <OrderTracking />
-              </ProtectedRoute>
-            }
+            element={<OrderTracking />}
           />
           <Route
             path="orders/:orderId/invoice"
-            element={
-              <ProtectedRoute requiredRole="user" loginPath="/user/auth/login">
-                <OrderInvoice />
-              </ProtectedRoute>
-            }
+            element={<OrderInvoice />}
           />
           <Route
             path="orders/:orderId/details"
-            element={
-              <ProtectedRoute requiredRole="user" loginPath="/user/auth/login">
-                <UserOrderDetails />
-              </ProtectedRoute>
-            }
+            element={<UserOrderDetails />}
           />
 
           {/* Offers */}
@@ -183,116 +168,60 @@ export default function UserRouter() {
           {/* Profile - Protected (require user auth) */}
           <Route
             path="profile"
-            element={
-              <ProtectedRoute requiredRole="user" loginPath="/user/auth/login">
-                <Profile />
-              </ProtectedRoute>
-            }
+            element={<Profile />}
           />
           <Route
             path="profile/edit"
-            element={
-              <ProtectedRoute requiredRole="user" loginPath="/user/auth/login">
-                <EditProfile />
-              </ProtectedRoute>
-            }
+            element={<EditProfile />}
           />
           <Route
             path="profile/payments"
-            element={
-              <ProtectedRoute requiredRole="user" loginPath="/user/auth/login">
-                <Payments />
-              </ProtectedRoute>
-            }
+            element={<Payments />}
           />
           <Route
             path="profile/payments/new"
-            element={
-              <ProtectedRoute requiredRole="user" loginPath="/user/auth/login">
-                <AddPayment />
-              </ProtectedRoute>
-            }
+            element={<AddPayment />}
           />
           <Route
             path="profile/payments/:id/edit"
-            element={
-              <ProtectedRoute requiredRole="user" loginPath="/user/auth/login">
-                <EditPayment />
-              </ProtectedRoute>
-            }
+            element={<EditPayment />}
           />
           <Route
             path="profile/favorites"
-            element={
-              <ProtectedRoute requiredRole="user" loginPath="/user/auth/login">
-                <Favorites />
-              </ProtectedRoute>
-            }
+            element={<Favorites />}
           />
           <Route
             path="profile/support"
-            element={
-              <ProtectedRoute requiredRole="user" loginPath="/user/auth/login">
-                <Support />
-              </ProtectedRoute>
-            }
+            element={<Support />}
           />
           <Route
             path="profile/coupons"
-            element={
-              <ProtectedRoute requiredRole="user" loginPath="/user/auth/login">
-                <Coupons />
-              </ProtectedRoute>
-            }
+            element={<Coupons />}
           />
           <Route
             path="profile/about"
-            element={
-              <ProtectedRoute requiredRole="user" loginPath="/user/auth/login">
-                <About />
-              </ProtectedRoute>
-            }
+            element={<About />}
           />
 
           <Route
             path="profile/report-safety-emergency"
-            element={
-              <ProtectedRoute requiredRole="user" loginPath="/user/auth/login">
-                <ReportSafetyEmergency />
-              </ProtectedRoute>
-            }
+            element={<ReportSafetyEmergency />}
           />
           <Route
             path="profile/accessibility"
-            element={
-              <ProtectedRoute requiredRole="user" loginPath="/user/auth/login">
-                <Accessibility />
-              </ProtectedRoute>
-            }
+            element={<Accessibility />}
           />
           <Route
             path="profile/logout"
-            element={
-              <ProtectedRoute requiredRole="user" loginPath="/user/auth/login">
-                <Logout />
-              </ProtectedRoute>
-            }
+            element={<Logout />}
           />
           <Route
             path="profile/refer-earn"
-            element={
-              <ProtectedRoute requiredRole="user" loginPath="/user/auth/login">
-                <ReferEarn />
-              </ProtectedRoute>
-            }
+            element={<ReferEarn />}
           />
           <Route
             path="profile/dining-bookings"
-            element={
-              <ProtectedRoute requiredRole="user" loginPath="/user/auth/login">
-                <MyBookings />
-              </ProtectedRoute>
-            }
+            element={<MyBookings />}
           />
 
           {/* Public Legal Policies (stay public) */}
@@ -303,9 +232,21 @@ export default function UserRouter() {
           <Route path="profile/cancellation" element={<Cancellation />} />
 
           {/* Auth - User login is centralized at /user/auth/login */}
-          <Route path="auth/login" element={<Navigate to="/user/auth/login" replace />} />
-          <Route path="auth/sign-in" element={<Navigate to="/user/auth/login" replace />} />
-          <Route path="auth/otp" element={<OTP />} />
+          <Route path="auth/login" element={
+            <AuthRedirect module="user">
+              <Navigate to="/user/auth/login" replace />
+            </AuthRedirect>
+          } />
+          <Route path="auth/sign-in" element={
+            <AuthRedirect module="user">
+              <Navigate to="/user/auth/login" replace />
+            </AuthRedirect>
+          } />
+          <Route path="auth/otp" element={
+            <AuthRedirect module="user">
+              <OTP />
+            </AuthRedirect>
+          } />
           <Route path="auth/callback" element={<AuthCallback />} />
 
           {/* Help */}
@@ -315,31 +256,19 @@ export default function UserRouter() {
           {/* Notifications - Protected (user auth) */}
           <Route
             path="notifications"
-            element={
-              <ProtectedRoute requiredRole="user" loginPath="/user/auth/login">
-                <Notifications />
-              </ProtectedRoute>
-            }
+            element={<Notifications />}
           />
 
           {/* Wallet - Protected (user auth) */}
           <Route
             path="wallet"
-            element={
-              <ProtectedRoute requiredRole="user" loginPath="/user/auth/login">
-                <Wallet />
-              </ProtectedRoute>
-            }
+            element={<Wallet />}
           />
 
           {/* Complaints - Protected (user auth) */}
           <Route
             path="complaints/submit/:orderId"
-            element={
-              <ProtectedRoute requiredRole="user" loginPath="/user/auth/login">
-                <SubmitComplaint />
-              </ProtectedRoute>
-            }
+            element={<SubmitComplaint />}
           />
         </Route>
       </Routes>

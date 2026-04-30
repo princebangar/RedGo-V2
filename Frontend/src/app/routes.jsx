@@ -1,6 +1,5 @@
-// Routing file
+import React, { Suspense, lazy, useEffect } from 'react'
 import { Routes, Route, Navigate, useLocation, useNavigate } from 'react-router-dom'
-import { Suspense, lazy, useEffect } from 'react'
 import { AppShellSkeleton } from '@food/components/ui/loading-skeletons'
 
 const NATIVE_LAST_ROUTE_KEY = 'native_last_route'
