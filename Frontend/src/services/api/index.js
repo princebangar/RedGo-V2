@@ -348,6 +348,13 @@ export const adminAPI = {
       params,
       contextModule: "admin",
     }),
+  // Customization Settings
+  getCustomizationSettings: () =>
+    apiClient.get("/food/admin/customization-settings", { contextModule: "admin" }),
+  updateCustomizationSettings: (data) =>
+    apiClient.patch("/food/admin/customization-settings", data, { contextModule: "admin" }),
+  getTakeawayCodStatus: () =>
+    apiClient.get("/food/admin/customization-settings/takeaway-cod", { contextModule: "admin" }),
   /** GET /food/admin/delivery/support-tickets/stats - counts by status. */
   getDeliverySupportTicketStats: () =>
     apiClient.get("/food/admin/delivery/support-tickets/stats", {
@@ -969,6 +976,16 @@ export const restaurantAPI = {
   updateDiningSettings: (body) =>
     apiClient
       .patch("/food/restaurant/dining-settings", body ?? {}, {
+        contextModule: "restaurant",
+      })
+      .then((res) => {
+        restaurantCurrentCached = res;
+        restaurantCurrentCacheTime = Date.now();
+        return res;
+      }),
+  updateTakeawaySettings: (body) =>
+    apiClient
+      .patch("/food/restaurant/takeaway-settings", body ?? {}, {
         contextModule: "restaurant",
       })
       .then((res) => {

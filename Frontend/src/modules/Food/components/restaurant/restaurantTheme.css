@@ -14,11 +14,7 @@
 .restaurant-theme .text-orange-500,
 .restaurant-theme .text-orange-600,
 .restaurant-theme .text-amber-500,
-.restaurant-theme .text-amber-600,
-.restaurant-theme .text-green-500,
-.restaurant-theme .text-green-600,
-.restaurant-theme .text-emerald-500,
-.restaurant-theme .text-emerald-600 {
+.restaurant-theme .text-amber-600 {
   color: var(--rt-primary) !important;
 }
 
@@ -27,22 +23,15 @@
 .restaurant-theme .bg-orange-500,
 .restaurant-theme .bg-orange-600,
 .restaurant-theme .bg-amber-500,
-.restaurant-theme .bg-amber-600,
-.restaurant-theme .bg-green-500,
-.restaurant-theme .bg-green-600,
-.restaurant-theme .bg-emerald-500,
-.restaurant-theme .bg-emerald-600 {
+.restaurant-theme .bg-amber-600 {
   background-color: var(--rt-primary) !important;
 }
 
 .restaurant-theme .hover\:bg-orange-600:hover,
 .restaurant-theme .hover\:bg-orange-700:hover,
 .restaurant-theme .hover\:bg-amber-600:hover,
-.restaurant-theme .hover\:bg-green-600:hover,
-.restaurant-theme .hover\:bg-emerald-600:hover,
 .restaurant-theme [class*="hover:bg-[#991B1B]"]:hover,
-.restaurant-theme [class*="hover:bg-[#d84f0a]"]:hover,
-.restaurant-theme [class*="hover:bg-[#00A055]"]:hover {
+.restaurant-theme [class*="hover:bg-[#d84f0a]"]:hover {
   background-color: var(--rt-primary-strong) !important;
 }
 
@@ -50,10 +39,6 @@
 .restaurant-theme .border-orange-200,
 .restaurant-theme .border-orange-500\/20,
 .restaurant-theme .border-orange-500\/30,
-.restaurant-theme .border-green-100,
-.restaurant-theme .border-green-200,
-.restaurant-theme .border-green-500\/20,
-.restaurant-theme .border-emerald-200,
 .restaurant-theme [class*="border-[#ff8100]"],
 .restaurant-theme [class*="border-[#EB590E]"] {
   border-color: color-mix(in srgb, var(--rt-primary) 30%, #ffffff) !important;
@@ -61,13 +46,7 @@
 
 .restaurant-theme .bg-orange-50,
 .restaurant-theme .bg-amber-50,
-.restaurant-theme .bg-green-50,
-.restaurant-theme .bg-emerald-50,
-.restaurant-theme .bg-orange-500\/10,
-.restaurant-theme .bg-green-500\/10,
-.restaurant-theme .bg-emerald-500\/10,
-.restaurant-theme [class*="bg-[#DC2626]/5"],
-.restaurant-theme [class*="bg-[#DC2626]/10"] {
+.restaurant-theme .bg-orange-500\/10 {
   background-color: var(--rt-primary-soft) !important;
 }
 
@@ -102,12 +81,8 @@
 
 .restaurant-theme .from-orange-500,
 .restaurant-theme .from-amber-500,
-.restaurant-theme .from-green-500,
-.restaurant-theme .from-emerald-500,
 .restaurant-theme .to-orange-600,
-.restaurant-theme .to-amber-600,
-.restaurant-theme .to-green-600,
-.restaurant-theme .to-emerald-600 {
+.restaurant-theme .to-amber-600 {
   --tw-gradient-from: var(--rt-primary) var(--tw-gradient-from-position) !important;
   --tw-gradient-to: var(--rt-primary-strong) var(--tw-gradient-to-position) !important;
   --tw-gradient-stops: var(--tw-gradient-from), var(--tw-gradient-to) !important;
@@ -115,9 +90,7 @@
 
 .restaurant-theme .shadow-orange-500\/20,
 .restaurant-theme .shadow-orange-500\/30,
-.restaurant-theme .shadow-amber-500\/30,
-.restaurant-theme .shadow-green-500\/20,
-.restaurant-theme .shadow-emerald-500\/20 {
+.restaurant-theme .shadow-amber-500\/30 {
   --tw-shadow-color: color-mix(in srgb, var(--rt-primary) 40%, transparent) !important;
 }
 

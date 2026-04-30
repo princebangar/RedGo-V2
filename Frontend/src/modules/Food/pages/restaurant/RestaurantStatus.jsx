@@ -34,6 +34,7 @@ export default function RestaurantStatus() {
   const navigate = useNavigate()
   const goBack = useRestaurantBackNavigation()
   const [deliveryStatus, setDeliveryStatus] = useState(false)
+  const [takeawayStatus, setTakeawayStatus] = useState(false)
   const [restaurantData, setRestaurantData] = useState(null)
   const [loading, setLoading] = useState(true)
   const [currentDateTime, setCurrentDateTime] = useState(new Date())
@@ -61,6 +62,9 @@ export default function RestaurantStatus() {
         const data = response?.data?.data?.restaurant || response?.data?.restaurant
         if (data) {
           setRestaurantData(data)
+          if (data.takeawaySettings) {
+            setTakeawayStatus(data.takeawaySettings.isEnabled)
+          }
         }
       } catch (error) {
         // Only log error if it's not a network/timeout error (backend might be down/slow)
@@ -177,6 +181,9 @@ export default function RestaurantStatus() {
         const restaurant = response?.data?.data?.restaurant || response?.data?.restaurant
         if (restaurant?.isAcceptingOrders !== undefined) {
           setDeliveryStatus(restaurant.isAcceptingOrders)
+          if (restaurant.takeawaySettings) {
+            setTakeawayStatus(restaurant.takeawaySettings.isEnabled)
+          }
           try {
             localStorage.setItem('restaurant_online_status', JSON.stringify(Boolean(restaurant.isAcceptingOrders)))
           } catch {}
@@ -253,6 +260,18 @@ export default function RestaurantStatus() {
       }))
     } catch (error) {
       debugError("Error saving delivery status:", error)
+    }
+  }
+
+  // Handle takeaway status change
+  const handleTakeawayStatusChange = async (checked) => {
+    setTakeawayStatus(checked)
+    try {
+      await restaurantAPI.updateTakeawaySettings({ isEnabled: checked })
+      debugLog('? Takeaway status updated in backend:', checked)
+    } catch (error) {
+      debugError("Error saving takeaway status:", error)
+      setTakeawayStatus((prev) => !prev)
     }
   }
 
@@ -397,6 +416,23 @@ export default function RestaurantStatus() {
             <Switch
               checked={deliveryStatus}
               onCheckedChange={handleDeliveryStatusChange}
+              className="ml-4 data-[state=unchecked]:bg-gray-300 data-[state=checked]:bg-green-600"
+            />
+          </div>
+
+          <div className="flex items-center justify-between">
+            <div className="flex-1">
+              <p className="text-base font-bold text-gray-900 mb-1.5">Takeaway status</p>
+              <div className="flex items-center gap-2">
+                <div className={`w-2 h-2 rounded-full ${takeawayStatus ? 'bg-green-500' : 'bg-gray-600'}`}></div>
+                <p className="text-sm text-gray-500">
+                  {takeawayStatus ? 'Pickup orders are enabled' : 'Pickup orders are disabled'}
+                </p>
+              </div>
+            </div>
+            <Switch
+              checked={takeawayStatus}
+              onCheckedChange={handleTakeawayStatusChange}
               className="ml-4 data-[state=unchecked]:bg-gray-300 data-[state=checked]:bg-green-600"
             />
           </div>

@@ -1,5 +1,5 @@
 import { Link, useLocation } from "react-router-dom"
-import { Tag, Truck, UtensilsCrossed } from "lucide-react"
+import { ShoppingBag, Tag, Truck, UtensilsCrossed } from "lucide-react"
 import { useState, useEffect, useRef } from "react"
 import { motion, AnimatePresence } from "framer-motion"
 import api from "@food/api"
@@ -93,9 +93,10 @@ export default function BottomNavigation() {
   const isDining = normalizedPath === "/food/dining" || normalizedPath.startsWith("/food/user/dining");
   const isUnder250 = normalizedPath === "/food/under-250" || normalizedPath.startsWith("/food/user/under-250");
   const isProfile = normalizedPath.startsWith("/food/profile") || normalizedPath.startsWith("/food/user/profile");
+  const isTakeaway = normalizedPath === "/food/user/takeaway" || normalizedPath.startsWith("/food/user/takeaway");
   
   // Delivery is the default active state for the food module if nothing else is active
-  const isDelivery = !isDining && !isUnder250 && !isProfile && (
+  const isDelivery = !isDining && !isUnder250 && !isProfile && !isTakeaway && (
     normalizedPath === "/food" || 
     normalizedPath === "/food/user" || 
     normalizedPath.startsWith("/food/user") ||
@@ -112,11 +113,11 @@ export default function BottomNavigation() {
       active: isDelivery
     },
     {
-      id: 'dining',
-      label: 'Dining',
-      icon: UtensilsCrossed,
-      to: '/food/user/dining',
-      active: isDining
+      id: 'takeaway',
+      label: 'Takeaway',
+      icon: ShoppingBag,
+      to: '/food/user/takeaway',
+      active: isTakeaway
     },
     {
       id: 'under250',
@@ -124,6 +125,13 @@ export default function BottomNavigation() {
       icon: Tag,
       to: '/food/user/under-250',
       active: isUnder250
+    },
+    {
+      id: 'dining',
+      label: 'Dining',
+      icon: UtensilsCrossed,
+      to: '/food/user/dining',
+      active: isDining
     }
   ]
 

@@ -730,7 +730,7 @@ export default function DaySlots() {
               id="copy-to-all"
               checked={copyToAllDays}
               onCheckedChange={setCopyToAllDays}
-              className="w-5 h-5 border-2 border-gray-300 rounded data-[state=checked]:bg-blue-600 data-[state=checked]:border-blue-600"
+              className="w-5 h-5 border-2 border-gray-300 rounded data-[state=checked]:bg-green-600 data-[state=checked]:border-green-600"
             />
             <label
               htmlFor="copy-to-all"

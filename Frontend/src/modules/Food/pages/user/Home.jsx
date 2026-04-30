@@ -1,4 +1,4 @@
-import { useSearchParams, Link, useNavigate } from "react-router-dom";
+import { useSearchParams, Link, useNavigate, useLocation as useRouterLocation } from "react-router-dom";
 import React, {
   useRef,
   useEffect,
@@ -421,7 +421,29 @@ export default function Home() {
   const { openSearch, closeSearch, searchValue, setSearchValue } =
     useSearchOverlay();
   const { openLocationSelector } = useLocationSelector();
-  const { vegMode, setVegMode: setVegModeContext } = useProfile();
+  const { userProfile, vegMode, setVegMode: setVegModeContext, orderType, setOrderType } = useProfile();
+  const routerLocation = useRouterLocation();
+  const isTakeawayPage = routerLocation.pathname === "/food/takeaway" || 
+    routerLocation.pathname.startsWith("/food/takeaway/") || 
+    routerLocation.pathname.startsWith("/food/user/takeaway");
+
+  useEffect(() => {
+    if (isTakeawayPage) {
+      if (orderType !== "takeaway") setOrderType("takeaway");
+    } else if (routerLocation.pathname.includes("/dining")) {
+      if (orderType !== "dining") setOrderType("dining");
+    } else {
+      // Default home paths set back to delivery if they were takeaway/dining
+      const isHome = routerLocation.pathname === "/food/user" || 
+                     routerLocation.pathname === "/food/user/" ||
+                     routerLocation.pathname === "/food" ||
+                     routerLocation.pathname === "/food/";
+      if (isHome && orderType !== "delivery") {
+        setOrderType("delivery");
+      }
+    }
+  }, [isTakeawayPage, routerLocation.pathname, orderType, setOrderType]);
+
   const [prevVegMode, setPrevVegMode] = useState(vegMode);
   const [showVegModePopup, setShowVegModePopup] = useState(false);
   const [showSwitchOffPopup, setShowSwitchOffPopup] = useState(false);
@@ -1600,6 +1622,12 @@ export default function Home() {
 
           const transformedRestaurants = strictCityRestaurants
             .filter((restaurant) => {
+              // Apply Takeaway filter if orderType is takeaway
+              if (orderType === "takeaway" || isTakeawayPage) {
+                if (!restaurant.takeawaySettings?.isEnabled && !restaurant.takeawayAvailable) {
+                  return false;
+                }
+              }
               const name = (restaurant.restaurantName || restaurant.name || "").toLowerCase()
               return true
             })
@@ -1698,11 +1726,14 @@ export default function Home() {
                   : [],
                 rating: Number(restaurant.rating) || 0,
                 deliveryTime:
-                  restaurant.deliveryTime ||
-                  restaurant.estimatedDeliveryTime ||
-                  (restaurant.estimatedDeliveryTimeMinutes
-                    ? `${restaurant.estimatedDeliveryTimeMinutes} mins`
-                    : deliveryTime),
+                  (orderType === "takeaway" || isTakeawayPage)
+                    ? (restaurant.preparationTime || "20-25 mins")
+                    : (restaurant.deliveryTime ||
+                      restaurant.estimatedDeliveryTime ||
+                      (restaurant.estimatedDeliveryTimeMinutes
+                        ? `${restaurant.estimatedDeliveryTimeMinutes} mins`
+                        : deliveryTime)),
+                takeawaySettings: restaurant.takeawaySettings || null,
                 distance: distance,
                 distanceInKm: distanceInKm, // Store numeric distance for sorting
                 image: image,
@@ -1865,6 +1896,8 @@ export default function Home() {
       effectiveLocation?.latitude,
       effectiveLocation?.longitude,
       effectiveZoneId,
+      orderType,
+      isTakeawayPage,
     ],
   );
 
@@ -2651,20 +2684,48 @@ export default function Home() {
               </div>
             )}
             <div className="relative z-10">
-              <HomeHeader
-                activeTab={activeTab}
-                setActiveTab={setActiveTab}
-                location={effectiveLocation}
-                handleLocationClick={handleLocationClick}
-                handleSearchFocus={handleSearchFocus}
-                placeholderIndex={placeholderIndex}
-                placeholders={placeholders}
-                vegMode={vegMode}
-                handleVegModeChange={handleVegModeChange}
-                vegModeToggleRef={vegModeToggleRef}
-              />
+              {orderType !== "takeaway" && !isTakeawayPage ? (
+                <HomeHeader
+                  activeTab={activeTab}
+                  setActiveTab={setActiveTab}
+                  location={effectiveLocation}
+                  handleLocationClick={handleLocationClick}
+                  handleSearchFocus={handleSearchFocus}
+                  placeholderIndex={placeholderIndex}
+                  placeholders={placeholders}
+                  vegMode={vegMode}
+                  handleVegModeChange={handleVegModeChange}
+                  vegModeToggleRef={vegModeToggleRef}
+                />
+              ) : (
+                <div className="bg-white/0 dark:bg-black/0 px-4 pt-6 pb-2 border-b-0 dark:border-gray-800 backdrop-blur-sm">
+                  <div className="flex items-center justify-between">
+                    <div className="flex flex-col">
+                      <span className="text-[10px] font-bold text-gray-200 uppercase tracking-[0.2em] mb-0.5 drop-shadow-md">Self-Pickup</span>
+                      <h1 className="text-xl font-bold text-white flex items-center gap-2 drop-shadow-md">
+                        Takeaway
+                      </h1>
+                    </div>
+                    <div className="flex items-center gap-3">
+                      <button
+                        onClick={handleSearchFocus}
+                        className="p-2.5 bg-white/20 dark:bg-black/20 backdrop-blur-md rounded-full active:scale-95 transition-all"
+                      >
+                        <Search className="h-5 w-5 text-white" strokeWidth={2.5} />
+                      </button>
+                      <Link to="/food/user/profile" className="h-10 w-10 flex items-center justify-center rounded-full bg-white border-2 border-red-500 shadow-sm active:scale-95 transition-all overflow-hidden">
+                        <Avatar className="h-full w-full">
+                          <AvatarFallback className="bg-red-100 text-red-600 font-bold text-sm">
+                            {userProfile?.name ? userProfile.name.charAt(0).toUpperCase() : (userProfile?.fullName ? userProfile.fullName.charAt(0).toUpperCase() : "U")}
+                          </AvatarFallback>
+                        </Avatar>
+                      </Link>
+                    </div>
+                  </div>
+                </div>
+              )}
 
-              {activeTab === "food" && (
+              {activeTab === "food" && orderType !== "takeaway" && !isTakeawayPage && (
                 <FestBanner
                   isVegMode={vegMode}
                   videoUrl={festVideoActive ? "" : festBannerVideoUrl}
@@ -2684,11 +2745,29 @@ export default function Home() {
                 transition={{ duration: 0.3 }}
                 className="bg-transparent dark:bg-transparent"
               >
-                {/* "What's on your mind today?" Section - Now with Sticky Logic */}
-                <div
-                  id="categories-section"
-                  className="px-4 py-2.5 space-y-3 bg-white dark:bg-[#0a0a0a]"
-                >
+                {(orderType === "takeaway" || isTakeawayPage) && (
+                  <div className="px-4 pt-4 pb-2 bg-white dark:bg-[#0a0a0a]">
+                    <div className="flex flex-col gap-1">
+                      <h1 className="text-lg sm:text-xl font-bold text-gray-900 dark:text-white flex items-center gap-2">
+                        <span className="p-2 bg-green-100 dark:bg-green-900/30 rounded-xl">
+                          <ShoppingBag className="h-6 w-6 text-green-600" />
+                        </span>
+                        Pickup Restaurants
+                      </h1>
+                      <p className="text-[13px] text-gray-500 font-medium flex items-center gap-1.5 ml-1">
+                        <span className="w-1.5 h-1.5 rounded-full bg-red-500 animate-pulse"></span>
+                        Order online, skip the queue & pickup yourself
+                      </p>
+                    </div>
+                    <div className="h-[1px] bg-gradient-to-r from-gray-100 via-gray-200 to-transparent dark:from-gray-800 dark:via-gray-700 dark:to-transparent mt-5 mb-2"></div>
+                  </div>
+                )}
+                {/* "What's on your mind today?" Section */}
+                {orderType !== "takeaway" && !isTakeawayPage && (
+                  <div
+                    id="categories-section"
+                    className="px-4 py-2.5 space-y-3 bg-white dark:bg-[#0a0a0a]"
+                  >
                   <div className="flex items-center gap-2 min-w-0">
                     <h2 className="text-lg sm:text-xl font-bold text-gray-900 dark:text-white min-w-0 flex-shrink leading-tight">What's on your mind today?</h2>
                     <div className="h-[1px] bg-gray-100 dark:bg-gray-800 flex-1"></div>
@@ -2736,6 +2815,7 @@ export default function Home() {
                     ))}
                   </div>
                 </div>
+                )}
 
                 {/* Dynamic Sticky Header (Search + Slider + Filters) */}
                 <AnimatePresence>
@@ -2822,70 +2902,72 @@ export default function Home() {
                 {/* Admin Hero Banners Section - Now below categories */}
                 {HeroBannerSection}
 
-                {/* Filters Sticky Sidebar Header */}
-                <section className="py-2.5 px-4 bg-white/95 dark:bg-[#0a0a0a]/95 backdrop-blur-md sticky top-0 z-[40] -mx-4 w-[calc(100%+2rem)] border-b border-gray-100 dark:border-white/5 shadow-sm transition-colors duration-300">
-                  <div
-                    className="flex items-center gap-2 overflow-x-auto scrollbar-hide px-4"
-                    style={{
-                      scrollbarWidth: "none",
-                      msOverflowStyle: "none",
-                    }}
-                  >
-                    <button
-                      type="button"
-                      onClick={() => setIsFilterOpen(true)}
-                      className="h-9 px-4 rounded-full flex items-center gap-1.5 whitespace-nowrap flex-shrink-0 font-bold transition-all bg-white dark:bg-[#1a1a1a] border border-gray-200 shadow-sm active:scale-95"
+                {/* Filters Sticky Sidebar Header - Hidden for takeaway as per request */}
+                {orderType !== "takeaway" && !isTakeawayPage && (
+                  <section className="py-2.5 px-4 bg-white/95 dark:bg-[#0a0a0a]/95 backdrop-blur-md sticky top-0 z-[40] -mx-4 w-[calc(100%+2rem)] border-b border-gray-100 dark:border-white/5 shadow-sm transition-colors duration-300">
+                    <div
+                      className="flex items-center gap-2 overflow-x-auto scrollbar-hide px-4"
+                      style={{
+                        scrollbarWidth: "none",
+                        msOverflowStyle: "none",
+                      }}
                     >
-                      <SlidersHorizontal className="h-4 w-4 text-black" />
-                      <span className="text-xs font-bold text-black dark:text-white uppercase tracking-tight">
-                        Filters
-                      </span>
-                    </button>
+                      <button
+                        type="button"
+                        onClick={() => setIsFilterOpen(true)}
+                        className="h-9 px-4 rounded-full flex items-center gap-1.5 whitespace-nowrap flex-shrink-0 font-bold transition-all bg-white dark:bg-[#1a1a1a] border border-gray-200 shadow-sm active:scale-95"
+                      >
+                        <SlidersHorizontal className="h-4 w-4 text-black" />
+                        <span className="text-xs font-bold text-black dark:text-white uppercase tracking-tight">
+                          Filters
+                        </span>
+                      </button>
 
-                    {[
-                      { id: "delivery-under-30", label: "Under 30 mins" },
-                      { id: "delivery-under-45", label: "Under 45 mins" },
-                      { id: "distance-under-1km", label: "Under 1km", icon: MapPin },
-                      { id: "distance-under-2km", label: "Under 2km", icon: MapPin },
-                    ].map((filter) => {
-                      const Icon = filter.icon;
-                      const isActive = activeFilters.has(filter.id);
-                      return (
-                        <button
-                          key={filter.id}
-                          type="button"
-                          onClick={() => {
-                            const nextFilters = new Set(activeFilters);
-                            if (nextFilters.has(filter.id)) {
-                              nextFilters.delete(filter.id);
-                            } else {
-                              nextFilters.add(filter.id);
-                            }
-                            setActiveFilters(nextFilters);
-                            void applyFiltersAndRefetch(
-                              nextFilters,
-                              sortBy,
-                              selectedCuisine,
-                            );
-                          }}
-                          className={`h-9 px-4 rounded-full flex items-center gap-2 whitespace-nowrap flex-shrink-0 transition-all font-bold shadow-sm active:scale-95 ${isActive
-                            ? "bg-[#DC2626] text-white border border-[#DC2626] hover:bg-orange-700"
-                            : "bg-white dark:bg-[#1a1a1a] border border-gray-100 dark:border-gray-800 hover:bg-gray-50 dark:hover:bg-gray-800 text-gray-700 dark:text-gray-300"
-                            }`}
-                        >
-                          {Icon && (
-                            <Icon
-                              className={`h-3.5 w-3.5 ${isActive ? "fill-white" : ""}`}
-                            />
-                          )}
-                          <span className="text-xs font-bold tracking-tight">
-                            {filter.label}
-                          </span>
-                        </button>
-                      );
-                    })}
-                  </div>
-                </section>
+                      {[
+                        { id: "delivery-under-30", label: "Under 30 mins" },
+                        { id: "delivery-under-45", label: "Under 45 mins" },
+                        { id: "distance-under-1km", label: "Under 1km", icon: MapPin },
+                        { id: "distance-under-2km", label: "Under 2km", icon: MapPin },
+                      ].map((filter) => {
+                        const Icon = filter.icon;
+                        const isActive = activeFilters.has(filter.id);
+                        return (
+                          <button
+                            key={filter.id}
+                            type="button"
+                            onClick={() => {
+                              const nextFilters = new Set(activeFilters);
+                              if (nextFilters.has(filter.id)) {
+                                nextFilters.delete(filter.id);
+                              } else {
+                                nextFilters.add(filter.id);
+                              }
+                              setActiveFilters(nextFilters);
+                              void applyFiltersAndRefetch(
+                                nextFilters,
+                                sortBy,
+                                selectedCuisine,
+                              );
+                            }}
+                            className={`h-9 px-4 rounded-full flex items-center gap-2 whitespace-nowrap flex-shrink-0 transition-all font-bold shadow-sm active:scale-95 ${isActive
+                              ? "bg-[#DC2626] text-white border border-[#DC2626] hover:bg-orange-700"
+                              : "bg-white dark:bg-[#1a1a1a] border border-gray-100 dark:border-gray-800 hover:bg-gray-50 dark:hover:bg-gray-800 text-gray-700 dark:text-gray-300"
+                              }`}
+                          >
+                            {Icon && (
+                              <Icon
+                                className={`h-3.5 w-3.5 ${isActive ? "fill-white" : ""}`}
+                              />
+                            )}
+                            <span className="text-xs font-bold tracking-tight">
+                              {filter.label}
+                            </span>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </section>
+                )}
 
               </motion.div>
             ) : (
@@ -2902,7 +2984,7 @@ export default function Home() {
           </AnimatePresence>
         </div>
 
-        {recommendedForYouRestaurants.length > 0 && (
+        {orderType !== "takeaway" && !isTakeawayPage && recommendedForYouRestaurants.length > 0 && (
           <motion.section
             className="content-auto pt-1 sm:pt-2"
             initial={false}
@@ -2955,6 +3037,7 @@ export default function Home() {
         )}
 
         {/* Explore More Section */}
+        {orderType !== "takeaway" && !isTakeawayPage && (
         <motion.section
           className="content-auto pt-2 sm:pt-3 lg:pt-4"
           initial={false}
@@ -3010,6 +3093,7 @@ export default function Home() {
             </div>
           </div>
         </motion.section>
+        )}
 
         {/* Featured Foods - Horizontal Scroll */}
 
@@ -3393,7 +3477,7 @@ export default function Home() {
                     data-section-id="time"
                     className="space-y-4 mb-8">
                     <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">
-                      Estimated Time
+                      {(orderType === "takeaway" || isTakeawayPage) ? "Estimated Readiness" : "Estimated Time"}
                     </h3>
                     <div className="grid grid-cols-2 gap-3">
                       <button
@@ -3408,7 +3492,7 @@ export default function Home() {
                         />
                         <span
                           className={`text-sm font-medium ${activeFilters.has("delivery-under-30") ? "text-[#DC2626]" : "text-gray-700 dark:text-gray-300"}`}>
-                          Under 30 mins
+                          {(orderType === "takeaway" || isTakeawayPage) ? "Within 30 mins" : "Under 30 mins"}
                         </span>
                       </button>
                       <button
@@ -3423,7 +3507,7 @@ export default function Home() {
                         />
                         <span
                           className={`text-sm font-medium ${activeFilters.has("delivery-under-45") ? "text-[#DC2626]" : "text-gray-700 dark:text-gray-300"}`}>
-                          Under 45 mins
+                          {(orderType === "takeaway" || isTakeawayPage) ? "Within 45 mins" : "Under 45 mins"}
                         </span>
                       </button>
                     </div>
@@ -4210,7 +4294,7 @@ export default function Home() {
                                     setShowManageCollections(false);
                                   }
                                 }}
-                                className="h-5 w-5 rounded border-2 border-red-500 data-[state=checked]:bg-red-500 data-[state=checked]:border-red-500"
+                                className="h-5 w-5 rounded border-2 border-green-500 data-[state=checked]:bg-green-500 data-[state=checked]:border-green-500"
                               />
                             </div>
                           )}
@@ -4260,6 +4344,7 @@ export default function Home() {
           document.body,
         )}
 
+      <Footer />
       <StickyCartCard />
       {/* Live order strip: only on homepage (not in UserLayout) */}
       <OrderTrackingCard hasBottomNav />

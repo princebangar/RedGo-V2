@@ -196,6 +196,7 @@ export default function AddRestaurant() {
     openingTime: "",
     closingTime: "",
     openDays: [],
+    takeawayEnabled: true,
   })
 
   // Step 3: Documents
@@ -600,6 +601,9 @@ export default function AddRestaurant() {
         ifscCode: step3.ifscCode,
         accountHolderName: step3.accountHolderName,
         accountType: step3.accountType,
+        takeawaySettings: {
+          isEnabled: step2.takeawayEnabled === true,
+        },
       }
 
       // Call backend API
@@ -1294,6 +1298,23 @@ export default function AddRestaurant() {
             })}
           </div>
         </div>
+
+        <div className="flex items-center justify-between p-4 rounded-md border border-gray-100 bg-gray-50/50">
+          <div className="flex-1">
+            <p className="text-sm font-semibold text-gray-900 flex items-center gap-1.5">
+              <span>🛍️</span>
+              <span>Takeaway (Pickup)</span>
+            </p>
+            <p className="text-[11px] text-gray-500 mt-0.5">
+              Allow customers to place orders online and pick them up from the restaurant.
+            </p>
+          </div>
+          <Switch
+            checked={step2.takeawayEnabled}
+            onCheckedChange={(checked) => setStep2({ ...step2, takeawayEnabled: checked })}
+            className="data-[state=unchecked]:bg-gray-300 data-[state=checked]:bg-green-600"
+          />
+        </div>
       </section>
     </div>
   )
@@ -1476,10 +1497,29 @@ export default function AddRestaurant() {
               <div className="relative">
                 <div className="absolute inset-0 bg-emerald-100 rounded-full animate-ping opacity-75"></div>
                 <div className="relative bg-emerald-500 rounded-full p-4">
-                  <CheckCircle2 className="w-12 h-12 text-white" />
+                  <Input value={detailsForm.offer} onChange={(e) => setDetailsForm((p) => ({ ...p, offer: e.target.value }))} />
+                </div>
+                <div className="md:col-span-2 pt-4 border-t border-slate-100">
+                  <h3 className="text-sm font-bold text-slate-900 mb-4 uppercase tracking-wider">Takeaway (Pickup) Settings</h3>
+                  <div className="flex items-center justify-between p-4 rounded-xl border border-slate-200 bg-slate-50/50">
+                    <div className="flex-1">
+                      <p className="text-sm font-semibold text-slate-800 flex items-center gap-1.5">
+                        <span>🛍️</span>
+                        <span>Takeaway (Pickup)</span>
+                      </p>
+                      <p className="text-[11px] text-slate-500 mt-0.5">
+                        Allow customers to place orders online and pick them up from your restaurant.
+                      </p>
+                    </div>
+                    <Switch
+                      checked={detailsForm.takeawayEnabled}
+                      onCheckedChange={(checked) => setDetailsForm((p) => ({ ...p, takeawayEnabled: checked }))}
+                      className="data-[state=unchecked]:bg-gray-200 data-[state=checked]:bg-green-600"
+                    />
+                  </div>
                 </div>
               </div>
-            </div>
+            </section>
             <DialogHeader>
               <DialogTitle className="text-2xl font-bold text-slate-900 mb-2">Restaurant Created Successfully!</DialogTitle>
               <DialogDescription className="text-sm text-slate-600">

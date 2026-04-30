@@ -461,7 +461,7 @@ export default function RestaurantCommission() {
                             <button
                               onClick={() => handleToggleStatus(commission)}
                               className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 ${
-                                commission.status ? "bg-blue-600" : "bg-slate-300"
+                                commission.status ? "bg-green-600" : "bg-slate-300"
                               }`}
                             >
                               <span

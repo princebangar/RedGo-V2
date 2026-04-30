@@ -13,6 +13,51 @@ import BottomNavigation from "./BottomNavigation"
 import DesktopNavbar from "./DesktopNavbar"
 import BackToTop from "./BackToTop"
 import { useUserNotifications } from "../../hooks/useUserNotifications"
+import { useProfile } from "@food/context/ProfileContext"
+
+// Sync orderType with route
+function RouteSyncHandler() {
+  const location = useLocation()
+  const { setOrderType, orderType } = useProfile()
+
+  useEffect(() => {
+    // Determine path ignoring /food prefix for uniform handling
+    let path = location.pathname
+    if (path.startsWith("/food")) {
+      path = path.substring(5) || "/"
+    }
+    const normalizedPath = path.replace(/\/+$/, "") || "/"
+    
+    // Paths that should PRESERVE the current orderType (sub-navigation)
+    const preservePaths = [
+      "/cart", "/user/cart",
+      "/restaurants", "/user/restaurants",
+      "/search", "/user/search",
+      "/product", "/user/product",
+      "/user/orders", "/orders",
+      "/profile", "/user/profile"
+    ]
+    const isPreservePath = preservePaths.some(p => normalizedPath === p || normalizedPath.startsWith(p + "/"))
+    
+    if (isPreservePath) return
+
+    // Explicit mode switches
+    let newMode = null
+    if (normalizedPath === "/takeaway" || normalizedPath.startsWith("/takeaway/") || normalizedPath.startsWith("/user/takeaway")) {
+      newMode = "takeaway"
+    } else if (normalizedPath === "/dining" || normalizedPath.startsWith("/dining/") || normalizedPath.startsWith("/user/dining")) {
+      newMode = "dining"
+    } else if (normalizedPath === "/" || normalizedPath === "/user" || normalizedPath === "/user/") {
+      newMode = "delivery"
+    }
+
+    if (newMode && orderType !== newMode) {
+      setOrderType(newMode)
+    }
+  }, [location.pathname, orderType, setOrderType])
+
+  return null
+}
 
 // Create SearchOverlay context with default value
 const SearchOverlayContext = createContext({
@@ -155,6 +200,8 @@ export default function UserLayout() {
     normalizedPath === "/user" ||
     normalizedPath === "/dining" ||
     normalizedPath === "/user/dining" ||
+    normalizedPath === "/takeaway" ||
+    normalizedPath === "/user/takeaway" ||
     normalizedPath === "/under-250" ||
     normalizedPath === "/user/under-250" ||
     isProfileRoot ||
@@ -169,6 +216,7 @@ export default function UserLayout() {
           <OrdersProvider>
             <SearchOverlayProvider>
               <LocationSelectorProvider>
+                <RouteSyncHandler />
                 {/* <Navbar /> */}
                 {/* Desktop Navbar - Hidden on mobile, visible on medium+ screens */}
                 <div className="hidden md:block">

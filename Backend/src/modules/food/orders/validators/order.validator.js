@@ -60,7 +60,8 @@ export function validateCalculateOrderDto(body) {
         deliveryAddressId: z.string().optional(),
         zoneId: z.string().optional(),
         couponCode: z.string().optional(),
-        deliveryFleet: z.string().optional()
+        deliveryFleet: z.string().optional(),
+        orderType: z.enum(['delivery', 'dining', 'takeaway']).optional().default('delivery')
     });
     const result = schema.safeParse(body);
     if (!result.success) {
@@ -75,7 +76,8 @@ export function validateCalculateOrderDto(body) {
 export function validateCreateOrderDto(body) {
     const schema = z.object({
         items: z.array(orderItemSchema).min(1, 'At least one item required'),
-        address: addressSchema,
+        address: addressSchema.optional(),
+        orderType: z.enum(['delivery', 'dining', 'takeaway']).optional().default('delivery'),
         restaurantId: z.string().min(1, 'Restaurant id required'),
         restaurantName: z.string().optional(),
         customerName: z.string().optional(),

@@ -29,11 +29,13 @@ import {
   Calendar,
   MapPin,
   LogOut,
+  ShoppingBag,
 } from "lucide-react"
 import { Card, CardContent } from "@food/components/ui/card"
 import { DateRangeCalendar } from "@food/components/ui/date-range-calendar"
 import { clearModuleAuth, clearAuthData, getCurrentUser } from "@food/utils/auth"
 import { restaurantAPI } from "@food/api"
+import { toast } from "sonner"
 import { firebaseAuth, ensureFirebaseInitialized } from "@food/firebase"
 import BottomNavOrders from "@food/components/restaurant/BottomNavOrders"
 const debugLog = (...args) => {}
@@ -353,6 +355,9 @@ export default function ExploreMore() {
   const [showEndTimePicker, setShowEndTimePicker] = useState(false)
   const [showCalendar, setShowCalendar] = useState(false)
   const [existingSchedule, setExistingSchedule] = useState(null)
+  const [takeawayModalOpen, setTakeawayModalOpen] = useState(false)
+  const [tempTakeawayEnabled, setTempTakeawayEnabled] = useState(false)
+  const [isTakeawayUpdating, setIsTakeawayUpdating] = useState(false)
 
   const STORAGE_KEY = "restaurant_schedule_off"
 
@@ -736,6 +741,7 @@ export default function ExploreMore() {
     { id: 2, label: "Outlet timings", icon: Clock, route: "/food/restaurant/outlet-timings" },
     { id: 3, label: "Dining Reservations", icon: Calendar, route: "/food/restaurant/reservations" },
     { id: 4, label: "Menu categories", icon: Settings, route: "/food/restaurant/menu-categories" },
+    { id: 6, label: "Takeaway", icon: ShoppingBag },
   ]
 
   const settingsItems = [
@@ -829,6 +835,10 @@ export default function ExploreMore() {
                   if (item.id === 5) {
                     // Schedule off card
                     handleScheduleOffClick()
+                  } else if (item.id === 6) {
+                    // Takeaway toggle
+                    setTempTakeawayEnabled(restaurantData?.isTakeawayEnabled || false)
+                    setTakeawayModalOpen(true)
                   } else if (item.route) {
                     navigate(item.route)
                   }
@@ -1707,6 +1717,108 @@ export default function ExploreMore() {
           </>
         )}
       </AnimatePresence>
+
+      {/* Takeaway Toggle Modal */}
+      <AnimatePresence>
+        {takeawayModalOpen && (
+          <>
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              transition={{ duration: 0.2 }}
+              className="fixed inset-0 bg-black/50 z-[1000] backdrop-blur-sm"
+              onClick={() => setTakeawayModalOpen(false)}
+            />
+
+            <motion.div
+              initial={{ opacity: 0, scale: 0.9, y: 20 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.9, y: 20 }}
+              className="fixed inset-0 m-auto w-[90%] max-w-sm h-fit bg-white rounded-3xl p-6 shadow-2xl z-[1001]"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="flex items-center justify-between mb-8">
+                <h3 className="text-xl font-bold text-gray-900">Takeaway</h3>
+                <button
+                  onClick={() => setTakeawayModalOpen(false)}
+                  className="p-1.5 hover:bg-gray-100 rounded-full transition-colors"
+                >
+                  <X className="w-5 h-5 text-gray-400" />
+                </button>
+              </div>
+
+              <div 
+                className={`flex items-center justify-between p-4 rounded-2xl border mb-6 cursor-pointer ${
+                  tempTakeawayEnabled 
+                    ? "bg-green-50/50 border-green-100" 
+                    : "bg-gray-50 border-gray-100"
+                }`}
+                onClick={() => {
+                  setTempTakeawayEnabled(!tempTakeawayEnabled);
+                }}
+              >
+                <div className="flex items-center gap-3">
+                  <div className="w-[44px] h-[44px] flex items-center justify-center rounded-2xl bg-gradient-to-br from-blue-500 to-blue-700 shadow-sm shadow-blue-200 shrink-0">
+                    <ShoppingBag className="w-5 h-5 text-white" strokeWidth={2.5} />
+                  </div>
+                  <span className="text-base font-bold text-gray-900">Takeaway orders</span>
+                </div>
+
+                <div
+                  className={`relative w-14 h-8 rounded-full transition-colors duration-300 ${
+                    tempTakeawayEnabled ? "bg-green-500" : "bg-gray-300"
+                  }`}
+                >
+                  <motion.div
+                    initial={{ x: tempTakeawayEnabled ? 28 : 4 }}
+                    animate={{ x: tempTakeawayEnabled ? 28 : 4 }}
+                    className="absolute top-1 left-0 w-6 h-6 bg-white rounded-full shadow-md"
+                    transition={{ type: "spring", stiffness: 400, damping: 35 }}
+                  />
+                </div>
+              </div>
+
+              <p className="text-sm text-gray-500 px-1 mb-6">
+                When enabled, customers can place takeaway orders from your restaurant. You can turn this off anytime.
+              </p>
+
+              <button
+                disabled={isTakeawayUpdating}
+                onClick={async () => {
+                  if (isTakeawayUpdating) return;
+                  setIsTakeawayUpdating(true);
+                  try {
+                    await restaurantAPI.updateTakeawaySettings({ isEnabled: tempTakeawayEnabled });
+                    // Update local restaurant data state
+                    setRestaurantData(prev => ({ ...prev, isTakeawayEnabled: tempTakeawayEnabled }));
+                    setTakeawayModalOpen(false);
+                    toast.success(`Takeaway ${tempTakeawayEnabled ? 'enabled' : 'disabled'} successfully`, {
+                      duration: 2000
+                    });
+                  } catch (error) {
+                    debugError("Error updating takeaway status:", error);
+                    toast.error("Failed to update takeaway status", {
+                      duration: 2000
+                    });
+                  } finally {
+                    setIsTakeawayUpdating(false);
+                  }
+                }}
+                className={`w-full bg-gray-900 text-white font-bold py-4 rounded-2xl active:scale-[0.98] transition-all flex items-center justify-center gap-2 ${
+                  isTakeawayUpdating ? "opacity-70 cursor-not-allowed" : ""
+                }`}
+              >
+                {isTakeawayUpdating && (
+                  <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                )}
+                {isTakeawayUpdating ? "Saving..." : "Save"}
+              </button>
+            </motion.div>
+          </>
+        )}
+      </AnimatePresence>
+
       <BottomNavOrders />
     </motion.div>
   )

@@ -9,6 +9,7 @@ import {
     updateRestaurantProfileController,
     updateRestaurantAcceptingOrdersController,
     updateCurrentRestaurantDiningSettingsController,
+    updateCurrentRestaurantTakeawaySettingsController,
     uploadRestaurantProfileImageController,
     uploadRestaurantMenuImageController,
     uploadRestaurantCoverImagesController,
@@ -102,6 +103,11 @@ router.patch('/availability', authMiddleware, requireRestaurant, async (req, res
 router.patch('/profile', authMiddleware, requireRestaurant, updateRestaurantProfileController);
 router.patch('/availability', authMiddleware, requireRestaurant, updateRestaurantAcceptingOrdersController);
 router.patch('/dining-settings', authMiddleware, requireRestaurant, updateCurrentRestaurantDiningSettingsController);
+router.patch('/takeaway-settings', authMiddleware, requireRestaurant, async (req, res, next) => {
+    await invalidateCache('restaurants:*');
+    await invalidateCache('restaurant_detail:*');
+    next();
+}, updateCurrentRestaurantTakeawaySettingsController);
 router.post('/dining-settings/request', authMiddleware, requireRestaurant, createDiningRequestController);
 router.get('/dining-settings/pending', authMiddleware, requireRestaurant, getPendingDiningRequestController);
 router.get('/outlet-timings', authMiddleware, requireRestaurant, getCurrentRestaurantOutletTimingsController);

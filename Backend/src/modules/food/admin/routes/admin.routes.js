@@ -9,6 +9,7 @@ import * as notificationBroadcastController from '../controllers/notificationBro
 import * as diningAdminController from '../../dining/controllers/diningAdmin.controller.js';
 import * as orderController from '../../orders/controllers/order.controller.js';
 import { getAdminPageController, upsertAdminPageController } from '../controllers/pageContent.controller.js';
+import * as systemConfigController from '../controllers/systemConfig.controller.js';
 import { upload } from '../../../../middleware/upload.js';
 
 const router = express.Router();
@@ -208,5 +209,10 @@ router.put('/pages-social-media/:key', upsertAdminPageController);
 
 router.get('/sidebar-badges', adminController.getSidebarBadges);
 router.get('/notifications/fssai-expired', adminController.getExpiredFssaiNotifications);
+
+// ----- Customization Settings -----
+router.get('/customization-settings', systemConfigController.getCustomizationSettings);
+router.patch('/customization-settings', systemConfigController.updateCustomizationSettings);
+router.get('/customization-settings/takeaway-cod', systemConfigController.getTakeawayCodStatus);
 
 export default router;

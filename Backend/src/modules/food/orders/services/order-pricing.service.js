@@ -1,4 +1,4 @@
-﻿import mongoose from 'mongoose';
+import mongoose from 'mongoose';
 import { FoodOrder } from '../models/order.model.js';
 import { FoodRestaurant } from '../../restaurant/models/restaurant.model.js';
 import { FoodFeeSettings } from '../../admin/models/feeSettings.model.js';
@@ -34,7 +34,8 @@ export async function calculateOrderPricing(userId, dto) {
     gstRate: 5,
   };
 
-  const packagingFee = feeSettings.packagingFee != null ? Number(feeSettings.packagingFee) : 0;
+  const basePackagingFee = feeSettings.packagingFee != null ? Number(feeSettings.packagingFee) : 0;
+  const packagingFee = dto.orderType === "takeaway" ? 0 : basePackagingFee;
   const platformFee = feeSettings.platformFee != null ? Number(feeSettings.platformFee) : 0;
 
   const freeUpTo = Number(feeSettings.freeDeliveryUpTo || 0);
@@ -51,7 +52,9 @@ export async function calculateOrderPricing(userId, dto) {
   }
   let deliveryFee = 0;
   let deliveryFeeBreakdown = null;
-  if (
+  if (dto.orderType === "takeaway") {
+    deliveryFee = 0;
+  } else if (
     Number.isFinite(freeUpTo) &&
     freeUpTo > 0 &&
     subtotal >= freeUpTo

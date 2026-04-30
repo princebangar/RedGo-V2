@@ -183,6 +183,9 @@ const toRestaurantProfile = (doc) => {
             maxGuests: Math.max(1, parseInt(doc.diningSettings?.maxGuests, 10) || 6),
             diningType: String(doc.diningSettings?.diningType || 'family-dining').trim() || 'family-dining'
         },
+        takeawaySettings: {
+            isEnabled: doc.takeawaySettings?.isEnabled === true
+        },
         isAcceptingOrders: doc.isAcceptingOrders !== false,
         status: doc.status || null,
         createdAt: doc.createdAt,
@@ -272,7 +275,8 @@ export const registerRestaurant = async (payload, files) => {
         accountNumber,
         ifscCode,
         accountHolderName,
-        accountType
+        accountType,
+        isTakeawayEnabled
     } = payload;
 
     if (!ownerPhone) {
@@ -391,6 +395,9 @@ export const registerRestaurant = async (payload, files) => {
             accountType,
             menuImages,
             menuPdf,
+            takeawaySettings: {
+                isEnabled: isTakeawayEnabled === 'true' || isTakeawayEnabled === true
+            },
             ...images
         });
 
@@ -454,6 +461,7 @@ export const getCurrentRestaurantProfile = async (restaurantId) => {
                 'estimatedDeliveryTime',
                 'estimatedDeliveryTimeMinutes',
                 'diningSettings',
+                'takeawaySettings',
                 'isAcceptingOrders',
                 'status',
                 'createdAt',
@@ -608,6 +616,88 @@ export const updateCurrentRestaurantDiningSettings = async (restaurantId, body =
                 'estimatedDeliveryTime',
                 'estimatedDeliveryTimeMinutes',
                 'diningSettings',
+                'isAcceptingOrders',
+                'status',
+                'createdAt',
+                'updatedAt'
+            ].join(' ')
+        }
+    ).lean();
+
+    return toRestaurantProfile(doc);
+};
+
+export const updateCurrentRestaurantTakeawaySettings = async (restaurantId, body = {}) => {
+    if (!restaurantId) {
+        throw new ValidationError('Invalid restaurant id');
+    }
+
+    const currentRestaurant = await FoodRestaurant.findById(restaurantId)
+        .select('takeawaySettings status')
+        .lean();
+
+    if (!currentRestaurant) {
+        throw new ValidationError('Restaurant not found');
+    }
+
+    const currentTakeawaySettings =
+        currentRestaurant.takeawaySettings && typeof currentRestaurant.takeawaySettings === 'object'
+            ? currentRestaurant.takeawaySettings
+            : {};
+
+    const parseBoolean = (value, fallback = false) => {
+        if (value === undefined || value === null) return Boolean(fallback);
+        if (typeof value === 'boolean') return value;
+        const normalized = String(value).trim().toLowerCase();
+        if (normalized === 'true' || normalized === '1' || normalized === 'yes') return true;
+        if (normalized === 'false' || normalized === '0' || normalized === 'no') return false;
+        return Boolean(fallback);
+    };
+
+    const doc = await FoodRestaurant.findByIdAndUpdate(
+        restaurantId,
+        {
+            $set: {
+                takeawaySettings: {
+                    isEnabled: parseBoolean(body.isEnabled, currentTakeawaySettings.isEnabled)
+                }
+            }
+        },
+        {
+            new: true,
+            runValidators: true,
+            projection: [
+                'restaurantName',
+                'cuisines',
+                'location',
+                'addressLine1',
+                'addressLine2',
+                'area',
+                'city',
+                'state',
+                'pincode',
+                'landmark',
+                'ownerName',
+                'ownerEmail',
+                'ownerPhone',
+                'primaryContactNumber',
+                'accountNumber',
+                'ifscCode',
+                'accountHolderName',
+                'accountType',
+                'upiId',
+                'upiQrImage',
+                'pureVegRestaurant',
+                'profileImage',
+                'coverImages',
+                'menuImages',
+                'openingTime',
+                'closingTime',
+                'openDays',
+                'estimatedDeliveryTime',
+                'estimatedDeliveryTimeMinutes',
+                'diningSettings',
+                'takeawaySettings',
                 'isAcceptingOrders',
                 'status',
                 'createdAt',
@@ -1257,7 +1347,8 @@ export const listApprovedRestaurants = async (query = {}) => {
         location: 1,
         openingTime: 1,
         closingTime: 1,
-        openDays: 1
+        openDays: 1,
+        takeawaySettings: 1
     };
 
     // Use $geoNear only when geo is explicitly needed (radius filter or nearest sorting).

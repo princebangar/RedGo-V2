@@ -3,7 +3,7 @@ import { useNavigate, useSearchParams } from "react-router-dom"
 import { Input } from "@food/components/ui/input"
 import { Button } from "@food/components/ui/button"
 import { Label } from "@food/components/ui/label"
-import { Image as ImageIcon, Upload, Clock, Calendar as CalendarIcon, Sparkles, X, LogOut, FileText } from "lucide-react"
+import { Image as ImageIcon, Upload, Clock, Calendar as CalendarIcon, Sparkles, X, LogOut, FileText, ShoppingBag } from "lucide-react"
 import { Popover, PopoverContent, PopoverTrigger } from "@food/components/ui/popover"
 import { Calendar } from "@food/components/ui/calendar"
 import {
@@ -580,6 +580,8 @@ export default function RestaurantOnboarding() {
     openingTime: "",
     closingTime: "",
     openDays: [],
+    isTakeawayEnabled: false,
+    isTakeawayCodEnabled: false,
   })
 
   const [step3, setStep3] = useState({
@@ -1463,6 +1465,8 @@ export default function RestaurantOnboarding() {
             ifscCode: (step3.ifscCode || "").toUpperCase(),
             accountHolderName: step3.accountHolderName || "",
             accountType: step3.accountType || "",
+            isTakeawayEnabled: step2.isTakeawayEnabled === true,
+            isTakeawayCodEnabled: step2.isTakeawayCodEnabled === true,
           }
 
           if (menuPdfPayload) {
@@ -1511,6 +1515,8 @@ export default function RestaurantOnboarding() {
         formData.append("openingTime", normalizeTimeValue(step2.openingTime) || "")
         formData.append("closingTime", normalizeTimeValue(step2.closingTime) || "")
         formData.append("openDays", (step2.openDays || []).join(","))
+        formData.append("isTakeawayEnabled", step2.isTakeawayEnabled ? "true" : "false")
+        formData.append("isTakeawayCodEnabled", step2.isTakeawayCodEnabled ? "true" : "false")
 
         const menuFiles = (step2.menuImages || []).filter((f) => isUploadableFile(f))
         if (menuFiles.length === 0) {
@@ -2494,6 +2500,35 @@ export default function RestaurantOnboarding() {
             })}
           </div>
         </div>
+      </section>
+
+      {/* Takeaway Service Toggle */}
+      <section className="bg-white p-4 sm:p-6 rounded-md space-y-5">
+        <div className="flex items-center justify-between">
+          <div className="space-y-0.5">
+            <Label className="text-sm font-bold text-gray-900 flex items-center gap-1.5">
+              <ShoppingBag className="w-4 h-4 text-green-600" />
+              <span>Takeaway (Pickup) order</span>
+            </Label>
+            <p className="text-[11px] text-gray-500 leading-relaxed">
+              Enable this to allow customers to pick up orders themselves from your restaurant.
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={() => setStep2(prev => ({ ...prev, isTakeawayEnabled: !prev.isTakeawayEnabled }))}
+            className={`relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
+              step2.isTakeawayEnabled ? "bg-green-600" : "bg-gray-200"
+            }`}
+          >
+            <span
+              className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${
+                step2.isTakeawayEnabled ? "translate-x-5" : "translate-x-0"
+              }`}
+            />
+          </button>
+        </div>
+
       </section>
     </div>
   )

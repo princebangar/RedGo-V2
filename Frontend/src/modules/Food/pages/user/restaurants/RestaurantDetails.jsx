@@ -3232,7 +3232,7 @@ function RestaurantDetailsContent() {
                                   setShowManageCollections(false)
                                 }
                               }}
-                              className="h-5 w-5 rounded border-2 border-red-500 data-[state=checked]:bg-red-500 data-[state=checked]:border-red-500"
+                              className="h-5 w-5 rounded border-2 border-green-500 data-[state=checked]:bg-green-500 data-[state=checked]:border-green-500"
                               onClick={(e) => e.stopPropagation()}
                             />
                           )}

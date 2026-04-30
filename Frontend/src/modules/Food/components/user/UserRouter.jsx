@@ -104,6 +104,7 @@ export default function UserRouter() {
         }>
           {/* Home & Discovery */}
           <Route path="" element={<Home />} />
+          <Route path="takeaway" element={<Home />} />
           <Route path="dining" element={<Dining />} />
           <Route path="dining/:category" element={<DiningCategory />} />
           <Route path="dining/explore/upto50" element={<DiningExplore50 />} />

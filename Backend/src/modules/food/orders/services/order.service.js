@@ -11,6 +11,7 @@ import { ValidationError, ForbiddenError, NotFoundError } from '../../../../core
 import { buildPaginationOptions, buildPaginatedResult } from '../../../../utils/helpers.js';
 import { FoodOffer } from '../../admin/models/offer.model.js';
 import { FoodOfferUsage } from '../../admin/models/offerUsage.model.js';
+import { FoodSystemConfig } from '../../admin/models/systemConfig.model.js';
 import { FoodDeliveryCommissionRule } from '../../admin/models/deliveryCommissionRule.model.js';
 import { FoodRestaurantCommission } from '../../admin/models/restaurantCommission.model.js';
 import { FoodTransaction } from '../models/foodTransaction.model.js';
@@ -128,13 +129,20 @@ export async function calculateOrder(userId, dto) {
 // ----- Create order -----
 export async function createOrder(userId, dto) {
   const restaurant = await FoodRestaurant.findById(dto.restaurantId)
-    .select("status restaurantName zoneId location isAcceptingOrders")
+    .select("status restaurantName zoneId location isAcceptingOrders takeawaySettings")
     .lean();
   if (!restaurant) throw new ValidationError("Restaurant not found");
   if (restaurant.status !== "approved")
     throw new ValidationError("Restaurant not accepting orders");
   if (restaurant.isAcceptingOrders === false)
     throw new ValidationError("Restaurant not accepting orders");
+
+  const orderType = dto.orderType || "delivery";
+  if (orderType === "takeaway") {
+    if (restaurant.takeawaySettings?.isEnabled === false) {
+      throw new ValidationError("Takeaway is not available for this restaurant");
+    }
+  }
 
 
   const settings = await getDispatchSettings();
@@ -160,6 +168,20 @@ export async function createOrder(userId, dto) {
   const isCash = paymentMethod === "cash";
   const isWallet = paymentMethod === "wallet";
 
+  if (orderType === "takeaway" && isCash) {
+    const takeawayCodConfig = await FoodSystemConfig.findOne({
+      key: "takeaway_cod_enabled",
+    })
+      .select("value")
+      .lean();
+    
+    const showCOD = takeawayCodConfig == null ? true : takeawayCodConfig.value === true;
+
+    if (!showCOD) {
+      throw new ValidationError("Cash on Delivery is not available for Takeaway orders");
+    }
+  }
+
   // Ensure pricing is present and consistent.
   const computedSubtotal = (dto.items || []).reduce((sum, item) => {
     const price = Number(item?.price);
@@ -171,7 +193,7 @@ export async function createOrder(userId, dto) {
     subtotal: Number(dto.pricing?.subtotal ?? computedSubtotal),
     tax: Number(dto.pricing?.tax ?? 0),
     packagingFee: Number(dto.pricing?.packagingFee ?? 0),
-    deliveryFee: Number(dto.pricing?.deliveryFee ?? 0),
+    deliveryFee: orderType === "takeaway" ? 0 : Number(dto.pricing?.deliveryFee ?? 0),
     platformFee: Number(dto.pricing?.platformFee ?? 0),
     discount: Number(dto.pricing?.discount ?? 0),
     total: Number(dto.pricing?.total ?? 0),
@@ -226,7 +248,7 @@ export async function createOrder(userId, dto) {
     );
   }
 
-  const riderEarning = await getRiderEarning(distanceKm);
+  const riderEarning = orderType === "takeaway" ? 0 : await getRiderEarning(distanceKm);
   
   // Calculate restaurant commission from subtotal
   const { commissionAmount: restaurantCommission } = await foodTransactionService.getRestaurantCommissionSnapshot({
@@ -251,7 +273,8 @@ export async function createOrder(userId, dto) {
       ? new mongoose.Types.ObjectId(dto.zoneId)
       : restaurant.zoneId,
     items: dto.items,
-    deliveryAddress,
+    deliveryAddress: orderType === "takeaway" ? undefined : deliveryAddress,
+    orderType,
     customerName: dto.customerName || deliveryAddress.fullName || "",
     customerPhone: dto.customerPhone || deliveryAddress.phone || "",
     pricing: normalizedPricing,
@@ -378,6 +401,7 @@ export async function createOrder(userId, dto) {
   ];
   if (
     dispatchMode === "auto" &&
+    orderType !== "takeaway" &&
     (isCash ||
       order.payment.status === "paid" ||
       order.payment.status === "cod_pending") &&

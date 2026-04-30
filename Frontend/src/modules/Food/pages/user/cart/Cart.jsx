@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, useMemo, Fragment } from "react"
 import { createPortal } from "react-dom"
 import { Link, useNavigate } from "react-router-dom"
-import { Plus, Minus, ArrowLeft, ChevronRight, Clock, MapPin, Phone, FileText, Utensils, Tag, Percent, Share2, ChevronUp, ChevronDown, X, Check, Settings, CreditCard, Wallet, Building2, Sparkles, Banknote, Zap, CheckCircle2, MessageCircle, Send, Mail, Copy } from "lucide-react"
+import { Plus, Minus, ArrowLeft, ChevronRight, Clock, MapPin, Phone, FileText, Utensils, Tag, Percent, Share2, ChevronUp, ChevronDown, X, Check, Settings, CreditCard, Wallet, Building2, Sparkles, Banknote, Zap, CheckCircle2, MessageCircle, Send, Mail, Copy, ShoppingBag } from "lucide-react"
 import { motion, AnimatePresence } from "framer-motion"
 import confetti from "canvas-confetti"
 
@@ -114,7 +114,7 @@ export default function Cart() {
   }
 
   const { cart, updateQuantity, addToCart, getCartCount, clearCart, cleanCartForRestaurant } = cartContext;
-  const { getDefaultAddress, getDefaultPaymentMethod, setDefaultAddress, addresses, paymentMethods, userProfile } = useProfile()
+  const { getDefaultAddress, getDefaultPaymentMethod, setDefaultAddress, addresses, paymentMethods, userProfile, orderType, setOrderType } = useProfile()
   const { createOrder } = useOrders()
   const { openLocationSelector } = useLocationSelector()
   const { location: currentLocation, loading: currentLocationLoading } = useUserLocation() // Get live location address
@@ -182,6 +182,7 @@ export default function Cart() {
       return "saved"
     }
   })
+  const [isTakeawayCodEnabled, setIsTakeawayCodEnabled] = useState(true)
 
   useEffect(() => {
     const audio = new Audio(zoopSound)
@@ -196,6 +197,23 @@ export default function Cart() {
       }
     }
   }, [])
+
+  useEffect(() => {
+    if (orderType === "takeaway") {
+      adminAPI.getTakeawayCodStatus()
+        .then(res => {
+          setIsTakeawayCodEnabled(res?.data?.enabled !== false)
+        })
+        .catch(() => setIsTakeawayCodEnabled(true))
+    }
+  }, [orderType])
+
+  // If takeaway and COD is not enabled, and current selection is cash, switch to razorpay
+  useEffect(() => {
+    if (orderType === "takeaway" && !isTakeawayCodEnabled && selectedPaymentMethod === "cash") {
+      setSelectedPaymentMethod("razorpay")
+    }
+  }, [orderType, isTakeawayCodEnabled, selectedPaymentMethod])
 
   useEffect(() => {
     if (!showOrderSuccess || !orderSuccessAudioRef.current) return
@@ -877,7 +895,12 @@ export default function Cart() {
   // Calculate pricing from backend whenever cart, address, or coupon changes
   useEffect(() => {
     const calculatePricing = async () => {
-      if (cart.length === 0 || !hasSavedAddress) {
+      const resolvedRestaurantId = restaurantData?.restaurantId || restaurantData?._id || cart[0]?.restaurantId || undefined
+      
+      // For takeaway, we don't need a delivery address to calculate pricing, but we MUST have a restaurantId
+      const canCalculate = cart.length > 0 && resolvedRestaurantId && (orderType === "takeaway" || hasSavedAddress)
+      
+      if (!canCalculate) {
         setPricing(null)
         return
       }
@@ -897,15 +920,20 @@ export default function Cart() {
           isVeg: item.isVeg !== false
         }))
 
-        const resolvedRestaurantId = restaurantData?.restaurantId || restaurantData?._id || restaurantId || undefined
+        const resolvedRestaurantId = restaurantData?.restaurantId || restaurantData?._id || cart[0]?.restaurantId || undefined
         const resolvedCouponCode = appliedCoupon?.code || couponCode || undefined
 
-        const response = await orderAPI.calculateOrder({
+        const requestBody = {
           items,
           restaurantId: resolvedRestaurantId,
-          deliveryAddress: defaultAddress,
-          couponCode: resolvedCouponCode
-        })
+          deliveryAddress: orderType === "takeaway" ? undefined : (defaultAddress || undefined),
+          couponCode: resolvedCouponCode,
+          orderType: orderType
+        }
+        
+        debugLog("Recalculating pricing with body:", requestBody)
+
+        const response = await orderAPI.calculateOrder(requestBody)
 
         if (response?.data?.success && response?.data?.data?.pricing) {
           setPricing(response.data.data.pricing)
@@ -931,7 +959,7 @@ export default function Cart() {
     }
 
     calculatePricing()
-  }, [cart, defaultAddress, appliedCoupon, couponCode, restaurantId])
+  }, [cart, defaultAddress, appliedCoupon, couponCode, restaurantId, orderType])
 
   // Fetch wallet balance
   useEffect(() => {
@@ -2091,11 +2119,20 @@ export default function Cart() {
                 <ArrowLeft className="h-4 w-4 md:h-5 md:w-5" />
               </Button>
               <div className="min-w-0">
-                <p className="text-xs md:text-sm text-gray-500 dark:text-gray-400">{restaurantName}</p>
-                <p className="text-sm md:text-base font-medium text-gray-800 dark:text-white truncate">
-                  {restaurantData?.estimatedDeliveryTime || "10-15 mins"} to <span className="font-semibold">Location</span>
-                  <span className="text-gray-400 dark:text-gray-500 ml-1 text-xs md:text-sm">{defaultAddress ? (formatFullAddress(defaultAddress) || defaultAddress?.formattedAddress || defaultAddress?.address || defaultAddress?.city || "Select address") : "Select address"}</span>
-                </p>
+                <p className="text-[11px] md:text-xs text-gray-500 dark:text-gray-400 leading-none">{restaurantName}</p>
+                {orderType === "takeaway" ? (
+                  <div className="flex flex-col mt-0.5">
+                    <div className="flex items-center gap-1.5">
+                      <div className="w-1.5 h-1.5 rounded-full bg-green-500 shadow-[0_0_8px_rgba(34,197,94,0.6)]" />
+                      <span className="text-[10px] md:text-xs font-bold text-gray-700 dark:text-gray-300 uppercase tracking-wider">Takeaway Mode</span>
+                    </div>
+                  </div>
+                ) : (
+                  <p className="text-sm md:text-base font-medium text-gray-800 dark:text-white truncate">
+                    {restaurantData?.estimatedDeliveryTime || "10-15 mins"} to <span className="font-semibold">Location</span>
+                    <span className="text-gray-400 dark:text-gray-500 ml-1 text-xs md:text-sm">{defaultAddress ? (formatFullAddress(defaultAddress) || defaultAddress?.formattedAddress || defaultAddress?.address || defaultAddress?.city || "Select address") : "Select address"}</span>
+                  </p>
+                )}
               </div>
             </div>
             <Button
@@ -2334,108 +2371,54 @@ export default function Cart() {
                 </div>
               )}
 
-              {/* Coupon Section */}
-              <div className="bg-white dark:bg-[#1a1a1a] rounded-2xl overflow-hidden border border-slate-100 dark:border-gray-800 shadow-sm flex flex-col">
-                {deliveryFee === 0 && (
-                  <div className="px-4 py-3 md:px-6 md:py-4 border-b border-dashed border-gray-200 dark:border-gray-800 flex items-center gap-3 bg-[#f4fcf7] dark:bg-green-900/10">
-                    <CheckCircle2 className="h-5 w-5 text-green-600 fill-green-600/20" />
-                    <span className="text-sm font-semibold text-gray-800 dark:text-gray-200">You saved {RUPEE_SYMBOL}{feeSettings.deliveryFee || 25} on delivery</span>
+              {/* Simplified Coupon Section */}
+              <div className="bg-white dark:bg-[#1a1a1a] rounded-2xl overflow-hidden border border-slate-100 dark:border-gray-800 shadow-sm">
+                <button 
+                  onClick={() => setShowCoupons(!showCoupons)}
+                  className="w-full px-4 py-4 md:px-6 flex items-center justify-between group active:scale-[0.99] transition-all"
+                >
+                  <div className="flex items-center gap-3">
+                    <Tag className="h-5 w-5 text-gray-400" />
+                    <span className="text-sm md:text-base font-bold text-gray-800 dark:text-gray-200">Offers & Coupons</span>
                   </div>
-                )}
+                  <div className="flex items-center gap-1 text-[#DC2626] font-black text-xs md:text-sm tracking-wider">
+                    {showCoupons ? "CLOSE" : "VIEW ALL"} <ChevronRight className={`h-4 w-4 transition-transform ${showCoupons ? 'rotate-90' : ''}`} />
+                  </div>
+                </button>
 
-                {/* Applied Coupon View */}
-                {appliedCoupon ? (
-                  <div className="px-4 py-3 md:px-6 md:py-4 flex items-center justify-between">
-                    <div className="flex items-start gap-3">
-                       <Percent className="h-5 w-5 text-[#DC2626] mt-0.5" />
-                      <div>
-                        <p className="text-sm font-semibold text-gray-800 dark:text-gray-200">'{appliedCoupon.code}' applied</p>
-                         <p className="text-xs text-[#DC2626] font-medium mt-0.5">You saved {RUPEE_SYMBOL}{discount}</p>
+                {/* Expandable Coupon Input Area */}
+                {showCoupons && !appliedCoupon && (
+                  <div className="px-4 pb-5 md:px-6 md:pb-6 space-y-4 animate-in fade-in slide-in-from-top-2 duration-300">
+                    <div className="flex items-center gap-3">
+                      <div className="flex-1 bg-gray-50 dark:bg-gray-900 rounded-xl px-4 py-3 border border-transparent focus-within:border-[#DC2626] transition-all">
+                        <input
+                          type="text"
+                          value={manualCouponCode}
+                          onChange={(e) => setManualCouponCode(e.target.value.toUpperCase())}
+                          placeholder="Coupon code"
+                          className="w-full bg-transparent text-sm md:text-base font-semibold text-gray-800 dark:text-gray-100 outline-none placeholder:text-gray-400"
+                        />
                       </div>
+                      <button
+                        onClick={handleApplyCouponCode}
+                        className="h-12 px-6 border border-[#DC2626] text-[#DC2626] rounded-xl text-xs md:text-sm font-black uppercase tracking-widest hover:bg-[#DC262605] active:scale-95 transition-all"
+                      >
+                        APPLY
+                      </button>
                     </div>
-                     <button onClick={handleRemoveCoupon} className="text-[#DC2626] text-xs font-semibold px-2 hover:underline">REMOVE</button>
-                  </div>
-                ) : (
-                  /* Available / Input View */
-                  <div className="px-4 py-3 md:px-6 md:py-4 flex flex-col gap-3">
-                    {loadingCoupons ? (
-                      <p className="text-sm text-gray-500">Loading offers...</p>
-                    ) : availableCoupons.length > 0 ? (
-                      <div className="flex items-start justify-between w-full">
-                        <div className="flex items-start gap-3 flex-1">
-                          <Percent className="h-5 w-5 text-gray-700 dark:text-gray-300 mt-0.5" />
-                          <div className="flex-1">
-                            <p className="text-sm font-semibold text-gray-800 dark:text-gray-200 leading-tight mb-0.5">
-                              {availableCoupons[0].discountDisplay || `Save ${RUPEE_SYMBOL}${availableCoupons[0].discount}`} with '{availableCoupons[0].code}'
-                            </p>
-                            {availableCoupons[0].customerGroup === "new" ? (
-                               <p className="text-[11px] text-[#DC2626] mb-1">First-time users only</p>
-                            ) : subtotal < availableCoupons[0].minOrder ? (
-                              <p className="text-xs text-blue-600 font-medium mb-1">Add items worth {RUPEE_SYMBOL}{(availableCoupons[0].minOrder - subtotal).toFixed(0)} more to unlock</p>
-                            ) : null}
 
-                            {availableCoupons.length > 1 && (
-                               <button onClick={() => setShowCoupons(!showCoupons)} className="text-[11px] text-[#DC2626] hover:underline flex items-center mt-1">
-                                 View all coupons <ChevronRight className="h-3 w-3 ml-0.5" />
-                               </button>
-                            )}
-                          </div>
-                        </div>
-                        <button
-                           className="border border-[#DC2626] text-[#DC2626] dark:hover:bg-[#DC262610] rounded px-3 py-1.5 text-xs font-semibold uppercase tracking-wider disabled:opacity-50 disabled:cursor-not-allowed ml-2 shadow-sm"
-                          onClick={() => handleApplyCoupon(availableCoupons[0])}
-                          disabled={subtotal < availableCoupons[0].minOrder || (availableCoupons[0].customerGroup === "new" && userOrderCount > 0)}
-                        >
-                          APPLY
-                        </button>
-                      </div>
-                    ) : (
-                      <div className="flex items-center gap-3">
-                        <Percent className="h-5 w-5 text-gray-400" />
-                        <p className="text-sm text-gray-500">No offers available</p>
-                      </div>
-                    )}
-
-                    {/* Show All Coupons List */}
-                    {showCoupons && !appliedCoupon && availableCoupons.length > 0 && (
-                      <div className="mt-3 pt-3 border-t border-dashed border-gray-200 dark:border-gray-800 space-y-4">
-                        {/* Input for manual code */}
-                        <div className="flex flex-col sm:flex-row gap-2 mb-4">
-                          <input
-                            type="text"
-                            value={manualCouponCode}
-                            onChange={(e) => setManualCouponCode(e.target.value.toUpperCase())}
-                            placeholder="Enter coupon code"
-                             className="flex-1 h-9 rounded border border-gray-300 dark:border-gray-700 bg-white dark:bg-[#0a0a0a] px-3 text-sm text-gray-800 dark:text-gray-200 focus:outline-none focus:border-[#DC2626]"
-                          />
-                          <button
-                             className="bg-white dark:bg-[#1a1a1a] border border-[#DC2626] text-[#DC2626] rounded px-4 h-9 text-xs font-semibold uppercase hover:bg-[#DC262605] dark:hover:bg-[#DC262610]"
-                            onClick={handleApplyCouponCode}
-                          >
-                            APPLY
-                          </button>
-                        </div>
-                        {availableCoupons.slice(1).map((coupon) => (
-                          <div key={coupon.code} className="flex items-start justify-between">
-                            <div className="flex items-start gap-3 flex-1">
-                              <Percent className="h-5 w-5 text-gray-700 dark:text-gray-300 mt-0.5 opacity-50" />
-                              <div className="flex-1">
-                                <p className="text-sm font-semibold text-gray-800 dark:text-gray-200 leading-tight mb-0.5">
-                                  {coupon.discountDisplay || `Save ${RUPEE_SYMBOL}${coupon.discount}`} with '{coupon.code}'
-                                </p>
-                                {coupon.customerGroup === "new" ? (
-                                   <p className="text-[11px] text-[#DC2626] mb-1">First-time users only</p>
-                                ) : subtotal < coupon.minOrder ? (
-                                  <p className="text-xs text-blue-600 font-medium mb-1 line-clamp-1">Add items worth {RUPEE_SYMBOL}{(coupon.minOrder - subtotal).toFixed(0)} more to unlock</p>
-                                ) : (
-                                  <p className="text-xs text-gray-500 mb-1 line-clamp-1">{coupon.description}</p>
-                                )}
-                              </div>
+                    {/* Quick Suggestions if any */}
+                    {availableCoupons.length > 0 && (
+                      <div className="space-y-3 pt-2 border-t border-dashed border-gray-100 dark:border-gray-800">
+                        {availableCoupons.slice(0, 2).map((coupon) => (
+                          <div key={coupon.code} className="flex items-center justify-between group">
+                            <div>
+                              <p className="text-xs font-black text-gray-700 dark:text-gray-300 tracking-tight">USE {coupon.code}</p>
+                              <p className="text-[11px] text-gray-500 font-medium">{coupon.description || `Save ${RUPEE_SYMBOL}${coupon.discount}`}</p>
                             </div>
                             <button
-                              className="border border-gray-300 text-gray-600 dark:border-gray-600 dark:text-gray-400 rounded px-3 py-1.5 text-xs font-semibold uppercase tracking-wider disabled:opacity-50 disabled:cursor-not-allowed ml-2"
                               onClick={() => handleApplyCoupon(coupon)}
-                              disabled={subtotal < coupon.minOrder || (coupon.customerGroup === "new" && userOrderCount > 0)}
+                              className="text-[10px] font-black text-[#DC2626] uppercase tracking-widest px-2 py-1 hover:bg-[#DC262605] rounded"
                             >
                               APPLY
                             </button>
@@ -2445,194 +2428,234 @@ export default function Cart() {
                     )}
                   </div>
                 )}
-              </div>
 
-              {/* Delivery Time */}
-              <div className="bg-white dark:bg-[#1a1a1a] px-4 md:px-6 py-5 rounded-2xl shadow-sm border border-slate-100 dark:border-gray-800">
-                <div className="flex items-start gap-3 md:gap-4">
-                  <div className="mt-0.5">
-                    <Zap className="h-5 w-5 text-green-600 fill-green-600/20" />
-                  </div>
-                  <div className="flex-1">
-                    <p className="text-base text-gray-800 dark:text-gray-200">
-                      Delivery in <span className="text-green-600 font-bold">{restaurantData?.estimatedDeliveryTime || "15-20 mins"}</span>
-                    </p>
-                    <p className="text-sm text-gray-600 dark:text-gray-400 mt-1 flex items-center gap-1">
-                      Want this later?
-                      <button onClick={() => {
-                        const next = !isScheduled
-                        setIsScheduled(next)
-                        if (next && !scheduledDate) {
-                          // Auto-set today's date so time slots populate immediately
-                          const now = new Date()
-                          const todayStr = new Date(now.getTime() - (now.getTimezoneOffset() * 60000)).toISOString().split('T')[0]
-                          setScheduledDate(todayStr)
-                        }
-                      }} className="border-b border-dashed border-gray-500 font-medium outline-none">
-                        {isScheduled ? "Cancel schedule" : "Schedule it"}
-                      </button>
-                    </p>
-                  </div>
-                </div>
-
-                {isScheduled && (
-                  <div className="mt-5 flex flex-col sm:flex-row gap-3 pt-3 border-t border-gray-100 dark:border-gray-800">
-                    <div className="flex-1">
-                      <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1">Date (Up to Tomorrow)</label>
-                      <input
-                        type="date"
-                        min={new Date().toLocaleDateString('en-CA')}
-                        max={new Date(Date.now() + 86400000).toLocaleDateString('en-CA')}
-                        value={scheduledDate}
-                        onChange={(e) => setScheduledDate(e.target.value)}
-                        className="w-full text-sm p-2 border border-gray-300 dark:border-gray-700 rounded-md bg-white dark:bg-[#0a0a0a] text-gray-800 dark:text-gray-200 focus:outline-none focus:border-[#DC2626]"
-                      />
+                {appliedCoupon && (
+                  <div className="px-4 py-3 md:px-6 bg-green-50/50 dark:bg-green-900/5 border-t border-dashed border-gray-100 dark:border-gray-800 flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <div className="w-6 h-6 rounded-full bg-green-100 dark:bg-green-900/30 flex items-center justify-center">
+                        <Check className="h-3.5 w-3.5 text-green-600" />
+                      </div>
+                      <div>
+                        <p className="text-[11px] font-bold text-gray-500 uppercase tracking-tight">Applied: <span className="text-green-600">{appliedCoupon.code}</span></p>
+                        <p className="text-xs font-black text-green-600">You saved {RUPEE_SYMBOL}{discount}</p>
+                      </div>
                     </div>
-                    <div className="flex-1">
-                      <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1">Time</label>
-                      {availableTimeSlots.length > 0 ? (
-                        <div className="relative">
-                          <select
-                            value={scheduledTime}
-                            onChange={(e) => setScheduledTime(e.target.value)}
-                             className="w-full text-sm p-2 border border-gray-300 dark:border-gray-700 rounded-md bg-white dark:bg-[#0a0a0a] text-gray-800 dark:text-gray-200 focus:outline-none focus:border-[#DC2626] appearance-none pr-8"
-                          >
-                            {availableTimeSlots.map(slot => (
-                              <option key={slot.value} value={slot.value}>{slot.label}</option>
-                            ))}
-                          </select>
-                          <ChevronDown className="absolute right-2 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-500 pointer-events-none" />
-                        </div>
-                      ) : (
-                        <div className="w-full text-sm p-2 bg-gray-100 dark:bg-gray-800 text-gray-500 dark:text-gray-400 rounded-md text-center border border-gray-200 dark:border-gray-700">
-                          {scheduledDate ? "No slots available" : "Select date first"}
-                        </div>
-                      )}
-                    </div>
+                    <button onClick={handleRemoveCoupon} className="text-gray-400 hover:text-red-500 text-[10px] font-bold uppercase tracking-widest px-2 py-1">REMOVE</button>
                   </div>
                 )}
               </div>
 
-              {/* Delivery Address */}
-              <div className="bg-white dark:bg-[#1a1a1a] px-4 md:px-6 py-5 rounded-2xl shadow-sm border border-slate-100 dark:border-gray-800">
-                <div className="flex items-start justify-between w-full text-left">
-                  <div className="flex items-start gap-4 flex-1">
-                     <div className="bg-[#DC262605] dark:bg-[#DC262610] p-2 rounded-xl mt-0.5">
-                       <MapPin className="h-5 w-5 text-[#DC2626]" />
-                     </div>
+              {/* Delivery Time - Hidden in Takeaway */}
+              {orderType !== "takeaway" && (
+                <div className="bg-white dark:bg-[#1a1a1a] px-4 md:px-6 py-5 rounded-2xl shadow-sm border border-slate-100 dark:border-gray-800">
+                  <div className="flex items-start gap-3 md:gap-4">
+                    <div className="mt-0.5">
+                      <Zap className="h-5 w-5 text-green-600 fill-green-600/20" />
+                    </div>
                     <div className="flex-1">
-                        <div className="flex flex-col">
-                          <p className="text-sm md:text-base text-gray-800 dark:text-gray-200">
-                            Delivery at{" "}
-                            <span className="font-semibold">
-                              {deliveryAddressMode === "current" ? "Current location" : "Location"}
-                            </span>
-                          </p>
-                          {deliveryAddressMode === "current" ? (
-                            <div className="mt-1">
-                              {currentLocationLoading || !currentLocationAddress ? (
-                                <p className="text-xs md:text-sm text-gray-500 dark:text-gray-400 animate-pulse">
-                                  Finding your current address...
-                                </p>
-                              ) : (
-                                <p className="text-xs md:text-sm text-gray-500 dark:text-gray-400 line-clamp-2">
-                                  {formatFullAddress(currentLocationAddress) ||
-                                    currentLocationAddress?.formattedAddress ||
-                                    currentLocationAddress?.address ||
-                                    "Add delivery address"}
-                                </p>
-                              )}
-                              <div className="mt-1 flex items-center gap-2">
-                                 <span className="inline-flex items-center rounded-full px-2 py-0.5 text-[10px] md:text-[11px] font-semibold bg-[#DC262605] text-[#DC2626] dark:bg-[#DC262610] dark:text-[#DC2626] border border-[#DC2626]/30">
-                                   GPS enabled
-                                 </span>
-                              </div>
-                            </div>
-                          ) : (
-                            <p className="text-sm text-gray-500 dark:text-gray-400 mt-1 line-clamp-2 pr-4">
-                              {defaultAddress ? (formatFullAddress(defaultAddress) || defaultAddress?.formattedAddress || defaultAddress?.address || "Add delivery address") : "Add delivery address"}
-                            </p>
-                          )}
-                        </div>
-                        {!hasSavedAddress && (
-                           <p className="text-sm text-[#DC2626] mt-2 font-medium">
-                             Select a delivery location to continue
-                           </p>
+                      <p className="text-base text-gray-800 dark:text-gray-200">
+                        Delivery in <span className="text-green-600 font-bold">{restaurantData?.estimatedDeliveryTime || "15-20 mins"}</span>
+                      </p>
+                      <p className="text-sm text-gray-600 dark:text-gray-400 mt-1 flex items-center gap-1">
+                        Want this later?
+                        <button onClick={() => {
+                          const next = !isScheduled
+                          setIsScheduled(next)
+                          if (next && !scheduledDate) {
+                            // Auto-set today's date so time slots populate immediately
+                            const now = new Date()
+                            const todayStr = new Date(now.getTime() - (now.getTimezoneOffset() * 60000)).toISOString().split('T')[0]
+                            setScheduledDate(todayStr)
+                          }
+                        }} className="border-b border-dashed border-gray-500 font-medium outline-none">
+                          {isScheduled ? "Cancel schedule" : "Schedule it"}
+                        </button>
+                      </p>
+                    </div>
+                  </div>
+
+                  {isScheduled && (
+                    <div className="mt-5 flex flex-col sm:flex-row gap-3 pt-3 border-t border-gray-100 dark:border-gray-800">
+                      <div className="flex-1">
+                        <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1">Date (Up to Tomorrow)</label>
+                        <input
+                          type="date"
+                          min={new Date().toLocaleDateString('en-CA')}
+                          max={new Date(Date.now() + 86400000).toLocaleDateString('en-CA')}
+                          value={scheduledDate}
+                          onChange={(e) => setScheduledDate(e.target.value)}
+                          className="w-full text-sm p-2 border border-gray-300 dark:border-gray-700 rounded-md bg-white dark:bg-[#0a0a0a] text-gray-800 dark:text-gray-200 focus:outline-none focus:border-[#DC2626]"
+                        />
+                      </div>
+                      <div className="flex-1">
+                        <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1">Time</label>
+                        {availableTimeSlots.length > 0 ? (
+                          <div className="relative">
+                            <select
+                              value={scheduledTime}
+                              onChange={(e) => setScheduledTime(e.target.value)}
+                               className="w-full text-sm p-2 border border-gray-300 dark:border-gray-700 rounded-md bg-white dark:bg-[#0a0a0a] text-gray-800 dark:text-gray-200 focus:outline-none focus:border-[#DC2626] appearance-none pr-8"
+                            >
+                              {availableTimeSlots.map(slot => (
+                                <option key={slot.value} value={slot.value}>{slot.label}</option>
+                              ))}
+                            </select>
+                            <ChevronDown className="absolute right-2 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-500 pointer-events-none" />
+                          </div>
+                        ) : (
+                          <div className="w-full text-sm p-2 bg-gray-100 dark:bg-gray-800 text-gray-500 dark:text-gray-400 rounded-md text-center border border-gray-200 dark:border-gray-700">
+                            {scheduledDate ? "No slots available" : "Select date first"}
+                          </div>
                         )}
-                        {/* Address Selection Buttons */}
-                        <div className="flex flex-wrap gap-2 mt-3">
-                          {["Home", "Work", "Other"].map((label) => {
-                            const normalizedLabel = normalizeAddressLabel(label)
-                            const addressExists = addresses.some(addr => normalizeAddressLabel(addr.label) === normalizedLabel)
-                            return (
-                              <button
-                                key={label}
-                                onClick={(e) => {
-                                  e.preventDefault()
-                                  e.stopPropagation()
-                                  handleSelectAddressByLabel(label)
-                                }}
-                                disabled={!addressExists}
-                                className={`text-xs px-4 py-1.5 rounded-full font-semibold transition-all ${addressExists
-                                  ? 'bg-slate-100 text-slate-700 hover:bg-slate-200 dark:bg-gray-800 dark:text-gray-300'
-                                  : 'bg-gray-50 text-gray-400 border border-gray-100 cursor-not-allowed dark:bg-gray-900'
-                                  }`}
-                              >
-                                {label}
-                              </button>
-                            )
-                          })}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* Delivery Address or Pickup Info */}
+              <div className="bg-white dark:bg-[#1a1a1a] px-4 md:px-6 py-5 rounded-2xl shadow-sm border border-slate-100 dark:border-gray-800">
+                {orderType === "takeaway" ? (
+                  <div className="flex items-start gap-4">
+                    <div className="bg-[#DC262605] dark:bg-[#DC262610] p-3.5 rounded-2xl border border-[#DC262615] dark:border-[#DC262630]">
+                      <ShoppingBag className="h-6 w-6 text-[#DC2626]" />
+                    </div>
+                    <div className="flex-1">
+                      <h3 className="text-xs font-black text-gray-400 uppercase tracking-widest leading-none">PICKUP FROM</h3>
+                      <p className="text-lg font-black text-gray-900 dark:text-white mt-1.5 leading-tight">
+                        {restaurantData?.name || cart[0]?.restaurant || "Restaurant"}
+                      </p>
+                      <p className="text-xs md:text-sm text-gray-500 dark:text-gray-400 mt-1 line-clamp-2 font-medium">
+                        {restaurantData?.address || restaurantData?.location?.address || "Restaurant Address"}
+                      </p>
+                      <div className="mt-4 flex items-center gap-2">
+                        <div className="flex items-center gap-2 text-green-600 dark:text-green-400 text-[11px] font-black bg-green-50 dark:bg-green-900/10 px-3 py-1.5 rounded-lg border border-green-100 dark:border-green-900/20">
+                          <CheckCircle2 className="h-4 w-4" />
+                          <span className="uppercase tracking-tight">READY FOR PICKUP IN {restaurantData?.preparationTime || "25-30"} MINS</span>
                         </div>
-                        {addresses.length > 0 && (
-                          <div className="mt-4 space-y-3">
-                            {addresses.map((address) => {
-                              const addressId = getAddressId(address)
-                              const isSelected = addressId && addressId === selectedAddressId
+                      </div>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="flex items-start justify-between w-full text-left">
+                    <div className="flex items-start gap-4 flex-1">
+                       <div className="bg-[#DC262605] dark:bg-[#DC262610] p-2 rounded-xl mt-0.5">
+                         <MapPin className="h-5 w-5 text-[#DC2626]" />
+                       </div>
+                      <div className="flex-1">
+                          <div className="flex flex-col">
+                            <p className="text-sm md:text-base text-gray-800 dark:text-gray-200">
+                              Delivery at{" "}
+                              <span className="font-semibold">
+                                {deliveryAddressMode === "current" ? "Current location" : "Location"}
+                              </span>
+                            </p>
+                            {deliveryAddressMode === "current" ? (
+                              <div className="mt-1">
+                                {currentLocationLoading || !currentLocationAddress ? (
+                                  <p className="text-xs md:text-sm text-gray-500 dark:text-gray-400 animate-pulse">
+                                    Finding your current address...
+                                  </p>
+                                ) : (
+                                  <p className="text-xs md:text-sm text-gray-500 dark:text-gray-400 line-clamp-2">
+                                    {formatFullAddress(currentLocationAddress) ||
+                                      currentLocationAddress?.formattedAddress ||
+                                      currentLocationAddress?.address ||
+                                      "Add delivery address"}
+                                  </p>
+                                )}
+                                <div className="mt-1 flex items-center gap-2">
+                                   <span className="inline-flex items-center rounded-full px-2 py-0.5 text-[10px] md:text-[11px] font-semibold bg-[#DC262605] text-[#DC2626] dark:bg-[#DC262610] dark:text-[#DC2626] border border-[#DC2626]/30">
+                                     GPS enabled
+                                   </span>
+                                </div>
+                              </div>
+                            ) : (
+                              <p className="text-sm text-gray-500 dark:text-gray-400 mt-1 line-clamp-2 pr-4">
+                                {defaultAddress ? (formatFullAddress(defaultAddress) || defaultAddress?.formattedAddress || defaultAddress?.address || "Add delivery address") : "Add delivery address"}
+                              </p>
+                            )}
+                          </div>
+                          {!hasSavedAddress && (
+                             <p className="text-sm text-[#DC2626] mt-2 font-medium">
+                               Select a delivery location to continue
+                             </p>
+                          )}
+                          {/* Address Selection Buttons */}
+                          <div className="flex flex-wrap gap-2 mt-3">
+                            {["Home", "Work", "Other"].map((label) => {
+                              const normalizedLabel = normalizeAddressLabel(label)
+                              const addressExists = addresses.some(addr => normalizeAddressLabel(addr.label) === normalizedLabel)
                               return (
                                 <button
-                                  key={addressId || `${address.label}-${address.street}-${address.city}`}
-                                  type="button"
+                                  key={label}
                                   onClick={(e) => {
                                     e.preventDefault()
                                     e.stopPropagation()
-                                    handleSelectSavedAddress(address)
+                                    handleSelectAddressByLabel(label)
                                   }}
-                                   className={`w-full text-left rounded-xl border-2 p-3 transition-colors ${isSelected
-                                     ? "border-[#DC2626] bg-[#DC262605] dark:bg-[#DC2626]/5"
-                                     : "border-slate-100 dark:border-gray-800 hover:border-slate-200"
-                                     }`}
+                                  disabled={!addressExists}
+                                  className={`text-xs px-4 py-1.5 rounded-full font-semibold transition-all ${addressExists
+                                    ? 'bg-slate-100 text-slate-700 hover:bg-slate-200 dark:bg-gray-800 dark:text-gray-300'
+                                    : 'bg-gray-50 text-gray-400 border border-gray-100 cursor-not-allowed dark:bg-gray-900'
+                                    }`}
                                 >
-                                  <div className="flex items-start justify-between gap-3">
-                                    <div className="min-w-0">
-                                      <p className="text-sm font-bold text-gray-900 dark:text-gray-100">
-                                        {getDisplayAddressLabel(address.label)}
-                                      </p>
-                                      <p className="text-xs text-gray-500 dark:text-gray-400 line-clamp-2 mt-1">
-                                        {formatFullAddress(address) || address.address || "Address details"}
-                                      </p>
-                                    </div>
-                                    {isSelected && (
-                                       <span className="text-[10px] bg-[#DC2626] text-white px-2 py-0.5 rounded uppercase font-bold tracking-wider whitespace-nowrap">
-                                         Selected
-                                       </span>
-                                    )}
-                                  </div>
+                                  {label}
                                 </button>
                               )
                             })}
                           </div>
-                        )}
+                          {addresses.length > 0 && (
+                            <div className="mt-4 space-y-3">
+                              {addresses.map((address) => {
+                                const addressId = getAddressId(address)
+                                const isSelected = addressId && addressId === selectedAddressId
+                                return (
+                                  <button
+                                    key={addressId || `${address.label}-${address.street}-${address.city}`}
+                                    type="button"
+                                    onClick={(e) => {
+                                      e.preventDefault()
+                                      e.stopPropagation()
+                                      handleSelectSavedAddress(address)
+                                    }}
+                                     className={`w-full text-left rounded-xl border-2 p-3 transition-colors ${isSelected
+                                       ? "border-[#DC2626] bg-[#DC262605] dark:bg-[#DC2626]/5"
+                                       : "border-slate-100 dark:border-gray-800 hover:border-slate-200"
+                                       }`}
+                                  >
+                                    <div className="flex items-start justify-between gap-3">
+                                      <div className="min-w-0">
+                                        <p className="text-sm font-bold text-gray-900 dark:text-gray-100">
+                                          {getDisplayAddressLabel(address.label)}
+                                        </p>
+                                        <p className="text-xs text-gray-500 dark:text-gray-400 line-clamp-2 mt-1">
+                                          {formatFullAddress(address) || address.address || "Address details"}
+                                        </p>
+                                      </div>
+                                      {isSelected && (
+                                         <span className="text-[10px] bg-[#DC2626] text-white px-2 py-0.5 rounded uppercase font-bold tracking-wider whitespace-nowrap">
+                                           Selected
+                                         </span>
+                                      )}
+                                    </div>
+                                  </button>
+                                )
+                              })}
+                            </div>
+                          )}
+                      </div>
                     </div>
+                    <button
+                      type="button"
+                       onClick={openLocationSelector}
+                       className="p-2 text-[#DC2626] bg-[#DC262605] rounded-full hover:bg-[#DC262610] transition-colors dark:bg-[#DC262615] dark:hover:bg-[#DC262620]"
+                       aria-label="Open location selector"
+                     >
+                       <ChevronRight className="h-5 w-5" />
+                     </button>
                   </div>
-                  <button
-                    type="button"
-                     onClick={openLocationSelector}
-                     className="p-2 text-[#DC2626] bg-[#DC262605] rounded-full hover:bg-[#DC262610] transition-colors dark:bg-[#DC262615] dark:hover:bg-[#DC262620]"
-                     aria-label="Open location selector"
-                   >
-                     <ChevronRight className="h-5 w-5" />
-                   </button>
-                </div>
+                )}
               </div>
 
               {/* Contact */}
@@ -2706,24 +2729,18 @@ export default function Cart() {
                   onClick={() => setShowBillDetails(!showBillDetails)}
                   className="flex items-center justify-between w-full"
                 >
-                  <div className="flex items-center gap-3 md:gap-4">
-                    <FileText className="h-5 w-5 text-gray-500 dark:text-gray-400" />
-                    <div className="text-left">
-                      <div className="flex items-center gap-2 flex-wrap mb-0.5">
-                        <span className="text-base text-gray-800 dark:text-gray-200 font-semibold tracking-wide">To Pay</span>
-                        {platformPricingSavings.hasPlatformPricing && (
-                          <span className="text-base text-gray-400 dark:text-gray-500 line-through font-medium">
-                            {RUPEE_SYMBOL}{platformPricingSavings.totalPlatformPriceWithGst.toFixed(2)}
-                          </span>
-                        )}
-                        <span className="text-base font-bold text-gray-900 dark:text-white">
-                          {RUPEE_SYMBOL}{total.toFixed(2)}
-                        </span>
-                      </div>
-                      <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">Incl. taxes and charges</p>
-                    </div>
+                  <div className="flex items-center gap-3">
+                    <FileText className="h-5 w-5 text-gray-700 dark:text-gray-300" />
+                    <span className="text-base text-gray-900 dark:text-gray-100 font-black tracking-tight">Bill Details</span>
                   </div>
-                  <ChevronRight className={`h-5 w-5 text-gray-400 transition-transform ${showBillDetails ? 'rotate-90' : ''}`} />
+                  <div className="flex items-center gap-3">
+                    <div className="text-right">
+                      <p className="text-sm font-black text-gray-900 dark:text-white">
+                        {RUPEE_SYMBOL}{total.toFixed(2)}
+                      </p>
+                    </div>
+                    <ChevronDown className={`h-5 w-5 text-gray-400 transition-transform ${showBillDetails ? '' : '-rotate-90'}`} />
+                  </div>
                 </button>
 
                 {showBillDetails && (
@@ -2733,40 +2750,46 @@ export default function Cart() {
                       <span className="text-gray-800 dark:text-gray-200 font-medium">{RUPEE_SYMBOL}{subtotal.toFixed(2)}</span>
                     </div>
 
-                    <div className="flex justify-between text-sm">
-                      <span className="text-gray-600 dark:text-gray-400">Delivery Fee</span>
-                       <span className={deliveryFee === 0 ? "text-[#DC2626] font-medium" : "text-gray-800 dark:text-gray-200 font-medium"}>
-                         {deliveryFee === 0 ? "FREE" : `${RUPEE_SYMBOL}${deliveryFee.toFixed(2)}`}
-                       </span>
-                    </div>
-                    {deliveryFeeBreakdownText && (
-                      <div className="text-[11px] text-gray-500 dark:text-gray-400 -mt-1.5 ml-1 border-l-2 border-gray-100 pl-2">
-                        {deliveryFeeBreakdownText}
-                      </div>
-                    )}
-                    {Number((pricing?.freeDeliveryUpTo ?? feeSettings.freeDeliveryUpTo) || 0) > 0 && (
-                      <div className="-mt-1.5">
-                        <div className="inline-flex items-center gap-1.5 rounded-full bg-gradient-to-r from-[#DC2626]/10 via-[#DC2626]/20 to-[#DC2626]/10 text-[#DC2626] border border-[#DC2626]/25 px-2.5 py-1 text-[11px] font-semibold shadow-sm animate-pulse">
-                          <Sparkles className="h-3 w-3" />
-                          <span>Free delivery at</span>
-                          <span className="text-[#991B1B]">
-                            {RUPEE_SYMBOL}{Number((pricing?.freeDeliveryUpTo ?? feeSettings.freeDeliveryUpTo) || 0).toFixed(0)}+
-                          </span>
+                    {orderType !== "takeaway" && (
+                      <>
+                        <div className="flex justify-between text-sm">
+                          <span className="text-gray-600 dark:text-gray-400">Delivery Fee</span>
+                           <span className={deliveryFee === 0 ? "text-[#DC2626] font-medium" : "text-gray-800 dark:text-gray-200 font-medium"}>
+                             {deliveryFee === 0 ? "FREE" : `${RUPEE_SYMBOL}${deliveryFee.toFixed(2)}`}
+                           </span>
                         </div>
+                        {deliveryFeeBreakdownText && (
+                          <div className="text-[11px] text-gray-500 dark:text-gray-400 -mt-1.5 ml-1 border-l-2 border-gray-100 pl-2">
+                            {deliveryFeeBreakdownText}
+                          </div>
+                        )}
+                        {Number((pricing?.freeDeliveryUpTo ?? feeSettings.freeDeliveryUpTo) || 0) > 0 && (
+                          <div className="-mt-1.5">
+                            <div className="inline-flex items-center gap-1.5 rounded-full bg-gradient-to-r from-[#DC2626]/10 via-[#DC2626]/20 to-[#DC2626]/10 text-[#DC2626] border border-[#DC2626]/25 px-2.5 py-1 text-[11px] font-semibold shadow-sm animate-pulse">
+                              <Sparkles className="h-3 w-3" />
+                              <span>Free delivery at</span>
+                              <span className="text-[#991B1B]">
+                                {RUPEE_SYMBOL}{Number((pricing?.freeDeliveryUpTo ?? feeSettings.freeDeliveryUpTo) || 0).toFixed(0)}+
+                              </span>
+                            </div>
+                          </div>
+                        )}
+                      </>
+                    )}
+
+                    {/* Removed TAKEAWAY ORDER badge from here */}
+                    {platformFee > 0 && (
+                      <div className="flex justify-between text-sm">
+                        <span className="text-gray-600 dark:text-gray-400 font-medium">Platform Fee</span>
+                        <span className="text-gray-800 dark:text-gray-200 font-bold">{RUPEE_SYMBOL}{platformFee.toFixed(2)}</span>
                       </div>
                     )}
-                    <div className="flex justify-between text-sm">
-                      <span className="text-gray-600 dark:text-gray-400">Platform Fee</span>
-                      <span className="text-gray-800 dark:text-gray-200 font-medium">{RUPEE_SYMBOL}{platformFee.toFixed(2)}</span>
-                    </div>
-                    <div className="flex justify-between text-sm">
-                      <span className="text-gray-600 dark:text-gray-400">Packaging Charges</span>
-                      <span className="text-gray-800 dark:text-gray-200 font-medium">{RUPEE_SYMBOL}{packagingFee.toFixed(2)}</span>
-                    </div>
-                    <div className="flex justify-between text-sm">
-                      <span className="text-gray-600 dark:text-gray-400">GST</span>
-                      <span className="text-gray-800 dark:text-gray-200 font-medium">{RUPEE_SYMBOL}{gstCharges.toFixed(2)}</span>
-                    </div>
+                    {(packagingFee > 0 || gstCharges > 0) && (
+                      <div className="flex justify-between text-sm">
+                        <span className="text-gray-600 dark:text-gray-400 font-medium">GST and Restaurant Charges</span>
+                        <span className="text-gray-800 dark:text-gray-200 font-bold">{RUPEE_SYMBOL}{(packagingFee + gstCharges).toFixed(2)}</span>
+                      </div>
+                    )}
                     {discount > 0 && (
                        <div className="flex justify-between text-sm text-[#DC2626] font-medium">
                          <span>Coupon Discount</span>
@@ -2870,7 +2893,7 @@ export default function Cart() {
             <button
               onClick={handlePlaceOrder}
               disabled={isPlacingOrder || (selectedPaymentMethod === "wallet" && walletBalance < total)}
-              className="w-full bg-gradient-to-r from-[#DC2626] to-[#991B1B] hover:from-[#991B1B] hover:to-[#7F1D1D] text-white px-6 h-12 md:h-14 rounded-2xl font-bold shadow-lg shadow-[#DC2626]/30 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-between transition-transform active:scale-[0.98]"
+              className="w-full bg-gradient-to-r from-[#DC2626] to-[#991B1B] hover:from-[#991B1B] hover:to-[#7F1D1D] text-white px-6 h-12 md:h-14 rounded-2xl font-black shadow-lg shadow-[#DC2626]/30 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-between transition-all active:scale-[0.98] border-b-4 border-red-900/30"
             >
               {(selectedPaymentMethod === "razorpay" || selectedPaymentMethod === "wallet" || selectedPaymentMethod === "cash") && (
                 <div className="text-left flex flex-col justify-center border-r-[1.5px] border-white/20 pr-4">
@@ -2881,7 +2904,7 @@ export default function Cart() {
               <div className="flex items-center gap-1 mx-auto text-sm md:text-lg tracking-wide">
                 {isPlacingOrder
                   ? "Processing..."
-                  : !hasSavedAddress
+                  : (orderType !== "takeaway" && !hasSavedAddress)
                     ? "Select Address"
                     : "Place Order"}
                 <div className="flex align-center h-full">
@@ -2906,7 +2929,9 @@ export default function Cart() {
               >
                 <div className="px-6 py-8">
                   {/* Title */}
-                  <h2 className="text-2xl font-bold text-gray-900 mb-6">Placing your order</h2>
+                  <h2 className="text-2xl font-bold text-gray-900 mb-6">
+                    {orderType === "takeaway" ? "Placing takeaway order" : "Placing your order"}
+                  </h2>
 
                   {/* Payment Info */}
                   <div className="flex items-center gap-4 mb-5">
@@ -2933,12 +2958,18 @@ export default function Cart() {
                       </svg>
                     </div>
                     <div>
-                      <p className="text-lg font-semibold text-gray-900">Delivering to Location</p>
+                      <p className="text-lg font-semibold text-gray-900">
+                        {orderType === "takeaway" ? "Picking up from Restaurant" : "Delivering to Location"}
+                      </p>
                       <p className="text-sm text-gray-600 mt-1">
-                        {defaultAddress ? (formatFullAddress(defaultAddress) || defaultAddress?.formattedAddress || defaultAddress?.address || "Address") : "Add address"}
+                        {orderType === "takeaway" 
+                          ? (restaurantData?.name || cart[0]?.restaurant || "Restaurant")
+                          : (defaultAddress ? (formatFullAddress(defaultAddress) || defaultAddress?.formattedAddress || defaultAddress?.address || "Address") : "Add address")}
                       </p>
                       <p className="text-sm text-gray-500">
-                        {defaultAddress ? (formatFullAddress(defaultAddress) || "Address") : "Address"}
+                        {orderType === "takeaway"
+                          ? (restaurantData?.address || restaurantData?.location?.address || "Restaurant Address")
+                          : (defaultAddress ? (formatFullAddress(defaultAddress) || "Address") : "Address")}
                       </p>
                     </div>
                   </div>
@@ -3256,7 +3287,9 @@ export default function Cart() {
                           description: 'Pay when order arrives',
                           icon: <Banknote className="w-5 h-5" />,
                           color: 'bg-orange-50 text-#991B1B dark:bg-orange-900/40 dark:text-orange-400',
-                          selectedColor: 'bg-[#DC2626] text-white'
+                          selectedColor: 'bg-[#DC2626] text-white',
+                          disabled: orderType === "takeaway" && !isTakeawayCodEnabled,
+                          disabledText: 'COD Disabled'
                         }
                       ].map((option) => (
                         <button

@@ -42,7 +42,7 @@ const pickRestaurantImage = (restaurant) => {
 }
 
 export default function Restaurants() {
-  const { addFavorite, removeFavorite, isFavorite } = useProfile()
+  const { addFavorite, removeFavorite, isFavorite, orderType } = useProfile()
   const { location: userLocation } = useLocation()
   const { zoneId } = useZone(userLocation)
   const [restaurants, setRestaurants] = useState([])
@@ -66,7 +66,15 @@ export default function Restaurants() {
           []
         if (cancelled) return
 
-        const transformed = list.map((restaurant) => {
+        // Apply Takeaway filter if orderType is takeaway
+        const filteredList = list.filter((restaurant) => {
+          if (orderType === "takeaway") {
+            return restaurant.takeawaySettings?.isEnabled || restaurant.takeawayAvailable;
+          }
+          return true;
+        });
+
+        const transformed = filteredList.map((restaurant) => {
           const slug =
             restaurant?.slug ||
             String(restaurant?.name || "")
@@ -82,7 +90,9 @@ export default function Restaurants() {
             name: restaurant?.name || "Unknown Restaurant",
             cuisine,
             rating: Number(restaurant?.rating || 0) || 4.5,
-            deliveryTime: restaurant?.estimatedDeliveryTime || (restaurant?.estimatedDeliveryTimeMinutes ? `${restaurant.estimatedDeliveryTimeMinutes} mins` : "25-30 mins"),
+            deliveryTime: (orderType === "takeaway")
+              ? (restaurant.preparationTime || "20-25 mins")
+              : restaurant?.estimatedDeliveryTime || (restaurant?.estimatedDeliveryTimeMinutes ? `${restaurant.estimatedDeliveryTimeMinutes} mins` : "25-30 mins"),
             distance: restaurant?.distance ? (typeof restaurant.distance === 'number' ? `${restaurant.distance.toFixed(1)} km` : restaurant.distance) : "1.2 km",
             priceRange: restaurant?.priceRange || "$$",
             image: pickRestaurantImage(restaurant),
@@ -105,7 +115,7 @@ export default function Restaurants() {
     return () => {
       cancelled = true
     }
-  }, [zoneId])
+  }, [zoneId, orderType])
 
   const hasRestaurants = useMemo(() => restaurants.length > 0, [restaurants.length])
 
