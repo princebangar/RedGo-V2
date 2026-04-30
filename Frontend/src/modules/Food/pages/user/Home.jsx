@@ -87,6 +87,7 @@ import {
 import { useLocation } from "@food/hooks/useLocation";
 import { useZone } from "@food/hooks/useZone";
 import quickSpicyLogo from "@food/assets/quicky-spicy-logo.png";
+import homeBannerRed from "@food/assets/home-banner-red-clean.png";
 import offerImage from "@food/assets/offerimage.png";
 import api, { publicGetOnce, restaurantAPI, adminAPI } from "@food/api";
 import { API_BASE_URL } from "@food/api/config";
@@ -2623,8 +2624,19 @@ export default function Home() {
         </div>
 
         <div className="md:hidden relative overflow-x-clip bg-white dark:bg-[#0a0a0a]">
-          {/* Brand Top Section (Dark) */}
-          <div className="relative overflow-hidden bg-gradient-to-b from-[#3a142c] to-[#1a0a14] rounded-b-[2rem] shadow-lg mb-2">
+          {/* Brand Top Section (Red Theme) */}
+          <div className="relative overflow-hidden rounded-b-[2rem] shadow-lg mb-2">
+            {/* Background Image */}
+            <div className="absolute inset-0 z-0">
+              <img 
+                src={homeBannerRed} 
+                alt="Banner Background" 
+                className="w-full h-full object-cover"
+              />
+              {/* Optional overlay to ensure text readability if needed */}
+              <div className="absolute inset-0 bg-black/10" />
+            </div>
+
             {festVideoActive && (
               <div className="absolute inset-0 z-0">
                 <video

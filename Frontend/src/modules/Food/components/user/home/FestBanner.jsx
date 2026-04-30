@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { ArrowRightCircle, Leaf, Flame, Sparkles } from 'lucide-react';
+import { Utensils, Soup, Leaf, Sparkles } from 'lucide-react';
 import quickSpicyLogo from "@food/assets/quicky-spicy-logo.png";
 
 // Images for different modes - Extended pool for rotation
@@ -70,28 +70,60 @@ export default function FestBanner({ isVegMode, videoUrl = "", hideFoodImages = 
 
         <motion.div
           key={isVegMode ? 'veg-title' : 'nonveg-title'}
+          className="mt-4"
           initial={{ scale: 0.8, opacity: 0 }}
           animate={{ scale: 1, opacity: 1 }}
           transition={{ type: "spring", damping: 10, stiffness: 100 }}
         >
           <h2 
-            className="text-2xl sm:text-3xl font-black text-[#fff200] italic tracking-tighter drop-shadow-md uppercase leading-none"
-            style={{ WebkitTextStroke: '0.5px rgba(255,255,255,0.3)' }}
+            className="text-4xl sm:text-5xl font-black text-[#fff200] italic uppercase leading-none drop-shadow-md"
+            style={{ WebkitTextStroke: '1px #5a0000' }}
           >
-            {isVegMode ? 'VEGGIE DELIGHT' : 'FEAST BONANZA'}
+            {isVegMode ? 'VEGGIE DELIGHT' : 'FLAVOUR FEST'}
           </h2>
         </motion.div>
         
         <motion.div 
-          animate={{ scale: [1, 1.05, 1] }}
-          transition={{ duration: 2, repeat: Infinity }}
-          className="flex items-center gap-2 px-4 py-1.5 bg-black/40 backdrop-blur-lg rounded-full border border-white/20 shadow-xl group cursor-pointer active:scale-95 transition-all text-white"
+          animate={{ scale: [1, 1.01, 1] }}
+          transition={{ duration: 4, repeat: Infinity }}
+          className="relative flex items-center gap-3 px-6 py-1.5 bg-white/10 backdrop-blur-md rounded-full border border-white/20 shadow-xl group"
         >
-          {isVegMode ? <Leaf className="h-3.5 w-3.5 text-emerald-400 fill-emerald-400" /> : <Flame className="h-3.5 w-3.5 text-[#fff200] fill-[#fff200] animate-bounce" />}
-          <span className="text-sm font-black uppercase tracking-[0.1em]">
-            {isVegMode ? 'PURE VEG MAGIC' : 'UPTO 60% OFF NOW'}
-          </span>
-          <ArrowRightCircle className="h-5 w-5 text-[#fff200] shadow-sm" />
+          {/* Left Icon with Sparks */}
+          <div className="relative">
+            <div className="absolute -top-3 left-1/2 -translate-x-1/2 flex gap-0.5">
+              <div className="w-0.5 h-2 bg-[#fff200] rotate-[-20deg] rounded-full" />
+              <div className="w-0.5 h-2.5 bg-[#fff200] rounded-full" />
+              <div className="w-0.5 h-2 bg-[#fff200] rotate-[20deg] rounded-full" />
+            </div>
+            <Utensils className="h-6 w-6 text-[#fff200]" />
+          </div>
+
+          {/* Text with Wavy Lines */}
+          <div className="relative px-2">
+            {/* Top Wavy Line */}
+            <svg className="absolute -top-1.5 left-0 w-full h-1.5" viewBox="0 0 100 10" preserveAspectRatio="none">
+              <path d="M0 5 Q 25 0, 50 5 T 100 5" fill="none" stroke="#fff200" strokeWidth="2" opacity="0.6" />
+            </svg>
+            
+            <span className="text-base sm:text-lg font-bold italic text-white leading-none whitespace-nowrap drop-shadow-md">
+              {isVegMode ? 'Pure Veg Magic!' : 'Good Food, Great Mood!'}
+            </span>
+
+            {/* Bottom Wavy Line */}
+            <svg className="absolute -bottom-1.5 left-0 w-full h-1.5" viewBox="0 0 100 10" preserveAspectRatio="none">
+              <path d="M0 5 Q 25 10, 50 5 T 100 5" fill="none" stroke="#fff200" strokeWidth="2" opacity="0.6" />
+            </svg>
+          </div>
+
+          {/* Right Icon with Sparks */}
+          <div className="relative">
+             <div className="absolute -top-3 left-1/2 -translate-x-1/2 flex gap-0.5">
+              <div className="w-0.5 h-2 bg-[#fff200] rotate-[-20deg] rounded-full" />
+              <div className="w-0.5 h-2.5 bg-[#fff200] rounded-full" />
+              <div className="w-0.5 h-2 bg-white rotate-[20deg] rounded-full" />
+            </div>
+            <Soup className="h-7 w-7 text-[#fff200]" />
+          </div>
         </motion.div>
 
         {hideFoodImages ? (
@@ -117,6 +149,7 @@ export default function FestBanner({ isVegMode, videoUrl = "", hideFoodImages = 
                   y: { duration: 3.5, repeat: Infinity, ease: "easeInOut" },
                   default: { duration: 0.8, type: "spring", damping: 15 }
                 }}
+                style={{ willChange: 'transform, opacity', backfaceVisibility: 'hidden', transform: 'translateZ(0)' }}
               >
                 <img src={displayImages[0]} alt="food" className="w-full h-full object-cover rounded-2xl border-[3px] border-white shadow-2xl rotate-12" />
               </motion.div>
@@ -136,6 +169,7 @@ export default function FestBanner({ isVegMode, videoUrl = "", hideFoodImages = 
                   rotate: { duration: 6, repeat: Infinity, ease: "easeInOut" },
                   default: { duration: 0.8, type: "spring", damping: 12, stiffness: 100 }
                 }}
+                style={{ willChange: 'transform, opacity', backfaceVisibility: 'hidden', transform: 'translateZ(0)' }}
               >
                 <div className="relative h-full w-full">
                   <div className={`absolute -inset-2.5 blur-3xl rounded-full animate-pulse transition-colors duration-700 ${isVegMode ? 'bg-white/40' : 'bg-yellow-400/40'}`} />
@@ -159,6 +193,7 @@ export default function FestBanner({ isVegMode, videoUrl = "", hideFoodImages = 
                   y: { duration: 4, repeat: Infinity, ease: "easeInOut", delay: 0.4 },
                   default: { duration: 0.8, type: "spring", damping: 15 }
                 }}
+                style={{ willChange: 'transform, opacity', backfaceVisibility: 'hidden', transform: 'translateZ(0)' }}
               >
                 <img src={displayImages[2]} alt="food" className="w-full h-full object-cover rounded-2xl border-[3px] border-white shadow-2xl -rotate-12 bg-white" />
               </motion.div>
