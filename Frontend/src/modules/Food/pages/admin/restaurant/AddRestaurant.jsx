@@ -8,6 +8,7 @@ import { Label } from "@food/components/ui/label"
 import { Button } from "@food/components/ui/button"
 import { adminAPI, uploadAPI, zoneAPI } from "@food/api"
 import { toast } from "sonner"
+import { Switch } from "@food/components/ui/switch"
 import { EMAIL_REGEX } from "@/shared/utils/emailValidation"
 const debugLog = (...args) => {}
 const debugWarn = (...args) => { console.warn(...args) }
@@ -1493,45 +1494,34 @@ export default function AddRestaurant() {
       <Dialog open={showSuccessDialog} onOpenChange={setShowSuccessDialog}>
         <DialogContent className="max-w-md bg-white p-0">
           <div className="p-8 text-center">
-            <div className="flex justify-center mb-4">
+            <div className="flex justify-center mb-6">
               <div className="relative">
                 <div className="absolute inset-0 bg-emerald-100 rounded-full animate-ping opacity-75"></div>
                 <div className="relative bg-emerald-500 rounded-full p-4">
-                  <Input value={detailsForm.offer} onChange={(e) => setDetailsForm((p) => ({ ...p, offer: e.target.value }))} />
-                </div>
-                <div className="md:col-span-2 pt-4 border-t border-slate-100">
-                  <h3 className="text-sm font-bold text-slate-900 mb-4 uppercase tracking-wider">Takeaway (Pickup) Settings</h3>
-                  <div className="flex items-center justify-between p-4 rounded-xl border border-slate-200 bg-slate-50/50">
-                    <div className="flex-1">
-                      <p className="text-sm font-semibold text-slate-800 flex items-center gap-1.5">
-                        <span>🛍️</span>
-                        <span>Takeaway (Pickup)</span>
-                      </p>
-                      <p className="text-[11px] text-slate-500 mt-0.5">
-                        Allow customers to place orders online and pick them up from your restaurant.
-                      </p>
-                    </div>
-                    <Switch
-                      checked={detailsForm.takeawayEnabled}
-                      onCheckedChange={(checked) => setDetailsForm((p) => ({ ...p, takeawayEnabled: checked }))}
-                      className="data-[state=unchecked]:bg-gray-200 data-[state=checked]:bg-green-600"
-                    />
-                  </div>
+                  <CheckCircle2 className="w-8 h-8 text-white" />
                 </div>
               </div>
-            </section>
+            </div>
             <DialogHeader>
               <DialogTitle className="text-2xl font-bold text-slate-900 mb-2">Restaurant Created Successfully!</DialogTitle>
               <DialogDescription className="text-sm text-slate-600">
-                The restaurant has been created successfully.
+                The restaurant has been created and is now pending approval.
               </DialogDescription>
             </DialogHeader>
+            <div className="mt-8">
+              <Button 
+                onClick={() => {
+                  setShowSuccessDialog(false)
+                  navigate("/admin/restaurants")
+                }}
+                className="w-full bg-black text-white"
+              >
+                Go to Restaurant List
+              </Button>
+            </div>
           </div>
         </DialogContent>
       </Dialog>
     </div>
   )
 }
-
-
-
