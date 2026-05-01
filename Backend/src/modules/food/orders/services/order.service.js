@@ -168,17 +168,41 @@ export async function createOrder(userId, dto) {
   const isCash = paymentMethod === "cash";
   const isWallet = paymentMethod === "wallet";
 
-  if (orderType === "takeaway" && isCash) {
-    const takeawayCodConfig = await FoodSystemConfig.findOne({
-      key: "takeaway_cod_enabled",
-    })
-      .select("value")
-      .lean();
-    
-    const showCOD = takeawayCodConfig == null ? true : takeawayCodConfig.value === true;
+  // Global Customization Toggles Enforcement
+  if (isCash) {
+    // 1. General COD Toggle (Master switch for non-takeaway)
+    if (orderType !== "takeaway") {
+      const globalCodConfig = await FoodSystemConfig.findOne({ key: "cod_enabled" }).select("value").lean();
+      if (globalCodConfig && globalCodConfig.value === false) {
+        throw new ValidationError("Cash on Delivery is currently disabled globally");
+      }
+    }
 
-    if (!showCOD) {
-      throw new ValidationError("Cash on Delivery is not available for Takeaway orders");
+    // 2. Mode-specific COD Toggles
+    let codEnabledKey = "";
+    if (orderType === "takeaway") codEnabledKey = "takeaway_cod_enabled";
+    else if (orderType === "delivery") codEnabledKey = "delivery_cod_enabled";
+    else if (orderType === "dining") codEnabledKey = "dining_cod_enabled";
+
+    if (codEnabledKey) {
+      const codConfig = await FoodSystemConfig.findOne({ key: codEnabledKey }).select("value").lean();
+      if (codConfig && codConfig.value === false) {
+        throw new ValidationError(`Cash on Delivery is currently disabled for ${orderType} orders`);
+      }
+    }
+  }
+
+  if (isWallet) {
+    const walletConfig = await FoodSystemConfig.findOne({ key: "wallet_payment_enabled" }).select("value").lean();
+    if (walletConfig && walletConfig.value === false) {
+      throw new ValidationError("Wallet payment is currently disabled");
+    }
+  }
+
+  if (paymentMethod === "razorpay") {
+    const onlineConfig = await FoodSystemConfig.findOne({ key: "online_payment_enabled" }).select("value").lean();
+    if (onlineConfig && onlineConfig.value === false) {
+      throw new ValidationError("Online payment is currently disabled");
     }
   }
 

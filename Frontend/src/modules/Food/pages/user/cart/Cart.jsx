@@ -123,7 +123,22 @@ export default function Cart() {
   const [appliedCoupon, setAppliedCoupon] = useState(null)
   const [couponCode, setCouponCode] = useState("")
   const [manualCouponCode, setManualCouponCode] = useState("")
-  const [selectedPaymentMethod, setSelectedPaymentMethod] = useState("cash")
+  const [selectedPaymentMethod, setSelectedPaymentMethod] = useState(() => {
+    try {
+      if (typeof window === "undefined") return "cash"
+      return localStorage.getItem("selectedPaymentMethod") || "cash"
+    } catch {
+      return "cash"
+    }
+  })
+
+  useEffect(() => {
+    try {
+      if (typeof window !== "undefined") {
+        localStorage.setItem("selectedPaymentMethod", selectedPaymentMethod)
+      }
+    } catch {}
+  }, [selectedPaymentMethod])
   const [showPaymentSheet, setShowPaymentSheet] = useState(false)
   const [walletBalance, setWalletBalance] = useState(0)
   const [isLoadingWallet, setIsLoadingWallet] = useState(false)
@@ -182,8 +197,6 @@ export default function Cart() {
       return "saved"
     }
   })
-  const [isTakeawayCodEnabled, setIsTakeawayCodEnabled] = useState(true)
-
   useEffect(() => {
     const audio = new Audio(zoopSound)
     audio.preload = "auto"
@@ -198,22 +211,60 @@ export default function Cart() {
     }
   }, [])
 
-  useEffect(() => {
-    if (orderType === "takeaway") {
-      adminAPI.getTakeawayCodStatus()
-        .then(res => {
-          setIsTakeawayCodEnabled(res?.data?.enabled !== false)
-        })
-        .catch(() => setIsTakeawayCodEnabled(true))
-    }
-  }, [orderType])
+  const [customizationSettings, setCustomizationSettings] = useState({
+    cod_enabled: true,
+    takeaway_cod_enabled: true,
+    delivery_cod_enabled: true,
+    dining_cod_enabled: true,
+    wallet_payment_enabled: true,
+    online_payment_enabled: true,
+  })
 
-  // If takeaway and COD is not enabled, and current selection is cash, switch to razorpay
   useEffect(() => {
-    if (orderType === "takeaway" && !isTakeawayCodEnabled && selectedPaymentMethod === "cash") {
-      setSelectedPaymentMethod("razorpay")
+    adminAPI.getCustomizationSettings()
+      .then(res => {
+        if (res?.data?.data) {
+          setCustomizationSettings(prev => ({
+            ...prev,
+            ...res.data.data
+          }))
+        }
+      })
+      .catch(() => {
+        debugError("Failed to fetch customization settings")
+      })
+  }, [])
+
+  // Payment availability logic
+  const isPaymentMethodEnabled = (methodId) => {
+    if (methodId === "razorpay") return customizationSettings.online_payment_enabled !== false
+    if (methodId === "wallet") return customizationSettings.wallet_payment_enabled !== false
+    if (methodId === "cash") {
+      // General COD toggle (Excludes Takeaway)
+      if (orderType !== "takeaway") {
+        if (customizationSettings.cod_enabled === false) return false
+      }
+
+      if (orderType === "takeaway") return customizationSettings.takeaway_cod_enabled !== false
+      if (orderType === "delivery") return customizationSettings.delivery_cod_enabled !== false
+      if (orderType === "dining") return customizationSettings.dining_cod_enabled !== false
+      return true
     }
-  }, [orderType, isTakeawayCodEnabled, selectedPaymentMethod])
+    return true
+  }
+
+  // Auto-switch payment method if current one becomes disabled
+  useEffect(() => {
+    if (!isPaymentMethodEnabled(selectedPaymentMethod)) {
+      if (isPaymentMethodEnabled("razorpay")) {
+        setSelectedPaymentMethod("razorpay")
+      } else if (isPaymentMethodEnabled("wallet")) {
+        setSelectedPaymentMethod("wallet")
+      } else if (isPaymentMethodEnabled("cash")) {
+        setSelectedPaymentMethod("cash")
+      }
+    }
+  }, [orderType, customizationSettings, selectedPaymentMethod])
 
   useEffect(() => {
     if (!showOrderSuccess || !orderSuccessAudioRef.current) return
@@ -3268,7 +3319,9 @@ export default function Cart() {
                           icon: <Zap className="w-5 h-5" />,
                           color: 'bg-emerald-50 text-emerald-600 dark:bg-emerald-900/40 dark:text-emerald-400',
                           selectedColor: 'bg-emerald-500 text-white',
-                          badge: 'SECURE'
+                          badge: 'SECURE',
+                          disabled: !isPaymentMethodEnabled("razorpay"),
+                          disabledText: 'Online Pay Disabled'
                         },
                         {
                           id: 'wallet',
@@ -3278,8 +3331,8 @@ export default function Cart() {
                           color: 'bg-blue-50 text-blue-600 dark:bg-blue-900/40 dark:text-blue-400',
                           selectedColor: 'bg-blue-500 text-white',
                           subInfo: `Bal: ${RUPEE_SYMBOL}${walletBalance.toFixed(0)}`,
-                          disabled: walletBalance < total,
-                          disabledText: 'Low Balance'
+                          disabled: walletBalance < total || !isPaymentMethodEnabled("wallet"),
+                          disabledText: !isPaymentMethodEnabled("wallet") ? 'Wallet Disabled' : 'Low Balance'
                         },
                         {
                           id: 'cash',
@@ -3288,7 +3341,7 @@ export default function Cart() {
                           icon: <Banknote className="w-5 h-5" />,
                           color: 'bg-orange-50 text-#991B1B dark:bg-orange-900/40 dark:text-orange-400',
                           selectedColor: 'bg-[#DC2626] text-white',
-                          disabled: orderType === "takeaway" && !isTakeawayCodEnabled,
+                          disabled: !isPaymentMethodEnabled("cash"),
                           disabledText: 'COD Disabled'
                         }
                       ].map((option) => (

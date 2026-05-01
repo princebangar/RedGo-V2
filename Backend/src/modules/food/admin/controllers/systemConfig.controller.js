@@ -4,9 +4,34 @@ import { ValidationError, NotFoundError } from '../../../../core/auth/errors.js'
 // Customization toggles live in FoodSystemConfig as individual keys.
 const CUSTOMIZATION_TOGGLES = [
     {
+        key: 'cod_enabled',
+        defaultValue: true,
+        description: 'Global toggle for COD visibility (Excludes Takeaway)'
+    },
+    {
         key: 'takeaway_cod_enabled',
         defaultValue: true,
         description: 'Global toggle for takeaway COD visibility'
+    },
+    {
+        key: 'delivery_cod_enabled',
+        defaultValue: true,
+        description: 'Global toggle for delivery COD visibility'
+    },
+    {
+        key: 'dining_cod_enabled',
+        defaultValue: true,
+        description: 'Global toggle for dining COD visibility'
+    },
+    {
+        key: 'wallet_payment_enabled',
+        defaultValue: true,
+        description: 'Global toggle for wallet payment availability'
+    },
+    {
+        key: 'online_payment_enabled',
+        defaultValue: true,
+        description: 'Global toggle for online payment availability'
     }
 ];
 

@@ -1307,6 +1307,12 @@ export const listApprovedRestaurants = async (query = {}) => {
         }
     }
 
+    if (query.orderType === 'takeaway') {
+        filter['takeawaySettings.isEnabled'] = true;
+    } else if (query.orderType === 'dining') {
+        filter['diningSettings.isEnabled'] = true;
+    }
+
     // Optional zone polygon filter (when restaurant.zoneId is not set yet).
     const zoneIdRaw = String(query.zoneId || '').trim();
     if (zoneIdRaw && mongoose.Types.ObjectId.isValid(zoneIdRaw)) {

@@ -8,10 +8,45 @@ import { Switch } from "@food/components/ui/switch";
 
 const CUSTOMIZATION_TOGGLES = [
   {
+    key: "cod_enabled",
+    label: "Global COD",
+    description:
+      "Global toggle for COD visibility (Applies to Delivery/Dining, NOT Takeaway).",
+    defaultValue: true,
+  },
+  {
     key: "takeaway_cod_enabled",
     label: "Takeaway COD",
     description:
-      "Controls Cash on Delivery (COD) visibility for takeaway orders across the Restaurant panel and User takeaway checkout.",
+      "Controls Cash on Delivery (COD) visibility for takeaway orders.",
+    defaultValue: true,
+  },
+  {
+    key: "delivery_cod_enabled",
+    label: "Delivery COD",
+    description:
+      "Controls Cash on Delivery (COD) visibility for delivery orders.",
+    defaultValue: true,
+  },
+  {
+    key: "dining_cod_enabled",
+    label: "Dining COD",
+    description:
+      "Controls Cash on Delivery (COD) visibility for dining orders.",
+    defaultValue: true,
+  },
+  {
+    key: "wallet_payment_enabled",
+    label: "Wallet Payment",
+    description:
+      "Controls visibility of wallet payment method at checkout.",
+    defaultValue: true,
+  },
+  {
+    key: "online_payment_enabled",
+    label: "Online Payment",
+    description:
+      "Controls visibility of Razorpay online payment at checkout.",
     defaultValue: true,
   },
 ];
@@ -176,7 +211,7 @@ export default function CustomizationSettings() {
                       checked={settings[t.key] !== false}
                       onCheckedChange={(checked) => handleToggle(t.key, checked)}
                       disabled={savingByKey[t.key] === true}
-                      className="scale-90 data-[state=checked]:bg-green-600 data-[state=unchecked]:bg-zinc-400 shadow-sm"
+                      className="scale-90 data-[state=checked]:bg-[#16a34a] data-[state=unchecked]:bg-zinc-400 shadow-sm"
                     />
                   )}
                 </div>
