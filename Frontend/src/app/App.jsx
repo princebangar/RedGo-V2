@@ -3,16 +3,11 @@ import AppRoutes from './routes'
 import SplashScreen from '@/shared/components/SplashScreen.jsx'
 
 function App() {
-  const [showSplash, setShowSplash] = useState(() => {
-    // Check if splash was already shown (persistent)
-    const splashShown = localStorage.getItem('redgo_splash_shown')
-    return !splashShown
-  })
+  const [showSplash, setShowSplash] = useState(true)
 
   const [isLoading, setIsLoading] = useState(false)
 
   const handleSplashFinish = () => {
-    localStorage.setItem('redgo_splash_shown', 'true')
     setShowSplash(false)
   }
 
