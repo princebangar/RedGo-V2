@@ -32,7 +32,7 @@ export async function listPendingFoodApprovals(query = {}) {
         .sort({ requestedAt: -1, createdAt: -1 })
         .skip(skip)
         .limit(limit)
-        .select('restaurantId categoryName name price variants image foodType approvalStatus requestedAt createdAt')
+        .select('restaurantId categoryName name price variants image foodType approvalStatus requestedAt createdAt actionType oldData newData description preparationTime')
         .lean();
 
     const addonList = await FoodAddon.find({ approvalStatus: 'pending' })
@@ -69,7 +69,12 @@ export async function listPendingFoodApprovals(query = {}) {
         image: f.image || '',
         images: f.image ? [f.image] : [],
         requestedAt: f.requestedAt || f.createdAt,
-        isActionable: (f.approvalStatus || 'pending') === 'pending'
+        isActionable: (f.approvalStatus || 'pending') === 'pending',
+        actionType: f.actionType,
+        oldData: f.oldData,
+        newData: f.newData,
+        description: f.description || '',
+        preparationTime: f.preparationTime || ''
     }));
 
     const addonRequests = addonList.map((a) => ({

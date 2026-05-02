@@ -210,7 +210,24 @@ export async function createRestaurantFood(restaurantId, body = {}) {
         isRecommended: body.isRecommended === true,
         preparationTime,
         approvalStatus: 'pending',
-        requestedAt: new Date()
+        requestedAt: new Date(),
+        actionType: 'NEW',
+        oldData: null,
+        newData: {
+            name,
+            description,
+            price,
+            priceOnOtherPlatforms: body.priceOnOtherPlatforms ? Number(body.priceOnOtherPlatforms) : null,
+            otherPlatformGst: body.otherPlatformGst !== undefined && body.otherPlatformGst !== null
+                ? Number(body.otherPlatformGst)
+                : null,
+            variants,
+            image,
+            foodType,
+            preparationTime,
+            categoryName: categoryName || '',
+            isRecommended: body.isRecommended === true
+        }
     });
 
     try {
@@ -287,6 +304,9 @@ export async function updateRestaurantFood(restaurantId, foodId, body = {}) {
         update.rejectionReason = '';
         update.approvedAt = null;
         update.rejectedAt = null;
+        update.actionType = 'UPDATED';
+        update.oldData = existing;
+        update.newData = { ...existing, ...update };
     }
 
     const updated = await FoodItem.findOneAndUpdate(

@@ -28,7 +28,10 @@ const foodSchema = new mongoose.Schema(
         rejectionReason: { type: String, trim: true, default: '' },
         requestedAt: { type: Date },
         approvedAt: { type: Date },
-        rejectedAt: { type: Date }
+        rejectedAt: { type: Date },
+        actionType: { type: String, enum: ['NEW', 'UPDATED'], default: 'NEW' },
+        oldData: { type: mongoose.Schema.Types.Mixed, default: null },
+        newData: { type: mongoose.Schema.Types.Mixed, default: null }
     },
     {
         collection: 'food_items',
