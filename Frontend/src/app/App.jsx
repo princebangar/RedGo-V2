@@ -3,11 +3,15 @@ import AppRoutes from './routes'
 import SplashScreen from '@/shared/components/SplashScreen.jsx'
 
 function App() {
-  const [showSplash, setShowSplash] = useState(true)
+  const [showSplash, setShowSplash] = useState(() => {
+    // sessionStorage persists across refreshes but clears when the tab/app is closed
+    return !sessionStorage.getItem('redgo_session_splash_shown')
+  })
 
   const [isLoading, setIsLoading] = useState(false)
 
   const handleSplashFinish = () => {
+    sessionStorage.setItem('redgo_session_splash_shown', 'true')
     setShowSplash(false)
   }
 
