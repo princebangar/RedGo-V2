@@ -16,6 +16,7 @@ const AUTH = {
   DELIVERY_VERIFY_OTP: "/food/auth/delivery/verify-otp",
   REFRESH_TOKEN: "/food/auth/refresh-token",
   LOGOUT: "/food/auth/logout",
+  DELETE_ACCOUNT: "/food/auth/delete-account",
   ME: "/food/auth/me",
 };
 
@@ -155,6 +156,19 @@ export function logout(refreshToken, fcmToken = null, platform = "web") {
 
   clearMeCache();
   return apiClient.post(AUTH.LOGOUT, payload);
+}
+
+/**
+ * Delete account (invalidate and destroy everything).
+ * @param {string} [module] - "user" | "admin" | "restaurant" | "delivery"
+ */
+export function deleteAccount(module = "user") {
+  const m = String(module || "user");
+  return apiClient.delete(AUTH.DELETE_ACCOUNT, { contextModule: m }).then((res) => {
+    meCache.delete(m);
+    meInFlight.delete(m);
+    return res;
+  });
 }
 
 /** 

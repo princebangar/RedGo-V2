@@ -6,22 +6,16 @@ import {
   ArrowLeft,
   User,
   Edit,
-  Trash2,
 } from "lucide-react"
 import { Button } from "@food/components/ui/button"
 import { Input } from "@food/components/ui/input"
 import {
   Dialog,
   DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
 } from "@food/components/ui/dialog"
 import { restaurantAPI } from "@food/api"
 import OptimizedImage from "@food/components/OptimizedImage"
 import { clearModuleAuth } from "@food/utils/auth"
-import { firebaseAuth, ensureFirebaseInitialized } from "@food/firebase"
 
 import { ImageSourcePicker } from "@food/components/ImageSourcePicker"
 import { isFlutterBridgeAvailable } from "@food/utils/imageUploadUtils"
@@ -54,9 +48,7 @@ export default function EditOwner() {
   const [saving, setSaving] = useState(false)
   const [profileImageFile, setProfileImageFile] = useState(null)
   const fileInputRef = useRef(null)
-  const [showDeleteDialog, setShowDeleteDialog] = useState(false)
-  const [isDeleting, setIsDeleting] = useState(false)
-  const [isPhotoPickerOpen, setIsPhotoPickerOpen] = useState(false)
+
 
   // Lenis smooth scrolling
   useEffect(() => {
@@ -232,58 +224,7 @@ export default function EditOwner() {
     }
   }
 
-  const handleDeleteAccount = async () => {
-    if (isDeleting) return // Prevent multiple clicks
-    
-    setIsDeleting(true)
-    
-    try {
-      // Call backend API to delete the account
-      await restaurantAPI.deleteAccount()
-      
-      // Sign out from Firebase if restaurant logged in via Google
-      try {
-        const { signOut } = await import("firebase/auth")
-        // Firebase Auth is lazy-initialized now; ensure it before accessing firebaseAuth.currentUser
-        ensureFirebaseInitialized({ enableAuth: true, enableRealtimeDb: false })
-        const currentUser = firebaseAuth.currentUser
-        if (currentUser) {
-          await signOut(firebaseAuth)
-        }
-      } catch (firebaseError) {
-        // Continue even if Firebase logout fails
-        debugWarn("Firebase logout failed, continuing with cleanup:", firebaseError)
-      }
 
-      // Clear restaurant module authentication data
-      clearModuleAuth("restaurant")
-      
-      // Clear all restaurant-related localStorage data
-      localStorage.removeItem(STORAGE_KEY)
-      localStorage.removeItem("restaurant_onboarding")
-      localStorage.removeItem("restaurant_accessToken")
-      localStorage.removeItem("restaurant_authenticated")
-      localStorage.removeItem("restaurant_user")
-      localStorage.removeItem("restaurant_invited_users")
-      
-      // Clear sessionStorage
-      sessionStorage.removeItem("restaurantAuthData")
-      
-      // Dispatch auth change event to notify other components
-      window.dispatchEvent(new Event("restaurantAuthChanged"))
-      
-      setShowDeleteDialog(false)
-      
-      // Navigate to welcome page
-      setTimeout(() => {
-        navigate("/restaurant/welcome", { replace: true })
-      }, 300)
-    } catch (error) {
-      debugError("Error deleting account:", error)
-      alert(`Failed to delete account: ${error.response?.data?.message || error.message || "Please try again."}`)
-      setIsDeleting(false)
-    }
-  }
 
   return (
     <>
@@ -386,52 +327,10 @@ export default function EditOwner() {
             </div>
           </div>
 
-          {/* Delete Account Section */}
-          <div className="pt-4">
-            <button
-              onClick={() => setShowDeleteDialog(true)}
-              className="flex items-center gap-2 text-red-600 hover:text-red-700 transition-colors"
-            >
-              <Trash2 className="w-5 h-5" />
-              <span className="text-sm font-normal">Delete your Zomato account</span>
-            </button>
-          </div>
+
         </div>
 
-        {/* Delete Account Confirmation Dialog */}
-        <Dialog open={showDeleteDialog} onOpenChange={setShowDeleteDialog}>
-          <DialogContent className="sm:max-w-md p-4 w-[90%]">
-            <DialogHeader className="text-center">
-              <div className="mx-auto mb-3 flex h-12 w-12 items-center justify-center rounded-full bg-red-100">
-                <span className="text-2xl leading-none text-red-600">!</span>
-              </div>
-              <DialogTitle className="text-base font-semibold text-gray-900 text-center">
-                You are about to delete your Zomato account
-              </DialogTitle>
-              <DialogHeader className="mt-2 text-sm text-gray-600">
-                All information associated with your account will be deleted, and you will lose access to your restaurant permanently.
-                This information cannot be recovered once the account is deleted. Are you sure you want to proceed?
-              </DialogHeader>
-            </DialogHeader>
-            <DialogFooter className="flex flex-col gap-2 sm:flex-col">
-              <Button
-                onClick={handleDeleteAccount}
-                disabled={isDeleting}
-                className="w-full bg-red-600 hover:bg-red-700 text-white font-semibold disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                {isDeleting ? "Deleting..." : "Confirm"}
-              </Button>
-              <Button
-                variant="outline"
-                onClick={() => setShowDeleteDialog(false)}
-                disabled={isDeleting}
-                className="w-full disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                Cancel
-              </Button>
-            </DialogFooter>
-          </DialogContent>
-        </Dialog>
+
 
         {/* Save Button - Fixed at bottom */}
         <div className="fixed bottom-0 left-0 right-0 bg-white border-t border-gray-200 px-4 py-4 z-40">

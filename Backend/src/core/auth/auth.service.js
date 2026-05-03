@@ -16,6 +16,20 @@ import { logger } from "../../utils/logger.js";
 import { sendAdminResetOtpEmail } from "../../utils/email.js";
 import mongoose from "mongoose";
 import { creditReferralReward } from "../../modules/food/user/services/userWallet.service.js";
+import { FoodUserWallet } from "../../modules/food/user/models/userWallet.model.js";
+import { FoodOrder } from "../../modules/food/orders/models/order.model.js";
+import { FoodTransaction } from "../../modules/food/orders/models/foodTransaction.model.js";
+import { FoodSupportTicket } from "../../modules/food/user/models/supportTicket.model.js";
+import { FoodRestaurantMenu } from "../../modules/food/restaurant/models/restaurantMenu.model.js";
+import { FoodRestaurantWallet } from "../../modules/food/restaurant/models/restaurantWallet.model.js";
+import { FoodRestaurantWithdrawal } from "../../modules/food/restaurant/models/foodRestaurantWithdrawal.model.js";
+import { FoodAddon } from "../../modules/food/restaurant/models/foodAddon.model.js";
+import { FoodRestaurantOutletTimings } from "../../modules/food/restaurant/models/outletTimings.model.js";
+import { FoodRestaurantSupportTicket } from "../../modules/food/restaurant/models/supportTicket.model.js";
+import { FoodDeliveryWallet } from "../../modules/food/delivery/models/deliveryWallet.model.js";
+import { FoodDeliveryCashDeposit } from "../../modules/food/delivery/models/foodDeliveryCashDeposit.model.js";
+import { FoodDeliveryWithdrawal } from "../../modules/food/delivery/models/foodDeliveryWithdrawal.model.js";
+import { DeliverySupportTicket as FoodDeliverySupportTicket } from "../../modules/food/delivery/models/supportTicket.model.js";
 
 const ROLES = {
   USER: "USER",
@@ -701,6 +715,60 @@ export const getProfile = async (userId, role) => {
     throw new AuthError("Profile not found");
   }
   return { user: profile };
+};
+
+export const deleteAccount = async (id, role) => {
+  if (!id || !role) {
+    throw new AuthError("Missing required parameters for account deletion");
+  }
+
+  try {
+    if (role === ROLES.USER) {
+      const deletionTasks = [
+        FoodUserWallet.deleteOne({ userId: id }),
+        FoodOrder.deleteMany({ userId: id }),
+        FoodTransaction.deleteMany({ userId: id }),
+        FoodSupportTicket.deleteMany({ userId: id }),
+        FoodReferralLog.deleteMany({ $or: [{ referrerId: id }, { refereeId: id }] }),
+        FoodRefreshToken.deleteMany({ userId: id }),
+      ];
+      await Promise.allSettled(deletionTasks);
+      await FoodUser.deleteOne({ _id: id });
+    } else if (role === ROLES.RESTAURANT) {
+      const deletionTasks = [
+        FoodRestaurantMenu.deleteMany({ restaurantId: id }),
+        FoodRestaurantWallet.deleteOne({ restaurantId: id }),
+        FoodRestaurantWithdrawal.deleteMany({ restaurantId: id }),
+        FoodAddon.deleteMany({ restaurantId: id }),
+        FoodRestaurantOutletTimings.deleteMany({ restaurantId: id }),
+        FoodOrder.deleteMany({ restaurantId: id }),
+        FoodTransaction.deleteMany({ restaurantId: id }),
+        FoodRestaurantSupportTicket.deleteMany({ restaurantId: id }),
+        FoodRefreshToken.deleteMany({ userId: id }),
+      ];
+      await Promise.allSettled(deletionTasks);
+      await FoodRestaurant.deleteOne({ _id: id });
+    } else if (role === ROLES.DELIVERY_PARTNER) {
+      const deletionTasks = [
+        FoodDeliveryWallet.deleteOne({ deliveryPartnerId: id }),
+        FoodDeliveryCashDeposit.deleteMany({ deliveryPartnerId: id }),
+        FoodDeliveryWithdrawal.deleteMany({ deliveryPartnerId: id }),
+        FoodOrder.deleteMany({ deliveryPartnerId: id }),
+        FoodTransaction.deleteMany({ deliveryPartnerId: id }),
+        FoodDeliverySupportTicket.deleteMany({ deliveryPartnerId: id }),
+        FoodRefreshToken.deleteMany({ userId: id }),
+      ];
+      await Promise.allSettled(deletionTasks);
+      await FoodDeliveryPartner.deleteOne({ _id: id });
+    } else {
+      throw new AuthError("Invalid role for account deletion");
+    }
+
+    return { success: true, message: "Account deleted successfully" };
+  } catch (error) {
+    logger.error({ err: error, id, role }, "Failed to delete account");
+    throw error;
+  }
 };
 
 const ADMIN_SERVICES_ALLOWED = ["food", "quickCommerce", "taxi"];

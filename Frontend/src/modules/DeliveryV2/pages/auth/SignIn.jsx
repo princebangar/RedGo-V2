@@ -53,7 +53,7 @@ export default function DeliverySignIn() {
         module: "delivery",
       }
       sessionStorage.setItem("deliveryAuthData", JSON.stringify(authData))
-      toast.success("Verification code sent to your phone!")
+      // toast.success("Verification code sent to your phone!")
       navigate("/food/delivery/otp")
     } catch (err) {
       const msg = err?.response?.data?.message || err?.message || "Failed to send OTP."
@@ -67,9 +67,9 @@ export default function DeliverySignIn() {
   return (
     <div className="min-h-screen bg-white dark:bg-[#0a0a0a] flex flex-col relative overflow-hidden font-['Poppins']">
       {/* Decorative Background Elements */}
-      <div className="absolute top-0 left-0 w-full h-[600px] bg-gradient-to-b from-[#7e3866]/10 via-[#7e3866]/5 to-transparent pointer-events-none" />
-      <div className="absolute top-[-100px] right-[-100px] w-[500px] h-[500px] bg-[#7e3866]/5 rounded-full blur-[120px] pointer-events-none animate-pulse" />
-      <div className="absolute bottom-[-100px] left-[-100px] w-[400px] h-[400px] bg-[#7e3866]/5 rounded-full blur-[120px] pointer-events-none" />
+      <div className="absolute top-0 left-0 w-full h-[600px] bg-gradient-to-b from-[#DC2626]/10 via-[#DC2626]/5 to-transparent pointer-events-none" />
+      <div className="absolute top-[-100px] right-[-100px] w-[500px] h-[500px] bg-[#DC2626]/5 rounded-full blur-[120px] pointer-events-none animate-pulse" />
+      <div className="absolute bottom-[-100px] left-[-100px] w-[400px] h-[400px] bg-[#DC2626]/5 rounded-full blur-[120px] pointer-events-none" />
 
       {/* Main Content */}
       <div className="flex-1 flex flex-col items-center justify-center px-6 py-12 relative z-10">
@@ -106,13 +106,13 @@ export default function DeliverySignIn() {
 
           {/* Login Card */}
           <div className="bg-white/80 dark:bg-[#1a1a1a]/80 backdrop-blur-2xl rounded-[3rem] p-8 sm:p-12 shadow-[0_40px_80px_-20px_rgba(126,56,102,0.2)] dark:shadow-none border border-white/20 dark:border-gray-800 relative overflow-hidden">
-            <div className="absolute top-0 left-0 w-full h-2 bg-gradient-to-r from-transparent via-[#7e3866]/20 to-transparent" />
+            <div className="absolute top-0 left-0 w-full h-2 bg-gradient-to-r from-transparent via-[#DC2626]/20 to-transparent" />
 
             <div className="mb-10 text-center sm:text-left">
               <h2 className="text-3xl font-black text-gray-900 dark:text-white mb-2 font-['Outfit'] tracking-tight">
                 Partner Sign In
               </h2>
-              <div className="h-1 w-10 bg-[#7e3866] rounded-full mb-3 hidden sm:block" />
+              <div className="h-1 w-10 bg-[#DC2626] rounded-full mb-3 hidden sm:block" />
               <p className="text-base text-gray-500 dark:text-gray-400 font-medium">
                 Enter your registered mobile number to start earning
               </p>
@@ -120,10 +120,10 @@ export default function DeliverySignIn() {
 
             <form onSubmit={handleSendOTP} className="space-y-8">
               <div className="space-y-2">
-                <label className="text-[10px] font-black text-[#7e3866] uppercase tracking-[0.2em] ml-1">Mobile Number</label>
+                <label className="text-[10px] font-black text-[#DC2626] uppercase tracking-[0.2em] ml-1">Mobile Number</label>
                 <div className="relative group">
                   <div className="absolute inset-y-0 left-5 flex items-center pointer-events-none">
-                    <span className="text-sm font-bold text-[#7e3866] border-r border-gray-200 dark:border-gray-800 pr-3">+91</span>
+                    <span className="text-sm font-bold text-[#DC2626] border-r border-gray-200 dark:border-gray-800 pr-3">+91</span>
                   </div>
                   <input
                     type="tel"
@@ -132,7 +132,7 @@ export default function DeliverySignIn() {
                     value={phone}
                     onChange={(e) => setPhone(e.target.value.replace(/\D/g, "").slice(0, 10))}
                     maxLength={10}
-                    className="block w-full pl-16 pr-6 py-4 bg-gray-50 dark:bg-gray-900/50 text-gray-900 dark:text-white border-2 border-transparent focus:border-[#7e3866]/50 rounded-2xl outline-none transition-all placeholder:text-gray-300 font-bold text-lg shadow-sm"
+                    className="block w-full pl-16 pr-6 py-4 bg-gray-50 dark:bg-gray-900/50 text-gray-900 dark:text-white border-2 border-transparent focus:border-[#DC2626]/50 rounded-2xl outline-none transition-all placeholder:text-gray-300 font-bold text-lg shadow-sm"
                     placeholder="00000 00000"
                   />
                 </div>
@@ -141,7 +141,7 @@ export default function DeliverySignIn() {
               <button
                 type="submit"
                 disabled={loading || phone.length < 10}
-                className="w-full py-4.5 bg-[#7e3866] hover:bg-[#6a2f56] disabled:bg-gray-200 dark:disabled:bg-gray-800 disabled:text-gray-400 text-white rounded-2xl font-bold text-lg shadow-xl shadow-[#7e3866]/20 transition-all active:scale-[0.98] flex items-center justify-center gap-2 group overflow-hidden relative"
+                className="w-full py-4.5 bg-[#DC2626] hover:bg-[#B91C1C] disabled:bg-gray-200 dark:disabled:bg-gray-800 disabled:text-gray-400 text-white rounded-2xl font-bold text-lg shadow-xl shadow-[#DC2626]/20 transition-all active:scale-[0.98] flex items-center justify-center gap-2 group overflow-hidden relative"
               >
                 {loading ? (
                   <Loader2 className="w-6 h-6 animate-spin" />
@@ -164,7 +164,7 @@ export default function DeliverySignIn() {
           <div className="mt-8 text-center">
             <p className="text-[11px] text-gray-400 font-medium leading-relaxed max-w-[320px] mx-auto">
               By continuing, you agree to RedGo's <br />
-              <Link to="/food/delivery/terms" className="text-gray-900 dark:text-white font-bold hover:text-[#7e3866] transition-colors">Terms and Conditions</Link>
+              <Link to="/food/delivery/terms" className="text-gray-900 dark:text-white font-bold hover:text-[#DC2626] transition-colors">Terms and Conditions</Link>
             </p>
           </div>
 

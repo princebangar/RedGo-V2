@@ -34,11 +34,11 @@ export default function SplashScreen({ onFinish }) {
             key="splash-content"
             initial={{ opacity: 0, scale: 0.98 }}
             animate={{ opacity: 1, scale: 1 }}
-            exit={{ 
-              scale: 8, 
+            exit={{
+              scale: 8,
               opacity: 0,
             }}
-            transition={{ 
+            transition={{
               exit: { duration: 0.5, ease: [0.45, 0, 0.55, 1] },
               duration: 0.4,
               ease: "easeOut"
@@ -47,8 +47,8 @@ export default function SplashScreen({ onFinish }) {
             className="relative flex items-center justify-center w-full h-full"
           >
             {/* Pulsing Aura Background - Simplified for Performance */}
-            <motion.div 
-              animate={{ 
+            <motion.div
+              animate={{
                 scale: [1, 1.1, 1],
                 opacity: [0.2, 0.4, 0.2]
               }}
@@ -62,62 +62,62 @@ export default function SplashScreen({ onFinish }) {
               <motion.div
                 key={index}
                 initial={{ opacity: 0 }}
-                animate={{ 
+                animate={{
                   opacity: [0, 0.15, 0],
                   y: [0, -20, 0]
                 }}
-                transition={{ 
-                  duration: 5, 
-                  repeat: Infinity, 
+                transition={{
+                  duration: 5,
+                  repeat: Infinity,
                   delay: delay,
-                  ease: "linear" 
+                  ease: "linear"
                 }}
                 className="absolute text-white/5"
-                style={{ 
-                  transform: 'translateZ(0)', 
+                style={{
+                  transform: 'translateZ(0)',
                   willChange: "transform, opacity",
-                  left: x, 
-                  top: y 
+                  left: x,
+                  top: y
                 }}
               >
                 <Icon className="w-16 h-16 md:w-24 md:h-24" strokeWidth={0.5} />
               </motion.div>
             ))}
- 
+
             {/* Central Brand Logic */}
             <div className="relative">
               <motion.h1
                 initial={{ scale: 0.9, opacity: 0 }}
                 animate={{ scale: 1, opacity: 1 }}
-                transition={{ 
-                  type: 'spring', 
-                  stiffness: 100, 
+                transition={{
+                  type: 'spring',
+                  stiffness: 100,
                   damping: 15
                 }}
                 style={{ transform: 'translateZ(0)', willChange: "transform, opacity" }}
                 className="text-7xl md:text-9xl font-black tracking-tighter text-white relative font-['Outfit'] select-none"
               >
                 REDGO
-                
+
                 {/* Optimized Shine Effect Layer */}
                 <motion.div
                   initial={{ x: '-150%' }}
                   animate={{ x: '150%' }}
-                  transition={{ 
-                    duration: 1.8, 
-                    repeat: Infinity, 
+                  transition={{
+                    duration: 1.8,
+                    repeat: Infinity,
                     repeatDelay: 1,
                     ease: "easeInOut"
                   }}
                   className="absolute inset-0 bg-gradient-to-r from-transparent via-white/40 to-transparent skew-x-[-20deg] pointer-events-none"
-                  style={{ 
+                  style={{
                     mixBlendMode: 'overlay',
                     willChange: "transform",
                     transform: 'translateZ(0)'
                   }}
                 />
               </motion.h1>
- 
+
               {/* Tagline */}
               <motion.p
                 initial={{ y: 10, opacity: 0 }}
@@ -128,16 +128,16 @@ export default function SplashScreen({ onFinish }) {
                 Premium Food Delivery
               </motion.p>
             </div>
- 
+
             {/* Bottom Signature */}
-            <motion.div 
+            {/*  <motion.div 
                initial={{ opacity: 0 }}
                animate={{ opacity: 0.4 }}
                transition={{ delay: 0.8 }}
                className="absolute bottom-12 text-white text-[9px] uppercase tracking-[0.2em] font-medium"
             >
               Powered by RedGo Inc.
-            </motion.div>
+            </motion.div> */}
           </motion.div>
         )}
       </AnimatePresence>

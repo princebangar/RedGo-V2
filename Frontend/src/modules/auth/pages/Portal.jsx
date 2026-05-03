@@ -103,7 +103,7 @@ export default function SuperAppPortal() {
           <motion.div 
             animate={{ rotate: [0, 10, -10, 0] }}
             transition={{ duration: 4, repeat: Infinity }}
-            className="w-6 h-6 bg-gradient-to-br from-[#7e3866] to-[#5a2849] rounded-lg flex items-center justify-center shadow-lg"
+            className="w-6 h-6 bg-gradient-to-br from-[#DC2626] to-[#B91C1C] rounded-lg flex items-center justify-center shadow-lg"
           >
              <span className="text-white text-[10px] font-black italic">R</span>
           </motion.div>
@@ -117,7 +117,7 @@ export default function SuperAppPortal() {
           className="text-5xl md:text-7xl font-black text-[#1A202C] tracking-tight leading-none"
         >
           Welcome to <br />
-          <span className="text-transparent bg-clip-text bg-gradient-to-r from-[#7e3866] via-[#a64a85] to-[#7e3866] bg-[length:200%_auto] animate-gradient block mt-2">RedGo</span>
+          <span className="text-transparent bg-clip-text bg-gradient-to-r from-[#DC2626] via-[#f87171] to-[#DC2626] bg-[length:200%_auto] animate-gradient block mt-2">RedGo</span>
         </motion.h1>
 
         <motion.p 

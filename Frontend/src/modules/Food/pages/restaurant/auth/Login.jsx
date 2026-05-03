@@ -43,7 +43,7 @@ export default function RestaurantLogin() {
       }
       sessionStorage.setItem("restaurantAuthData", JSON.stringify(authData))
       sessionStorage.setItem("restaurantLoginPhone", phone)
-      toast.success("Verification code sent!")
+      // toast.success("Verification code sent!")
       navigate("/food/restaurant/otp")
     } catch (apiErr) {
       const msg = apiErr?.response?.data?.message || apiErr?.message || "Failed to send OTP."

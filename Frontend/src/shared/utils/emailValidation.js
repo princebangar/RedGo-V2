@@ -9,7 +9,7 @@
  * Matches: aaa@gmail.com, user123@example.co.uk, etc.
  * Format: [any chars except space/@]@[any chars except space/@].[any chars except space/@]
  */
-export const EMAIL_REGEX = /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.(com|net|org|edu|gov|mil|biz|info|name|museum|co\.in|in|co|us|me|io|uk)$/i;
+export const EMAIL_REGEX = /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/i;
 
 /**
  * Validate email format

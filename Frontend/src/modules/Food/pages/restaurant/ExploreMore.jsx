@@ -30,12 +30,15 @@ import {
   MapPin,
   LogOut,
   ShoppingBag,
+  Trash2,
+  AlertTriangle,
 } from "lucide-react"
 import { Card, CardContent } from "@food/components/ui/card"
 import { DateRangeCalendar } from "@food/components/ui/date-range-calendar"
 import { clearModuleAuth, clearAuthData, getCurrentUser } from "@food/utils/auth"
-import { restaurantAPI } from "@food/api"
+import { restaurantAPI, authAPI } from "@food/api"
 import { toast } from "sonner"
+import { showAccountDeletedToast } from "@/shared/utils/customToasts"
 import { firebaseAuth, ensureFirebaseInitialized } from "@food/firebase"
 import BottomNavOrders from "@food/components/restaurant/BottomNavOrders"
 const debugLog = (...args) => {}
@@ -358,6 +361,11 @@ export default function ExploreMore() {
   const [takeawayModalOpen, setTakeawayModalOpen] = useState(false)
   const [tempTakeawayEnabled, setTempTakeawayEnabled] = useState(false)
   const [isTakeawayUpdating, setIsTakeawayUpdating] = useState(false)
+  
+  // Account deletion states
+  const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false)
+  const [deleteInput, setDeleteInput] = useState("")
+  const [isDeletingAccount, setIsDeletingAccount] = useState(false)
 
   const STORAGE_KEY = "restaurant_schedule_off"
 
@@ -1000,7 +1008,7 @@ export default function ExploreMore() {
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.5, duration: 0.25 }}
           onClick={() => setLogoutConfirmOpen(true)}
-          className="w-full flex items-center justify-between gap-3 rounded-2xl border border-[#DC2626]/20 bg-[#DC2626]/5 px-4 py-4 text-left hover:bg-[#DC2626]/10 transition-all active:scale-[0.99]"
+          className="w-full flex items-center justify-between gap-3 rounded-2xl border border-[#DC2626]/20 bg-[#DC2626]/5 px-4 py-4 text-left hover:bg-[#DC2626]/10 transition-all active:scale-[0.99] mb-4"
         >
           <div className="flex items-center gap-3 min-w-0">
             <div className="flex h-11 w-11 items-center justify-center rounded-full bg-[#DC2626]/10">
@@ -1009,6 +1017,25 @@ export default function ExploreMore() {
             <div className="min-w-0">
               <p className="text-base font-semibold text-[#DC2626]">Logout</p>
               <p className="text-sm text-[#DC2626]/60 font-medium">Tap to sign out from this device</p>
+            </div>
+          </div>
+          <ChevronRight className="w-5 h-5 text-[#DC2626]/40 shrink-0" />
+        </motion.button>
+
+        <motion.button
+          initial={{ opacity: 0, y: 8 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.55, duration: 0.25 }}
+          onClick={() => setDeleteConfirmOpen(true)}
+          className="w-full flex items-center justify-between gap-3 rounded-2xl border border-[#DC2626]/20 bg-[#DC2626]/5 px-4 py-4 text-left hover:bg-[#DC2626]/10 transition-all active:scale-[0.99]"
+        >
+          <div className="flex items-center gap-3 min-w-0">
+            <div className="flex h-11 w-11 items-center justify-center rounded-full bg-[#DC2626]/10">
+              <Trash2 className="w-5 h-5 text-[#DC2626]" />
+            </div>
+            <div className="min-w-0">
+              <p className="text-base font-semibold text-[#DC2626]">Delete Account</p>
+              <p className="text-sm text-[#DC2626]/60 font-medium">Permanently Remove This Account</p>
             </div>
           </div>
           <ChevronRight className="w-5 h-5 text-[#DC2626]/40 shrink-0" />
@@ -1296,14 +1323,6 @@ export default function ExploreMore() {
                   {isLoggingOut ? "Logging out..." : "Logout"}
                 </button>
 
-                {/* Logout from all devices Button */}
-                <button
-                  onClick={handleLogoutAllDevices}
-                  disabled={isLoggingOut}
-                  className="w-full bg-[#DC2626]/10 text-[#DC2626] border border-[#DC2626]/20 hover:bg-[#DC2626]/20 active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed font-bold py-4 px-4 rounded-2xl transition-all"
-                >
-                  {isLoggingOut ? "Logging out..." : "Logout from all devices"}
-                </button>
               </div>
 
               {/* Footer Links */}
@@ -1814,6 +1833,104 @@ export default function ExploreMore() {
                 )}
                 {isTakeawayUpdating ? "Saving..." : "Save"}
               </button>
+            </motion.div>
+          </>
+        )}
+      </AnimatePresence>
+
+      <AnimatePresence>
+        {deleteConfirmOpen && (
+          <>
+            {/* Backdrop */}
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              transition={{ duration: 0.2 }}
+              className="fixed inset-0 bg-black/60 z-[10000] backdrop-blur-sm"
+              onClick={() => {
+                if (!isDeletingAccount) setDeleteConfirmOpen(false)
+              }}
+            />
+
+            {/* Delete Confirmation Modal */}
+            <motion.div
+              initial={{ opacity: 0, scale: 0.9, y: 20 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.9, y: 20 }}
+              transition={{ type: "spring", damping: 25, stiffness: 300 }}
+              className="fixed inset-0 flex items-center justify-center z-[10001] px-4"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="bg-white rounded-3xl shadow-2xl max-w-sm w-full p-6 text-center border border-red-100">
+                {/* Icon Circle */}
+                <div className="flex justify-center mb-4">
+                  <div className="w-16 h-16 rounded-full bg-red-100 flex items-center justify-center">
+                    <Trash2 className="w-8 h-8 text-red-600" />
+                  </div>
+                </div>
+
+                <h3 className="text-xl font-bold text-gray-900 mb-2">Delete Your Account?</h3>
+                <p className="text-sm text-gray-500 mb-5 leading-relaxed">
+                  Are you sure you want to delete your account? This action cannot be undone.
+                </p>
+
+                {/* Warning box */}
+                <div className="mb-5 bg-orange-50 border-l-4 border-orange-500 rounded-r-xl p-3 text-left">
+                  <div className="flex items-center gap-2 mb-1">
+                    <AlertTriangle className="w-4 h-4 text-orange-600 flex-shrink-0" />
+                    <span className="text-xs font-bold text-orange-700 uppercase tracking-wider">Warning</span>
+                  </div>
+                  <p className="text-[11px] text-orange-800 font-medium leading-tight">
+                    All your restaurant data, orders, and wallet information will be permanently deleted.
+                  </p>
+                </div>
+
+                {/* Input field */}
+                <div className="mb-6">
+                  <input 
+                    type="text" 
+                    placeholder="Type DELETE to confirm" 
+                    value={deleteInput}
+                    onChange={(e) => setDeleteInput(e.target.value.toUpperCase())}
+                    className="w-full h-12 px-4 rounded-xl border-2 border-gray-100 focus:border-red-500 focus:ring-4 focus:ring-red-50 outline-none transition-all font-bold text-center tracking-widest placeholder:tracking-normal placeholder:font-medium placeholder:text-gray-400"
+                  />
+                </div>
+
+                <div className="flex items-center gap-3">
+                  <button
+                    autoFocus
+                    onClick={() => setDeleteConfirmOpen(false)}
+                    disabled={isDeletingAccount}
+                    className="flex-1 h-12 rounded-xl border-2 border-gray-200 text-gray-800 font-bold text-sm transition-colors hover:bg-gray-50 disabled:opacity-50"
+                  >
+                    No, Cancel
+                  </button>
+                  <button
+                    onClick={async () => {
+                      if (isDeletingAccount || deleteInput !== "DELETE") return;
+                      setIsDeletingAccount(true);
+                      try {
+                        await authAPI.deleteAccount("restaurant");
+                        showAccountDeletedToast();
+                        clearModuleAuth("restaurant");
+                        localStorage.removeItem("app:isOnline");
+                        window.dispatchEvent(new Event("restaurantAuthChanged"));
+                        navigate("/food/restaurant/onboarding", { replace: true });
+                      } catch (err) {
+                        toast.error(err?.response?.data?.message || "Failed to delete account");
+                      } finally {
+                        setIsDeletingAccount(false);
+                        setDeleteConfirmOpen(false);
+                      }
+                    }}
+                    disabled={isDeletingAccount || deleteInput !== "DELETE"}
+                    className="flex-1 h-12 rounded-xl bg-red-600 text-white font-bold text-sm transition-colors hover:bg-red-700 disabled:opacity-60 disabled:cursor-not-allowed shadow-lg shadow-red-600/20"
+                  >
+                    {isDeletingAccount ? "Deleting..." : "Yes, Delete"}
+                  </button>
+                </div>
+              </div>
             </motion.div>
           </>
         )}

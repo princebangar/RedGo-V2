@@ -130,7 +130,7 @@ export default function RestaurantOTP() {
         setRestaurantAuthData("restaurant", accessToken, restaurant, data?.refreshToken)
         window.dispatchEvent(new Event("restaurantAuthChanged"))
         sessionStorage.removeItem("restaurantAuthData")
-        toast.success("Verification successful!")
+        // toast.success("Verification successful!")
 
         setTimeout(async () => {
           if (authData?.isSignUp) {
@@ -176,7 +176,7 @@ export default function RestaurantOTP() {
     try {
       const purpose = authData.isSignUp ? "register" : "login"
       await restaurantAPI.sendOTP(authData.phone, purpose, authData.email)
-      toast.success("New code sent!")
+      // toast.success("New code sent!")
       setResendTimer(60)
     } catch (err) {
       toast.error(err?.response?.data?.message || "Failed to resend code")

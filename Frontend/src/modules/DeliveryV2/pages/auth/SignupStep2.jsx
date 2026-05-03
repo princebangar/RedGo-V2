@@ -104,6 +104,7 @@ export default function SignupStep2() {
   const [activePicker, setActivePicker] = useState(null) // { docType: string, title: string, ref: any }
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [uploading, setUploading] = useState({})
+  const [isDummyMode, setIsDummyMode] = useState(false)
 
   useEffect(() => {
     window.scrollTo({ top: 0, left: 0, behavior: "auto" })
@@ -264,7 +265,7 @@ export default function SignupStep2() {
       formData.append("platform", platform);
     }
 
-    const isCompleteProfile = sessionStorage.getItem("deliveryNeedsRegistration") === "true"
+    const isCompleteProfile = isDummyMode || sessionStorage.getItem("deliveryNeedsRegistration") === "true"
 
     setIsSubmitting(true)
 
@@ -403,9 +404,63 @@ export default function SignupStep2() {
 
       {/* Content */}
       <div className="px-4 py-6">
-        <div className="mb-6">
-          <h2 className="text-xl font-bold text-gray-900 mb-2">Document Verification</h2>
-          <p className="text-sm text-gray-600">Please upload clear photos of your documents</p>
+        <div className="mb-6 flex justify-between items-start">
+          <div>
+            <h2 className="text-xl font-bold text-gray-900 mb-2">Document Verification</h2>
+            <p className="text-sm text-gray-600">Please upload clear photos of your documents</p>
+          </div>
+          <button
+            type="button"
+            onClick={() => {
+              const base64Png = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==";
+              const binaryString = atob(base64Png);
+              const bytes = new Uint8Array(binaryString.length);
+              for (let i = 0; i < binaryString.length; i++) bytes[i] = binaryString.charCodeAt(i);
+              const dummyBlob = new Blob([bytes], { type: "image/png" });
+              const dummyFile = new File([dummyBlob], "dummy_doc.png", { type: "image/png" });
+              
+              setDocuments({
+                profilePhoto: dummyFile,
+                aadharPhoto: dummyFile,
+                panPhoto: dummyFile,
+                drivingLicensePhoto: dummyFile
+              });
+              setUploadedDocs({
+                profilePhoto: { file: true },
+                aadharPhoto: { file: true },
+                panPhoto: { file: true },
+                drivingLicensePhoto: { file: true }
+              });
+              setIsDummyMode(true);
+              sessionStorage.setItem("deliveryNeedsRegistration", "true");
+              
+              // Ensure basic details exist for the register call
+              const existingDetails = JSON.parse(sessionStorage.getItem("deliverySignupDetails") || "{}");
+              if (!existingDetails.phone) {
+                sessionStorage.setItem("deliverySignupDetails", JSON.stringify({
+                  ...existingDetails,
+                  name: "Prince Bangar",
+                  email: "princeb@redgo.test",
+                  phone: "9098569621",
+                  countryCode: "+91",
+                  address: "123 RedGo Tower, Vijay Nagar",
+                  city: "Indore",
+                  state: "Madhya Pradesh",
+                  vehicleType: "bike",
+                  vehicleName: "Honda Activa",
+                  vehicleNumber: "MP13AB1234",
+                  drivingLicenseNumber: "MP1320110012345",
+                  panNumber: "ABCDE1234F",
+                  aadharNumber: "123456789012"
+                }));
+              }
+              
+              toast.success("Dummy documents added!");
+            }}
+            className="bg-orange-50 text-orange-600 border border-orange-200 px-3 py-1.5 rounded-md text-[10px] font-bold uppercase tracking-wider hover:bg-orange-100 transition-colors"
+          >
+            Fill Dummy Data
+          </button>
         </div>
 
         <form onSubmit={handleSubmit} className="space-y-4">

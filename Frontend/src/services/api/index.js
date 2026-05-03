@@ -120,6 +120,7 @@ export const authAPI = {
         : null);
     return authService.logout(token, fcmToken, platform);
   },
+  deleteAccount: (module = "user") => authService.deleteAccount(module),
 };
 
 export const supportAPI = {

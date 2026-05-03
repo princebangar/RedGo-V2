@@ -50,12 +50,14 @@ import { authAPI, userAPI } from "@food/api";
 import { firebaseAuth } from "@food/firebase";
 import { clearModuleAuth } from "@food/utils/auth";
 import { toast } from "sonner";
+import { showAccountDeletedToast } from "@/shared/utils/customToasts";
+import { registerWebPushForCurrentModule } from "@food/utils/firebaseMessaging";
+
 const debugLog = (...args) => { };
 const debugWarn = (...args) => { };
 const debugError = (...args) => { };
 const USER_SESSION_PREFERENCE_KEYS = ["userVegMode", "food-under-250-filters"];
 
-import { registerWebPushForCurrentModule } from "@food/utils/firebaseMessaging";
 
 export default function Profile() {
   const { userProfile, vegMode, setVegMode, getDefaultAddress, addresses } =
@@ -84,7 +86,6 @@ export default function Profile() {
   const [referralReward, setReferralReward] = useState(0);
   const [walletBalance, setWalletBalance] = useState(0);
   const [deleteAccountOpen, setDeleteAccountOpen] = useState(false);
-  const [deleteStep, setDeleteStep] = useState(1);
   const [deleteCaptcha, setDeleteCaptcha] = useState("");
   const [isDeleting, setIsDeleting] = useState(false);
 
@@ -414,25 +415,38 @@ export default function Profile() {
   };
 
   const handleDeleteAccount = async () => {
-    if (isDeleting) return;
+    if (isDeleting || deleteCaptcha !== "DELETE") return;
     setIsDeleting(true);
     try {
-      await userAPI.deleteAccount();
-      toast.success("Account deleted successfully");
-      // Clear all local data
+      await authAPI.deleteAccount("user");
+      
+      showAccountDeletedToast();
+      
+      // Clear user module authentication data
       clearModuleAuth("user");
+      
+      // Clear legacy token data for backward compatibility
       localStorage.removeItem("accessToken");
       localStorage.removeItem("user_authenticated");
       localStorage.removeItem("user_user");
       localStorage.removeItem("user");
       localStorage.removeItem("cart");
       USER_SESSION_PREFERENCE_KEYS.forEach((key) => localStorage.removeItem(key));
+      
+      // Clear logout-related storage
+      localStorage.removeItem("app:isOnline");
+      
+      // Dispatch auth change event to notify other components
       window.dispatchEvent(new Event("userAuthChanged"));
+      
+      // Navigate to sign in page
       navigate("/user/auth/login", { replace: true });
-    } catch (err) {
-      toast.error(err?.response?.data?.message || "Failed to delete account. Please try again.");
+    } catch (error) {
+      debugError("Error deleting account:", error);
+      toast.error(error?.response?.data?.message || "Failed to delete account. Please try again.");
     } finally {
       setIsDeleting(false);
+      setDeleteAccountOpen(false);
     }
   };
 
@@ -1020,7 +1034,7 @@ export default function Profile() {
               transition={{ duration: 0.2, type: "spring", stiffness: 300 }}>
               <Card
                 className="bg-white dark:bg-[#1a1a1a] py-0 rounded-xl shadow-sm border-0 dark:border-gray-800 cursor-pointer"
-                onClick={() => { setDeleteStep(1); setDeleteCaptcha(""); setDeleteAccountOpen(true); }}>
+                onClick={() => { setDeleteCaptcha(""); setDeleteAccountOpen(true); }}>
                 <CardContent className="p-4 flex items-center justify-between">
                   <div className="flex items-center gap-3">
                     <motion.div
@@ -1224,75 +1238,66 @@ export default function Profile() {
 
       {/* Delete Account Confirmation */}
       {deleteAccountOpen && (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/50 px-4">
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 backdrop-blur-sm px-4">
           <motion.div
             initial={{ scale: 0.9, opacity: 0 }}
             animate={{ scale: 1, opacity: 1 }}
-            className="w-full max-w-sm rounded-2xl bg-white dark:bg-[#1a1a1a] shadow-2xl border border-gray-200 dark:border-gray-800 overflow-hidden">
-
-            {deleteStep === 1 && (
-              <div className="p-5">
-                <div className="flex items-center gap-3 mb-4">
-                  <div className="bg-red-100 dark:bg-red-900/30 rounded-full p-2.5">
-                    <AlertTriangle className="h-6 w-6 text-red-500" />
-                  </div>
-                  <h3 className="text-lg font-bold text-gray-900 dark:text-white">Delete Account?</h3>
-                </div>
-                <div className="bg-red-50 dark:bg-red-900/10 rounded-xl p-3.5 mb-4 border border-red-100 dark:border-red-900/30">
-                  <p className="text-sm font-semibold text-red-600 dark:text-red-400 mb-2">⚠️ This action is permanent and cannot be undone!</p>
-                  <ul className="text-xs text-red-500/80 dark:text-red-400/70 space-y-1.5">
-                    <li>• Your profile, addresses, and preferences will be deleted</li>
-                    <li>• Wallet balance will be forfeited</li>
-                    <li>• Order history will be anonymized</li>
-                    <li>• Referral rewards will be lost</li>
-                    <li>• You can sign up again as a new user with the same number</li>
-                  </ul>
-                </div>
-                <div className="flex items-center gap-3">
-                  <Button
-                    variant="outline"
-                    className="flex-1 rounded-xl"
-                    onClick={() => setDeleteAccountOpen(false)}>
-                    Cancel
-                  </Button>
-                  <Button
-                    className="flex-1 rounded-xl bg-red-500 hover:bg-red-600 text-white"
-                    onClick={() => setDeleteStep(2)}>
-                    Continue
-                  </Button>
-                </div>
+            className="w-full max-w-sm rounded-2xl bg-white dark:bg-[#1a1a1a] shadow-2xl border border-red-100 dark:border-red-900/30 overflow-hidden p-6">
+            
+            {/* Icon + Title centered */}
+            <div className="flex flex-col items-center text-center mb-4">
+              <div className="w-14 h-14 rounded-full bg-red-100 dark:bg-red-900/30 flex items-center justify-center mb-3">
+                <Trash2 className="h-7 w-7 text-red-600 dark:text-red-400" />
               </div>
-            )}
+              <h3 className="text-xl font-black text-gray-900 dark:text-white">
+                Delete Your Account?
+              </h3>
+            </div>
 
-            {deleteStep === 2 && (
-              <div className="p-5">
-                <h3 className="text-lg font-bold text-gray-900 dark:text-white mb-2">Confirm Deletion</h3>
-                <p className="text-sm text-gray-500 dark:text-gray-400 mb-4">Type <span className="font-bold text-red-500">DELETE MY ACCOUNT</span> to confirm.</p>
-                <input
-                  type="text"
-                  value={deleteCaptcha}
-                  onChange={(e) => setDeleteCaptcha(e.target.value)}
-                  placeholder="Type here..."
-                  className="w-full px-4 py-3 rounded-xl border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-900 text-gray-900 dark:text-white text-sm font-mono focus:outline-none focus:ring-2 focus:ring-red-400 mb-4"
-                  autoFocus
-                  autoComplete="off"
-                />
-                <div className="flex items-center gap-3">
-                  <Button
-                    variant="outline"
-                    className="flex-1 rounded-xl"
-                    onClick={() => { setDeleteStep(1); setDeleteCaptcha(""); }}>
-                    Back
-                  </Button>
-                  <Button
-                    className="flex-1 rounded-xl bg-red-500 hover:bg-red-600 text-white disabled:opacity-40 disabled:cursor-not-allowed"
-                    disabled={deleteCaptcha.trim() !== "DELETE MY ACCOUNT" || isDeleting}
-                    onClick={handleDeleteAccount}>
-                    {isDeleting ? "Deleting..." : "Delete Forever"}
-                  </Button>
-                </div>
+            <p className="text-sm text-gray-600 dark:text-gray-300 mb-4 leading-relaxed text-center">
+              Are you sure you want to delete your account?
+            </p>
+
+            {/* Warning box */}
+            <div className="mb-4 bg-orange-50 dark:bg-orange-900/20 border-l-4 border-orange-500 rounded-r-xl p-3">
+              <div className="flex items-center gap-2 mb-1">
+                <AlertTriangle className="h-4 w-4 text-orange-600 dark:text-orange-400 flex-shrink-0" />
+                <span className="text-sm font-bold text-orange-700 dark:text-orange-400">Warning</span>
               </div>
-            )}
+              <p className="text-xs text-orange-700 dark:text-orange-300 leading-relaxed">
+                Your all data will be permanently lost. This action cannot be undone.
+              </p>
+            </div>
+            
+            <div className="mb-6">
+              <input 
+                type="text" 
+                placeholder="Type DELETE to confirm" 
+                value={deleteCaptcha}
+                onChange={(e) => setDeleteCaptcha(e.target.value.toUpperCase())}
+                className="w-full h-12 px-4 rounded-xl border-2 border-gray-200 dark:border-gray-700 bg-transparent dark:text-white focus:border-red-500 focus:ring-4 focus:ring-red-50 dark:focus:ring-red-900/20 outline-none transition-all font-bold text-center tracking-widest placeholder:tracking-normal placeholder:font-medium placeholder:text-gray-400 dark:placeholder:text-gray-500"
+              />
+            </div>
+
+            <div className="flex items-center gap-3">
+              <Button
+                type="button"
+                variant="outline"
+                className="flex-1 h-12 rounded-xl text-md font-bold ring-2 ring-gray-300 dark:ring-gray-600"
+                onClick={() => setDeleteAccountOpen(false)}
+                disabled={isDeleting}
+              >
+                Cancel
+              </Button>
+              <Button
+                type="button"
+                className="flex-1 h-12 rounded-xl bg-red-600 hover:bg-red-700 text-white text-md font-bold disabled:opacity-60 disabled:cursor-not-allowed shadow-lg shadow-red-600/20"
+                onClick={handleDeleteAccount}
+                disabled={isDeleting || deleteCaptcha !== "DELETE"}
+              >
+                {isDeleting ? "Deleting..." : "Delete Account"}
+              </Button>
+            </div>
           </motion.div>
         </div>
       )}
