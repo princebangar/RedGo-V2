@@ -14,6 +14,7 @@ import {
   requestAdminForgotPasswordOtp,
   resetAdminPasswordWithOtp,
   deleteAccount,
+  checkAccountBalance,
 } from "./auth.service.js";
 import { validateUserOtpRequestDto } from "../../dtos/auth/userOtpRequest.dto.js";
 import { validateUserOtpVerifyDto } from "../../dtos/auth/userOtpVerify.dto.js";
@@ -55,6 +56,7 @@ export const verifyUserOtpController = async (req, res, next) => {
       fcmToken,
       platform,
       name,
+      confirmAction,
     );
     return sendResponse(res, 200, "Login successful", result);
   } catch (error) {
@@ -97,8 +99,8 @@ export const requestRestaurantOtpController = async (req, res, next) => {
 
 export const verifyRestaurantOtpController = async (req, res, next) => {
   try {
-    const { phone, otp, fcmToken, platform } = validateRestaurantOtpVerifyDto(req.body);
-    const result = await verifyRestaurantOtpAndLogin(phone, otp, fcmToken, platform);
+    const { phone, otp, fcmToken, platform, confirmAction } = validateRestaurantOtpVerifyDto(req.body);
+    const result = await verifyRestaurantOtpAndLogin(phone, otp, fcmToken, platform, confirmAction);
     return sendResponse(res, 200, "Login successful", result);
   } catch (error) {
     next(error);
@@ -120,8 +122,8 @@ export const requestDeliveryOtpController = async (req, res, next) => {
 
 export const verifyDeliveryOtpController = async (req, res, next) => {
   try {
-    const { phone, otp, fcmToken, platform } = validateDeliveryOtpVerifyDto(req.body);
-    const result = await verifyDeliveryOtpAndLogin(phone, otp, fcmToken, platform);
+    const { phone, otp, fcmToken, platform, confirmAction } = validateDeliveryOtpVerifyDto(req.body);
+    const result = await verifyDeliveryOtpAndLogin(phone, otp, fcmToken, platform, confirmAction);
     return sendResponse(res, 200, "Login successful", result);
   } catch (error) {
     next(error);
@@ -217,6 +219,16 @@ export const deleteAccountController = async (req, res, next) => {
     const { userId, role } = req.user;
     const result = await deleteAccount(userId, role);
     return sendResponse(res, 200, result.message, result);
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const checkAccountBalanceController = async (req, res, next) => {
+  try {
+    const { userId, role } = req.user;
+    const result = await checkAccountBalance(userId, role);
+    return sendResponse(res, 200, "Balance checked successfully", result);
   } catch (error) {
     next(error);
   }

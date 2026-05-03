@@ -20,9 +20,9 @@ import {
   LogIn,
   UserPlus,
   Trash2,
-  AlertTriangle
+  AlertTriangle,
 } from "lucide-react"
-import { restaurantAPI } from "@food/api"
+import { authAPI, restaurantAPI } from "@food/api"
 import { toast } from "sonner"
 import { clearModuleAuth } from "@food/utils/auth"
 
@@ -31,10 +31,25 @@ export default function MenuOverlay({ showMenu, setShowMenu }) {
   const [isAuthenticated, setIsAuthenticated] = useState(() => {
     return localStorage.getItem("restaurant_authenticated") === "true"
   })
-  const [deleteAccountOpen, setDeleteAccountOpen] = useState(false)
-  const [deleteStep, setDeleteStep] = useState(1)
   const [deleteCaptcha, setDeleteCaptcha] = useState("")
   const [isDeleting, setIsDeleting] = useState(false)
+  const [deleteAccountOpen, setDeleteAccountOpen] = useState(false)
+  const [showBalanceWarning, setShowBalanceWarning] = useState(false)
+  const [balanceData, setBalanceData] = useState({ balance: 0, type: "Wallet" })
+  const [isCheckingBalance, setIsCheckingBalance] = useState(false)
+
+  // Lock scroll when any popup is open
+  useEffect(() => {
+    const isPopupOpen = showMenu || deleteAccountOpen || showBalanceWarning;
+    if (isPopupOpen) {
+      document.body.style.overflow = 'hidden';
+    } else {
+      document.body.style.overflow = 'unset';
+    }
+    return () => {
+      document.body.style.overflow = 'unset';
+    };
+  }, [showMenu, deleteAccountOpen, showBalanceWarning]);
 
   // Listen for authentication state changes
   useEffect(() => {
@@ -158,9 +173,28 @@ export default function MenuOverlay({ showMenu, setShowMenu }) {
                       onClick={() => {
                         setShowMenu(false)
                         if (option.isDelete) {
-                          setDeleteStep(1);
-                          setDeleteCaptcha("");
-                          setDeleteAccountOpen(true);
+                          if (isCheckingBalance) return;
+                          (async () => {
+                            try {
+                              setIsCheckingBalance(true);
+                              const res = await authAPI.checkBalance("restaurant");
+                              if (res?.data?.success && res.data.data.balance > 0) {
+                                setBalanceData({ 
+                                  balance: res.data.data.balance, 
+                                  type: res.data.data.type || "Restaurant Wallet Balance" 
+                                });
+                                setShowBalanceWarning(true);
+                              } else {
+                                setDeleteCaptcha(""); 
+                                setDeleteAccountOpen(true);
+                              }
+                            } catch (err) {
+                              setDeleteCaptcha(""); 
+                              setDeleteAccountOpen(true);
+                            } finally {
+                              setIsCheckingBalance(false);
+                            }
+                          })();
                         } else if (option.isLogout) {
                           // Handle logout
                           if (window.confirm("Are you sure you want to logout?")) {
@@ -194,7 +228,11 @@ export default function MenuOverlay({ showMenu, setShowMenu }) {
                         }}
                         className="flex items-center justify-center"
                       >
-                        <IconComponent className="w-5 h-5 md:w-6 md:h-6 text-white flex-shrink-0" />
+                        {isCheckingBalance && option.isDelete ? (
+                          <div className="w-5 h-5 md:w-6 md:h-6 border-2 border-white/30 border-t-white rounded-full animate-spin flex-shrink-0" />
+                        ) : (
+                          <IconComponent className="w-5 h-5 md:w-6 md:h-6 text-white flex-shrink-0" />
+                        )}
                       </motion.div>
                       <motion.span 
                         initial={{ opacity: 0 }}
@@ -221,100 +259,143 @@ export default function MenuOverlay({ showMenu, setShowMenu }) {
       )}
     </AnimatePresence>
 
+    {/* Balance Warning Popup */}
+    <AnimatePresence>
+      {showBalanceWarning && (
+        <>
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 bg-black/60 z-[200] backdrop-blur-sm"
+            onClick={() => setShowBalanceWarning(false)}
+          />
+          <motion.div
+            initial={{ opacity: 0, scale: 0.9, y: 20 }}
+            animate={{ opacity: 1, scale: 1, y: 0 }}
+            exit={{ opacity: 0, scale: 0.9, y: 20 }}
+            className="fixed inset-0 flex items-center justify-center z-[201] px-4"
+          >
+            <div className="bg-white rounded-3xl shadow-2xl max-w-sm w-full p-6 text-center border border-orange-100">
+              <div className="flex justify-center mb-4">
+                <div className="w-16 h-16 rounded-full bg-orange-100 flex items-center justify-center">
+                  <AlertTriangle className="w-8 h-8 text-orange-600" />
+                </div>
+              </div>
+              <h3 className="text-xl font-bold text-gray-900 mb-2">Wait! Balance Found</h3>
+              
+              <div className="bg-gray-50 rounded-2xl p-4 mb-5 text-center">
+                <p className="text-[10px] text-gray-500 uppercase font-black tracking-widest mb-1">{balanceData.type}</p>
+                <p className="text-3xl font-black text-black">₹{balanceData.balance.toLocaleString('en-IN')}</p>
+              </div>
+
+              <p className="text-sm text-gray-500 mb-6 leading-relaxed">
+                You still have money in your restaurant wallet. Do you want to continue deleting your account or go back and withdraw?
+              </p>
+
+              <div className="flex flex-col gap-3">
+                <button
+                  onClick={() => {
+                    setShowBalanceWarning(false);
+                    setDeleteCaptcha("");
+                    setDeleteAccountOpen(true);
+                  }}
+                  className="w-full h-12 rounded-xl bg-gray-100 text-gray-700 font-bold hover:bg-gray-200 transition-colors"
+                >
+                  Continue Anyway
+                </button>
+                <button
+                  onClick={() => setShowBalanceWarning(false)}
+                  className="w-full h-12 rounded-xl bg-black text-white font-bold hover:bg-gray-900 transition-colors"
+                >
+                  Cancel & Withdraw
+                </button>
+              </div>
+            </div>
+          </motion.div>
+        </>
+      )}
+    </AnimatePresence>
+
     {/* Delete Account Confirmation */}
     {deleteAccountOpen && (
       <div
-        className="fixed inset-0 bg-black/60 z-[200] flex items-center justify-center px-4"
+        className="fixed inset-0 bg-black/60 z-[200] flex items-center justify-center px-4 backdrop-blur-sm overflow-y-auto py-10"
         onClick={() => setDeleteAccountOpen(false)}
       >
         <motion.div
           initial={{ scale: 0.9, opacity: 0 }}
           animate={{ scale: 1, opacity: 1 }}
-          className="bg-white w-full max-w-sm rounded-2xl shadow-2xl overflow-hidden"
+          className="bg-white w-full max-w-sm rounded-2xl shadow-2xl overflow-hidden p-6 text-center"
           onClick={(e) => e.stopPropagation()}
         >
-          {deleteStep === 1 && (
-            <div className="p-5">
-              <div className="flex items-center gap-3 mb-4">
-                <div className="bg-red-100 rounded-full p-2.5">
-                  <AlertTriangle className="h-6 w-6 text-red-500" />
-                </div>
-                <h3 className="text-base font-black text-gray-900">Delete Restaurant Account?</h3>
-              </div>
-              <div className="bg-red-50 rounded-xl p-3.5 mb-4 border border-red-100">
-                <p className="text-sm font-semibold text-red-600 mb-2">⚠️ This action is permanent!</p>
-                <ul className="text-xs text-red-500/80 space-y-1.5">
-                  <li>• Your restaurant profile and all food items will be deleted</li>
-                  <li>• Wallet balance and earnings will be forfeited</li>
-                  <li>• Order history will be anonymized</li>
-                  <li>• Menu, add-ons, and categories will be removed</li>
-                  <li>• You can register again as a new restaurant</li>
-                </ul>
-              </div>
-              <div className="flex items-center gap-3">
-                <button
-                  onClick={() => setDeleteAccountOpen(false)}
-                  className="flex-1 h-11 rounded-xl border border-gray-200 text-gray-700 font-bold"
-                >
-                  Cancel
-                </button>
-                <button
-                  onClick={() => setDeleteStep(2)}
-                  className="flex-1 h-11 rounded-xl bg-red-500 text-white font-bold"
-                >
-                  Continue
-                </button>
-              </div>
+          <div className="flex justify-center mb-4">
+            <div className="w-16 h-16 rounded-full bg-red-100 flex items-center justify-center">
+              <Trash2 className="w-8 h-8 text-red-600" />
             </div>
-          )}
+          </div>
 
-          {deleteStep === 2 && (
-            <div className="p-5">
-              <h3 className="text-base font-black text-gray-900 mb-2">Confirm Deletion</h3>
-              <p className="text-sm text-gray-500 mb-4">Type <span className="font-bold text-red-500">DELETE MY ACCOUNT</span> to confirm.</p>
-              <input
-                type="text"
-                value={deleteCaptcha}
-                onChange={(e) => setDeleteCaptcha(e.target.value)}
-                placeholder="Type here..."
-                className="w-full px-4 py-3 rounded-xl border border-gray-200 bg-gray-50 text-gray-900 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-red-400 mb-4"
-                autoFocus
-                autoComplete="off"
-              />
-              <div className="flex items-center gap-3">
-                <button
-                  onClick={() => { setDeleteStep(1); setDeleteCaptcha(""); }}
-                  className="flex-1 h-11 rounded-xl border border-gray-200 text-gray-700 font-bold"
-                >
-                  Back
-                </button>
-                <button
-                  onClick={async () => {
-                    if (isDeleting) return;
-                    setIsDeleting(true);
-                    try {
-                      await restaurantAPI.deleteAccount();
-                      toast.success("Restaurant account deleted successfully");
-                      clearModuleAuth("restaurant");
-                      localStorage.removeItem("restaurant_authenticated");
-                      localStorage.removeItem("restaurant_user");
-                      setIsAuthenticated(false);
-                      window.dispatchEvent(new Event('restaurantAuthChanged'));
-                      window.location.href = "/restaurant/login";
-                    } catch (err) {
-                      toast.error(err?.response?.data?.message || "Failed to delete account");
-                    } finally {
-                      setIsDeleting(false);
-                    }
-                  }}
-                  disabled={deleteCaptcha.trim() !== "DELETE MY ACCOUNT" || isDeleting}
-                  className="flex-1 h-11 rounded-xl bg-red-500 text-white font-bold disabled:opacity-40 disabled:cursor-not-allowed"
-                >
-                  {isDeleting ? "Deleting..." : "Delete Forever"}
-                </button>
-              </div>
+          <h3 className="text-xl font-bold text-gray-900 mb-2">Delete Your Account?</h3>
+          <p className="text-sm text-gray-500 mb-5 leading-relaxed">
+            Are you sure you want to delete your account?
+          </p>
+
+          {/* Warning box */}
+          <div className="mb-5 bg-red-50 border-l-4 border-red-500 rounded-r-xl p-3 text-left">
+            <div className="flex items-center gap-2 mb-1">
+              <AlertTriangle className="w-4 h-4 text-red-600 flex-shrink-0" />
+              <span className="text-xs font-bold text-red-700 uppercase tracking-wider">Warning</span>
             </div>
-          )}
+            <p className="text-[11px] text-red-800 font-medium leading-tight">
+              Your account will be deactivated. Admin will keep your historical records for revenue reporting.
+            </p>
+          </div>
+
+          {/* Input field */}
+          <div className="mb-6">
+            <input 
+              type="text" 
+              placeholder="Type DELETE to confirm" 
+              value={deleteCaptcha}
+              onChange={(e) => setDeleteCaptcha(e.target.value.toUpperCase())}
+              className="w-full h-12 px-4 rounded-xl border-2 border-gray-100 focus:border-red-500 focus:ring-4 focus:ring-red-50 outline-none transition-all font-bold text-center tracking-widest placeholder:tracking-normal placeholder:font-medium placeholder:text-gray-400"
+            />
+          </div>
+
+          <div className="flex items-center gap-3">
+            <button
+              onClick={() => setDeleteAccountOpen(false)}
+              disabled={isDeleting}
+              className="flex-1 h-12 rounded-xl border-2 border-gray-200 text-gray-800 font-bold text-sm transition-colors hover:bg-gray-50 disabled:opacity-50"
+            >
+              No, Cancel
+            </button>
+            <button
+              onClick={async () => {
+                if (isDeleting || deleteCaptcha !== "DELETE") return;
+                setIsDeleting(true);
+                try {
+                  await authAPI.deleteAccount("restaurant");
+                  toast.success("Account deleted successfully");
+                  clearModuleAuth("restaurant");
+                  localStorage.removeItem("restaurant_authenticated");
+                  localStorage.removeItem("restaurant_user");
+                  setIsAuthenticated(false);
+                  window.dispatchEvent(new Event('restaurantAuthChanged'));
+                  window.location.href = "/food/restaurant/login";
+                } catch (err) {
+                  toast.error(err?.response?.data?.message || "Failed to delete account");
+                } finally {
+                  setIsDeleting(false);
+                  setDeleteAccountOpen(false);
+                }
+              }}
+              disabled={isDeleting || deleteCaptcha !== "DELETE"}
+              className="flex-1 h-12 rounded-xl bg-red-600 text-white font-bold text-sm transition-all hover:bg-red-700 active:scale-95 disabled:opacity-50"
+            >
+              {isDeleting ? "Deleting..." : "Delete Account"}
+            </button>
+          </div>
         </motion.div>
       </div>
     )}

@@ -14,7 +14,8 @@ import {
     changeAdminPasswordController,
     requestAdminForgotPasswordOtpController,
     resetAdminPasswordWithOtpController,
-    deleteAccountController
+    deleteAccountController,
+    checkAccountBalanceController
 } from './auth.controller.js';
 import { authMiddleware, requireAdmin } from './auth.middleware.js';
 import { authRateLimiter } from '../../middleware/rateLimit.js';
@@ -56,6 +57,7 @@ router.patch('/admin/profile', authMiddleware, requireAdmin, updateAdminProfileC
 router.post('/admin/change-password', authMiddleware, requireAdmin, changeAdminPasswordController);
 
 // Unified delete account
+router.get('/delete-account/check-balance', authMiddleware, checkAccountBalanceController);
 router.delete('/delete-account', authMiddleware, deleteAccountController);
 
 export default router;

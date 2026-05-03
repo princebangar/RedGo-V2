@@ -364,14 +364,30 @@ export default function ExploreMore() {
   
   // Account deletion states
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false)
-  const [deleteInput, setDeleteInput] = useState("")
-  const [isDeletingAccount, setIsDeletingAccount] = useState(false)
+  const [deleteCaptcha, setDeleteCaptcha] = useState("")
+  const [isDeleting, setIsDeleting] = useState(false)
+  const [showBalanceWarning, setShowBalanceWarning] = useState(false)
+  const [balanceData, setBalanceData] = useState({ balance: 0, type: "Wallet" })
+  const [isCheckingBalance, setIsCheckingBalance] = useState(false)
 
   const STORAGE_KEY = "restaurant_schedule_off"
 
   // Restaurant data state
   const [restaurantData, setRestaurantData] = useState(null)
   const [loadingRestaurant, setLoadingRestaurant] = useState(true)
+
+  // Lock scroll when any popup is open
+  useEffect(() => {
+    const isPopupOpen = logoutConfirmOpen || showBalanceWarning || deleteConfirmOpen || takeawayModalOpen;
+    if (isPopupOpen) {
+      document.body.style.overflow = 'hidden';
+    } else {
+      document.body.style.overflow = 'unset';
+    }
+    return () => {
+      document.body.style.overflow = 'unset';
+    };
+  }, [logoutConfirmOpen, showBalanceWarning, deleteConfirmOpen, takeawayModalOpen]);
 
   // Fetch restaurant data on mount
   useEffect(() => {
@@ -1026,12 +1042,37 @@ export default function ExploreMore() {
           initial={{ opacity: 0, y: 8 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.55, duration: 0.25 }}
-          onClick={() => setDeleteConfirmOpen(true)}
+          onClick={async () => { 
+            if (isCheckingBalance) return;
+            try {
+              setIsCheckingBalance(true);
+              const res = await authAPI.checkBalance("restaurant");
+              if (res?.data?.success && res.data.data.balance > 0) {
+                setBalanceData({ 
+                  balance: res.data.data.balance, 
+                  type: res.data.data.type || "Restaurant Wallet Balance" 
+                });
+                setShowBalanceWarning(true);
+              } else {
+                setDeleteCaptcha(""); 
+                setDeleteConfirmOpen(true);
+              }
+            } catch (err) {
+              setDeleteCaptcha(""); 
+              setDeleteConfirmOpen(true);
+            } finally {
+              setIsCheckingBalance(false);
+            }
+          }}
           className="w-full flex items-center justify-between gap-3 rounded-2xl border border-[#DC2626]/20 bg-[#DC2626]/5 px-4 py-4 text-left hover:bg-[#DC2626]/10 transition-all active:scale-[0.99]"
         >
           <div className="flex items-center gap-3 min-w-0">
             <div className="flex h-11 w-11 items-center justify-center rounded-full bg-[#DC2626]/10">
-              <Trash2 className="w-5 h-5 text-[#DC2626]" />
+              {isCheckingBalance ? (
+                <div className="w-5 h-5 border-2 border-[#DC2626]/30 border-t-[#DC2626] rounded-full animate-spin" />
+              ) : (
+                <Trash2 className="w-5 h-5 text-[#DC2626]" />
+              )}
             </div>
             <div className="min-w-0">
               <p className="text-base font-semibold text-[#DC2626]">Delete Account</p>
@@ -1052,19 +1093,20 @@ export default function ExploreMore() {
               exit={{ opacity: 0 }}
               transition={{ duration: 0.2 }}
               className="fixed inset-0 bg-black/50 z-[60]"
+            <motion.div
+              initial={{ opacity: 0, scale: 0.9, y: 20 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.9, y: 20 }}
+              transition={{ duration: 0.22 }}
+              className="fixed inset-0 flex items-center justify-center z-[61] px-4 overflow-y-auto py-10 bg-black/50 backdrop-blur-sm"
               onClick={() => {
                 if (!isLoggingOut) setLogoutConfirmOpen(false)
               }}
-            />
-
-            <motion.div
-              initial={{ opacity: 0, y: 24 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: 24 }}
-              transition={{ duration: 0.22 }}
-              className="fixed inset-x-4 bottom-28 z-[61] mx-auto w-auto max-w-md rounded-3xl bg-white p-5 shadow-2xl"
-              onClick={(e) => e.stopPropagation()}
             >
+              <div 
+                className="w-full max-w-sm rounded-3xl bg-white p-6 shadow-2xl"
+                onClick={(e) => e.stopPropagation()}
+              >
               <div className="text-center">
                 <div className="mx-auto mb-3 flex h-12 w-12 items-center justify-center rounded-full bg-[#DC2626]/10">
                   <LogOut className="w-5 h-5 text-[#DC2626]" />
@@ -1093,6 +1135,7 @@ export default function ExploreMore() {
                 >
                   {isLoggingOut ? "Logging out..." : "Yes"}
                 </button>
+              </div>
               </div>
             </motion.div>
           </>
@@ -1838,6 +1881,64 @@ export default function ExploreMore() {
         )}
       </AnimatePresence>
 
+      {/* Balance Warning Popup */}
+      <AnimatePresence>
+        {showBalanceWarning && (
+          <>
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              className="fixed inset-0 bg-black/60 z-[10000] backdrop-blur-sm"
+              onClick={() => setShowBalanceWarning(false)}
+            />
+            <motion.div
+              initial={{ opacity: 0, scale: 0.9, y: 20 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.9, y: 20 }}
+              className="fixed inset-0 flex items-center justify-center z-[10001] px-4 overflow-y-auto py-10"
+            >
+              <div className="bg-white rounded-3xl shadow-2xl max-w-sm w-full p-6 text-center border border-orange-100">
+                <div className="flex justify-center mb-4">
+                  <div className="w-16 h-16 rounded-full bg-orange-100 flex items-center justify-center">
+                    <AlertTriangle className="w-8 h-8 text-orange-600" />
+                  </div>
+                </div>
+                <h3 className="text-xl font-bold text-gray-900 mb-2">Wait! Balance Found</h3>
+                
+                <div className="bg-gray-50 rounded-2xl p-4 mb-5 text-center">
+                  <p className="text-[10px] text-gray-500 uppercase font-black tracking-widest mb-1">{balanceData.type}</p>
+                  <p className="text-3xl font-black text-black">₹{balanceData.balance.toLocaleString('en-IN')}</p>
+                </div>
+
+                <p className="text-sm text-gray-500 mb-6 leading-relaxed">
+                  You still have money in your restaurant wallet. Do you want to continue deleting your account or go back and withdraw?
+                </p>
+
+                <div className="flex flex-col gap-3">
+                  <button
+                    onClick={() => {
+                      setShowBalanceWarning(false);
+                      setDeleteCaptcha("");
+                      setDeleteConfirmOpen(true);
+                    }}
+                    className="w-full h-12 rounded-xl bg-gray-100 text-gray-700 font-bold hover:bg-gray-200 transition-colors"
+                  >
+                    Continue Anyway
+                  </button>
+                  <button
+                    onClick={() => setShowBalanceWarning(false)}
+                    className="w-full h-12 rounded-xl bg-black text-white font-bold hover:bg-gray-900 transition-colors"
+                  >
+                    Cancel & Withdraw
+                  </button>
+                </div>
+              </div>
+            </motion.div>
+          </>
+        )}
+      </AnimatePresence>
+
       <AnimatePresence>
         {deleteConfirmOpen && (
           <>
@@ -1849,7 +1950,7 @@ export default function ExploreMore() {
               transition={{ duration: 0.2 }}
               className="fixed inset-0 bg-black/60 z-[10000] backdrop-blur-sm"
               onClick={() => {
-                if (!isDeletingAccount) setDeleteConfirmOpen(false)
+                if (!isDeleting) setDeleteConfirmOpen(false)
               }}
             />
 
@@ -1859,7 +1960,7 @@ export default function ExploreMore() {
               animate={{ opacity: 1, scale: 1, y: 0 }}
               exit={{ opacity: 0, scale: 0.9, y: 20 }}
               transition={{ type: "spring", damping: 25, stiffness: 300 }}
-              className="fixed inset-0 flex items-center justify-center z-[10001] px-4"
+              className="fixed inset-0 flex items-center justify-center z-[10001] px-4 overflow-y-auto py-10"
               onClick={(e) => e.stopPropagation()}
             >
               <div className="bg-white rounded-3xl shadow-2xl max-w-sm w-full p-6 text-center border border-red-100">
@@ -1872,17 +1973,17 @@ export default function ExploreMore() {
 
                 <h3 className="text-xl font-bold text-gray-900 mb-2">Delete Your Account?</h3>
                 <p className="text-sm text-gray-500 mb-5 leading-relaxed">
-                  Are you sure you want to delete your account? This action cannot be undone.
+                  Are you sure you want to delete your account?
                 </p>
 
                 {/* Warning box */}
-                <div className="mb-5 bg-orange-50 border-l-4 border-orange-500 rounded-r-xl p-3 text-left">
+                <div className="mb-5 bg-red-50 border-l-4 border-red-500 rounded-r-xl p-3 text-left">
                   <div className="flex items-center gap-2 mb-1">
-                    <AlertTriangle className="w-4 h-4 text-orange-600 flex-shrink-0" />
-                    <span className="text-xs font-bold text-orange-700 uppercase tracking-wider">Warning</span>
+                    <AlertTriangle className="w-4 h-4 text-red-600 flex-shrink-0" />
+                    <span className="text-xs font-bold text-red-700 uppercase tracking-wider">Warning</span>
                   </div>
-                  <p className="text-[11px] text-orange-800 font-medium leading-tight">
-                    All your restaurant data, orders, and wallet information will be permanently deleted.
+                  <p className="text-[11px] text-red-800 font-medium leading-tight">
+                    Your account will be deactivated. Admin will keep your historical records for revenue reporting.
                   </p>
                 </div>
 
@@ -1891,8 +1992,8 @@ export default function ExploreMore() {
                   <input 
                     type="text" 
                     placeholder="Type DELETE to confirm" 
-                    value={deleteInput}
-                    onChange={(e) => setDeleteInput(e.target.value.toUpperCase())}
+                    value={deleteCaptcha}
+                    onChange={(e) => setDeleteCaptcha(e.target.value.toUpperCase())}
                     className="w-full h-12 px-4 rounded-xl border-2 border-gray-100 focus:border-red-500 focus:ring-4 focus:ring-red-50 outline-none transition-all font-bold text-center tracking-widest placeholder:tracking-normal placeholder:font-medium placeholder:text-gray-400"
                   />
                 </div>
@@ -1901,33 +2002,31 @@ export default function ExploreMore() {
                   <button
                     autoFocus
                     onClick={() => setDeleteConfirmOpen(false)}
-                    disabled={isDeletingAccount}
+                    disabled={isDeleting}
                     className="flex-1 h-12 rounded-xl border-2 border-gray-200 text-gray-800 font-bold text-sm transition-colors hover:bg-gray-50 disabled:opacity-50"
                   >
                     No, Cancel
                   </button>
                   <button
                     onClick={async () => {
-                      if (isDeletingAccount || deleteInput !== "DELETE") return;
-                      setIsDeletingAccount(true);
+                      if (isDeleting || deleteCaptcha !== "DELETE") return;
+                      setIsDeleting(true);
                       try {
                         await authAPI.deleteAccount("restaurant");
                         showAccountDeletedToast();
                         clearModuleAuth("restaurant");
-                        localStorage.removeItem("app:isOnline");
-                        window.dispatchEvent(new Event("restaurantAuthChanged"));
-                        navigate("/food/restaurant/onboarding", { replace: true });
+                        navigate("/food/restaurant/login", { replace: true });
                       } catch (err) {
                         toast.error(err?.response?.data?.message || "Failed to delete account");
                       } finally {
-                        setIsDeletingAccount(false);
+                        setIsDeleting(false);
                         setDeleteConfirmOpen(false);
                       }
                     }}
-                    disabled={isDeletingAccount || deleteInput !== "DELETE"}
-                    className="flex-1 h-12 rounded-xl bg-red-600 text-white font-bold text-sm transition-colors hover:bg-red-700 disabled:opacity-60 disabled:cursor-not-allowed shadow-lg shadow-red-600/20"
+                    disabled={isDeleting || deleteCaptcha !== "DELETE"}
+                    className="flex-1 h-12 rounded-xl bg-red-600 text-white font-bold text-sm transition-all hover:bg-red-700 active:scale-95 disabled:opacity-50"
                   >
-                    {isDeletingAccount ? "Deleting..." : "Yes, Delete"}
+                    {isDeleting ? "Deleting..." : "Delete Account"}
                   </button>
                 </div>
               </div>

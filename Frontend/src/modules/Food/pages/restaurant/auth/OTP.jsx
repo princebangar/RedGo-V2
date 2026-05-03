@@ -18,6 +18,8 @@ export default function RestaurantOTP() {
   const [authData, setAuthData] = useState(null)
   const [contactInfo, setContactInfo] = useState("")
   const [focusedIndex, setFocusedIndex] = useState(null)
+  const [showRestorePopup, setShowRestorePopup] = useState(false)
+  const [deletedAccountData, setDeletedAccountData] = useState(null)
   const inputRefs = useRef([])
   const hasSubmittedRef = useRef(false)
 
@@ -95,7 +97,7 @@ export default function RestaurantOTP() {
     }
   }
 
-  const handleVerify = async (otpValue = null) => {
+  const handleVerify = async (otpValue = null, confirmAction = null) => {
     const code = otpValue || otp.join("")
 
     if (code.length !== 4) {
@@ -113,8 +115,17 @@ export default function RestaurantOTP() {
       const email = authData.method === "email" ? authData.email : null
       const purpose = authData.isSignUp ? "register" : "login"
 
-      const response = await restaurantAPI.verifyOTP(phone, code, purpose, null, email)
+      const response = await restaurantAPI.verifyOTP(phone, code, purpose, null, email, null, confirmAction)
       const data = response?.data?.data || response?.data
+
+      // Handle deleted account found
+      if (data?.deletedAccountFound) {
+        setDeletedAccountData(data)
+        setShowRestorePopup(true)
+        setIsLoading(false)
+        hasSubmittedRef.current = false
+        return
+      }
 
       if (data?.needsRegistration) {
         setRestaurantPendingPhone(data.phone || phone)
@@ -185,7 +196,11 @@ export default function RestaurantOTP() {
     }
   }
 
-  const isOtpComplete = otp.every((digit) => digit !== "")
+  const handleRestoreAction = async (action) => {
+    setShowRestorePopup(false)
+    const code = otp.join("")
+    await handleVerify(code, action)
+  }
 
   if (!authData) return null
 
@@ -291,6 +306,44 @@ export default function RestaurantOTP() {
           </p>
         </motion.div>
       </div>
+
+      {/* Restore/New Account Popup */}
+      <AnimatePresence>
+        {showRestorePopup && (
+          <div className="fixed inset-0 z-[1000] flex items-center justify-center bg-black/60 backdrop-blur-sm px-4 overflow-y-auto py-10">
+            <motion.div 
+              initial={{ scale: 0.9, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.9, opacity: 0 }}
+              className="w-full max-w-sm bg-white dark:bg-[#1a1a1a] rounded-[3rem] shadow-2xl overflow-hidden p-10 text-center border border-white/20 dark:border-gray-800"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="w-20 h-20 bg-[#DC2626]/10 rounded-[2rem] flex items-center justify-center mx-auto mb-6">
+                <Store className="h-10 w-10 text-[#DC2626]" />
+              </div>
+              
+              <h3 className="text-2xl font-black text-[#DC2626] font-['Outfit'] tracking-tight mb-3">Restaurant Found!</h3>
+              <p className="text-gray-500 dark:text-gray-400 font-medium mb-8">
+                An existing deleted restaurant for <span className="text-[#DC2626] font-bold">{contactInfo}</span> was found. 
+                Do you want to restore your old data or start fresh with a new account?
+              </p>
+
+              <div className="space-y-4">
+                <button
+                  onClick={() => handleRestoreAction("restore")}
+                  className="w-full py-4.5 bg-[#DC2626] hover:bg-[#6a2f56] text-white rounded-2xl font-bold text-lg shadow-xl shadow-[#DC2626]/20 transition-all active:scale-[0.98]"
+                >
+                  Restore My Account
+                </button>
+                <button
+                  onClick={() => handleRestoreAction("new")}
+                  className="w-full py-4.5 border-2 border-gray-200 dark:border-gray-700 text-gray-700 dark:text-gray-300 rounded-2xl font-bold text-lg transition-all active:scale-[0.98]"
+                >
+                  Create New Account
+                </button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
     </div>
-  )
-}

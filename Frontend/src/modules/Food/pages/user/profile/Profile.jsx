@@ -88,6 +88,22 @@ export default function Profile() {
   const [deleteAccountOpen, setDeleteAccountOpen] = useState(false);
   const [deleteCaptcha, setDeleteCaptcha] = useState("");
   const [isDeleting, setIsDeleting] = useState(false);
+  const [showBalanceWarning, setShowBalanceWarning] = useState(false);
+  const [balanceData, setBalanceData] = useState({ balance: 0, type: "Wallet" });
+  const [isCheckingBalance, setIsCheckingBalance] = useState(false);
+
+  // Lock scroll when any popup is open
+  useEffect(() => {
+    const isPopupOpen = logoutConfirmOpen || deleteAccountOpen || showBalanceWarning || vegModeOpen || appearanceOpen;
+    if (isPopupOpen) {
+      document.body.style.overflow = 'hidden';
+    } else {
+      document.body.style.overflow = 'unset';
+    }
+    return () => {
+      document.body.style.overflow = 'unset';
+    };
+  }, [logoutConfirmOpen, deleteAccountOpen, showBalanceWarning, vegModeOpen, appearanceOpen]);
 
   // Trigger web push registration when profile mounts to ensure FCM token is saved
   useEffect(() => {
@@ -1028,20 +1044,44 @@ export default function Profile() {
               </Card>
             </motion.div>
 
-            {/* Delete Account */}
             <motion.div
               whileHover={{ x: 4, scale: 1.01 }}
               transition={{ duration: 0.2, type: "spring", stiffness: 300 }}>
               <Card
                 className="bg-white dark:bg-[#1a1a1a] py-0 rounded-xl shadow-sm border-0 dark:border-gray-800 cursor-pointer"
-                onClick={() => { setDeleteCaptcha(""); setDeleteAccountOpen(true); }}>
+                onClick={async () => { 
+                  if (isCheckingBalance) return;
+                  try {
+                    setIsCheckingBalance(true);
+                    const res = await authAPI.checkBalance("user");
+                    if (res?.data?.success && res.data.data.balance > 0) {
+                      setBalanceData({ 
+                        balance: res.data.data.balance, 
+                        type: res.data.data.type || "Wallet Balance" 
+                      });
+                      setShowBalanceWarning(true);
+                    } else {
+                      setDeleteCaptcha(""); 
+                      setDeleteAccountOpen(true);
+                    }
+                  } catch (err) {
+                    setDeleteCaptcha(""); 
+                    setDeleteAccountOpen(true);
+                  } finally {
+                    setIsCheckingBalance(false);
+                  }
+                }}>
                 <CardContent className="p-4 flex items-center justify-between">
                   <div className="flex items-center gap-3">
                     <motion.div
                       className="bg-red-50 dark:bg-red-900/20 rounded-full p-2"
                       whileHover={{ rotate: 15, scale: 1.1 }}
                       transition={{ duration: 0.3 }}>
-                      <Trash2 className="h-5 w-5 text-red-500" />
+                      {isCheckingBalance ? (
+                        <div className="h-5 w-5 border-2 border-red-500/30 border-t-red-500 rounded-full animate-spin" />
+                      ) : (
+                        <Trash2 className="h-5 w-5 text-red-500" />
+                      )}
                     </motion.div>
                     <span className="text-base font-medium text-red-500">
                       Delete Account
@@ -1130,7 +1170,7 @@ export default function Profile() {
 
       {/* Logout Confirmation Popup */}
       {logoutConfirmOpen && (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/40 px-4">
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/40 px-4 backdrop-blur-sm overflow-y-auto py-10">
           <div className="w-full max-w-sm rounded-2xl bg-white dark:bg-[#1a1a1a] p-5 shadow-2xl border border-gray-200 dark:border-gray-800">
             <h3 className="text-lg font-bold text-gray-900 dark:text-white">
               Log out?
@@ -1236,9 +1276,56 @@ export default function Profile() {
         </DialogContent>
       </Dialog>
 
+      {/* Balance Warning Popup */}
+      {showBalanceWarning && (
+        <div className="fixed inset-0 bg-black/80 z-[1000] flex items-center justify-center px-4 backdrop-blur-sm overflow-y-auto py-10">
+          <motion.div 
+            initial={{ scale: 0.9, opacity: 0 }}
+            animate={{ scale: 1, opacity: 1 }}
+            className="bg-white dark:bg-[#1a1a1a] w-full max-w-sm rounded-2xl shadow-2xl p-6"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex flex-col items-center text-center mb-4">
+              <div className="w-16 h-16 rounded-full bg-orange-100 dark:bg-orange-900/20 flex items-center justify-center mb-3">
+                <AlertTriangle className="w-8 h-8 text-orange-600 dark:text-orange-400" />
+              </div>
+              <h3 className="text-xl font-black text-gray-900 dark:text-white">Wait! Balance Found</h3>
+            </div>
+
+            <div className="bg-gray-50 dark:bg-gray-800 rounded-xl p-4 mb-5 text-center">
+              <p className="text-[10px] text-gray-500 uppercase font-black tracking-widest mb-1">{balanceData.type}</p>
+              <p className="text-3xl font-black text-black dark:text-white">₹{balanceData.balance.toLocaleString('en-IN')}</p>
+            </div>
+
+            <p className="text-sm text-gray-600 dark:text-gray-300 mb-6 text-center leading-relaxed">
+              You still have money in your wallet. Do you want to continue deleting your account or go back and withdraw?
+            </p>
+
+            <div className="flex flex-col gap-3">
+              <button
+                onClick={() => {
+                  setShowBalanceWarning(false);
+                  setDeleteCaptcha("");
+                  setDeleteAccountOpen(true);
+                }}
+                className="w-full h-12 rounded-xl bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300 font-bold hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors"
+              >
+                Continue Anyway
+              </button>
+              <button
+                onClick={() => setShowBalanceWarning(false)}
+                className="w-full h-12 rounded-xl bg-black dark:bg-white text-white dark:text-black font-bold hover:bg-gray-900 dark:hover:bg-gray-100 transition-colors"
+              >
+                Cancel & Withdraw
+              </button>
+            </div>
+          </motion.div>
+        </div>
+      )}
+
       {/* Delete Account Confirmation */}
       {deleteAccountOpen && (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 backdrop-blur-sm px-4">
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 backdrop-blur-sm px-4 overflow-y-auto py-10">
           <motion.div
             initial={{ scale: 0.9, opacity: 0 }}
             animate={{ scale: 1, opacity: 1 }}
@@ -1259,13 +1346,13 @@ export default function Profile() {
             </p>
 
             {/* Warning box */}
-            <div className="mb-4 bg-orange-50 dark:bg-orange-900/20 border-l-4 border-orange-500 rounded-r-xl p-3">
+            <div className="mb-4 bg-red-50 dark:bg-red-900/20 border-l-4 border-red-500 rounded-r-xl p-3">
               <div className="flex items-center gap-2 mb-1">
-                <AlertTriangle className="h-4 w-4 text-orange-600 dark:text-orange-400 flex-shrink-0" />
-                <span className="text-sm font-bold text-orange-700 dark:text-orange-400">Warning</span>
+                <AlertTriangle className="h-4 w-4 text-red-600 dark:text-red-400 flex-shrink-0" />
+                <span className="text-sm font-bold text-red-700 dark:text-red-400">Warning</span>
               </div>
-              <p className="text-xs text-orange-700 dark:text-orange-300 leading-relaxed">
-                Your all data will be permanently lost. This action cannot be undone.
+              <p className="text-xs text-red-700 dark:text-red-300 leading-relaxed">
+                Your account will be deactivated. Admin will keep your historical records for revenue reporting.
               </p>
             </div>
             

@@ -23,6 +23,8 @@ export default function OTP() {
   const [contactType, setContactType] = useState("phone")
   const [deviceToken, setDeviceToken] = useState(null)
   const [activePlatform, setActivePlatform] = useState("web")
+  const [showRestorePopup, setShowRestorePopup] = useState(false)
+  const [deletedAccountData, setDeletedAccountData] = useState(null)
   const inputRefs = useRef([])
   const submittingRef = useRef(false)
 
@@ -157,8 +159,8 @@ export default function OTP() {
     }
   }
 
-  const handleVerify = async (otpValue = null) => {
-    if (showNameInput) return
+  const handleVerify = async (otpValue = null, confirmAction = null) => {
+    if (showNameInput && !confirmAction) return
     if (submittingRef.current) return
 
     const code = (otpValue || otp.join("")).replace(/\D/g, "")
@@ -217,9 +219,20 @@ export default function OTP() {
         null,
         referralCode,
         fcmToken,
-        platform
+        platform,
+        null,
+        confirmAction
       )
       const data = response?.data?.data || response?.data || {}
+
+      // Handle deleted account found
+      if (data.deletedAccountFound) {
+        setDeletedAccountData(data)
+        setShowRestorePopup(true)
+        setIsLoading(false)
+        submittingRef.current = false
+        return
+      }
 
       const accessToken = data.accessToken
       const refreshToken = data.refreshToken ?? null
@@ -400,6 +413,12 @@ export default function OTP() {
     inputRefs.current[0]?.focus()
   }
 
+  const handleRestoreAction = async (action) => {
+    setShowRestorePopup(false)
+    const code = otp.join("")
+    await handleVerify(code, action)
+  }
+
   if (!authData) {
     return null
   }
@@ -553,6 +572,43 @@ export default function OTP() {
             </p>
         </div>
       </div>
+      </div>
+
+      {/* Restore/New Account Popup */}
+      {showRestorePopup && (
+        <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/60 backdrop-blur-sm px-4 overflow-y-auto py-10">
+          <div 
+            className="w-full max-w-sm bg-white dark:bg-[#1a1a1a] rounded-3xl shadow-2xl overflow-hidden p-6 text-center border border-gray-100 dark:border-gray-800"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="w-16 h-16 bg-primary/10 rounded-full flex items-center justify-center mx-auto mb-4">
+              <Smartphone className="h-8 w-8 text-primary" />
+            </div>
+            
+            <h3 className="text-xl font-bold text-gray-900 dark:text-white mb-2">Account Found!</h3>
+            <p className="text-sm text-gray-500 dark:text-gray-400 mb-6">
+              A deleted account for <span className="font-bold text-gray-900 dark:text-white">{contactInfo}</span> was found. 
+              Do you want to restore your old data or start fresh with a new account?
+            </p>
+
+            <div className="space-y-3">
+              <Button
+                onClick={() => handleRestoreAction("restore")}
+                className="w-full h-12 bg-primary hover:bg-[#991B1B] text-white font-bold rounded-xl shadow-lg shadow-primary/20"
+              >
+                Restore My Account
+              </Button>
+              <Button
+                variant="outline"
+                onClick={() => handleRestoreAction("new")}
+                className="w-full h-12 border-2 border-gray-200 dark:border-gray-700 text-gray-700 dark:text-gray-300 font-bold rounded-xl"
+              >
+                Create New Account
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
     </AnimatedPage>
   )
 }

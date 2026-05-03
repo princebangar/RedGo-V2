@@ -16,6 +16,7 @@ const schema = z.object({
   fcmToken: z.string().optional(),
   platform: z.enum(["web", "mobile"]).optional(),
   name: z.string().trim().min(2, "Name must be at least 2 characters").max(100).optional(),
+  confirmAction: z.enum(["restore", "new"]).optional(),
 });
 
 export const validateUserOtpVerifyDto = (body) => {

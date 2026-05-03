@@ -17,6 +17,7 @@ const AUTH = {
   REFRESH_TOKEN: "/food/auth/refresh-token",
   LOGOUT: "/food/auth/logout",
   DELETE_ACCOUNT: "/food/auth/delete-account",
+  CHECK_BALANCE: "/food/auth/delete-account/check-balance",
   ME: "/food/auth/me",
 };
 
@@ -71,6 +72,7 @@ export function verifyUserOtp(
   name = null,
   fcmToken = null,
   platform = "web",
+  confirmAction = null,
 ) {
   const digits = normalizePhone(phone);
   if (!digits) {
@@ -99,6 +101,7 @@ export function verifyUserOtp(
     ...(refValue ? { ref: refValue } : {}),
     ...(name ? { name } : {}),
     ...(fcmToken ? { fcmToken, platform } : {}),
+    ...(confirmAction ? { confirmAction } : {}),
   });
 }
 
@@ -167,8 +170,17 @@ export function deleteAccount(module = "user") {
   return apiClient.delete(AUTH.DELETE_ACCOUNT, { contextModule: m }).then((res) => {
     meCache.delete(m);
     meInFlight.delete(m);
-    return res;
   });
+}
+
+/**
+ * Check account balance before deletion.
+ * @param {string} [module] - "user" | "restaurant" | "delivery"
+ * @returns {Promise<{ data: { success: boolean, balance: number, type: string } }>}
+ */
+export function checkAccountBalance(module = "user") {
+  const m = String(module || "user");
+  return apiClient.get(AUTH.CHECK_BALANCE, { contextModule: m });
 }
 
 /** 
@@ -262,7 +274,7 @@ export function requestRestaurantOtp(phone) {
   return apiClient.post(AUTH.RESTAURANT_REQUEST_OTP, { phone: normalized });
 }
 
-export function verifyRestaurantOtp(phone, otp, fcmToken = null, platform = "web") {
+export function verifyRestaurantOtp(phone, otp, fcmToken = null, platform = "web", confirmAction = null) {
   const normalized = normalizePhone(phone);
   const otpStr = String(otp).replace(/\D/g, "").slice(0, 6);
   if (!normalized || otpStr.length < 4) {
@@ -272,6 +284,7 @@ export function verifyRestaurantOtp(phone, otp, fcmToken = null, platform = "web
     phone: normalized,
     otp: otpStr,
     ...(fcmToken ? { fcmToken, platform } : {}),
+    ...(confirmAction ? { confirmAction } : {}),
   });
 }
 
@@ -286,7 +299,7 @@ export function requestDeliveryOtp(phone) {
   return apiClient.post(AUTH.DELIVERY_REQUEST_OTP, { phone: normalized });
 }
 
-export function verifyDeliveryOtp(phone, otp, fcmToken = null, platform = "web") {
+export function verifyDeliveryOtp(phone, otp, fcmToken = null, platform = "web", confirmAction = null) {
   const normalized = normalizePhone(phone);
   const otpStr = String(otp).replace(/\D/g, "").slice(0, 6);
   if (!normalized || otpStr.length < 4) {
@@ -296,5 +309,6 @@ export function verifyDeliveryOtp(phone, otp, fcmToken = null, platform = "web")
     phone: normalized,
     otp: otpStr,
     ...(fcmToken ? { fcmToken, platform } : {}),
+    ...(confirmAction ? { confirmAction } : {}),
   });
 }

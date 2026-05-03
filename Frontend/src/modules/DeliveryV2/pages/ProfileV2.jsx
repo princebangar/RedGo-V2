@@ -9,7 +9,6 @@ import {
   Share2,
   LogOut,
   X,
-  Loader2,
   Briefcase,
   Trash2,
   AlertTriangle
@@ -34,6 +33,22 @@ export const ProfileV2 = () => {
   const [deleteAccountOpen, setDeleteAccountOpen] = useState(false)
   const [deleteCaptcha, setDeleteCaptcha] = useState("")
   const [isDeleting, setIsDeleting] = useState(false)
+  const [showBalanceWarning, setShowBalanceWarning] = useState(false)
+  const [balanceData, setBalanceData] = useState({ balance: 0, type: "Wallet" })
+  const [isCheckingBalance, setIsCheckingBalance] = useState(false)
+
+  // Lock scroll when any popup is open
+  useEffect(() => {
+    const isPopupOpen = showLogoutConfirm || deleteAccountOpen || showBalanceWarning;
+    if (isPopupOpen) {
+      document.body.style.overflow = 'hidden';
+    } else {
+      document.body.style.overflow = 'unset';
+    }
+    return () => {
+      document.body.style.overflow = 'unset';
+    };
+  }, [showLogoutConfirm, deleteAccountOpen, showBalanceWarning]);
 
   // Fetch profile data
   useEffect(() => {
@@ -95,7 +110,7 @@ export const ProfileV2 = () => {
     return (
       <div className="min-h-screen bg-gray-100 flex items-center justify-center font-poppins">
         <div className="flex items-center gap-2 text-gray-700">
-          <Loader2 className="w-5 h-5 animate-spin" />
+          <div className="w-5 h-5 border-2 border-gray-400 border-t-gray-600 rounded-full animate-spin" />
           <span className="text-sm font-medium">Loading profile...</span>
         </div>
       </div>
@@ -182,11 +197,37 @@ export const ProfileV2 = () => {
           {/* Delete Account */}
           <div className="pt-0">
             <div
-              onClick={() => { setDeleteCaptcha(""); setDeleteAccountOpen(true); }}
+              onClick={async () => { 
+                if (isCheckingBalance) return;
+                try {
+                  setIsCheckingBalance(true);
+                  const res = await authAPI.checkBalance("delivery");
+                  if (res?.data?.success && res.data.data.balance > 0) {
+                    setBalanceData({ 
+                      balance: res.data.data.balance, 
+                      type: res.data.data.type || "Delivery Pocket Balance" 
+                    });
+                    setShowBalanceWarning(true);
+                  } else {
+                    setDeleteCaptcha(""); 
+                    setDeleteAccountOpen(true);
+                  }
+                } catch (err) {
+                  // Fallback to direct delete if balance check fails
+                  setDeleteCaptcha(""); 
+                  setDeleteAccountOpen(true);
+                } finally {
+                  setIsCheckingBalance(false);
+                }
+              }}
               className="bg-white rounded-xl p-4 flex items-center justify-between cursor-pointer border border-red-100 hover:bg-red-50/30 active:bg-red-50 transition-colors"
             >
               <div className="flex items-center gap-3">
-                <Trash2 className="w-5 h-5 text-red-500" />
+                {isCheckingBalance ? (
+                  <div className="w-5 h-5 border-2 border-red-500/30 border-t-red-500 rounded-full animate-spin" />
+                ) : (
+                  <Trash2 className="w-5 h-5 text-red-500" />
+                )}
                 <span className="text-sm font-bold text-red-500">Delete Account</span>
               </div>
               <ArrowRight className="w-5 h-5 text-red-200" />
@@ -212,7 +253,7 @@ export const ProfileV2 = () => {
       {/* Logout Confirm Popup */}
       {showLogoutConfirm && (
         <div 
-          className="fixed inset-0 bg-black/60 z-[1000] flex items-center justify-center px-4"
+          className="fixed inset-0 bg-black/60 z-[1000] flex items-center justify-center px-4 backdrop-blur-sm overflow-y-auto py-10"
           onClick={() => setShowLogoutConfirm(false)}
         >
           <div 
@@ -240,10 +281,56 @@ export const ProfileV2 = () => {
         </div>
       )}
 
+      {/* Balance Warning Popup */}
+      {showBalanceWarning && (
+        <div className="fixed inset-0 bg-black/80 z-[1000] flex items-center justify-center px-4 backdrop-blur-sm overflow-y-auto py-10">
+          <div 
+            className="bg-white w-full max-w-sm rounded-2xl shadow-2xl p-6"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex flex-col items-center text-center mb-4">
+              <div className="w-16 h-16 rounded-full bg-orange-100 flex items-center justify-center mb-3">
+                <AlertTriangle className="w-8 h-8 text-orange-600" />
+              </div>
+              <h3 className="text-xl font-black text-gray-900">Wait! Balance Found</h3>
+            </div>
+
+            <div className="bg-gray-50 rounded-xl p-4 mb-5 text-center">
+              <p className="text-xs text-gray-500 uppercase font-black tracking-widest mb-1">{balanceData.type}</p>
+              <p className="text-3xl font-black text-black">₹{balanceData.balance.toLocaleString('en-IN')}</p>
+            </div>
+
+            <p className="text-sm text-gray-600 mb-6 text-center leading-relaxed">
+              You still have money in your account. Do you want to continue deleting your account or go back and withdraw?
+            </p>
+
+            <div className="flex flex-col gap-3">
+              <button
+                onClick={() => {
+                  setShowBalanceWarning(false);
+                  setDeleteCaptcha("");
+                  setDeleteAccountOpen(true);
+                }}
+                className="w-full h-12 rounded-xl bg-gray-100 text-gray-700 font-bold hover:bg-gray-200 transition-colors"
+              >
+                Continue Anyway
+              </button>
+              <button
+                onClick={() => setShowBalanceWarning(false)}
+                className="w-full h-12 rounded-xl bg-black text-white font-bold hover:bg-gray-900 transition-colors"
+              >
+                Cancel & Withdraw
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Delete Account Confirmation */}
       {deleteAccountOpen && (
         <div 
-          className="fixed inset-0 bg-black/80 z-[1000] flex items-center justify-center px-4 backdrop-blur-sm"
+          className="fixed inset-0 bg-black/80 z-[1000] flex items-center justify-center px-4 backdrop-blur-sm overflow-y-auto py-10"
+          onClick={() => setDeleteAccountOpen(false)}
         >
           <div 
             className="bg-white w-full max-w-sm rounded-2xl shadow-2xl p-6"
@@ -262,13 +349,13 @@ export const ProfileV2 = () => {
             </p>
 
             {/* Warning box */}
-            <div className="mb-4 bg-orange-50 border-l-4 border-orange-500 rounded-r-xl p-3">
+            <div className="mb-4 bg-red-50 border-l-4 border-red-500 rounded-r-xl p-3">
               <div className="flex items-center gap-2 mb-1">
-                <AlertTriangle className="w-4 h-4 text-orange-600 flex-shrink-0" />
-                <span className="text-sm font-bold text-orange-700">Warning</span>
+                <AlertTriangle className="w-4 h-4 text-red-600 flex-shrink-0" />
+                <span className="text-sm font-bold text-red-700">Warning</span>
               </div>
-              <p className="text-xs text-orange-700 leading-relaxed">
-                Your all data will be permanently lost. This action cannot be undone.
+              <p className="text-xs text-red-700 leading-relaxed">
+                Your account will be deactivated. Admin will keep your historical records for revenue reporting.
               </p>
             </div>
             
@@ -284,9 +371,8 @@ export const ProfileV2 = () => {
 
             <div className="flex items-center gap-3">
               <button
-                autoFocus
                 onClick={() => setDeleteAccountOpen(false)}
-                className="flex-1 h-12 rounded-xl border-2 border-gray-300 text-gray-700 font-bold hover:bg-gray-50 active:bg-gray-100 transition-colors ring-2 ring-gray-300"
+                className="flex-1 h-12 rounded-xl border-2 border-gray-300 text-gray-700 font-bold hover:bg-gray-50 active:bg-gray-100 transition-colors"
               >
                 Cancel
               </button>

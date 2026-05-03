@@ -28,6 +28,8 @@ export default function DeliveryOTP() {
   const [rejectionReason, setRejectionReason] = useState("")
   const [deviceToken, setDeviceToken] = useState(null)
   const [activePlatform, setActivePlatform] = useState("web")
+  const [showRestorePopup, setShowRestorePopup] = useState(false)
+  const [deletedAccountData, setDeletedAccountData] = useState(null)
   const inputRefs = useRef([])
 
   useEffect(() => {
@@ -167,8 +169,8 @@ export default function DeliveryOTP() {
     inputRefs.current[digits.length]?.focus()
   }
 
-  const handleVerify = async (otpValue = null) => {
-    if (showNameInput) {
+  const handleVerify = async (otpValue = null, confirmAction = null) => {
+    if (showNameInput && !confirmAction) {
       // In name collection step, ignore OTP auto-submit
       return
     }
@@ -220,12 +222,18 @@ export default function DeliveryOTP() {
       setDeviceToken(fcmToken);
       setActivePlatform(platform);
 
-      // Backend: POST /auth/delivery/verify-otp returns either:
-      // - { needsRegistration: true } when no partner exists yet
-      // - or { accessToken, refreshToken, user } for existing partners
-      const response = await deliveryAPI.verifyOTP(phone, code, purpose, providedName, fcmToken, platform)
+      // Backend: POST /auth/delivery/verify-otp
+      const response = await deliveryAPI.verifyOTP(phone, code, purpose, providedName, fcmToken, platform, confirmAction)
       debugLog("Delivery OTP Response:", response)
       const data = response?.data?.data || response?.data || {}
+
+      // Handle deleted account found
+      if (data?.deletedAccountFound) {
+        setDeletedAccountData(data)
+        setShowRestorePopup(true)
+        setIsLoading(false)
+        return
+      }
       debugLog("Parsed Delivery OTP Data:", data)
 
       if (data.pendingApproval === true) {
@@ -407,6 +415,12 @@ export default function DeliveryOTP() {
     } finally {
       setIsLoading(false)
     }
+  }
+
+  const handleRestoreAction = async (action) => {
+    setShowRestorePopup(false)
+    const code = otp.join("")
+    await handleVerify(code, action)
   }
 
   const handleResend = async () => {
@@ -657,6 +671,43 @@ export default function DeliveryOTP() {
       </div>
 
     </AnimatedPage>
+
+      {/* Restore/New Account Popup */}
+      {showRestorePopup && (
+        <div className="fixed inset-0 z-[1000] flex items-center justify-center bg-black/60 backdrop-blur-sm px-4 overflow-y-auto py-10">
+          <div 
+            className="w-full max-w-sm bg-white rounded-3xl shadow-2xl overflow-hidden p-8 text-center border border-gray-100"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="w-16 h-16 bg-green-50 rounded-full flex items-center justify-center mx-auto mb-4">
+              <Smartphone className="h-8 w-8 text-green-600" />
+            </div>
+            
+            <h3 className="text-xl font-bold text-gray-900 mb-2">Account Found!</h3>
+            <p className="text-sm text-gray-600 mb-8 leading-relaxed">
+              An existing deleted delivery account for <span className="font-bold text-black">{getPhoneNumber()}</span> was found. 
+              Do you want to restore your old data or start fresh with a new account?
+            </p>
+
+            <div className="space-y-3">
+              <Button
+                onClick={() => handleRestoreAction("restore")}
+                className="w-full h-12 bg-[#00B761] hover:bg-[#00A055] text-white font-bold rounded-xl"
+              >
+                Restore My Account
+              </Button>
+              <Button
+                variant="outline"
+                onClick={() => handleRestoreAction("new")}
+                className="w-full h-12 border-2 border-gray-200 text-gray-700 font-bold rounded-xl"
+              >
+                Create New Account
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
+    </>
   )
 }
 

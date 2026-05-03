@@ -118,13 +118,9 @@ export const requestUserOtp = async (phone) => {
   return shouldExposeOtp ? { otp } : {};
 };
 
-export const verifyUserOtpAndLogin = async (
-  phone,
-  otp,
-  ref,
-  fcmToken,
   platform,
   name,
+  confirmAction,
 ) => {
   const trimmedName = typeof name === "string" ? name.trim() : "";
   const existingUser = await FoodUser.findOne({ phone });
@@ -146,6 +142,39 @@ export const verifyUserOtpAndLogin = async (
   // Check if user is new or hasn't provided a name yet
   const needsNamePrompt = !userDoc || !userDoc.name || String(userDoc.name).trim() === "" || String(userDoc.name).toLowerCase() === "null";
   const isNewUser = needsNamePrompt;
+
+  // Handle soft-deleted accounts if found
+  if (userDoc && userDoc.isActive === false) {
+    if (!confirmAction) {
+      // Return a flag to frontend to prompt for choice
+      return {
+        deletedAccountFound: true,
+        phone,
+        role: ROLES.USER,
+        name: userDoc.name
+      };
+    }
+
+    if (confirmAction === "restore") {
+      // Restore the account
+      userDoc.isActive = true;
+      await userDoc.save();
+      logger.info({ userId: userDoc._id }, "User account restored successfully");
+    } else if (confirmAction === "new") {
+      // Rename old account to free up phone number
+      const oldPhone = userDoc.phone;
+      userDoc.phone = `${oldPhone}_deleted_${Date.now()}`;
+      await userDoc.save();
+      logger.info({ userId: userDoc._id }, "Old user account renamed for fresh start");
+      
+      // Create a brand new account
+      userDoc = await FoodUser.create({
+        phone: oldPhone,
+        isVerified: true,
+        name: trimmedName || "New User",
+      });
+    }
+  }
 
   if (!userDoc) {
     userDoc = await FoodUser.create({
@@ -345,7 +374,7 @@ export const requestRestaurantOtp = async (phone) => {
   return shouldExposeOtp ? { otp } : {};
 };
 
-export const verifyRestaurantOtpAndLogin = async (phone, otp, fcmToken, platform) => {
+export const verifyRestaurantOtpAndLogin = async (phone, otp, fcmToken, platform, confirmAction) => {
   const result = await verifyOtp(phone, otp);
   if (!result.valid) {
     throw new AuthError(result.reason || "OTP verification failed");
@@ -361,12 +390,43 @@ export const verifyRestaurantOtpAndLogin = async (phone, otp, fcmToken, platform
     ...(last10 ? [{ [field]: { $regex: new RegExp(last10 + "$") } }] : []),
   ];
 
-  const restaurant = await FoodRestaurant.findOne({
+  let restaurant = await FoodRestaurant.findOne({
     $or: [
       ...phoneOrFields("ownerPhone"),
       ...phoneOrFields("primaryContactNumber"),
     ],
   });
+
+  // Handle soft-deleted accounts if found
+  if (restaurant && restaurant.status === "deleted") {
+    if (!confirmAction) {
+      return {
+        deletedAccountFound: true,
+        phone,
+        role: ROLES.RESTAURANT,
+        name: restaurant.restaurantName
+      };
+    }
+
+    if (confirmAction === "restore") {
+      restaurant.status = "approved";
+      await restaurant.save();
+      logger.info({ restaurantId: restaurant._id }, "Restaurant account restored successfully");
+    } else if (confirmAction === "new") {
+      const oldPhone = restaurant.ownerPhone;
+      restaurant.ownerPhone = `${oldPhone}_deleted_${Date.now()}`;
+      // Also clear contact number if it matches
+      if (restaurant.primaryContactNumber === phone) {
+        restaurant.primaryContactNumber = `${phone}_deleted_${Date.now()}`;
+      }
+      await restaurant.save();
+      logger.info({ restaurantId: restaurant._id }, "Old restaurant account renamed for fresh start");
+      
+      // Setting restaurant to null will trigger the "needsRegistration" flow below
+      restaurant = null;
+    }
+  }
+
   if (!restaurant) {
     // Phone has been successfully verified, but no restaurant exists yet.
     // Frontend will use this to redirect into registration/onboarding.
@@ -443,7 +503,7 @@ const normalizePhoneForDelivery = (phone) => {
   return digits.slice(-10) || null;
 };
 
-export const verifyDeliveryOtpAndLogin = async (phone, otp, fcmToken, platform) => {
+export const verifyDeliveryOtpAndLogin = async (phone, otp, fcmToken, platform, confirmAction) => {
   const result = await verifyOtp(phone, otp);
   if (!result.valid) {
     throw new AuthError(result.reason || "OTP verification failed");
@@ -454,12 +514,38 @@ export const verifyDeliveryOtpAndLogin = async (phone, otp, fcmToken, platform) 
     return { needsRegistration: true, phone };
   }
 
-  const deliveryPartner = await FoodDeliveryPartner.findOne({
+  let deliveryPartner = await FoodDeliveryPartner.findOne({
     $or: [
       { phone: normalized },
       { phone: { $regex: new RegExp(normalized + "$") } },
     ],
   });
+
+  // Handle soft-deleted accounts if found
+  if (deliveryPartner && deliveryPartner.status === "deleted") {
+    if (!confirmAction) {
+      return {
+        deletedAccountFound: true,
+        phone,
+        role: ROLES.DELIVERY_PARTNER,
+        name: deliveryPartner.name
+      };
+    }
+
+    if (confirmAction === "restore") {
+      deliveryPartner.status = "approved";
+      await deliveryPartner.save();
+      logger.info({ partnerId: deliveryPartner._id }, "Delivery partner account restored successfully");
+    } else if (confirmAction === "new") {
+      const oldPhone = deliveryPartner.phone;
+      deliveryPartner.phone = `${oldPhone}_deleted_${Date.now()}`;
+      await deliveryPartner.save();
+      logger.info({ partnerId: deliveryPartner._id }, "Old delivery partner account renamed for fresh start");
+      
+      // Setting deliveryPartner to null will trigger the "needsRegistration" flow below
+      deliveryPartner = null;
+    }
+  }
 
   if (!deliveryPartner) {
     return { needsRegistration: true, phone };
@@ -724,42 +810,19 @@ export const deleteAccount = async (id, role) => {
 
   try {
     if (role === ROLES.USER) {
-      const deletionTasks = [
-        FoodUserWallet.deleteOne({ userId: id }),
-        FoodOrder.deleteMany({ userId: id }),
-        FoodTransaction.deleteMany({ userId: id }),
-        FoodSupportTicket.deleteMany({ userId: id }),
-        FoodReferralLog.deleteMany({ $or: [{ referrerId: id }, { refereeId: id }] }),
-        FoodRefreshToken.deleteMany({ userId: id }),
-      ];
-      await Promise.allSettled(deletionTasks);
-      await FoodUser.deleteOne({ _id: id });
+      // Soft delete user: deactivate and pull tokens. 
+      // We DO NOT delete orders, transactions, or wallet history to preserve admin revenue data.
+      await FoodUser.updateOne({ _id: id }, { isActive: false, fcmTokens: [], fcmTokenMobile: [] });
+      await FoodRefreshToken.deleteMany({ userId: id });
     } else if (role === ROLES.RESTAURANT) {
-      const deletionTasks = [
-        FoodRestaurantMenu.deleteMany({ restaurantId: id }),
-        FoodRestaurantWallet.deleteOne({ restaurantId: id }),
-        FoodRestaurantWithdrawal.deleteMany({ restaurantId: id }),
-        FoodAddon.deleteMany({ restaurantId: id }),
-        FoodRestaurantOutletTimings.deleteMany({ restaurantId: id }),
-        FoodOrder.deleteMany({ restaurantId: id }),
-        FoodTransaction.deleteMany({ restaurantId: id }),
-        FoodRestaurantSupportTicket.deleteMany({ restaurantId: id }),
-        FoodRefreshToken.deleteMany({ userId: id }),
-      ];
-      await Promise.allSettled(deletionTasks);
-      await FoodRestaurant.deleteOne({ _id: id });
+      // Soft delete restaurant: mark as deleted.
+      // We keep orders and transactions for admin analytics.
+      await FoodRestaurant.updateOne({ _id: id }, { status: "deleted", fcmTokens: [], fcmTokenMobile: [], isAcceptingOrders: false });
+      await FoodRefreshToken.deleteMany({ userId: id });
     } else if (role === ROLES.DELIVERY_PARTNER) {
-      const deletionTasks = [
-        FoodDeliveryWallet.deleteOne({ deliveryPartnerId: id }),
-        FoodDeliveryCashDeposit.deleteMany({ deliveryPartnerId: id }),
-        FoodDeliveryWithdrawal.deleteMany({ deliveryPartnerId: id }),
-        FoodOrder.deleteMany({ deliveryPartnerId: id }),
-        FoodTransaction.deleteMany({ deliveryPartnerId: id }),
-        FoodDeliverySupportTicket.deleteMany({ deliveryPartnerId: id }),
-        FoodRefreshToken.deleteMany({ userId: id }),
-      ];
-      await Promise.allSettled(deletionTasks);
-      await FoodDeliveryPartner.deleteOne({ _id: id });
+      // Soft delete delivery partner: mark as deleted.
+      await FoodDeliveryPartner.updateOne({ _id: id }, { status: "deleted", fcmTokens: [], fcmTokenMobile: [], availabilityStatus: "offline" });
+      await FoodRefreshToken.deleteMany({ userId: id });
     } else {
       throw new AuthError("Invalid role for account deletion");
     }
@@ -769,6 +832,41 @@ export const deleteAccount = async (id, role) => {
     logger.error({ err: error, id, role }, "Failed to delete account");
     throw error;
   }
+};
+
+/** Get the current balance for any role (User, Restaurant, Delivery) before account deletion. */
+export const checkAccountBalance = async (userId, role) => {
+  if (!userId || !role) {
+    throw new AuthError("Invalid token payload for balance check");
+  }
+
+  let balance = 0;
+  let type = "Wallet";
+
+  switch (role) {
+    case ROLES.USER: {
+      const wallet = await FoodUserWallet.findOne({ userId }).select("balance").lean();
+      balance = Number(wallet?.balance || 0);
+      type = "Wallet Balance";
+      break;
+    }
+    case ROLES.RESTAURANT: {
+      const wallet = await FoodRestaurantWallet.findOne({ restaurantId: userId }).select("balance").lean();
+      balance = Number(wallet?.balance || 0);
+      type = "Restaurant Wallet Balance";
+      break;
+    }
+    case ROLES.DELIVERY_PARTNER: {
+      const wallet = await FoodDeliveryWallet.findOne({ deliveryPartnerId: userId }).select("balance").lean();
+      balance = Number(wallet?.balance || 0);
+      type = "Delivery Pocket Balance";
+      break;
+    }
+    default:
+      throw new AuthError("Unknown role for balance check");
+  }
+
+  return { balance, type };
 };
 
 const ADMIN_SERVICES_ALLOWED = ["food", "quickCommerce", "taxi"];
