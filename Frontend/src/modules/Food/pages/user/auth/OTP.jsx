@@ -572,7 +572,6 @@ export default function OTP() {
             </p>
         </div>
       </div>
-      </div>
 
       {/* Restore/New Account Popup */}
       {showRestorePopup && (
