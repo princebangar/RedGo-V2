@@ -139,6 +139,9 @@ router.patch('/business-settings', upload.fields([
 router.get('/delivery-cash-limit', adminController.getDeliveryCashLimit);
 router.patch('/delivery-cash-limit', adminController.updateDeliveryCashLimit);
 
+// ----- Archived / Deleted Accounts -----
+router.get('/archived-accounts', adminController.getArchivedAccounts);
+
 // ----- Delivery Emergency Help -----
 router.get('/delivery-emergency-help', adminController.getEmergencyHelp);
 router.put('/delivery-emergency-help', adminController.createOrUpdateEmergencyHelp);

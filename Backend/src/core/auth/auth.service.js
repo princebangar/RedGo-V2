@@ -117,20 +117,33 @@ export const requestUserOtp = async (phone) => {
     config.nodeEnv !== "production" || config.useDefaultOtp;
   return shouldExposeOtp ? { otp } : {};
 };
-
-  platform,
-  name,
-  confirmAction,
+export const verifyUserOtpAndLogin = async (
+  phone,
+  otp,
+  ref = null,
+  fcmToken = null,
+  platform = "web",
+  name = null,
+  confirmAction = null,
 ) => {
   const trimmedName = typeof name === "string" ? name.trim() : "";
   const existingUser = await FoodUser.findOne({ phone });
+  
+  // Decide if we should preserve the OTP record for a subsequent Restore/New action
+  const isDeletedAccount = existingUser && existingUser.isActive === false;
+  const preserveOtp = isDeletedAccount && !confirmAction;
 
-  // For first-time signup, require name before OTP verification so OTP is not consumed prematurely.
-  if (!existingUser && !trimmedName) {
-    throw new ValidationError("Name is required for first-time signup");
+  // For first-time signup or fresh start after deletion, require name before OTP verification 
+  // so OTP is not consumed prematurely.
+  const isFreshRegistration = !existingUser || confirmAction === "new";
+  if (isFreshRegistration && !trimmedName) {
+    // Return a success response with a flag instead of throwing an error 
+    // to avoid noisy 400 errors in the console.
+    return { needsName: true };
   }
 
-  const result = await verifyOtp(phone, otp);
+  const result = await verifyOtp(phone, otp, preserveOtp);
+  console.log(`[DEBUG] OTP Verification for ${phone}: valid=${result.valid}, reason=${result.reason}, preserve=${preserveOtp}, confirmAction=${confirmAction}`);
 
   if (!result.valid) {
     throw new AuthError(result.reason || "OTP verification failed");
@@ -171,7 +184,7 @@ export const requestUserOtp = async (phone) => {
       userDoc = await FoodUser.create({
         phone: oldPhone,
         isVerified: true,
-        name: trimmedName || "New User",
+        name: trimmedName,
       });
     }
   }
@@ -375,13 +388,7 @@ export const requestRestaurantOtp = async (phone) => {
 };
 
 export const verifyRestaurantOtpAndLogin = async (phone, otp, fcmToken, platform, confirmAction) => {
-  const result = await verifyOtp(phone, otp);
-  if (!result.valid) {
-    throw new AuthError(result.reason || "OTP verification failed");
-  }
-
   // Restaurants may store ownerPhone with country code or formatting.
-  // Match by exact phone, last-10 digits, or suffix match to avoid false "needsRegistration".
   const digits = String(phone || "").replace(/\D/g, "");
   const last10 = digits.slice(-10);
   const phoneCandidates = [phone, digits, last10].filter(Boolean);
@@ -390,12 +397,22 @@ export const verifyRestaurantOtpAndLogin = async (phone, otp, fcmToken, platform
     ...(last10 ? [{ [field]: { $regex: new RegExp(last10 + "$") } }] : []),
   ];
 
-  let restaurant = await FoodRestaurant.findOne({
+  const existingRestaurant = await FoodRestaurant.findOne({
     $or: [
       ...phoneOrFields("ownerPhone"),
       ...phoneOrFields("primaryContactNumber"),
     ],
   });
+
+  const isDeleted = existingRestaurant && existingRestaurant.status === "deleted";
+  const preserveOtp = isDeleted && !confirmAction;
+
+  const result = await verifyOtp(phone, otp, preserveOtp);
+  if (!result.valid) {
+    throw new AuthError(result.reason || "OTP verification failed");
+  }
+
+  let restaurant = existingRestaurant;
 
   // Handle soft-deleted accounts if found
   if (restaurant && restaurant.status === "deleted") {
@@ -504,22 +521,26 @@ const normalizePhoneForDelivery = (phone) => {
 };
 
 export const verifyDeliveryOtpAndLogin = async (phone, otp, fcmToken, platform, confirmAction) => {
-  const result = await verifyOtp(phone, otp);
+  const normalized = normalizePhoneForDelivery(phone);
+  let existingPartner = null;
+  if (normalized) {
+    existingPartner = await FoodDeliveryPartner.findOne({
+      $or: [
+        { phone: normalized },
+        { phone: { $regex: new RegExp(normalized + "$") } },
+      ],
+    });
+  }
+
+  const isDeleted = existingPartner && existingPartner.status === "deleted";
+  const preserveOtp = isDeleted && !confirmAction;
+
+  const result = await verifyOtp(phone, otp, preserveOtp);
   if (!result.valid) {
     throw new AuthError(result.reason || "OTP verification failed");
   }
 
-  const normalized = normalizePhoneForDelivery(phone);
-  if (!normalized) {
-    return { needsRegistration: true, phone };
-  }
-
-  let deliveryPartner = await FoodDeliveryPartner.findOne({
-    $or: [
-      { phone: normalized },
-      { phone: { $regex: new RegExp(normalized + "$") } },
-    ],
-  });
+  let deliveryPartner = existingPartner;
 
   // Handle soft-deleted accounts if found
   if (deliveryPartner && deliveryPartner.status === "deleted") {
@@ -812,16 +833,16 @@ export const deleteAccount = async (id, role) => {
     if (role === ROLES.USER) {
       // Soft delete user: deactivate and pull tokens. 
       // We DO NOT delete orders, transactions, or wallet history to preserve admin revenue data.
-      await FoodUser.updateOne({ _id: id }, { isActive: false, fcmTokens: [], fcmTokenMobile: [] });
+      await FoodUser.updateOne({ _id: id }, { isActive: false, deletedAt: new Date(), fcmTokens: [], fcmTokenMobile: [] });
       await FoodRefreshToken.deleteMany({ userId: id });
     } else if (role === ROLES.RESTAURANT) {
       // Soft delete restaurant: mark as deleted.
       // We keep orders and transactions for admin analytics.
-      await FoodRestaurant.updateOne({ _id: id }, { status: "deleted", fcmTokens: [], fcmTokenMobile: [], isAcceptingOrders: false });
+      await FoodRestaurant.updateOne({ _id: id }, { status: "deleted", deletedAt: new Date(), fcmTokens: [], fcmTokenMobile: [], isAcceptingOrders: false });
       await FoodRefreshToken.deleteMany({ userId: id });
     } else if (role === ROLES.DELIVERY_PARTNER) {
       // Soft delete delivery partner: mark as deleted.
-      await FoodDeliveryPartner.updateOne({ _id: id }, { status: "deleted", fcmTokens: [], fcmTokenMobile: [], availabilityStatus: "offline" });
+      await FoodDeliveryPartner.updateOne({ _id: id }, { status: "deleted", deletedAt: new Date(), fcmTokens: [], fcmTokenMobile: [], availabilityStatus: "offline" });
       await FoodRefreshToken.deleteMany({ userId: id });
     } else {
       throw new AuthError("Invalid role for account deletion");

@@ -259,6 +259,9 @@ const restaurantSchema = new mongoose.Schema(
       type: String,
       trim: true,
     },
+    deletedAt: {
+      type: Date,
+    },
   },
   {
     collection: "food_restaurants",

@@ -46,6 +46,7 @@ import {
   IndianRupee,
   PiggyBank,
   Lock,
+  UserX,
 } from "lucide-react"
 import { cn } from "@food/utils/utils"
 import { Input } from "@food/components/ui/input"
@@ -100,6 +101,7 @@ const iconMap = {
   PiggyBank,
   Lock,
   X,
+  UserX,
 }
 
 export default function AdminSidebar({ isOpen = false, onClose, onCollapseChange }) {

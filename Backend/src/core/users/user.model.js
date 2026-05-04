@@ -137,6 +137,9 @@ const userSchema = new mongoose.Schema(
         addresses: {
             type: [userAddressSchema],
             default: []
+        },
+        deletedAt: {
+            type: Date
         }
     },
     {

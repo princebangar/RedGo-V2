@@ -133,28 +133,38 @@ export const createOrUpdateOtp = async (phone) => {
     return otp;
 };
 
-export const verifyOtp = async (phone, otp) => {
+export const verifyOtp = async (phone, otp, preserveOtp = false) => {
     const record = await FoodOtp.findOne({ phone });
     if (!record) {
+        console.log(`[DEBUG] OTP Not Found for ${phone}`);
         return { valid: false, reason: 'OTP not found' };
     }
 
     if (record.expiresAt < new Date()) {
+        console.log(`[DEBUG] OTP Expired for ${phone}: ${record.expiresAt}`);
         return { valid: false, reason: 'OTP expired' };
     }
 
     if (record.attempts >= config.otpMaxAttempts) {
+        console.log(`[DEBUG] OTP Max attempts exceeded for ${phone}: ${record.attempts}`);
         return { valid: false, reason: 'Max attempts exceeded' };
     }
 
     record.attempts += 1;
 
     if (record.otp !== otp) {
+        console.log(`[DEBUG] OTP Mismatch for ${phone}: expected=${record.otp}, got=${otp}`);
         await record.save();
         return { valid: false, reason: 'Invalid OTP' };
     }
 
-    await record.deleteOne();
+    if (!preserveOtp) {
+        console.log(`[DEBUG] Deleting OTP for ${phone}`);
+        await record.deleteOne();
+    } else {
+        console.log(`[DEBUG] Preserving OTP for ${phone}`);
+        await record.save(); // Save the incremented attempts
+    }
     return { valid: true };
 };
 

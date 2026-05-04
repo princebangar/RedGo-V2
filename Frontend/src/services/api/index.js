@@ -98,6 +98,8 @@ export const authAPI = {
     _referralCode,
     fcmToken = null,
     platform = "web",
+    _token = null,
+    confirmAction = null,
   ) => {
     if (!phone || !otp)
       return Promise.reject(new Error("Phone and OTP are required"));
@@ -108,6 +110,7 @@ export const authAPI = {
       _name,
       fcmToken,
       platform,
+      confirmAction,
     );
   },
   getCurrentUser: () => getUserMeOnce(),
@@ -277,6 +280,10 @@ export const adminAPI = {
   getContactMessages: (params = {}) =>
     apiClient.get("/food/admin/contact-messages", {
       params,
+      contextModule: "admin",
+    }),
+  getArchivedAccounts: () =>
+    apiClient.get("/food/admin/archived-accounts", {
       contextModule: "admin",
     }),
   /** Dashboard summary stats (admin home) */
@@ -925,10 +932,10 @@ export const restaurantAPI = {
     if (!phone) return Promise.reject(new Error("Phone is required"));
     return authService.requestRestaurantOtp(phone);
   },
-  verifyOTP: (phone, otp, _purpose, _name, _email, fcmToken = null, platform = "web") => {
+  verifyOTP: (phone, otp, _purpose, _name, _email, fcmToken = null, platform = "web", confirmAction = null) => {
     if (!phone || !otp)
       return Promise.reject(new Error("Phone and OTP are required"));
-    return authService.verifyRestaurantOtp(phone, otp, fcmToken, platform);
+    return authService.verifyRestaurantOtp(phone, otp, fcmToken, platform, confirmAction);
   },
   getMe: () => authService.getMe("restaurant"),
   /** Restaurant dashboard: fetch current restaurant profile (deduped + short-cached). */
@@ -1624,10 +1631,10 @@ export const deliveryAPI = {
     if (!phone) return Promise.reject(new Error("Phone is required"));
     return authService.requestDeliveryOtp(phone);
   },
-  verifyOTP: (phone, otp, _purpose, _name, fcmToken = null, platform = "web") => {
+  verifyOTP: (phone, otp, _purpose, _name, fcmToken = null, platform = "web", confirmAction = null) => {
     if (!phone || !otp)
       return Promise.reject(new Error("Phone and OTP are required"));
-    return authService.verifyDeliveryOtp(phone, otp, fcmToken, platform);
+    return authService.verifyDeliveryOtp(phone, otp, fcmToken, platform, confirmAction);
   },
   getMe: () => getDeliveryMeOnce(),
   /** Get delivery profile (same as getMe under the hood; maps response to profile shape). */

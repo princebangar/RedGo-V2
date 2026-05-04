@@ -166,6 +166,19 @@ export async function getDashboardStats(req, res, next) {
     }
 }
 
+export async function getArchivedAccounts(req, res, next) {
+    try {
+        const data = await adminService.getArchivedAccounts();
+        res.status(200).json({
+            success: true,
+            message: 'Archived accounts fetched successfully',
+            data
+        });
+    } catch (error) {
+        next(error);
+    }
+}
+
 export async function getTransactionReport(req, res, next) {
     try {
         const data = await adminService.getTransactionReport(req.query || {});

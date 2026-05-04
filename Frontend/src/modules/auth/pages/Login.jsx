@@ -1,7 +1,7 @@
 import React, { useEffect, useState, useRef } from "react"
 import { motion, AnimatePresence } from "framer-motion"
 import { Link, useNavigate } from "react-router-dom"
-import { Phone, ArrowRight, ShieldCheck, Loader2, Utensils, Star, Heart } from "lucide-react"
+import { Phone, ArrowRight, ShieldCheck, Loader2, Utensils, Star, Heart, X, User } from "lucide-react"
 import { toast } from "sonner"
 import { authAPI, userAPI } from "@food/api"
 import { setAuthData } from "@food/utils/auth"
@@ -16,7 +16,7 @@ import {
 import { Button } from "@food/components/ui/button"
 import { Input } from "@food/components/ui/input"
 import { Label } from "@food/components/ui/label"
-import { User } from "lucide-react"
+
 
 export default function UnifiedOTPFastLogin() {
   const RESEND_COOLDOWN_SECONDS = 60
@@ -30,6 +30,8 @@ export default function UnifiedOTPFastLogin() {
   const [isUpdatingName, setIsUpdatingName] = useState(false)
   const [tempAuth, setTempAuth] = useState(null)
   const [pendingVerify, setPendingVerify] = useState(null)
+  const [showRestorePopup, setShowRestorePopup] = useState(false)
+  const [deletedAccountData, setDeletedAccountData] = useState(null)
   const navigate = useNavigate()
   const submitting = useRef(false)
 
@@ -95,21 +97,30 @@ export default function UnifiedOTPFastLogin() {
   }
 
   const handleEditNumber = () => {
-    setStep(1)
-    setOtp("")
-    setResendTimer(0)
-    setPendingVerify(null)
     setShowNameModal(false)
+    setShowRestorePopup(false)
+    setDeletedAccountData(null)
+    setPendingVerify(null)
+    setOtp("")
     setNewName("")
+    setResendTimer(0)
+    // Small delay for smooth transition so the background doesn't flicker while modal is closing
+    setTimeout(() => {
+      setStep(1)
+    }, 150)
   }
 
   const handleVerifyOTP = async (e) => {
-    e.preventDefault()
+    if (e && e.preventDefault) e.preventDefault()
     const otpDigits = String(otp).replace(/\D/g, "").slice(0, 4)
     if (otpDigits.length !== 4) {
       toast.error("Please enter the 4-digit OTP")
       return
     }
+    await processVerify(phoneNumber, otpDigits)
+  }
+
+  const processVerify = async (phone, otpCode, confirmAction = null) => {
     if (submitting.current) return
     submitting.current = true
     setLoading(true)
@@ -120,16 +131,11 @@ export default function UnifiedOTPFastLogin() {
         if (typeof window !== "undefined") {
           if (window.flutter_inappwebview) {
             platform = "mobile";
-            const handlerNames = ["getFcmToken", "getFCMToken", "getPushToken", "getFirebaseToken"];
-            for (const handlerName of handlerNames) {
-              try {
-                const t = await window.flutter_inappwebview.callHandler(handlerName, { module: "user" });
-                if (t && typeof t === "string" && t.length > 20) {
-                  fcmToken = t.trim();
-                  break;
-                }
-              } catch (e) { }
-            }
+            // Optimization: Try only the most common handler to save time
+            try {
+              const t = await window.flutter_inappwebview.callHandler("getFcmToken", { module: "user" });
+              if (t && typeof t === "string" && t.length > 20) fcmToken = t.trim();
+            } catch (e) { }
           } else {
             fcmToken = localStorage.getItem("fcm_web_registered_token_user") || null;
           }
@@ -138,11 +144,41 @@ export default function UnifiedOTPFastLogin() {
         console.warn("Failed to get FCM token during login", e);
       }
 
-      const response = await authAPI.verifyOTP(phoneNumber, otpDigits, "login", null, null, "user", null, null, fcmToken, platform)
+      const response = await authAPI.verifyOTP(phone, otpCode, "login", null, null, "user", null, null, fcmToken, platform, null, confirmAction)
       const data = response?.data?.data || response?.data || {}
+      
+      // Handle deleted account found
+      if (data.deletedAccountFound) {
+        setDeletedAccountData(data)
+        setShowRestorePopup(true)
+        setLoading(false)
+        submitting.current = false
+        return
+      }
+
+      // Handle name required (Success response with flag)
+      if (data.needsName) {
+        setShowRestorePopup(false)
+        setPendingVerify({ 
+          phone: phoneNumber, 
+          otp: otpCode, 
+          fcmToken, 
+          platform,
+          confirmAction // Preserve the action (new) for the subsequent name submission
+        })
+        setShowNameModal(true)
+        setLoading(false)
+        submitting.current = false
+        return
+      }
+
       const accessToken = data.accessToken
       const refreshToken = data.refreshToken || null
       const user = data.user
+
+      if (!accessToken || !user) {
+        throw new Error("Invalid parameters from server")
+      }
 
       setAuthData("user", accessToken, user, refreshToken)
       
@@ -151,18 +187,27 @@ export default function UnifiedOTPFastLogin() {
         setTempAuth({ accessToken, user, refreshToken })
         setShowNameModal(true)
       } else {
-        // toast.success("Welcome back!")
         navigate("/user/auth/portal", { replace: true })
       }
     } catch (err) {
       const status = err?.response?.status
       let msg = err?.response?.data?.message || err?.response?.data?.error || err?.message || "Invalid OTP. Please try again."
+      
+      // Legacy check for string-based name requirement (backward compatibility)
       const nameRequired = /name\s+is\s+required.*first[- ]?time|first[- ]?time.*name\s+is\s+required|first[- ]?time\s*sign\s*up/i.test(String(msg))
       if (nameRequired) {
-        setPendingVerify({ phone: phoneNumber, otp: otpDigits, fcmToken, platform })
+        setShowRestorePopup(false)
+        setPendingVerify({ 
+          phone: phoneNumber, 
+          otp: otpCode, 
+          fcmToken, 
+          platform,
+          confirmAction 
+        })
         setShowNameModal(true)
         return
       }
+
       if (status === 401) {
         if (/deactivat(ed|e)/i.test(String(msg))) {
           msg = "Your account is deactivated. Please contact support."
@@ -198,6 +243,8 @@ export default function UnifiedOTPFastLogin() {
           null,
           pendingVerify.fcmToken,
           pendingVerify.platform,
+          null, // _token
+          pendingVerify.confirmAction // Pass the preserved action
         )
         const data = response?.data?.data || response?.data || {}
         const accessToken = data.accessToken
@@ -453,12 +500,27 @@ export default function UnifiedOTPFastLogin() {
       </div>
 
       {/* Name Collection Modal */}
-      <Dialog open={showNameModal} onOpenChange={setShowNameModal}>
+      <Dialog 
+        open={showNameModal} 
+        onOpenChange={(open) => {
+          // Prevent closing on backdrop click or escape key
+          if (!open) return;
+          setShowNameModal(true);
+        }}
+      >
         <DialogContent
           className="sm:max-w-[425px] rounded-3xl border-none p-0 overflow-hidden bg-white dark:bg-[#1a1a1a]"
           showCloseButton={false}
         >
           <div className="bg-[#DC2626] p-8 text-center relative">
+            <button
+              onClick={handleEditNumber}
+              className="absolute top-4 right-4 p-2 bg-white/20 hover:bg-white/30 backdrop-blur-md rounded-xl text-white transition-all active:scale-95 z-20"
+              aria-label="Close and return to login"
+            >
+              <X className="w-5 h-5" />
+            </button>
+
             <div className="absolute top-[-20%] right-[-10%] w-32 h-32 bg-white/10 rounded-full blur-2xl" />
             <motion.div 
               initial={{ scale: 0 }}
@@ -520,6 +582,68 @@ export default function UnifiedOTPFastLogin() {
           </form>
         </DialogContent>
       </Dialog>
+
+      {/* Restore/New Account Popup */}
+      <AnimatePresence>
+        {showRestorePopup && (
+          <div className="fixed inset-0 z-[200] flex items-center justify-center p-4">
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              className="absolute inset-0 bg-black/60 backdrop-blur-sm"
+              // Removed onClick to prevent closing on backdrop click
+            />
+            <motion.div 
+              initial={{ opacity: 0, scale: 0.9, y: 20 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.9, y: 20 }}
+              transition={{ type: "spring", damping: 25, stiffness: 300 }}
+              className="w-full max-w-sm bg-white dark:bg-[#1a1a1a] rounded-3xl shadow-2xl overflow-hidden p-8 text-center border border-gray-100 dark:border-gray-800 relative z-10"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <button
+                onClick={handleEditNumber}
+                className="absolute top-4 right-4 p-2 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-xl text-gray-400 hover:text-gray-600 transition-all active:scale-95"
+                aria-label="Close and return to login"
+              >
+                <X className="w-5 h-5" />
+              </button>
+
+              <div className="w-20 h-20 bg-[#DC2626]/10 rounded-full flex items-center justify-center mx-auto mb-6">
+                <Phone className="h-10 w-10 text-[#DC2626]" />
+              </div>
+              
+              <h3 className="text-2xl font-bold text-gray-900 dark:text-white mb-3">Account Found!</h3>
+              <p className="text-gray-500 dark:text-gray-400 mb-8 leading-relaxed">
+                A deleted account for <span className="font-bold text-gray-900 dark:text-white">+91 {phoneNumber}</span> was found. 
+                Do you want to restore your old data or start fresh with a new account?
+              </p>
+
+              <div className="space-y-4">
+                <button
+                  onClick={async () => {
+                     await processVerify(phoneNumber, otp, "restore");
+                     setShowRestorePopup(false);
+                  }}
+                  className="w-full h-14 bg-[#DC2626] hover:bg-[#B91C1C] text-white font-bold rounded-2xl shadow-xl shadow-[#DC2626]/20 transition-all active:scale-[0.98]"
+                >
+                  Restore My Account
+                </button>
+                <button
+                  onClick={async () => {
+                     await processVerify(phoneNumber, otp, "new");
+                     setShowRestorePopup(false);
+                  }}
+                  className="w-full h-14 border-2 border-gray-200 dark:border-gray-800 text-gray-700 dark:text-gray-300 font-bold rounded-2xl hover:bg-gray-50 dark:hover:bg-gray-800 transition-all active:scale-[0.98]"
+                >
+                  Create New Account
+                </button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
     </div>
   )
 }

@@ -369,6 +369,9 @@ export default function ExploreMore() {
   const [showBalanceWarning, setShowBalanceWarning] = useState(false)
   const [balanceData, setBalanceData] = useState({ balance: 0, type: "Wallet" })
   const [isCheckingBalance, setIsCheckingBalance] = useState(false)
+  
+  const [isLoggingOut, setIsLoggingOut] = useState(false)
+  const [logoutConfirmOpen, setLogoutConfirmOpen] = useState(false)
 
   const STORAGE_KEY = "restaurant_schedule_off"
 
@@ -504,9 +507,6 @@ export default function ExploreMore() {
   // Get restaurant display data
   const restaurantDisplayName = restaurantData?.name || "Loading..."
   const restaurantDisplayAddress = restaurantData?.location ? formatAddress(restaurantData.location) : ""
-
-  const [isLoggingOut, setIsLoggingOut] = useState(false)
-  const [logoutConfirmOpen, setLogoutConfirmOpen] = useState(false)
 
   const handleLogout = async () => {
     if (isLoggingOut) return // Prevent multiple clicks
@@ -1093,6 +1093,7 @@ export default function ExploreMore() {
               exit={{ opacity: 0 }}
               transition={{ duration: 0.2 }}
               className="fixed inset-0 bg-black/50 z-[60]"
+            />
             <motion.div
               initial={{ opacity: 0, scale: 0.9, y: 20 }}
               animate={{ opacity: 1, scale: 1, y: 0 }}

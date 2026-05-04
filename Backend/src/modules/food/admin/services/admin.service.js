@@ -258,6 +258,84 @@ export async function globalSearch(query = '') {
     return results;
 }
 
+export async function getArchivedAccounts() {
+    const [users, restaurants, deliveryPartners] = await Promise.all([
+        FoodUser.find({ isActive: false })
+            .select('name phone email profileImage createdAt updatedAt deletedAt')
+            .lean(),
+        FoodRestaurant.find({ status: 'deleted' })
+            .select('restaurantName ownerPhone ownerEmail profileImage createdAt updatedAt deletedAt')
+            .lean(),
+        FoodDeliveryPartner.find({ status: 'deleted' })
+            .select('name phone email profilePhoto createdAt updatedAt deletedAt')
+            .lean(),
+    ]);
+
+    console.log(`[Archived-Debug] Found Inactive Users: ${users.length}, Restaurants: ${restaurants.length}, Delivery: ${deliveryPartners.length}`);
+
+    // Helper to get original phone (remove _deleted_ suffix)
+    const getOriginalPhone = (p) => String(p || '').split('_')[0];
+
+    const archived = [
+        ...users.map(u => ({
+            id: u._id,
+            name: u.name || 'Unnamed User',
+            phone: u.phone,
+            originalPhone: getOriginalPhone(u.phone),
+            email: u.email || 'N/A',
+            profileImage: u.profileImage,
+            role: 'User',
+            type: 'user',
+            deletedAt: u.deletedAt || u.updatedAt,
+            status: 'Deleted'
+        })),
+        ...restaurants.map(r => ({
+            id: r._id,
+            name: r.restaurantName,
+            phone: r.ownerPhone,
+            originalPhone: getOriginalPhone(r.ownerPhone),
+            email: r.ownerEmail || 'N/A',
+            profileImage: r.profileImage,
+            role: 'Restaurant',
+            type: 'restaurant',
+            deletedAt: r.deletedAt || r.updatedAt,
+            status: 'Deleted'
+        })),
+        ...deliveryPartners.map(d => ({
+            id: d._id,
+            name: d.name,
+            phone: d.phone,
+            originalPhone: getOriginalPhone(d.phone),
+            email: d.email || 'N/A',
+            profileImage: d.profilePhoto,
+            role: 'Delivery Partner',
+            type: 'delivery',
+            deletedAt: d.deletedAt || d.updatedAt,
+            status: 'Deleted'
+        }))
+    ];
+
+    // For each archived entity, check if a NEW account exists with the original phone
+    const enhancedArchived = await Promise.all(archived.map(async (acc) => {
+        let newAccount = null;
+        if (acc.type === 'user') {
+            newAccount = await FoodUser.findOne({ phone: acc.originalPhone, isActive: true }).select('createdAt').lean();
+        } else if (acc.type === 'restaurant') {
+            newAccount = await FoodRestaurant.findOne({ ownerPhone: acc.originalPhone, status: { $ne: 'deleted' } }).select('createdAt').lean();
+        } else if (acc.type === 'delivery') {
+            newAccount = await FoodDeliveryPartner.findOne({ phone: acc.originalPhone, status: { $ne: 'deleted' } }).select('createdAt').lean();
+        }
+
+        return {
+            ...acc,
+            newAccountCreatedAt: newAccount ? newAccount.createdAt : null
+        };
+    }));
+
+    // Sort by deletedAt (updatedAt) descending
+    return enhancedArchived.sort((a, b) => new Date(b.deletedAt) - new Date(a.deletedAt));
+}
+
 export async function updateRestaurantComplaint(id, updateData) {
     if (!id || !mongoose.Types.ObjectId.isValid(id)) {
         throw new ValidationError('Invalid complaint ID');

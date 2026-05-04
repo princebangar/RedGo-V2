@@ -217,6 +217,7 @@ export const adminSidebarMenu = [
       { type: "link", label: "Broadcast Notification", path: "/admin/food/broadcast-notification", icon: "Bell" },
       { type: "link", label: "Business Setup", path: "/admin/food/business-setup", icon: "Settings" },
       { type: "link", label: "Customization Settings", path: "/admin/food/customization-settings", icon: "Zap" },
+      { type: "link", label: "Archived Accounts", path: "/admin/food/archived-accounts", icon: "UserX" },
     ],
   },
   {
