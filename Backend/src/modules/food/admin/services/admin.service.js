@@ -1,7 +1,6 @@
 import mongoose from 'mongoose';
 import { ValidationError } from '../../../../core/auth/errors.js';
 import { FoodRestaurant } from '../../restaurant/models/restaurant.model.js';
-import { buildRawDownloadUrlFromFileUrl } from '../../../../services/cloudinary.service.js';
 import { FoodDeliveryPartner } from '../../delivery/models/deliveryPartner.model.js';
 import { DeliverySupportTicket } from '../../delivery/models/supportTicket.model.js';
 import { FoodZone } from '../models/zone.model.js';
@@ -368,7 +367,7 @@ export async function getRestaurants(query) {
             .sort({ createdAt: -1 })
             .skip(skip)
             .limit(limit)
-            .select('restaurantName location area city profileImage coverImages menuImages menuPdf status ownerName ownerPhone zoneId')
+            .select('restaurantName location area city profileImage coverImages menuImages status ownerName ownerPhone zoneId')
             .populate('zoneId', 'name zoneName')
             .lean(),
         FoodRestaurant.countDocuments(filter)
@@ -376,20 +375,6 @@ export async function getRestaurants(query) {
     return { restaurants, total, page, limit };
 }
 
-export async function getRestaurantMenuPdfDownloadUrl(restaurantId) {
-    if (!restaurantId || !mongoose.Types.ObjectId.isValid(restaurantId)) {
-        throw new ValidationError('Invalid restaurant id');
-    }
-
-    const restaurant = await FoodRestaurant.findById(restaurantId)
-        .select('menuPdf restaurantName')
-        .lean();
-
-    if (!restaurant || !restaurant.menuPdf) return null;
-
-    const url = buildRawDownloadUrlFromFileUrl(restaurant.menuPdf, { fileName: 'menu.pdf' });
-    return { url };
-}
 
 const CANCELLED_ORDER_STATUSES = ['cancelled_by_user', 'cancelled_by_restaurant', 'cancelled_by_admin'];
 const PENDING_ORDER_STATUSES = ['created', 'confirmed', 'preparing', 'ready_for_pickup', 'picked_up'];

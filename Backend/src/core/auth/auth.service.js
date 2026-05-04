@@ -397,12 +397,23 @@ export const verifyRestaurantOtpAndLogin = async (phone, otp, fcmToken, platform
     ...(last10 ? [{ [field]: { $regex: new RegExp(last10 + "$") } }] : []),
   ];
 
-  const existingRestaurant = await FoodRestaurant.findOne({
+  // Search for all matching restaurants to handle cases with multiple records (e.g. deleted vs active)
+  const matchingRestaurants = await FoodRestaurant.find({
     $or: [
       ...phoneOrFields("ownerPhone"),
       ...phoneOrFields("primaryContactNumber"),
     ],
   });
+
+  // Prioritize accounts: approved > pending > rejected > deleted
+  const statusPriority = { approved: 1, pending: 2, rejected: 3, deleted: 4 };
+  const sortedRestaurants = matchingRestaurants.sort((a, b) => {
+    const pA = statusPriority[a.status] || 99;
+    const pB = statusPriority[b.status] || 99;
+    return pA - pB;
+  });
+
+  const existingRestaurant = sortedRestaurants[0] || null;
 
   const isDeleted = existingRestaurant && existingRestaurant.status === "deleted";
   const preserveOtp = isDeleted && !confirmAction;
@@ -430,12 +441,22 @@ export const verifyRestaurantOtpAndLogin = async (phone, otp, fcmToken, platform
       await restaurant.save();
       logger.info({ restaurantId: restaurant._id }, "Restaurant account restored successfully");
     } else if (confirmAction === "new") {
-      const oldPhone = restaurant.ownerPhone;
-      restaurant.ownerPhone = `${oldPhone}_deleted_${Date.now()}`;
-      // Also clear contact number if it matches
-      if (restaurant.primaryContactNumber === phone) {
-        restaurant.primaryContactNumber = `${phone}_deleted_${Date.now()}`;
+      const suffix = `_deleted_${Date.now()}`;
+      
+      // Rename ALL potential phone fields if they match any of the candidates
+      const fieldsToRename = ["ownerPhone", "primaryContactNumber"];
+      for (const field of fieldsToRename) {
+        const val = restaurant[field];
+        if (val) {
+          const valDigits = String(val).replace(/\D/g, "");
+          const searchDigits = String(phone).replace(/\D/g, "");
+          // If the field contains the phone number we're verifying, rename it
+          if (valDigits.includes(searchDigits) || searchDigits.includes(valDigits)) {
+            restaurant[field] = `${val}${suffix}`;
+          }
+        }
       }
+      
       await restaurant.save();
       logger.info({ restaurantId: restaurant._id }, "Old restaurant account renamed for fresh start");
       
@@ -524,12 +545,21 @@ export const verifyDeliveryOtpAndLogin = async (phone, otp, fcmToken, platform, 
   const normalized = normalizePhoneForDelivery(phone);
   let existingPartner = null;
   if (normalized) {
-    existingPartner = await FoodDeliveryPartner.findOne({
+    const matchingPartners = await FoodDeliveryPartner.find({
       $or: [
         { phone: normalized },
         { phone: { $regex: new RegExp(normalized + "$") } },
       ],
     });
+
+    // Prioritize approved/pending over deleted
+    const statusPriority = { approved: 1, pending: 2, rejected: 3, deleted: 4 };
+    const sortedPartners = matchingPartners.sort((a, b) => {
+      const pA = statusPriority[a.status] || 99;
+      const pB = statusPriority[b.status] || 99;
+      return pA - pB;
+    });
+    existingPartner = sortedPartners[0] || null;
   }
 
   const isDeleted = existingPartner && existingPartner.status === "deleted";
@@ -558,8 +588,8 @@ export const verifyDeliveryOtpAndLogin = async (phone, otp, fcmToken, platform, 
       await deliveryPartner.save();
       logger.info({ partnerId: deliveryPartner._id }, "Delivery partner account restored successfully");
     } else if (confirmAction === "new") {
-      const oldPhone = deliveryPartner.phone;
-      deliveryPartner.phone = `${oldPhone}_deleted_${Date.now()}`;
+      const suffix = `_deleted_${Date.now()}`;
+      deliveryPartner.phone = `${deliveryPartner.phone}${suffix}`;
       await deliveryPartner.save();
       logger.info({ partnerId: deliveryPartner._id }, "Old delivery partner account renamed for fresh start");
       

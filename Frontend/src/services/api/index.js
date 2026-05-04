@@ -227,15 +227,6 @@ export const adminAPI = {
       params,
       contextModule: "admin",
     }),
-  getRestaurantMenuPdfUrl: (id) =>
-    apiClient.get(`/food/admin/restaurants/${String(id)}/menu-pdf`, {
-      contextModule: "admin",
-    }),
-  downloadRestaurantMenuPdf: (id) =>
-    apiClient.get(`/food/admin/restaurants/${String(id)}/download-menu-pdf`, {
-      contextModule: "admin",
-      responseType: "blob",
-    }),
   updateRestaurantComplaint: (id, body) =>
     apiClient.patch(`/food/admin/restaurants/complaints/${id}`, body, {
       contextModule: "admin",
@@ -2240,26 +2231,6 @@ export const uploadAPI = {
     }
 
     return apiClient.post("/uploads/image", formData, {
-      headers: { "Content-Type": "multipart/form-data" },
-    });
-  },
-  /**
-   * Upload a single non-image file (PDF) to the backend.
-   * @param {File|Blob} file
-   * @param {{ folder?: string }} options
-   */
-  uploadFile: (file, options = {}) => {
-    if (!file) {
-      return Promise.reject(new Error("File is required for upload"));
-    }
-
-    const formData = new FormData();
-    formData.append("file", file);
-    if (options.folder) {
-      formData.append("folder", options.folder);
-    }
-
-    return apiClient.post("/uploads/file", formData, {
       headers: { "Content-Type": "multipart/form-data" },
     });
   },

@@ -441,17 +441,6 @@ export default function Profile() {
       // Clear user module authentication data
       clearModuleAuth("user");
       
-      // Clear legacy token data for backward compatibility
-      localStorage.removeItem("accessToken");
-      localStorage.removeItem("user_authenticated");
-      localStorage.removeItem("user_user");
-      localStorage.removeItem("user");
-      localStorage.removeItem("cart");
-      USER_SESSION_PREFERENCE_KEYS.forEach((key) => localStorage.removeItem(key));
-      
-      // Clear logout-related storage
-      localStorage.removeItem("app:isOnline");
-      
       // Dispatch auth change event to notify other components
       window.dispatchEvent(new Event("userAuthChanged"));
       
@@ -1027,11 +1016,11 @@ export default function Profile() {
                       className="bg-gray-100 dark:bg-gray-800 rounded-full p-2"
                       whileHover={{ rotate: 15, scale: 1.1 }}
                       transition={{ duration: 0.3 }}>
-                      <Power
-                        className={`h-5 w-5 text-gray-700 dark:text-gray-300 ${isLoggingOut ? "animate-pulse" : ""}`}
+                    <Power
+                        className={`h-5 w-5 text-gray-900 dark:text-white ${isLoggingOut ? "animate-pulse" : ""}`}
                       />
                     </motion.div>
-                    <span className="text-base font-medium text-gray-900 dark:text-white">
+                    <span className="text-base font-bold text-gray-900 dark:text-white">
                       {isLoggingOut ? "Logging out..." : "Log out"}
                     </span>
                   </div>
@@ -1049,48 +1038,30 @@ export default function Profile() {
               transition={{ duration: 0.2, type: "spring", stiffness: 300 }}>
               <Card
                 className="bg-white dark:bg-[#1a1a1a] py-0 rounded-xl shadow-sm border-0 dark:border-gray-800 cursor-pointer"
-                onClick={async () => { 
-                  if (isCheckingBalance) return;
-                  try {
-                    setIsCheckingBalance(true);
-                    const res = await authAPI.checkBalance("user");
-                    if (res?.data?.success && res.data.data.balance > 0) {
-                      setBalanceData({ 
-                        balance: res.data.data.balance, 
-                        type: res.data.data.type || "Wallet Balance" 
-                      });
-                      setShowBalanceWarning(true);
-                    } else {
-                      setDeleteCaptcha(""); 
-                      setDeleteAccountOpen(true);
-                    }
-                  } catch (err) {
-                    setDeleteCaptcha(""); 
-                    setDeleteAccountOpen(true);
-                  } finally {
-                    setIsCheckingBalance(false);
-                  }
+                onClick={() => { 
+                  setDeleteCaptcha(""); 
+                  setDeleteAccountOpen(true);
                 }}>
                 <CardContent className="p-4 flex items-center justify-between">
                   <div className="flex items-center gap-3">
                     <motion.div
-                      className="bg-red-50 dark:bg-red-900/20 rounded-full p-2"
+                      className="bg-[#FFF1F2] rounded-full p-2"
                       whileHover={{ rotate: 15, scale: 1.1 }}
                       transition={{ duration: 0.3 }}>
                       {isCheckingBalance ? (
-                        <div className="h-5 w-5 border-2 border-red-500/30 border-t-red-500 rounded-full animate-spin" />
+                        <div className="h-5 w-5 border-2 border-[#FF3131]/30 border-t-[#FF3131] rounded-full animate-spin" />
                       ) : (
-                        <Trash2 className="h-5 w-5 text-red-500" />
+                        <Trash2 className="h-5 w-5 text-[#FF3131]" />
                       )}
                     </motion.div>
-                    <span className="text-base font-medium text-red-500">
+                    <span className="text-base font-bold text-[#FF3131]">
                       Delete Account
                     </span>
                   </div>
                   <motion.div
                     whileHover={{ x: 4 }}
                     transition={{ duration: 0.2 }}>
-                    <ChevronRight className="h-5 w-5 text-red-300" />
+                    <ChevronRight className="h-5 w-5 text-[#FF3131]/40" />
                   </motion.div>
                 </CardContent>
               </Card>
@@ -1325,67 +1296,68 @@ export default function Profile() {
 
       {/* Delete Account Confirmation */}
       {deleteAccountOpen && (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 backdrop-blur-sm px-4 overflow-y-auto py-10">
-          <motion.div
-            initial={{ scale: 0.9, opacity: 0 }}
-            animate={{ scale: 1, opacity: 1 }}
-            className="w-full max-w-sm rounded-2xl bg-white dark:bg-[#1a1a1a] shadow-2xl border border-red-100 dark:border-red-900/30 overflow-hidden p-6">
-            
-            {/* Icon + Title centered */}
-            <div className="flex flex-col items-center text-center mb-4">
-              <div className="w-14 h-14 rounded-full bg-red-100 dark:bg-red-900/30 flex items-center justify-center mb-3">
-                <Trash2 className="h-7 w-7 text-red-600 dark:text-red-400" />
+        <div className="fixed inset-0 z-[1000] overflow-y-auto bg-black/60 backdrop-blur-sm">
+          <div className="flex min-h-screen items-center justify-center p-4 py-10">
+            <motion.div
+              initial={{ scale: 0.9, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              className="w-full max-w-sm rounded-2xl bg-white dark:bg-[#1a1a1a] shadow-2xl border border-red-100 dark:border-red-900/30 overflow-hidden p-6">
+              
+              {/* Icon + Title centered */}
+              <div className="flex flex-col items-center text-center mb-4">
+                <div className="w-14 h-14 rounded-full bg-red-100 dark:bg-red-900/30 flex items-center justify-center mb-3">
+                  <Trash2 className="h-7 w-7 text-red-600 dark:text-red-400" />
+                </div>
+                <h3 className="text-xl font-black text-gray-900 dark:text-white">
+                  Delete Your Account?
+                </h3>
               </div>
-              <h3 className="text-xl font-black text-gray-900 dark:text-white">
-                Delete Your Account?
-              </h3>
-            </div>
 
-            <p className="text-sm text-gray-600 dark:text-gray-300 mb-4 leading-relaxed text-center">
-              Are you sure you want to delete your account?
-            </p>
-
-            {/* Warning box */}
-            <div className="mb-4 bg-red-50 dark:bg-red-900/20 border-l-4 border-red-500 rounded-r-xl p-3">
-              <div className="flex items-center gap-2 mb-1">
-                <AlertTriangle className="h-4 w-4 text-red-600 dark:text-red-400 flex-shrink-0" />
-                <span className="text-sm font-bold text-red-700 dark:text-red-400">Warning</span>
-              </div>
-              <p className="text-xs text-red-700 dark:text-red-300 leading-relaxed">
-                Your account will be deactivated. Admin will keep your historical records for revenue reporting.
+              <p className="text-sm text-gray-600 dark:text-gray-300 mb-4 leading-relaxed text-center">
+                Are you sure you want to delete your account?
               </p>
-            </div>
-            
-            <div className="mb-6">
-              <input 
-                type="text" 
-                placeholder="Type DELETE to confirm" 
-                value={deleteCaptcha}
-                onChange={(e) => setDeleteCaptcha(e.target.value.toUpperCase())}
-                className="w-full h-12 px-4 rounded-xl border-2 border-gray-200 dark:border-gray-700 bg-transparent dark:text-white focus:border-red-500 focus:ring-4 focus:ring-red-50 dark:focus:ring-red-900/20 outline-none transition-all font-bold text-center tracking-widest placeholder:tracking-normal placeholder:font-medium placeholder:text-gray-400 dark:placeholder:text-gray-500"
-              />
-            </div>
 
-            <div className="flex items-center gap-3">
-              <Button
-                type="button"
-                variant="outline"
-                className="flex-1 h-12 rounded-xl text-md font-bold ring-2 ring-gray-300 dark:ring-gray-600"
-                onClick={() => setDeleteAccountOpen(false)}
-                disabled={isDeleting}
-              >
-                Cancel
-              </Button>
-              <Button
-                type="button"
-                className="flex-1 h-12 rounded-xl bg-red-600 hover:bg-red-700 text-white text-md font-bold disabled:opacity-60 disabled:cursor-not-allowed shadow-lg shadow-red-600/20"
-                onClick={handleDeleteAccount}
-                disabled={isDeleting || deleteCaptcha !== "DELETE"}
-              >
-                {isDeleting ? "Deleting..." : "Delete Account"}
-              </Button>
-            </div>
-          </motion.div>
+              <div className="mb-4 bg-red-50 dark:bg-red-900/20 border-l-4 border-red-500 rounded-r-xl p-3">
+                <div className="flex items-center gap-2 mb-1">
+                  <AlertTriangle className="h-4 w-4 text-red-600 dark:text-red-400 flex-shrink-0" />
+                  <span className="text-sm font-bold text-red-700 dark:text-red-400">Warning</span>
+                </div>
+                <p className="text-xs text-red-700 dark:text-red-300 leading-relaxed">
+                  Your account will be Deleted. Admin will keep your historical records for revenue reporting.
+                </p>
+              </div>
+              
+              <div className="mb-6">
+                <input 
+                  type="text" 
+                  placeholder="Type DELETE to confirm" 
+                  value={deleteCaptcha}
+                  onChange={(e) => setDeleteCaptcha(e.target.value.toUpperCase())}
+                  className="w-full h-12 px-4 rounded-xl border-2 border-gray-200 dark:border-gray-700 bg-transparent dark:text-white focus:border-red-500 focus:ring-4 focus:ring-red-50 dark:focus:ring-red-900/20 outline-none transition-all font-bold text-center tracking-widest placeholder:tracking-normal placeholder:font-medium placeholder:text-gray-400 dark:placeholder:text-gray-500"
+                />
+              </div>
+
+              <div className="flex items-center gap-3">
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="flex-1 h-12 rounded-xl text-md font-bold ring-2 ring-gray-300 dark:ring-gray-600"
+                  onClick={() => setDeleteAccountOpen(false)}
+                  disabled={isDeleting}
+                >
+                  Cancel
+                </Button>
+                <Button
+                  type="button"
+                  className="flex-1 h-12 rounded-xl bg-red-600 hover:bg-red-700 text-white text-md font-bold disabled:opacity-60 disabled:cursor-not-allowed shadow-lg shadow-red-600/20"
+                  onClick={handleDeleteAccount}
+                  disabled={isDeleting || deleteCaptcha !== "DELETE"}
+                >
+                  {isDeleting ? "Deleting..." : "Delete Account"}
+                </Button>
+              </div>
+            </motion.div>
+          </div>
         </div>
       )}
     </AnimatedPage>

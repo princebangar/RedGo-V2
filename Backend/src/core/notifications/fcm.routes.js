@@ -9,6 +9,8 @@ import {
 import { FoodUser } from '../users/user.model.js';
 import { FoodRestaurant } from '../../modules/food/restaurant/models/restaurant.model.js';
 
+import mongoose from 'mongoose';
+
 const router = express.Router();
 
 const getOwnerContext = (req) => ({
@@ -80,6 +82,16 @@ router.post('/save', authMiddleware, async (req, res, next) => {
         if (!ownerType || !ownerId) {
             console.warn('[FCM-DEBUG] /save - Authentication required');
             return sendError(res, 401, 'Authentication required');
+        }
+
+        if (!mongoose.Types.ObjectId.isValid(ownerId)) {
+            console.warn(`[FCM-DEBUG] /save - Invalid ownerId: ${ownerId}`);
+            return sendError(res, 400, 'Invalid user ID format');
+        }
+
+        if (!token) {
+            console.warn('[FCM-DEBUG] /save - Empty token received');
+            return sendError(res, 400, 'FCM token is required');
         }
 
         await upsertFirebaseDeviceToken({ ownerType, ownerId, token, platform });

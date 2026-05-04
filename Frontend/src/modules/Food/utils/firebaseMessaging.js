@@ -4,6 +4,7 @@ import { initializeApp, getApp, getApps } from "firebase/app";
 const fallbackNotificationSound = "/alert.mp3";
 
 const pushNotificationSoundPath = "/zomato_sms.mp3";
+const restaurantAlertSoundPath = "/restaurant_alert.mp3";
 
 const DEFAULT_FIREBASE_CONFIG = {
   apiKey: "",
@@ -49,8 +50,10 @@ function isRecord(value) {
 }
 
 function getPushSoundSources(moduleName = normalizeModuleFromPath()) {
-  // Delivery and restaurant should always use the alert tone for FCM pushes.
-  if (moduleName === "delivery" || moduleName === "restaurant") {
+  if (moduleName === "restaurant") {
+    return [restaurantAlertSoundPath];
+  }
+  if (moduleName === "delivery") {
     return [fallbackNotificationSound];
   }
   return [pushNotificationSoundPath, fallbackNotificationSound];

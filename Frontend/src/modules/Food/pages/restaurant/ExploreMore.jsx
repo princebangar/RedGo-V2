@@ -1024,62 +1024,42 @@ export default function ExploreMore() {
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.5, duration: 0.25 }}
           onClick={() => setLogoutConfirmOpen(true)}
-          className="w-full flex items-center justify-between gap-3 rounded-2xl border border-[#DC2626]/20 bg-[#DC2626]/5 px-4 py-4 text-left hover:bg-[#DC2626]/10 transition-all active:scale-[0.99] mb-4"
+          className="w-full flex items-center justify-between gap-3 rounded-2xl border border-gray-200 bg-gray-50 px-4 py-5 text-left hover:bg-gray-100 transition-all active:scale-[0.99] mb-4"
         >
           <div className="flex items-center gap-3 min-w-0">
-            <div className="flex h-11 w-11 items-center justify-center rounded-full bg-[#DC2626]/10">
-              <LogOut className="w-5 h-5 text-[#DC2626]" />
+            <div className="flex h-11 w-11 items-center justify-center rounded-full bg-gray-200">
+              <LogOut className="w-5 h-5 text-gray-900" />
             </div>
             <div className="min-w-0">
-              <p className="text-base font-semibold text-[#DC2626]">Logout</p>
-              <p className="text-sm text-[#DC2626]/60 font-medium">Tap to sign out from this device</p>
+              <p className="text-base font-bold text-gray-900">Logout</p>
             </div>
           </div>
-          <ChevronRight className="w-5 h-5 text-[#DC2626]/40 shrink-0" />
+          <ChevronRight className="w-5 h-5 text-gray-400 shrink-0" />
         </motion.button>
 
         <motion.button
           initial={{ opacity: 0, y: 8 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.55, duration: 0.25 }}
-          onClick={async () => { 
-            if (isCheckingBalance) return;
-            try {
-              setIsCheckingBalance(true);
-              const res = await authAPI.checkBalance("restaurant");
-              if (res?.data?.success && res.data.data.balance > 0) {
-                setBalanceData({ 
-                  balance: res.data.data.balance, 
-                  type: res.data.data.type || "Restaurant Wallet Balance" 
-                });
-                setShowBalanceWarning(true);
-              } else {
-                setDeleteCaptcha(""); 
-                setDeleteConfirmOpen(true);
-              }
-            } catch (err) {
-              setDeleteCaptcha(""); 
-              setDeleteConfirmOpen(true);
-            } finally {
-              setIsCheckingBalance(false);
-            }
+          onClick={() => { 
+            setDeleteCaptcha(""); 
+            setDeleteConfirmOpen(true);
           }}
-          className="w-full flex items-center justify-between gap-3 rounded-2xl border border-[#DC2626]/20 bg-[#DC2626]/5 px-4 py-4 text-left hover:bg-[#DC2626]/10 transition-all active:scale-[0.99]"
+          className="w-full flex items-center justify-between gap-3 rounded-2xl border border-gray-100 bg-white px-4 py-5 text-left shadow-sm hover:shadow-md transition-all active:scale-[0.99]"
         >
           <div className="flex items-center gap-3 min-w-0">
-            <div className="flex h-11 w-11 items-center justify-center rounded-full bg-[#DC2626]/10">
+            <div className="flex h-11 w-11 items-center justify-center rounded-full bg-[#FFF1F2]">
               {isCheckingBalance ? (
-                <div className="w-5 h-5 border-2 border-[#DC2626]/30 border-t-[#DC2626] rounded-full animate-spin" />
+                <div className="w-5 h-5 border-2 border-[#FF3131]/30 border-t-[#FF3131] rounded-full animate-spin" />
               ) : (
-                <Trash2 className="w-5 h-5 text-[#DC2626]" />
+                <Trash2 className="w-5 h-5 text-[#FF3131]" />
               )}
             </div>
             <div className="min-w-0">
-              <p className="text-base font-semibold text-[#DC2626]">Delete Account</p>
-              <p className="text-sm text-[#DC2626]/60 font-medium">Permanently Remove This Account</p>
+              <p className="text-base font-bold text-[#FF3131]">Delete Account</p>
             </div>
           </div>
-          <ChevronRight className="w-5 h-5 text-[#DC2626]/40 shrink-0" />
+          <ChevronRight className="w-5 h-5 text-[#FF3131]/30 shrink-0" />
         </motion.button>
       </div>
 
@@ -1942,29 +1922,16 @@ export default function ExploreMore() {
 
       <AnimatePresence>
         {deleteConfirmOpen && (
-          <>
-            {/* Backdrop */}
-            <motion.div
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-              transition={{ duration: 0.2 }}
-              className="fixed inset-0 bg-black/60 z-[10000] backdrop-blur-sm"
-              onClick={() => {
-                if (!isDeleting) setDeleteConfirmOpen(false)
-              }}
-            />
-
-            {/* Delete Confirmation Modal */}
-            <motion.div
-              initial={{ opacity: 0, scale: 0.9, y: 20 }}
-              animate={{ opacity: 1, scale: 1, y: 0 }}
-              exit={{ opacity: 0, scale: 0.9, y: 20 }}
-              transition={{ type: "spring", damping: 25, stiffness: 300 }}
-              className="fixed inset-0 flex items-center justify-center z-[10001] px-4 overflow-y-auto py-10"
-              onClick={(e) => e.stopPropagation()}
-            >
-              <div className="bg-white rounded-3xl shadow-2xl max-w-sm w-full p-6 text-center border border-red-100">
+          <div className="fixed inset-0 z-[10000] overflow-y-auto bg-black/60 backdrop-blur-sm">
+            <div className="flex min-h-screen items-center justify-center p-4 py-10">
+              <motion.div
+                initial={{ opacity: 0, scale: 0.9, y: 20 }}
+                animate={{ opacity: 1, scale: 1, y: 0 }}
+                exit={{ opacity: 0, scale: 0.9, y: 20 }}
+                transition={{ type: "spring", damping: 25, stiffness: 300 }}
+                className="w-full max-w-sm rounded-3xl shadow-2xl bg-white p-6 text-center border border-red-100"
+                onClick={(e) => e.stopPropagation()}
+              >
                 {/* Icon Circle */}
                 <div className="flex justify-center mb-4">
                   <div className="w-16 h-16 rounded-full bg-red-100 flex items-center justify-center">
@@ -1977,14 +1944,13 @@ export default function ExploreMore() {
                   Are you sure you want to delete your account?
                 </p>
 
-                {/* Warning box */}
                 <div className="mb-5 bg-red-50 border-l-4 border-red-500 rounded-r-xl p-3 text-left">
                   <div className="flex items-center gap-2 mb-1">
                     <AlertTriangle className="w-4 h-4 text-red-600 flex-shrink-0" />
                     <span className="text-xs font-bold text-red-700 uppercase tracking-wider">Warning</span>
                   </div>
                   <p className="text-[11px] text-red-800 font-medium leading-tight">
-                    Your account will be deactivated. Admin will keep your historical records for revenue reporting.
+                    Your account will be Deleted. Admin will keep your historical records for revenue reporting.
                   </p>
                 </div>
 
@@ -2030,9 +1996,9 @@ export default function ExploreMore() {
                     {isDeleting ? "Deleting..." : "Delete Account"}
                   </button>
                 </div>
-              </div>
-            </motion.div>
-          </>
+              </motion.div>
+            </div>
+          </div>
         )}
       </AnimatePresence>
 

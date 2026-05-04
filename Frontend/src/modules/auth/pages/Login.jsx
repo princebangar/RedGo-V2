@@ -253,7 +253,7 @@ export default function UnifiedOTPFastLogin() {
 
         setAuthData("user", accessToken, user, refreshToken)
         setPendingVerify(null)
-        toast.success(`Welcome, ${newName.trim()}!`)
+        // toast.success(`Welcome, ${newName.trim()}!`)
         setShowNameModal(false)
         navigate("/user/auth/portal", { replace: true })
         return
@@ -266,7 +266,7 @@ export default function UnifiedOTPFastLogin() {
       const updatedUser = { ...tempAuth.user, name: newName.trim() }
       setAuthData("user", tempAuth.accessToken, updatedUser, tempAuth.refreshToken)
 
-      toast.success(`Welcome, ${newName.trim()}!`)
+      // toast.success(`Welcome, ${newName.trim()}!`)
       setShowNameModal(false)
       navigate("/user/auth/portal", { replace: true })
     } catch (err) {

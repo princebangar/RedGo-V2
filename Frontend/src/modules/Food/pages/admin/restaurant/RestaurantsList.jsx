@@ -85,12 +85,6 @@ const normalizeImageUrl = (image) => {
   return ""
 }
 
-const normalizeFileUrl = (file) => {
-  if (!file) return ""
-  if (typeof file === "string") return file
-  if (typeof file === "object") return file.url || file.secure_url || ""
-  return ""
-}
 
 const getPrimaryRestaurantImage = (restaurant, fallback = "") => {
   const coverImages = Array.isArray(restaurant?.coverImages) ? restaurant.coverImages : []
@@ -888,89 +882,6 @@ export default function RestaurantsList() {
     setRestaurantDetails(null)
   }
 
-  const handleDownloadMenuPdf = async (restaurant) => {
-    const restaurantId = restaurant?._id || restaurant?.id
-    if (!restaurantId) {
-      alert("Restaurant ID not found")
-      return
-    }
-
-    try {
-      // Try method 1: Direct blob download via admin endpoint (auth via axios interceptor)
-      try {
-        const blobResponse = await adminAPI.downloadRestaurantMenuPdf(restaurantId)
-        const blob = blobResponse?.data
-        if (!(blob instanceof Blob)) {
-          throw new Error('Invalid PDF response from server')
-        }
-
-        const blobUrl = window.URL.createObjectURL(blob)
-        const link = document.createElement("a")
-        link.href = blobUrl
-        link.download = `${restaurant?.restaurantName || "menu"}.pdf`
-        document.body.appendChild(link)
-        link.click()
-        document.body.removeChild(link)
-        window.URL.revokeObjectURL(blobUrl)
-        return
-      } catch (blobError) {
-        console.warn('Direct download failed, trying fallback method:', blobError)
-        
-        // Fallback method 2: Try to get the signed URL from backend
-        const response = await adminAPI.getRestaurantMenuPdfUrl(restaurantId)
-        let url = response?.data?.data?.url || response?.data?.data?.menuPdfUrl
-        
-        if (!url) {
-          url = restaurant?.originalData?.menuPdf || restaurant?.menuPdf
-          if (!url) {
-            alert("Menu PDF not available")
-            return
-          }
-        }
-
-        // Try to download from the URL
-        const urlResponse = await fetch(url, {
-          headers: {
-            'Accept': 'application/pdf'
-          }
-        })
-        
-        if (!urlResponse.ok) {
-          throw new Error(`Failed to fetch PDF from URL: ${urlResponse.status}`)
-        }
-        
-        const urlBlob = await urlResponse.blob()
-        const urlBlobUrl = window.URL.createObjectURL(urlBlob)
-        const urlLink = document.createElement("a")
-        urlLink.href = urlBlobUrl
-        urlLink.download = `${restaurant?.restaurantName || "menu"}.pdf`
-        document.body.appendChild(urlLink)
-        urlLink.click()
-        document.body.removeChild(urlLink)
-        window.URL.revokeObjectURL(urlBlobUrl)
-      }
-    } catch (err) {
-      console.error('Download error:', err)
-      
-      // Try to extract meaningful error message
-      let errorMsg = 'Failed to download menu PDF. Please try again.'
-      
-      if (err?.response?.data?.message) {
-        errorMsg = err.response.data.message
-      } else if (err?.message) {
-        errorMsg = err.message
-      } else if (typeof err === 'string') {
-        errorMsg = err
-      }
-      
-      // Check if it's a 404 - menu PDF not available
-      if (errorMsg.includes('404') || errorMsg.includes('not found') || errorMsg.includes('not uploaded')) {
-        errorMsg += '\n\nPlease ensure a menu PDF has been uploaded for this restaurant.'
-      }
-      
-      alert(errorMsg)
-    }
-  }
 
   // Handle ban/unban restaurant
   const handleBanRestaurant = (restaurant) => {
@@ -1281,9 +1192,6 @@ export default function RestaurantsList() {
                     </tr>
                   ) : (
                     filteredRestaurants.map((restaurant, index) => {
-                      const menuPdfUrl = normalizeFileUrl(
-                        restaurant.originalData?.menuPdf || restaurant.menuPdf
-                      )
                       return (
                       <tr
                         key={restaurant.id}
@@ -1348,17 +1256,6 @@ export default function RestaurantsList() {
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap text-center">
                           <div className="flex items-center justify-center gap-2">
-                            {menuPdfUrl && (
-                              <button
-                                type="button"
-                                onClick={() => handleDownloadMenuPdf(restaurant)}
-                                className="inline-flex items-center gap-1.5 px-2 py-1 rounded text-xs font-semibold text-slate-700 hover:bg-slate-100 transition-colors"
-                                title="Download Menu PDF"
-                              >
-                                <FileText className="w-3.5 h-3.5" />
-                                <span>Download Menu</span>
-                              </button>
-                            )}
                             <button
                               onClick={() => handleViewDetails(restaurant)}
                               className="p-1.5 rounded text-blue-600 hover:bg-blue-50 transition-colors"
@@ -1575,7 +1472,6 @@ export default function RestaurantsList() {
                 const hasFlatAddress = r?.addressLine1 || r?.area || r?.city || r?.state || r?.pincode
                 const flatAddress = [r?.addressLine1, r?.addressLine2, r?.area, r?.city, r?.state, r?.pincode, r?.landmark].filter(Boolean).join(", ")
                 const menuImages = Array.isArray(r?.menuImages) ? r.menuImages.map(normalizeImageUrl).filter(Boolean) : []
-                const menuPdfUrl = normalizeFileUrl(r?.menuPdf || r?.onboarding?.step2?.menuPdf)
                 const cuisinesList =
                   (Array.isArray(r?.cuisines) && r.cuisines.length ? r.cuisines : null) ||
                   (Array.isArray(r?.onboarding?.step2?.cuisines) && r.onboarding.step2.cuisines.length ? r.onboarding.step2.cuisines : null) ||
@@ -1808,7 +1704,7 @@ export default function RestaurantsList() {
                   </div>
 
                   {/* Media */}
-                  {(profileImgUrl || coverImages.length > 0 || menuImages.length > 0 || menuPdfUrl) && (
+                  {(profileImgUrl || coverImages.length > 0 || menuImages.length > 0) && (
                     <div className="pt-6 border-t border-slate-200">
                       <h4 className="text-lg font-semibold text-slate-900 mb-4">Media</h4>
                       <div className="space-y-4">
@@ -1879,19 +1775,6 @@ export default function RestaurantsList() {
                                 </a>
                               ))}
                             </div>
-                          </div>
-                        )}
-                        {menuPdfUrl && (
-                          <div>
-                            <p className="text-xs text-slate-500 mb-2">Menu PDF</p>
-                            <button
-                              type="button"
-                              onClick={() => handleDownloadMenuPdf(r)}
-                              className="inline-flex items-center gap-2 text-blue-600 hover:text-blue-700"
-                            >
-                              <FileText className="w-4 h-4" />
-                              <span>Download menu</span>
-                            </button>
                           </div>
                         )}
                       </div>

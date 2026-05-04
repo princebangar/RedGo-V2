@@ -152,15 +152,24 @@ export function clearModuleAuth(module) {
   localStorage.removeItem(`${module}_user`);
   // Clear cached FCM web token for this module
   localStorage.removeItem(`fcm_web_registered_token_${module}`);
+  localStorage.removeItem("app:isOnline");
   
   if (module === "user") {
     clearUserSession();
+    sessionStorage.removeItem("userAuthData");
   }
   
   if (module === "restaurant") {
     clearRestaurantSessionCache();
+    sessionStorage.removeItem("restaurantAuthData");
+    sessionStorage.removeItem("restaurantLoginPhone");
   }
-  // Also clear any sessionStorage data
+
+  if (module === "delivery") {
+    sessionStorage.removeItem("deliveryAuthData");
+  }
+  
+  // Also clear any standard naming conventions
   sessionStorage.removeItem(`${module}AuthData`);
 }
 
@@ -169,7 +178,16 @@ export function clearModuleAuth(module) {
  */
 export function clearUserSession() {
   if (typeof localStorage === "undefined") return;
-  const keys = ["userProfile", "user_user", "user_edit_profile_draft"];
+  const keys = [
+    "userProfile", 
+    "user_user", 
+    "user_edit_profile_draft",
+    "user",
+    "cart",
+    "userVegMode",
+    "food-under-250-filters",
+    "app:isOnline"
+  ];
   keys.forEach((k) => localStorage.removeItem(k));
 }
 

@@ -26,7 +26,7 @@ import {
 import { toast } from "sonner";
 import BottomNavOrders from "@food/components/restaurant/BottomNavOrders";
 import RestaurantNavbar from "@food/components/restaurant/RestaurantNavbar";
-const notificationSound = "/zomato_sms.mp3";
+const notificationSound = "/restaurant_alert.mp3";
 import { restaurantAPI, diningAPI } from "@food/api";
 import { useRestaurantNotifications } from "@food/hooks/useRestaurantNotifications";
 import { jsPDF } from "jspdf";
@@ -723,6 +723,7 @@ function TableBookings() {
 }
 
 function AllOrders({ onSelectOrder, onCancel }) {
+  const navigate = useNavigate();
   const [orders, setOrders] = useState([]);
   const [loading, setLoading] = useState(true);
   const [currentTime, setCurrentTime] = useState(new Date());
@@ -1045,12 +1046,12 @@ function ScheduledOrders({ onSelectOrder, refreshToken }) {
 
 // Helper to calculate initial countdown based on order creation time (3 minutes window)
 const getInitialCountdown = (order) => {
-  if (!order?.createdAt) return 180;
+  if (!order?.createdAt) return 240;
   const now = Date.now();
   const created = new Date(order.createdAt).getTime();
   const diffInSeconds = Math.floor((now - created) / 1000);
-  const remaining = 180 - diffInSeconds;
-  return Math.max(0, Math.min(180, remaining));
+  const remaining = 240 - diffInSeconds;
+  return Math.max(0, Math.min(240, remaining));
 }
 
 export default function OrdersMain() {
@@ -1074,7 +1075,7 @@ export default function OrdersMain() {
   const [popupOrder, setPopupOrder] = useState(null); // Store order for popup (from Socket.IO or API)
   const [isMuted, setIsMuted] = useState(false);
   const [prepTime, setPrepTime] = useState(11);
-  const [countdown, setCountdown] = useState(180); // 3 minutes in seconds
+  const [countdown, setCountdown] = useState(240); // 4 minutes in seconds
   const [isDetailsExpanded, setIsDetailsExpanded] = useState(true);
   const [showRejectPopup, setShowRejectPopup] = useState(false);
   const [rejectReason, setRejectReason] = useState("");
@@ -1083,8 +1084,8 @@ export default function OrdersMain() {
   const [orderToCancel, setOrderToCancel] = useState(null);
   const [acceptSwipeProgress, setAcceptSwipeProgress] = useState(0);
   const [isAcceptingOrder, setIsAcceptingOrder] = useState(false);
-  const audioRef = useRef(null);
   const shownOrdersRef = useRef(new Set()); // Track orders already shown in popup
+  const [isDetailsExpanded, setIsDetailsExpanded] = useState(true);
   const acceptSliderRef = useRef(null);
   const acceptSwipeStartXRef = useRef(0);
   const acceptSwipeActiveRef = useRef(false);
@@ -1095,7 +1096,6 @@ export default function OrdersMain() {
     isLoading: true,
   });
   const [isReverifying, setIsReverifying] = useState(false);
-  const audioUnlockedRef = useRef(false);
   const showNewOrderPopupRef = useRef(showNewOrderPopup);
   const isMutedRef = useRef(isMuted);
   const newOrderRef = useRef(null);
@@ -1123,10 +1123,6 @@ export default function OrdersMain() {
             // If new pending booking found, maybe show toast
             if (pending > pendingBookingsCount) {
               toast.info(`New table booking request! Check the "Table Booking" tab.`);
-              // Optional: Play sound
-              if (audioRef.current && !isMutedRef.current) {
-                audioRef.current.play().catch(() => {});
-              }
             }
             setPendingBookingsCount(pending);
           }
@@ -1259,7 +1255,7 @@ export default function OrdersMain() {
   };
 
   // Restaurant notifications hook for real-time orders
-  const { newOrder, clearNewOrder, isConnected } = useRestaurantNotifications();
+  const { newOrder, clearNewOrder, isConnected, stopSound } = useRestaurantNotifications();
 
   const rejectReasons = [
     "Restaurant is too busy",
@@ -1517,57 +1513,17 @@ export default function OrdersMain() {
     newOrderRef.current = newOrder;
   }, [newOrder]);
 
-  // Initialize audio object for popup loop
-  useEffect(() => {
-    if (!audioRef.current) {
-      audioRef.current = new Audio(notificationSound);
-      audioRef.current.preload = "auto";
-    }
-  }, []);
+  // Audio is now managed globally by useRestaurantNotifications hook
 
   // Best-effort unlock for popup buzzer so it can keep playing when tab is backgrounded.
-  useEffect(() => {
-    const unlockAudio = async () => {
-      if (audioUnlockedRef.current || !audioRef.current) return;
-      try {
-        audioRef.current.muted = true;
-        await audioRef.current.play();
-        audioRef.current.pause();
-        audioRef.current.currentTime = 0;
-        audioRef.current.muted = false;
-        audioRef.current.volume = 1;
-        audioUnlockedRef.current = true;
-
-        // If an order popup is already open, start buzzing immediately after unlock.
-        if (showNewOrderPopupRef.current && !isMutedRef.current) {
-          audioRef.current.loop = false;
-          audioRef.current.currentTime = 0;
-          audioRef.current.play().catch(() => {});
-        }
-      } catch (_) {
-        audioRef.current.muted = false;
-      }
-    };
-
-    window.addEventListener("pointerdown", unlockAudio, {
-      once: true,
-      passive: true,
-    });
-    window.addEventListener("keydown", unlockAudio, { once: true });
-
-    return () => {
-      window.removeEventListener("pointerdown", unlockAudio);
-      window.removeEventListener("keydown", unlockAudio);
-    };
-  }, []);
+  // Audio is managed globally by useRestaurantNotifications hook
 
   // Ensure audio stops when user comes to the page
   useEffect(() => {
     const handleVisibilityChange = () => {
       if (typeof document !== "undefined" && document.visibilityState === "visible") {
-        if (audioRef.current) {
-          audioRef.current.pause();
-          audioRef.current.currentTime = 0;
+        if (stopSound) {
+          stopSound();
         }
       }
     };
@@ -1664,22 +1620,9 @@ export default function OrdersMain() {
   }, []);
 
   // Play audio when popup opens
-  useEffect(() => {
-    if (showNewOrderPopup && !isMuted) {
-      if (audioRef.current) {
-        audioRef.current.loop = false;
-        audioRef.current.muted = false;
-        audioRef.current.volume = 1;
-        audioRef.current.currentTime = 0;
-        audioRef.current
-          .play()
-          .catch((err) => debugLog("Audio play failed:", err));
-      }
-    } else if (audioRef.current) {
-      audioRef.current.pause();
-      audioRef.current.currentTime = 0;
+    if (!showNewOrderPopup) {
+      if (stopSound) stopSound();
     }
-  }, [showNewOrderPopup, isMuted]);
 
   useEffect(() => {
     if (showNewOrderPopup && countdown > 0) {
@@ -1701,7 +1644,7 @@ export default function OrdersMain() {
             setShowNewOrderPopup(false);
             setPopupOrder(null);
             clearNewOrder();
-            setCountdown(180);
+            setCountdown(240);
           })
           .catch((err) => {
             debugError("Auto-reject failed:", err);
@@ -1735,7 +1678,7 @@ export default function OrdersMain() {
       setShowNewOrderPopup(false);
       setPopupOrder(null);
       clearNewOrder();
-      setCountdown(180);
+      setCountdown(240);
       setPrepTime(11);
     }, 2500);
 
@@ -1835,9 +1778,8 @@ export default function OrdersMain() {
     if (isAcceptingOrder) return;
     setIsAcceptingOrder(true);
 
-    if (audioRef.current) {
-      audioRef.current.pause();
-      audioRef.current.currentTime = 0;
+    if (stopSound) {
+      stopSound();
     }
 
     // Use popupOrder (from Socket.IO or API fallback) or newOrder (from hook)
@@ -1899,7 +1841,7 @@ export default function OrdersMain() {
     setShowNewOrderPopup(false);
     setPopupOrder(null);
     clearNewOrder();
-    setCountdown(180);
+    setCountdown(240);
     setPrepTime(11);
     setAcceptSwipeProgress(0);
     setIsAcceptingOrder(false);
@@ -1933,16 +1875,15 @@ export default function OrdersMain() {
       }
     }
 
-    if (audioRef.current) {
-      audioRef.current.pause();
-      audioRef.current.currentTime = 0;
+    if (stopSound) {
+      stopSound();
     }
     setShowRejectPopup(false);
     setShowNewOrderPopup(false);
     setPopupOrder(null);
     clearNewOrder();
     setRejectReason("");
-    setCountdown(180);
+    setCountdown(240);
     setPrepTime(11);
   };
 
@@ -1952,7 +1893,7 @@ export default function OrdersMain() {
     setPopupOrder(null);
     clearNewOrder();
     setRejectReason("");
-    setCountdown(180);
+    setCountdown(240);
   };
 
   // Handle cancel order (for preparing orders)
@@ -1987,17 +1928,8 @@ export default function OrdersMain() {
   // Toggle mute
   const toggleMute = () => {
     setIsMuted(!isMuted);
-    if (audioRef.current) {
-      if (!isMuted) {
-        audioRef.current.pause();
-      } else {
-        audioRef.current.muted = false;
-        audioRef.current.volume = 1;
-        audioRef.current.currentTime = 0;
-        audioRef.current
-          .play()
-          .catch((err) => debugLog("Audio play failed:", err));
-      }
+    if (stopSound && !isMuted) {
+      stopSound();
     }
   };
 
@@ -2639,12 +2571,6 @@ export default function OrdersMain() {
       </div>
 
       {/* Audio element */}
-      <audio
-        ref={audioRef}
-        src={notificationSound}
-        preload="auto"
-        playsInline
-      />
 
       {/* New Order Popup */}
       <AnimatePresence>
@@ -2960,7 +2886,7 @@ export default function OrdersMain() {
                           <motion.div
                             className="absolute inset-y-0 left-0 bg-blue-600"
                             initial={{ width: "100%" }}
-                            animate={{ width: `${(countdown / 180) * 100}%` }}
+                            animate={{ width: `${(countdown / 240) * 100}%` }}
                             transition={{ duration: 1, ease: "linear" }}
                           />
                           <div className="absolute inset-0 flex items-center justify-center px-16">

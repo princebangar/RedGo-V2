@@ -1,5 +1,5 @@
 import { FoodRestaurant } from '../models/restaurant.model.js';
-import { uploadImageBuffer, uploadFileBuffer } from '../../../../services/cloudinary.service.js';
+import { uploadImageBuffer } from '../../../../services/cloudinary.service.js';
 import { ValidationError } from '../../../../core/auth/errors.js';
 import mongoose from 'mongoose';
 import { FoodZone } from '../../admin/models/zone.model.js';
@@ -315,17 +315,6 @@ export const registerRestaurant = async (payload, files) => {
         );
     }
 
-    let menuPdf = '';
-    if (files?.menuPdf?.[0]) {
-        menuPdf = await uploadFileBuffer(files.menuPdf[0].buffer, 'food/restaurants/menu-pdf', {
-            fileName: files.menuPdf[0].originalname || 'menu.pdf',
-            format: 'pdf'
-        });
-    }
-
-    if (!menuPdf) {
-        throw new ValidationError('Menu PDF is required');
-    }
 
     const normalizedOpeningTime = normalizeRestaurantTime(openingTime);
     const normalizedClosingTime = normalizeRestaurantTime(closingTime);
@@ -394,7 +383,6 @@ export const registerRestaurant = async (payload, files) => {
             accountHolderName,
             accountType,
             menuImages,
-            menuPdf,
             takeawaySettings: {
                 isEnabled: isTakeawayEnabled === 'true' || isTakeawayEnabled === true
             },
@@ -936,9 +924,6 @@ export const updateRestaurantProfile = async (restaurantId, body = {}) => {
         update.menuImages = urls;
     }
 
-    if (body.menuPdf !== undefined) {
-        update.menuPdf = toUrl(body.menuPdf) || '';
-    }
 
     if (body.coverImages !== undefined) {
         if (!Array.isArray(body.coverImages)) {

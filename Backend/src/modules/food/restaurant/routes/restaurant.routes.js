@@ -51,7 +51,6 @@ import {
     deleteAddonController
 } from '../controllers/restaurantAddon.controller.js';
 import * as orderController from '../../orders/controllers/order.controller.js';
-import { downloadRestaurantMenuPdf } from '../../admin/controllers/admin.controller.js';
 import { authMiddleware } from '../../../../core/auth/auth.middleware.js';
 import { sendError } from '../../../../utils/response.js';
 import { getRestaurantFinanceController } from '../controllers/restaurantFinance.controller.js';
@@ -72,8 +71,7 @@ const uploadFields = upload.fields([
     { name: 'panImage', maxCount: 1 },
     { name: 'gstImage', maxCount: 1 },
     { name: 'fssaiImage', maxCount: 1 },
-    { name: 'menuImages', maxCount: 10 },
-    { name: 'menuPdf', maxCount: 1 }
+    { name: 'menuImages', maxCount: 10 }
 ]);
 
 router.post('/register', uploadFields, registerRestaurantController);
@@ -206,19 +204,6 @@ router.get('/complaints', authMiddleware, requireRestaurant, getRestaurantCompla
 router.post('/support/tickets', authMiddleware, requireRestaurant, createRestaurantSupportTicketController);
 router.get('/support/tickets', authMiddleware, requireRestaurant, listRestaurantSupportTicketsController);
 
-// Download menu PDF (restaurant can download their own, admin can download any)
-router.get('/download-menu-pdf/:id', authMiddleware, (req, res, next) => {
-    // Allow ADMIN users to download any restaurant's PDF, or RESTAURANT users to download their own
-    const isAdmin = req.user?.role === 'ADMIN';
-    const isOwner = req.user?.userId === req.params.id;
-    
-    if (!isAdmin && !isOwner) {
-        return sendError(res, 403, 'You can only download your own restaurant menu PDF');
-    }
-    
-    // Call the download function
-    downloadRestaurantMenuPdf(req, res, next);
-});
 
 
 export default router;

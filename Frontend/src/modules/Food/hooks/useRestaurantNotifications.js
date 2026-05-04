@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import io from 'socket.io-client';
 import { API_BASE_URL } from '@food/api/config';
 import { restaurantAPI } from '@food/api';
-const alertSound = '/zomato_sms.mp3';
+const alertSound = '/restaurant_alert.mp3';
 import { dispatchNotificationInboxRefresh } from '@food/hooks/useNotificationInbox';
 const debugLog = (...args) => {}
 const debugWarn = (...args) => {}
@@ -178,6 +178,12 @@ export const useRestaurantNotifications = () => {
       alertLoopTimerRef.current = null;
     }
     alertLoopStartedAtRef.current = 0;
+    
+    // Also stop the physical audio
+    if (audioRef.current) {
+      audioRef.current.pause();
+      audioRef.current.currentTime = 0;
+    }
   };
 
   const startAlertLoop = () => {
@@ -821,7 +827,8 @@ export const useRestaurantNotifications = () => {
       setNewReservation(null);
     },
     isConnected,
-    playNotificationSound
+    playNotificationSound,
+    stopSound: stopAlertLoop
   };
 };
 

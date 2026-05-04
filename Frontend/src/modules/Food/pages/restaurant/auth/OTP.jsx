@@ -22,6 +22,7 @@ export default function RestaurantOTP() {
   const [deletedAccountData, setDeletedAccountData] = useState(null)
   const inputRefs = useRef([])
   const hasSubmittedRef = useRef(false)
+  const isSuccessRef = useRef(false)
 
   const primaryColor = "#DC2626"
 
@@ -79,10 +80,7 @@ export default function RestaurantOTP() {
     }
 
     if (newOtp.every((digit) => digit !== "")) {
-      if (!hasSubmittedRef.current) {
-        hasSubmittedRef.current = true
-        handleVerify(newOtp.join(""))
-      }
+      handleVerify(newOtp.join(""))
     }
   }
 
@@ -106,7 +104,11 @@ export default function RestaurantOTP() {
       return
     }
 
+    if (isSuccessRef.current || isLoading) return
+    if (!confirmAction && hasSubmittedRef.current) return
+
     setIsLoading(true)
+    if (!confirmAction) hasSubmittedRef.current = true
 
     try {
       if (!authData) throw new Error("Session expired. Please login again.")
@@ -115,7 +117,7 @@ export default function RestaurantOTP() {
       const email = authData.method === "email" ? authData.email : null
       const purpose = authData.isSignUp ? "register" : "login"
 
-      const response = await restaurantAPI.verifyOTP(phone, code, purpose, null, email, null, confirmAction)
+      const response = await restaurantAPI.verifyOTP(phone, code, purpose, null, email, null, "web", confirmAction)
       const data = response?.data?.data || response?.data
 
       // Handle deleted account found
@@ -138,26 +140,25 @@ export default function RestaurantOTP() {
       const restaurant = data?.user ?? data?.restaurant
 
       if (accessToken && restaurant) {
+        isSuccessRef.current = true
         setRestaurantAuthData("restaurant", accessToken, restaurant, data?.refreshToken)
         window.dispatchEvent(new Event("restaurantAuthChanged"))
         sessionStorage.removeItem("restaurantAuthData")
-        // toast.success("Verification successful!")
+        setShowRestorePopup(false)
 
-        setTimeout(async () => {
-          if (authData?.isSignUp) {
-            navigate("/food/restaurant/onboarding", { replace: true })
-          } else {
-            const onboardingComplete = isRestaurantOnboardingComplete(restaurant)
-            if (!onboardingComplete) {
-              const incompleteStep = await checkOnboardingStatus()
-              if (incompleteStep) {
-                navigate(`/food/restaurant/onboarding?step=${incompleteStep}`, { replace: true })
-                return
-              }
+        if (authData?.isSignUp) {
+          navigate("/food/restaurant/onboarding", { replace: true })
+        } else {
+          const onboardingComplete = isRestaurantOnboardingComplete(restaurant)
+          if (!onboardingComplete) {
+            const incompleteStep = await checkOnboardingStatus()
+            if (incompleteStep) {
+              navigate(`/food/restaurant/onboarding?step=${incompleteStep}`, { replace: true })
+              return
             }
-            navigate("/food/restaurant", { replace: true })
           }
-        }, 800)
+          navigate("/food/restaurant", { replace: true })
+        }
       }
     } catch (err) {
       const message = err?.response?.data?.message || "Invalid OTP. Please try again."
@@ -197,10 +198,11 @@ export default function RestaurantOTP() {
   }
 
   const handleRestoreAction = async (action) => {
-    setShowRestorePopup(false)
     const code = otp.join("")
     await handleVerify(code, action)
   }
+
+  const isOtpComplete = otp.every((digit) => digit !== "")
 
   if (!authData) return null
 
@@ -347,3 +349,6 @@ export default function RestaurantOTP() {
         )}
       </AnimatePresence>
     </div>
+  )
+}
+
