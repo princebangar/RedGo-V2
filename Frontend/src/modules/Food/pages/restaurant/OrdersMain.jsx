@@ -1085,7 +1085,6 @@ export default function OrdersMain() {
   const [acceptSwipeProgress, setAcceptSwipeProgress] = useState(0);
   const [isAcceptingOrder, setIsAcceptingOrder] = useState(false);
   const shownOrdersRef = useRef(new Set()); // Track orders already shown in popup
-  const [isDetailsExpanded, setIsDetailsExpanded] = useState(true);
   const acceptSliderRef = useRef(null);
   const acceptSwipeStartXRef = useRef(0);
   const acceptSwipeActiveRef = useRef(false);
@@ -1619,10 +1618,12 @@ export default function OrdersMain() {
     return () => clearInterval(intervalId);
   }, []);
 
-  // Play audio when popup opens
+  // Stop audio when popup closes
+  useEffect(() => {
     if (!showNewOrderPopup) {
       if (stopSound) stopSound();
     }
+  }, [showNewOrderPopup, stopSound]);
 
   useEffect(() => {
     if (showNewOrderPopup && countdown > 0) {
