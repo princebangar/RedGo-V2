@@ -491,7 +491,8 @@ export default function DeliveryOTP() {
   }
 
   return (
-    <AnimatedPage className="min-h-screen bg-white flex flex-col">
+    <>
+      <AnimatedPage className="min-h-screen bg-white flex flex-col">
       {/* Header */}
       <div className="relative flex items-center justify-center py-4 px-4 border-b border-gray-200">
         <button
