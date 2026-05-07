@@ -53,11 +53,19 @@ export const createExploreIcon = async (file, meta) => {
     const { secure_url, public_id } = await uploadImageToCloudinary(file.buffer);
     const sortOrder = await getNextSortOrder();
 
+    // Infer linkType from label for known types
+    let linkType = 'custom';
+    const lowerLabel = label.toLowerCase();
+    if (lowerLabel === 'offers') linkType = 'offers';
+    else if (lowerLabel === 'gourmet') linkType = 'gourmet';
+    else if (lowerLabel === 'collections') linkType = 'collections';
+    else if (lowerLabel === 'under 250' || lowerLabel === 'under-250') linkType = 'under-250';
+
     const doc = await FoodExploreIcon.create({
         label,
         iconUrl: secure_url,
         publicId: public_id,
-        linkType: 'custom',
+        linkType,
         targetPath: (meta?.link || '').trim() || undefined,
         sortOrder,
         isActive: true
@@ -93,7 +101,16 @@ export const updateExploreIcon = async (id, payload) => {
     }
 
     if (payload?.label !== undefined) {
-        updates.label = String(payload.label).trim();
+        const label = String(payload.label).trim();
+        updates.label = label;
+        
+        // Infer linkType from label for known types
+        const lowerLabel = label.toLowerCase();
+        if (lowerLabel === 'offers') updates.linkType = 'offers';
+        else if (lowerLabel === 'gourmet') updates.linkType = 'gourmet';
+        else if (lowerLabel === 'collections') updates.linkType = 'collections';
+        else if (lowerLabel === 'under 250' || lowerLabel === 'under-250') updates.linkType = 'under-250';
+        else updates.linkType = 'custom';
     }
     if (payload?.link !== undefined) {
         updates.targetPath = String(payload.link).trim() || undefined;

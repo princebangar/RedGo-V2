@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from "react"
 import { useNavigate } from "react-router-dom"
-import { ArrowLeft, Loader2 } from "lucide-react"
+import { ArrowLeft, Loader2, Smartphone } from "lucide-react"
 import AnimatedPage from "@food/components/user/AnimatedPage"
 import { Input } from "@food/components/ui/input"
 import { Button } from "@food/components/ui/button"

@@ -99,6 +99,8 @@ export default function BottomNavigation() {
   const isDelivery = !isDining && !isUnder250 && !isProfile && !isTakeaway && (
     normalizedPath === "/food" || 
     normalizedPath === "/food/user" || 
+    normalizedPath === "/user" ||
+    normalizedPath === "/" ||
     normalizedPath.startsWith("/food/user") ||
     normalizedPath.startsWith("/food/restaurants") ||
     normalizedPath.startsWith("/food/user/restaurants")

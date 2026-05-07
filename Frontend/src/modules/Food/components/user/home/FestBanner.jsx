@@ -83,9 +83,7 @@ export default function FestBanner({ isVegMode, videoUrl = "", hideFoodImages = 
           </h2>
         </motion.div>
         
-        <motion.div 
-          animate={{ scale: [1, 1.01, 1] }}
-          transition={{ duration: 4, repeat: Infinity }}
+        <div 
           className="relative flex items-center gap-3 px-6 py-1.5 bg-white/10 backdrop-blur-md rounded-full border border-white/20 shadow-xl group"
         >
           {/* Left Icon with Sparks */}
@@ -124,7 +122,7 @@ export default function FestBanner({ isVegMode, videoUrl = "", hideFoodImages = 
             </div>
             <Soup className="h-7 w-7 text-[#fff200]" />
           </div>
-        </motion.div>
+        </div>
 
         {hideFoodImages ? (
           <div className="h-28 sm:h-36" />

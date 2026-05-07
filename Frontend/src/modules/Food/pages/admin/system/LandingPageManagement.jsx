@@ -1883,7 +1883,8 @@ export default function LandingPageManagement() {
                   {[
                     { id: 'offers', label: 'Offers', link: '/user/offers' },
                     { id: 'gourmet', label: 'Gourmet', link: '/user/gourmet' },
-                    { id: 'collection', label: 'Collections', link: '/user/profile/favorites' }
+                    { id: 'collection', label: 'Collections', link: '/user/profile/favorites' },
+                    { id: 'under-250', label: 'Under 250', link: '/food/user/under-250' }
                   ].map((item) => {
                     // Find matching item from DB
                     const dbItem = exploreMore.find(i => i.label?.toLowerCase() === item.label.toLowerCase())
