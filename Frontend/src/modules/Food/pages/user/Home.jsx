@@ -3078,7 +3078,7 @@ export default function Home() {
                       state={{ from: '/food/user' }}
                       className="block">
                       <div className="flex flex-col items-center gap-1.5 group">
-                        <div className="relative aspect-square w-full rounded-2xl sm:rounded-[24px] bg-white dark:bg-[#1a1a1a] flex items-center justify-center shadow-sm hover:shadow-md transition-all duration-500 overflow-hidden border border-gray-100 dark:border-gray-800 p-1.5 group-hover:border-[#DC2626]/40">
+                        <div className="relative aspect-square w-full rounded-2xl sm:rounded-[24px] bg-white dark:bg-[#1a1a1a] flex items-center justify-center shadow-sm hover:shadow-md transition-all duration-500 overflow-hidden border border-gray-100 dark:border-gray-800 p-2.5 group-hover:border-[#DC2626]/40">
                           {/* Colorful Glow Background */}
                           <div className={`absolute inset-0 opacity-0 group-hover:opacity-10 transition-opacity duration-500 bg-gradient-to-br ${index % 3 === 0 ? 'from-[#DC2626] to-rose-500' : index % 3 === 1 ? 'from-indigo-500 to-purple-500' : 'from-teal-500 to-emerald-500'} z-20 pointer-events-none`} />
 
