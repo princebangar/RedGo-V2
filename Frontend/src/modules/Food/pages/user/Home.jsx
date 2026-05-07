@@ -3078,16 +3078,14 @@ export default function Home() {
                       state={{ from: '/food/user' }}
                       className="block">
                       <div className="flex flex-col items-center gap-2 group">
-                        <div className="relative w-20 h-20 rounded-[24px] bg-white dark:bg-[#1a1a1a] flex items-center justify-center shadow-md hover:shadow-lg transition-all duration-500 overflow-hidden border border-gray-200 dark:border-gray-700 group-hover:border-[#DC2626]/60">
+                        <div className="relative w-20 h-20 rounded-[24px] bg-white dark:bg-[#1a1a1a] flex items-center justify-center shadow-md hover:shadow-lg transition-all duration-500 overflow-hidden border border-gray-200 dark:border-gray-700 group-hover:border-[#DC2626]/60 p-2">
                           {/* Colorful Glow Background */}
                           <div className={`absolute inset-0 opacity-0 group-hover:opacity-10 transition-opacity duration-500 bg-gradient-to-br ${index % 3 === 0 ? 'from-[#DC2626] to-rose-500' : index % 3 === 1 ? 'from-indigo-500 to-purple-500' : 'from-teal-500 to-emerald-500'} z-20 pointer-events-none`} />
 
                           <OptimizedImage
                             src={item.image}
                             alt={item.label}
-                            className="w-18 h-18 object-contain relative z-10 transition-transform duration-500 group-hover:scale-110 drop-shadow-sm mix-blend-multiply dark:mix-blend-normal"
-                            width={110}
-                            height={110}
+                            className="w-full h-full object-contain relative z-10 transition-transform duration-500 group-hover:scale-110 drop-shadow-sm"
                           />
                         </div>
                         <span className="text-[10px] sm:text-[11px] font-bold text-gray-500 dark:text-gray-400 group-hover:text-[#DC2626] transition-colors text-center tracking-tight leading-tight uppercase px-1">
