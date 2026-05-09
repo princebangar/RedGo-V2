@@ -108,6 +108,26 @@ function RestaurantDetailsContent() {
   const [highlightIndex, setHighlightIndex] = useState(0)
   const [quantities, setQuantities] = useState({})
   const [showManageCollections, setShowManageCollections] = useState(false)
+  const [constraintsContainer, setConstraintsContainer] = useState(null)
+  const menuButtonRef = useRef(null)
+  const [menuButtonWidth, setMenuButtonWidth] = useState(120)
+  const [menuButtonHeight, setMenuButtonHeight] = useState(48)
+  const [windowSize, setWindowSize] = useState({
+    width: typeof window !== 'undefined' ? window.innerWidth : 0,
+    height: typeof window !== 'undefined' ? window.innerHeight : 0
+  })
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+    const handleResize = () => {
+      setWindowSize({
+        width: window.innerWidth,
+        height: window.innerHeight
+      })
+    }
+    window.addEventListener('resize', handleResize)
+    return () => window.removeEventListener('resize', handleResize)
+  }, [])
   const [showItemDetail, setShowItemDetail] = useState(false)
   const [selectedItem, setSelectedItem] = useState(null)
   const [selectedVariantId, setSelectedVariantId] = useState("")
@@ -1878,6 +1898,13 @@ function RestaurantDetailsContent() {
   )
 
   useEffect(() => {
+    if (menuButtonRef.current) {
+      setMenuButtonWidth(menuButtonRef.current.offsetWidth)
+      setMenuButtonHeight(menuButtonRef.current.offsetHeight)
+    }
+  }, [restaurant, filteredSections, windowSize])
+
+  useEffect(() => {
     if (!hasActiveMenuFilters) return
 
     const nextExpanded = new Set()
@@ -2142,12 +2169,12 @@ function RestaurantDetailsContent() {
                   <span>{restaurant?.topCategory || restaurant?.cuisine || "Multi-cuisine"}</span>
                 </div>
               </div>
-              <div className="flex flex-col items-end">
+              <div className="flex flex-col items-center">
                 <div className="inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-xs font-semibold text-white shadow-sm bg-[#257d3c]">
                   <Star className="h-3 w-3 fill-white" />
                   {Number(restaurant?.rating || 0) > 0 ? Number(restaurant.rating).toFixed(1) : "NEW"}
                 </div>
-                <span className="mt-1 text-xs text-gray-500">
+                <span className="mt-1 text-xs text-gray-500 whitespace-nowrap text-center">
                   {Number(restaurant?.rating || 0) > 0 ? `${(restaurant.reviews || 0).toLocaleString()}+ ratings` : "No ratings yet"}
                 </span>
               </div>
@@ -2540,9 +2567,9 @@ function RestaurantDetailsContent() {
                               )}
                               {quantity > 0 ? (
                                 <div
-                                  className={`absolute -bottom-2 left-1/2 -translate-x-1/2 bg-[#DC2626] text-white font-bold px-4 py-1.5 rounded-lg shadow-md flex items-center gap-1 ${shouldShowGrayscale
-                                    ? 'bg-gray-300 border-gray-300 text-gray-400 cursor-not-allowed opacity-50'
-                                    : 'hover:bg-[#991B1B]'
+                                  className={`absolute -bottom-2 left-1/2 -translate-x-1/2 bg-white border border-[#DC2626] text-[#DC2626] font-bold px-4 py-1.5 rounded-lg shadow-md flex items-center gap-1 ${shouldShowGrayscale
+                                    ? 'bg-gray-50 border-gray-300 text-gray-400 cursor-not-allowed opacity-50'
+                                    : 'hover:bg-[#FFF5F5]'
                                     }`}
                                 >
                                   <button
@@ -2553,11 +2580,11 @@ function RestaurantDetailsContent() {
                                       }
                                     }}
                                     disabled={shouldShowGrayscale}
-                                    className={shouldShowGrayscale ? 'text-gray-400 cursor-not-allowed' : 'text-white hover:text-white/80'}
+                                    className={shouldShowGrayscale ? 'text-gray-400 cursor-not-allowed' : 'text-[#DC2626] hover:text-[#991B1B]'}
                                   >
                                     <Minus size={14} />
                                   </button>
-                                  <span className={`mx-2 text-sm ${shouldShowGrayscale ? 'text-gray-400' : 'text-white'}`}>{quantity}</span>
+                                  <span className={`mx-2 text-sm ${shouldShowGrayscale ? 'text-gray-400' : 'text-[#DC2626]'}`}>{quantity}</span>
                                   <button
                                     onClick={(e) => {
                                       e.stopPropagation()
@@ -2566,7 +2593,7 @@ function RestaurantDetailsContent() {
                                       }
                                     }}
                                     disabled={shouldShowGrayscale}
-                                    className={shouldShowGrayscale ? 'text-gray-400 cursor-not-allowed' : 'text-white hover:text-white/80'}
+                                    className={shouldShowGrayscale ? 'text-gray-400 cursor-not-allowed' : 'text-[#DC2626] hover:text-[#991B1B]'}
                                   >
                                     <Plus size={14} className="stroke-[3px]" />
                                   </button>
@@ -2580,9 +2607,9 @@ function RestaurantDetailsContent() {
                                     }
                                   }}
                                   disabled={shouldShowGrayscale}
-                                  className={`absolute -bottom-2 left-1/2 -translate-x-1/2 bg-[#DC2626] text-white font-bold px-6 py-1.5 rounded-lg shadow-md flex items-center gap-1 transition-all ${shouldShowGrayscale
-                                    ? 'bg-gray-300 border-gray-300 text-gray-400 cursor-not-allowed opacity-50'
-                                    : 'hover:bg-[#991B1B] hover:scale-105 active:scale-95'
+                                  className={`absolute -bottom-2 left-1/2 -translate-x-1/2 bg-white border border-[#DC2626] text-[#DC2626] font-bold px-6 py-1.5 rounded-lg shadow-md flex items-center gap-1 transition-all ${shouldShowGrayscale
+                                    ? 'bg-gray-50 border-gray-300 text-gray-400 cursor-not-allowed opacity-50'
+                                    : 'hover:bg-[#FFF5F5] hover:scale-105 active:scale-95'
                                     }`}
                                 >
                                   ADD <Plus size={14} className="stroke-[3px]" />
@@ -2790,9 +2817,9 @@ function RestaurantDetailsContent() {
                                               }
                                             }}
                                             disabled={shouldShowGrayscale}
-                                            className={`absolute -bottom-2 left-1/2 -translate-x-1/2 bg-white border font-bold px-6 py-1.5 rounded-lg shadow-md flex items-center gap-1 transition-colors ${shouldShowGrayscale
+                                            className={`absolute -bottom-2 left-1/2 -translate-x-1/2 bg-white border border-[#DC2626] text-[#DC2626] font-bold px-6 py-1.5 rounded-lg shadow-md flex items-center gap-1 transition-all ${shouldShowGrayscale
                                               ? 'border-gray-300 text-gray-400 cursor-not-allowed opacity-50'
-                                              : 'border-[#DC2626] text-[#DC2626] hover:bg-magenta-50/10'
+                                              : 'hover:bg-[#FFF5F5] hover:scale-105 active:scale-95'
                                               }`}
                                           >
                                             ADD <Plus size={14} className="stroke-[3px]" />
@@ -2847,27 +2874,36 @@ function RestaurantDetailsContent() {
             dragMomentum={false}
             dragElastic={0}
             dragConstraints={{
-              top: -window.innerHeight + 150,
-              bottom: 10,
-              left: -window.innerWidth / 2 + 10,
-              right: window.innerWidth / 2 - 10,
+              left: 0,
+              right: windowSize.width - menuButtonWidth,
+              top: -(windowSize.height - menuButtonHeight - 140),
+              bottom: 140
             }}
-            whileDrag={{ scale: 1.05, zIndex: 10000 }}
+            initial={{ 
+              x: windowSize.width - menuButtonWidth - 16,
+              y: 0 
+            }}
+            whileDrag={{ scale: 1.02, zIndex: 10000 }}
             whileHover={{ scale: 1.05 }}
             style={{
-              x: "-50%",
+              position: 'fixed',
+              left: 0,
+              bottom: 140,
               backfaceVisibility: 'hidden',
               WebkitFontSmoothing: 'antialiased',
+              zIndex: 10000,
+              touchAction: 'none'
             }}
-            className={`fixed ${itemCount > 0 ? "bottom-24" : "bottom-8"} left-1/2 z-[10000] pointer-events-auto sm:left-auto sm:right-6 sm:translate-x-0 sm:bottom-8 cursor-grab active:cursor-grabbing`}
+            className="pointer-events-auto cursor-grab active:cursor-grabbing"
           >
             <Button
+              ref={menuButtonRef}
               className="bg-gradient-to-r from-[#DC2626] to-[#991B1B] hover:from-[#991B1B] hover:to-[#7F1D1D] text-white flex items-center gap-2 shadow-[0_12px_40px_rgba(220,38,38,0.4)] border border-white/20 px-6 py-3.5 h-auto rounded-full font-bold active:scale-95 group"
               size="lg"
               onClick={() => setShowMenuSheet(true)}
             >
               <Utensils className="h-4 w-4 text-white group-hover:rotate-12 transition-transform" />
-              <span className="tracking-widest text-xs uppercase font-black">Menu</span>
+              <span className="tracking-widest text-xs uppercase font-extrabold antialiased">Menu</span>
             </Button>
           </motion.div>,
           document.body
