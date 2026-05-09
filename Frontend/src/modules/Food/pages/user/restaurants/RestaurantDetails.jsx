@@ -100,7 +100,7 @@ function RestaurantDetailsContent() {
   const [searchParams] = useSearchParams()
   const showOnlyUnder250 = searchParams.get('under250') === 'true'
   const targetDishId = useMemo(() => String(searchParams.get('dish') || '').trim(), [searchParams])
-  const { addToCart, updateQuantity, removeFromCart, getCartItem, cart } = useCart()
+  const { addToCart, updateQuantity, removeFromCart, getCartItem, cart, itemCount } = useCart()
   const { vegMode, addDishFavorite, removeDishFavorite, isDishFavorite, getDishFavorites, getFavorites, addFavorite, removeFavorite, isFavorite } = useProfile()
   const { location: userLocation } = useLocation() // Get user's current location
   const { zoneId, zone, loading: loadingZone, isOutOfService } = useZone(userLocation) // Get user's zone for zone-based filtering
@@ -2839,24 +2839,35 @@ function RestaurantDetailsContent() {
         </div>
       )}
 
-      {!showFilterSheet && !showMenuSheet && !showMenuOptionsSheet && filteredSections.length > 0 && (
-        <motion.div
-          drag
-          dragMomentum={false}
-          whileDrag={{ scale: 1.1, zIndex: 100 }}
-          whileHover={{ scale: 1.05 }}
-          className="fixed bottom-24 right-6 z-[60] pointer-events-auto sm:bottom-8 cursor-grab active:cursor-grabbing"
-        >
-          <Button
-            className="bg-gradient-to-r from-[#DC2626] to-[#991B1B] hover:from-[#991B1B] hover:to-[#7F1D1D] text-white flex items-center gap-2 shadow-[0_12px_40px_rgba(220,38,38,0.4)] border border-white/20 px-6 py-3.5 h-auto rounded-full font-bold transform transition-all duration-300 active:scale-95 group"
-            size="lg"
-            onClick={() => setShowMenuSheet(true)}
+      {/* Floating Menu Button - Rendered via Portal for perfect fixed positioning and instant drag response */}
+      {typeof window !== "undefined" && !showFilterSheet && !showMenuSheet && !showMenuOptionsSheet && restaurant && 
+        createPortal(
+          <motion.div
+            drag
+            dragMomentum={false}
+            dragElastic={0}
+            dragConstraints={{
+              top: -window.innerHeight + 120, // Adjust based on button height
+              bottom: 20,
+              left: -window.innerWidth / 2 + 60,
+              right: window.innerWidth / 2 - 60,
+            }}
+            whileDrag={{ scale: 1.05, zIndex: 10000 }}
+            whileHover={{ scale: 1.05 }}
+            className={`fixed ${itemCount > 0 ? "bottom-28" : "bottom-20"} left-1/2 -translate-x-1/2 z-[10000] pointer-events-auto sm:left-auto sm:right-6 sm:translate-x-0 sm:bottom-8 cursor-grab active:cursor-grabbing`}
           >
-            <Utensils className="h-4 w-4 text-white group-hover:rotate-12 transition-transform" />
-            <span className="tracking-widest text-xs uppercase">Menu</span>
-          </Button>
-        </motion.div>
-      )}
+            <Button
+              className="bg-gradient-to-r from-[#DC2626] to-[#991B1B] hover:from-[#991B1B] hover:to-[#7F1D1D] text-white flex items-center gap-2 shadow-[0_12px_40px_rgba(220,38,38,0.4)] border border-white/20 px-6 py-3.5 h-auto rounded-full font-bold active:scale-95 group"
+              size="lg"
+              onClick={() => setShowMenuSheet(true)}
+            >
+              <Utensils className="h-4 w-4 text-white group-hover:rotate-12 transition-transform" />
+              <span className="tracking-widest text-xs uppercase font-black">Menu</span>
+            </Button>
+          </motion.div>,
+          document.body
+        )
+      }
 
       {/* Menu Categories Bottom Sheet - Rendered via Portal */}
       {typeof window !== "undefined" &&
