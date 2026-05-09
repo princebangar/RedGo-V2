@@ -3040,7 +3040,7 @@ export default function Home() {
                     transition={{ duration: 0.35, delay: index * 0.05 }}>
                     <Link
                       to={`/user/restaurants/${restaurantSlug}`}
-                      className="block rounded-[20px] overflow-hidden border border-gray-100 dark:border-gray-800 bg-white dark:bg-[#1a1a1a] shadow-sm hover:shadow-md transition-shadow">
+                      className="block rounded-[20px] overflow-hidden border border-gray-200/70 dark:border-gray-800 bg-white dark:bg-[#1a1a1a] shadow-md hover:shadow-lg transition-all duration-300">
                       <div className="relative h-24 sm:h-28 md:h-32 bg-gray-50">
                         <RestaurantImageCarousel
                           restaurant={restaurant}
@@ -3244,7 +3244,7 @@ export default function Home() {
                         to={`/user/restaurants/${restaurantSlug}`}
                         className="h-full flex">
                         <Card
-                          className={`overflow-hidden gap-0 cursor-pointer border-0 dark:border-gray-800 group bg-white dark:bg-[#1a1a1a] border-background transition-all duration-500 py-0 rounded-[28px] flex flex-col h-full w-full relative shadow-sm hover:shadow-xl ${isOutOfService || !availability.isOpen
+                          className={`overflow-hidden gap-0 cursor-pointer border border-gray-200/70 dark:border-gray-800/80 group bg-white dark:bg-[#1a1a1a] transition-all duration-500 py-0 rounded-[28px] flex flex-col h-full w-full relative shadow-md hover:shadow-2xl ${isOutOfService || !availability.isOpen
                             ? "grayscale opacity-75"
                             : ""
                             }`}>
