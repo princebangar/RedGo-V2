@@ -14,7 +14,6 @@ import {
   MapPin,
   Clock,
   ChevronDown,
-  Info,
   Star,
   SlidersHorizontal,
   Utensils,
@@ -132,6 +131,8 @@ function RestaurantDetailsContent() {
   const [loadingMenuItems, setLoadingMenuItems] = useState(true)
   const [selectedMenuCategory, setSelectedMenuCategory] = useState("all")
   const dishCardRefs = useRef({})
+  const hasScrolledRef = useRef(false)
+
 
   const getLineItemIdForDish = (item, variant = null) =>
     buildCartLineId(item?.id || item?._id || "", variant?.id || variant?._id || "")
@@ -518,7 +519,7 @@ function RestaurantDetailsContent() {
               "Unknown Restaurant",
             cuisine: resolvedTopCategory,
             topCategory: resolvedTopCategory,
-            rating: actualRestaurant?.rating || apiRestaurant?.rating || actualRestaurant?.averageRating || apiRestaurant?.averageRating || 4.5,
+            rating: actualRestaurant?.rating || apiRestaurant?.rating || actualRestaurant?.averageRating || apiRestaurant?.averageRating || 0,
             reviews: actualRestaurant?.totalRatings || apiRestaurant?.totalRatings || actualRestaurant?.reviewCount || apiRestaurant?.reviewCount || actualRestaurant?.reviews?.length || apiRestaurant?.reviews?.length || 0,
             deliveryTime: actualRestaurant?.estimatedDeliveryTime || apiRestaurant?.estimatedDeliveryTime || actualRestaurant?.deliveryTime || apiRestaurant?.deliveryTime || actualRestaurant?.avgDeliveryTime || apiRestaurant?.avgDeliveryTime || "25-30 mins",
             distance: calculatedDistance || actualRestaurant?.distance || apiRestaurant?.distance || actualRestaurant?.distanceFromUser || apiRestaurant?.distanceFromUser || "1.2 km",
@@ -857,8 +858,7 @@ function RestaurantDetailsContent() {
                   })) || []
                 })))
 
-                // Dynamically inject the specifically searched dish at the very top if targetDishId is present
-                let searchedDishSection = null
+                // Dynamically inject the specifically searched dish at the very top of Recommended if targetDishId is present
                 if (targetDishId) {
                   const allItemsInMenu = []
                   menuSections.forEach(s => {
@@ -871,8 +871,14 @@ function RestaurantDetailsContent() {
                   })
                   const matchedItem = allItemsInMenu.find(item => String(item.id || item._id || "").trim() === targetDishId)
                   if (matchedItem) {
-                    // We don't inject a new section anymore, we just let the scroll logic find it in the existing sections
-                    debugLog('Found matched item for scroll:', matchedItem.name)
+                    // Check if it's already in recommendedItems, if so remove it
+                    const existingIdx = recommendedItems.findIndex(item => String(item.id || item._id || "").trim() === targetDishId)
+                    if (existingIdx > -1) {
+                      recommendedItems.splice(existingIdx, 1)
+                    }
+                    // Add/Move to the very front
+                    recommendedItems.unshift(matchedItem)
+                    debugLog('Moved matched item to front of Recommended:', matchedItem.name)
                   }
                 }
 
@@ -891,10 +897,20 @@ function RestaurantDetailsContent() {
                   menuSections: finalMenuSections,
                 }))
 
-                // Set first 3 sections (Recommended, Starters, Main Course) as expanded by default
+                // Set all sections as expanded by default so users don't have to manually click
                 const defaultExpandedSections = new Set(
-                  Array.from({ length: Math.min(3, finalMenuSections.length) }, (_, idx) => idx)
+                  finalMenuSections.map((_, idx) => idx)
                 )
+                
+                // Also expand all sub-sections by default
+                finalMenuSections.forEach((section, originalIndex) => {
+                  if (section.subsections && Array.isArray(section.subsections)) {
+                    section.subsections.forEach((_, subIndex) => {
+                      defaultExpandedSections.add(`${originalIndex}-${subIndex}`)
+                    })
+                  }
+                })
+                
                 setExpandedSections(defaultExpandedSections)
 
                 debugLog('Fetched menu sections with recommended items:', finalMenuSections)
@@ -1907,31 +1923,32 @@ function RestaurantDetailsContent() {
       })
     })
 
-    if (!matchedItem) return
+    if (!matchedItem || hasScrolledRef.current) return
+    
+    hasScrolledRef.current = true
 
     setExpandedSections((prev) => {
       const next = new Set(prev)
       sectionKeysToExpand.forEach((key) => next.add(key))
       return next
     })
+    
     setHighlightedDishId(targetDishId)
 
-    const scrollTimer = window.setTimeout(() => {
-      const targetNode = dishCardRefs.current[targetDishId]
-      if (targetNode) {
-        targetNode.scrollIntoView({ behavior: "smooth", block: "center" })
-      }
-    }, 250)
+    // Ensure we start at the top of the page on mount
+    window.scrollTo({
+      top: 0,
+      behavior: "instant"
+    })
 
     const highlightTimer = window.setTimeout(() => {
-      setHighlightedDishId((current) => (current === targetDishId ? null : current))
-    }, 2600)
+      setHighlightedDishId(null)
+    }, 3000)
 
     return () => {
-      window.clearTimeout(scrollTimer)
       window.clearTimeout(highlightTimer)
     }
-  }, [restaurant, targetDishId])
+  }, [loadingMenuItems, targetDishId])
 
   // Highlight offers/texts for the blue offer line
   const highlightOffers = [
@@ -2119,7 +2136,6 @@ function RestaurantDetailsContent() {
                   <h1 className="text-2xl font-bold text-gray-900 dark:text-white truncate">
                     {restaurant?.name || "Unknown Restaurant"}
                   </h1>
-                  <Info className="h-5 w-5 text-gray-400" />
                 </div>
                 <div className="mt-1 flex items-center gap-2 text-sm text-gray-700 dark:text-gray-300">
                   <Utensils className="h-4 w-4" />
@@ -2127,12 +2143,12 @@ function RestaurantDetailsContent() {
                 </div>
               </div>
               <div className="flex flex-col items-end">
-                <div className="inline-flex items-center gap-1 rounded-full bg-emerald-600 px-2.5 py-1 text-xs font-semibold text-white shadow-sm">
+                <div className="inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-xs font-semibold text-white shadow-sm bg-[#257d3c]">
                   <Star className="h-3 w-3 fill-white" />
-                  {Number(restaurant?.rating || 4.5).toFixed(1)}
+                  {Number(restaurant?.rating || 0) > 0 ? Number(restaurant.rating).toFixed(1) : "NEW"}
                 </div>
                 <span className="mt-1 text-xs text-gray-500">
-                  {(restaurant.reviews || 0).toLocaleString()}+ ratings
+                  {Number(restaurant?.rating || 0) > 0 ? `${(restaurant.reviews || 0).toLocaleString()}+ ratings` : "No ratings yet"}
                 </span>
               </div>
             </div>
@@ -2149,13 +2165,20 @@ function RestaurantDetailsContent() {
                 </span>
                 <ChevronDown className="h-4 w-4 text-gray-500" />
               </button>
-              <span
-                className={`inline-flex items-center rounded-full px-2.5 py-1 text-xs font-semibold text-white ${
-                  isRestaurantOffline ? "bg-rose-600" : "bg-emerald-600"
+              <div
+                className={`inline-flex flex-col items-center justify-center rounded-xl px-2.5 py-1 text-[10px] font-bold text-white leading-tight shadow-sm ${
+                  isRestaurantOffline ? "bg-rose-600" : "bg-[#257d3c]"
                 }`}
               >
-                {isRestaurantOffline ? "Offline" : "Open now"}
-              </span>
+                {isRestaurantOffline ? (
+                  <span>Offline</span>
+                ) : (
+                  <>
+                    <span>Open</span>
+                    <span>now</span>
+                  </>
+                )}
+              </div>
             </div>
 
             <div className="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-300">
@@ -2167,14 +2190,15 @@ function RestaurantDetailsContent() {
 
           {isRestaurantOffline && (
             <div className="rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700">
-              This restaurant is currently offline. Orders are unavailable right now.
+              {restaurant?.name || "This restaurant"} is currently offline. Orders are unavailable right now.
             </div>
           )}
 
 
 
           {/* Filter/Category Buttons */}
-          <div className="border-y border-gray-200 py-3 -mx-4 px-4 overflow-x-auto scrollbar-hide">
+          {restaurant?.menuSections && Array.isArray(restaurant.menuSections) && restaurant.menuSections.length > 0 && (
+            <div className="border-y border-gray-200 py-3 -mx-4 px-4 overflow-x-auto scrollbar-hide">
             <div className="flex flex-col gap-2 w-max">
               <div className="flex items-center gap-2 w-max">
                 <Button
@@ -2275,10 +2299,11 @@ function RestaurantDetailsContent() {
               )}
             </div>
           </div>
+          )}
         </div>
 
         {/* Menu Items Section */}
-        {restaurant?.menuSections && Array.isArray(restaurant.menuSections) && restaurant.menuSections.length > 0 && (
+        {restaurant && (
           <div className="max-w-7xl mx-auto px-4 sm:px-6 md:px-8 lg:px-10 xl:px-12 py-6 sm:py-8 md:py-10 lg:py-12 space-y-6 md:space-y-8 lg:space-y-10">
             {filteredSections.length === 0 && hasActiveMenuFilters && (
               <div className="rounded-2xl border border-dashed border-gray-300 dark:border-gray-700 bg-white dark:bg-[#1a1a1a] px-5 py-8 text-center">
@@ -2290,9 +2315,15 @@ function RestaurantDetailsContent() {
                 </p>
               </div>
             )}
-            {filteredSections.length === 0 && (
-              <div className="rounded-3xl border border-dashed border-gray-300 dark:border-gray-700 bg-white dark:bg-[#1a1a1a] px-6 py-10 text-center text-sm text-gray-500 dark:text-gray-400">
-                No dishes match the current filters.
+            {filteredSections.length === 0 && !hasActiveMenuFilters && !loadingMenuItems && (
+              <div className="flex flex-col items-center justify-center py-16 px-4 text-center">
+                <div className="bg-gray-100 dark:bg-gray-800/50 p-6 rounded-full mb-6">
+                  <Utensils className="h-12 w-12 text-gray-400" />
+                </div>
+                <h3 className="text-xl font-bold text-gray-800 dark:text-white mb-2">Menu Coming Soon</h3>
+                <p className="text-sm text-gray-500 dark:text-gray-400 max-w-xs mx-auto">
+                  {restaurant?.name || "This restaurant"} is still setting up their menu. We'll notify you as soon as their delicious dishes are available!
+                </p>
               </div>
             )}
 
@@ -2380,9 +2411,49 @@ function RestaurantDetailsContent() {
                                 delete dishCardRefs.current[item.id]
                               }
                             }}
-                            className={`flex gap-4 p-4 border-b border-gray-100 dark:border-gray-800 last:border-none relative cursor-pointer transition-all duration-300 ${highlightedDishId === item.id ? "bg-[#DC262605] ring-2 ring-[#DC2626] ring-inset dark:bg-[#DC262610] rounded-2xl" : ""}`}
+                            className={`flex gap-4 p-4 ${highlightedDishId === item.id && isRecommended ? "border-b-transparent" : "border-b border-gray-100 dark:border-gray-800 last:border-none"} relative cursor-pointer transition-all duration-300 ${highlightedDishId === item.id && isRecommended ? "bg-[#DC262605] dark:bg-[#DC262610] rounded-2xl" : ""}`}
                             onClick={() => handleItemClick(item)}
                           >
+                            {/* Vibrant Red Background Gradient Highlight - Recommended Section Only */}
+                            <AnimatePresence>
+                              {highlightedDishId === item.id && isRecommended && (
+                                <>
+                                    <motion.div
+                                      initial={{ opacity: 0 }}
+                                      animate={{ opacity: 1 }}
+                                      exit={{ opacity: 0 }}
+                                      transition={{ duration: 0.4 }}
+                                      className="absolute inset-0 bg-red-500/5 dark:bg-red-500/10 rounded-2xl -z-10 overflow-hidden"
+                                    >
+                                      <motion.div
+                                        initial={{ x: "-40%" }}
+                                        animate={{ x: "100%" }}
+                                        transition={{ 
+                                          duration: 2.5, 
+                                          ease: "easeInOut"
+                                        }}
+                                        className="absolute inset-0 bg-gradient-to-r from-transparent via-red-500/40 to-transparent"
+                                      />
+                                    </motion.div>
+                                  {/* Redish Glow Outline */}
+                                  <motion.div
+                                    initial={{ opacity: 0 }}
+                                    animate={{ opacity: 1 }}
+                                    exit={{ opacity: 0 }}
+                                    className="absolute -inset-[1.5px] rounded-2xl border-2 border-red-600/80 pointer-events-none -z-10 shadow-[0_0_20px_rgba(220,38,38,0.3)]"
+                                  />
+                                  <motion.div 
+                                    initial={{ opacity: 0 }}
+                                    animate={{ opacity: [0, 0.1, 0] }}
+                                    exit={{ opacity: 0 }}
+                                    transition={{ duration: 4, times: [0, 0.5, 1] }}
+                                    className="absolute inset-0 bg-[#DC2626]/10 rounded-2xl pointer-events-none"
+                                  />
+                                </>
+                              )}
+                            </AnimatePresence>
+
+
                             {/* Left Side - Details */}
                             <div className="flex-1 min-w-0">
                               <h3 className="font-bold text-gray-800 dark:text-white text-lg leading-tight flex items-center gap-2">
@@ -2468,9 +2539,7 @@ function RestaurantDetailsContent() {
                                 </div>
                               )}
                               {quantity > 0 ? (
-                                <motion.div
-                                  initial={{ opacity: 0, scale: 0.8 }}
-                                  animate={{ opacity: 1, scale: 1 }}
+                                <div
                                   className={`absolute -bottom-2 left-1/2 -translate-x-1/2 bg-[#DC2626] text-white font-bold px-4 py-1.5 rounded-lg shadow-md flex items-center gap-1 ${shouldShowGrayscale
                                     ? 'bg-gray-300 border-gray-300 text-gray-400 cursor-not-allowed opacity-50'
                                     : 'hover:bg-[#991B1B]'
@@ -2501,13 +2570,9 @@ function RestaurantDetailsContent() {
                                   >
                                     <Plus size={14} className="stroke-[3px]" />
                                   </button>
-                                </motion.div>
+                                </div>
                               ) : (
-                                <motion.button
-                                  layoutId={`add-button-${item.id}`}
-                                  initial={{ opacity: 0, scale: 0.9 }}
-                                  animate={{ opacity: 1, scale: 1 }}
-                                  transition={{ duration: 0.3, type: "spring", damping: 20, stiffness: 300 }}
+                                <button
                                   onClick={(e) => {
                                     e.stopPropagation()
                                     if (!shouldShowGrayscale) {
@@ -2521,7 +2586,7 @@ function RestaurantDetailsContent() {
                                     }`}
                                 >
                                   ADD <Plus size={14} className="stroke-[3px]" />
-                                </motion.button>
+                                </button>
                               )}
                             </div>
                           </div>
@@ -2774,7 +2839,7 @@ function RestaurantDetailsContent() {
         </div>
       )}
 
-      {!showFilterSheet && !showMenuSheet && !showMenuOptionsSheet && (
+      {!showFilterSheet && !showMenuSheet && !showMenuOptionsSheet && filteredSections.length > 0 && (
         <motion.div
           drag
           dragMomentum={false}
@@ -2783,7 +2848,7 @@ function RestaurantDetailsContent() {
           className="fixed bottom-24 right-6 z-[60] pointer-events-auto sm:bottom-8 cursor-grab active:cursor-grabbing"
         >
           <Button
-            className="bg-[#DC2626] hover:bg-[#991B1B] text-white flex items-center gap-2 shadow-[0_12px_40px_rgba(126,56,102,0.4)] border border-white/20 px-6 py-3.5 h-auto rounded-full font-bold transform transition-all duration-300 active:scale-95 group"
+            className="bg-gradient-to-r from-[#DC2626] to-[#991B1B] hover:from-[#991B1B] hover:to-[#7F1D1D] text-white flex items-center gap-2 shadow-[0_12px_40px_rgba(220,38,38,0.4)] border border-white/20 px-6 py-3.5 h-auto rounded-full font-bold transform transition-all duration-300 active:scale-95 group"
             size="lg"
             onClick={() => setShowMenuSheet(true)}
           >
@@ -3137,7 +3202,7 @@ function RestaurantDetailsContent() {
                                 <div className="flex items-center gap-1">
                                   <Star className="h-3.5 w-3.5 text-[#8CC63F] dark:text-green-500 fill-[#8CC63F] dark:fill-green-500" />
                                   <span className="text-xs font-medium text-gray-900 dark:text-white">
-                                    {outlet?.rating || 4.5}
+                                    {outlet?.rating ? outlet.rating : "NEW"}
                                   </span>
                                 </div>
                                 <span className="text-xs text-gray-500 dark:text-gray-400">

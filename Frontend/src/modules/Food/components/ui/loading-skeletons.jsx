@@ -84,12 +84,16 @@ function ExploreTileSkeleton() {
   )
 }
 
-function ExploreGridSkeleton({ count = 6, className }) {
+function ExploreGridSkeleton({ count = 6, className, noWrapper = false }) {
+  const items = Array.from({ length: count }, (_, index) => (
+    <ExploreTileSkeleton key={`explore-${index}`} />
+  ))
+
+  if (noWrapper) return <>{items}</>
+
   return (
     <div className={cn("flex gap-4 overflow-hidden", className)}>
-      {Array.from({ length: count }, (_, index) => (
-        <ExploreTileSkeleton key={`explore-${index}`} />
-      ))}
+      {items}
     </div>
   )
 }
