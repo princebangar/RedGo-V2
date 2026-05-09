@@ -2840,21 +2840,26 @@ function RestaurantDetailsContent() {
       )}
 
       {/* Floating Menu Button - Rendered via Portal for perfect fixed positioning and instant drag response */}
-      {typeof window !== "undefined" && !showFilterSheet && !showMenuSheet && !showMenuOptionsSheet && restaurant && 
+      {typeof window !== "undefined" && !showFilterSheet && !showMenuSheet && !showMenuOptionsSheet && restaurant && filteredSections.length > 0 && 
         createPortal(
           <motion.div
             drag
             dragMomentum={false}
             dragElastic={0}
             dragConstraints={{
-              top: -window.innerHeight + 120, // Adjust based on button height
-              bottom: 20,
-              left: -window.innerWidth / 2 + 60,
-              right: window.innerWidth / 2 - 60,
+              top: -window.innerHeight + 150,
+              bottom: 10,
+              left: -window.innerWidth / 2 + 10,
+              right: window.innerWidth / 2 - 10,
             }}
             whileDrag={{ scale: 1.05, zIndex: 10000 }}
             whileHover={{ scale: 1.05 }}
-            className={`fixed ${itemCount > 0 ? "bottom-28" : "bottom-20"} left-1/2 -translate-x-1/2 z-[10000] pointer-events-auto sm:left-auto sm:right-6 sm:translate-x-0 sm:bottom-8 cursor-grab active:cursor-grabbing`}
+            style={{
+              x: "-50%",
+              backfaceVisibility: 'hidden',
+              WebkitFontSmoothing: 'antialiased',
+            }}
+            className={`fixed ${itemCount > 0 ? "bottom-24" : "bottom-8"} left-1/2 z-[10000] pointer-events-auto sm:left-auto sm:right-6 sm:translate-x-0 sm:bottom-8 cursor-grab active:cursor-grabbing`}
           >
             <Button
               className="bg-gradient-to-r from-[#DC2626] to-[#991B1B] hover:from-[#991B1B] hover:to-[#7F1D1D] text-white flex items-center gap-2 shadow-[0_12px_40px_rgba(220,38,38,0.4)] border border-white/20 px-6 py-3.5 h-auto rounded-full font-bold active:scale-95 group"
