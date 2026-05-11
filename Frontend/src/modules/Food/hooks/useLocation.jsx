@@ -28,6 +28,15 @@ let globalReverseGeocodeLastStartAt = 0
 let globalReverseGeocodeLastCoords = { latitude: null, longitude: null }
 let globalReverseGeocodeLastSuccess = null
 
+// --- Global Loading State Management ---
+let globalLocationLoading = false
+const loadingListeners = new Set()
+
+const setGlobalLocationLoading = (isLoading) => {
+  globalLocationLoading = isLoading
+  loadingListeners.forEach(listener => listener(isLoading))
+}
+
 // Default behavior: only resolve an address once on initial app load,
 // then rely on localStorage/DB. Live watching is enabled only via explicit user action.
 const AUTO_START_LIVE_WATCH = false
@@ -147,8 +156,21 @@ const reverseGeocodeDirect = async (latitude, longitude) => {
 }
 
 export function useLocation() {
-  const [location, setLocation] = useState(null)
-  const [loading, setLoading] = useState(true)
+  const [location, setLocation] = useState(() => {
+    try {
+      const cached = localStorage.getItem("userLocation")
+      return cached ? JSON.parse(cached) : null
+    } catch {
+      return null
+    }
+  })
+  const [loading, setLoading] = useState(globalLocationLoading)
+
+  useEffect(() => {
+    loadingListeners.add(setLoading)
+    return () => loadingListeners.delete(setLoading)
+  }, [])
+
   const [error, setError] = useState(null)
   const [permissionGranted, setPermissionGranted] = useState(false)
 
@@ -283,8 +305,94 @@ export function useLocation() {
   // Google Places API removed - using OLA Maps only
 
   /* Removed Google Geocoding/Places (maps.googleapis.com). Uses BigDataCloud reverse-geocode only. */
-  const reverseGeocodeWithGoogleMaps = async (latitude, longitude, _options = {}) =>
-    reverseGeocodeDirect(latitude, longitude)
+  const reverseGeocodeWithGoogleMaps = async (latitude, longitude, _options = {}) => {
+    const apiKey = import.meta.env.VITE_GOOGLE_MAPS_API_KEY
+    if (!apiKey) {
+      debugWarn("?? Google Maps API Key not found, using BigDataCloud fallback")
+      return reverseGeocodeDirect(latitude, longitude)
+    }
+
+    try {
+      debugLog("?? Fetching exact address from Google Maps for:", latitude, longitude)
+      
+      const controller = new AbortController()
+      const timeoutId = setTimeout(() => controller.abort(), 4000) // 4s timeout for Google
+
+      const response = await fetch(
+        `https://maps.googleapis.com/maps/api/geocode/json?latlng=${latitude},${longitude}&key=${apiKey}`,
+        { signal: controller.signal }
+      )
+      clearTimeout(timeoutId)
+      
+      const data = await response.json()
+      
+      if (data.status !== "OK" || !data.results || data.results.length === 0) {
+        debugWarn("?? Google Geocoding failed or returned no results:", data.status)
+        return reverseGeocodeDirect(latitude, longitude)
+      }
+
+      // We use the first result which is usually the most specific (premise/street address)
+      const result = data.results[0]
+      const components = result.address_components
+      
+      const getComponent = (types) => {
+        const comp = components.find(c => types.some(t => c.types.includes(t)))
+        return comp ? comp.long_name : ""
+      }
+
+      const getShortComponent = (types) => {
+        const comp = components.find(c => types.some(t => c.types.includes(t)))
+        return comp ? comp.short_name : ""
+      }
+
+      // Extract parts
+      const streetNumber = getComponent(["street_number"])
+      const route = getComponent(["route"])
+      const sublocality = getComponent(["sublocality_level_1"]) || getComponent(["sublocality"])
+      const neighborhood = getComponent(["neighborhood"])
+      const city = getComponent(["locality"])
+      const state = getComponent(["administrative_area_level_1"])
+      const country = getComponent(["country"])
+      const pincode = getComponent(["postal_code"])
+      
+      // Determine area - prioritize sublocality/neighborhood for "Exact" feel
+      let area = sublocality || neighborhood || ""
+      
+      // If we have building/apartment info (premise/subpremise)
+      const premise = getComponent(["premise"]) || getComponent(["subpremise"]) || getComponent(["point_of_interest"])
+
+      // Construct a clean display address
+      // e.g. "B-204, Silver Oak Apartment, New Palasia"
+      let addressParts = []
+      if (premise) addressParts.push(premise)
+      if (streetNumber && route) addressParts.push(`${streetNumber}, ${route}`)
+      else if (route) addressParts.push(route)
+      if (area) addressParts.push(area)
+      
+      const displayAddress = addressParts.join(", ") || result.formatted_address.split(",")[0]
+
+      const value = {
+        city: city || "Indore",
+        state: state,
+        country: country,
+        area: area,
+        pincode: pincode,
+        mainTitle: area || city,
+        address: displayAddress,
+        formattedAddress: result.formatted_address,
+        premise: premise || "",
+        streetNumber: streetNumber,
+        route: route,
+        placeId: result.place_id
+      }
+
+      debugLog("? Google Geocoding successful (Exact):", value)
+      return value
+    } catch (err) {
+      debugError("?? Google Geocoding error:", err.message)
+      return reverseGeocodeDirect(latitude, longitude)
+    }
+  }
 
 
   /* ===================== OLA MAPS REVERSE GEOCODE (DEPRECATED - KEPT FOR FALLBACK) ===================== */
@@ -780,13 +888,13 @@ export function useLocation() {
     let dbLocation = !forceFresh ? await fetchLocationFromDB() : null
     if (dbLocation && !forceFresh) {
       setLocation(dbLocation)
-      if (showLoading) setLoading(false)
+      if (showLoading) setGlobalLocationLoading(false)
       return dbLocation
     }
 
     if (!navigator.geolocation) {
       setError("Geolocation not supported")
-      if (showLoading) setLoading(false)
+      if (showLoading) setGlobalLocationLoading(false)
       return dbLocation
     }
 
@@ -926,7 +1034,7 @@ export function useLocation() {
                 }
                 setLocation(coordOnlyLoc)
                 setPermissionGranted(true)
-                if (showLoading) setLoading(false)
+                if (showLoading) setGlobalLocationLoading(false)
                 setError(null)
                 resolve(coordOnlyLoc)
                 return
@@ -936,7 +1044,7 @@ export function useLocation() {
               localStorage.setItem("userLocation", JSON.stringify(finalLoc))
               setLocation(finalLoc)
               setPermissionGranted(true)
-              if (showLoading) setLoading(false)
+              if (showLoading) setGlobalLocationLoading(false)
               setError(null)
 
               if (updateDB) {
@@ -1050,7 +1158,7 @@ export function useLocation() {
                   setError(err.message)
                 }
                 setPermissionGranted(true) // Still grant permission if we have location
-                if (showLoading) setLoading(false)
+                if (showLoading) setGlobalLocationLoading(false)
                 resolve(fallback)
               } else {
                 // No fallback available - set a default location so UI doesn't hang
@@ -1063,7 +1171,7 @@ export function useLocation() {
                 setLocation(defaultLocation)
                 setError(err.code === 3 ? "Location request timed out. Please try again." : err.message)
                 setPermissionGranted(false)
-                if (showLoading) setLoading(false)
+                if (showLoading) setGlobalLocationLoading(false)
                 resolve(defaultLocation) // Always resolve with something
               }
             } catch (fallbackErr) {
@@ -1085,8 +1193,8 @@ export function useLocation() {
     // Otherwise, allow cached location for faster response
     return getPositionWithRetry({
       enableHighAccuracy: true,  // Use GPS for exact location (highest accuracy)
-      timeout: 15000,            // 15 seconds timeout (gives GPS more time to get accurate fix)
-      maximumAge: forceFresh ? 0 : 60000  // If forceFresh, get fresh location. Otherwise allow 1 minute cache
+      timeout: 5000,             // Reduced from 15s to 5s for faster fallback to network location
+      maximumAge: forceFresh ? 10000 : 60000  // Allow 10s cache even for fresh requests to speed up response
     })
   }
 
@@ -1425,17 +1533,17 @@ export function useLocation() {
           if (dbLoc && Number.isFinite(Number(dbLoc.latitude)) && Number.isFinite(Number(dbLoc.longitude))) {
             setLocation(dbLoc)
             setPermissionGranted(true)
-            setLoading(false)
+            setGlobalLocationLoading(false)
             hasInitialLocation = true
             debugLog("?? Loaded location from DB:", dbLoc)
           } else {
             // No location found - set loading to false and show fallback
-            setLoading(false)
+            setGlobalLocationLoading(false)
             shouldForceRefresh = true
           }
         })
         .catch(() => {
-          setLoading(false)
+          setGlobalLocationLoading(false)
           shouldForceRefresh = true
         })
     }
@@ -1554,17 +1662,47 @@ export function useLocation() {
     // This does NOT trigger browser prompt by itself; it only auto-fetches when permission is already granted.
     checkPermissionAndStart();
 
+    // Listen for storage changes to keep location in sync across components/tabs
+    const handleStorageChange = (e) => {
+      if (e.key === "userLocation" && e.newValue) {
+        try {
+          const newLoc = JSON.parse(e.newValue)
+          setLocation(newLoc)
+          debugLog("?? Location updated from storage event:", newLoc)
+        } catch (err) {
+          debugError("Failed to parse location from storage event:", err)
+        }
+      }
+    }
+
+    // Also listen for custom event that might be fired within the same window
+    const handleCustomUpdate = () => {
+      const stored = localStorage.getItem("userLocation")
+      if (stored) {
+        try {
+          const newLoc = JSON.parse(stored)
+          setLocation(newLoc)
+          debugLog("?? Location updated from custom update event:", newLoc)
+        } catch {}
+      }
+    }
+
+    window.addEventListener('storage', handleStorageChange)
+    window.addEventListener('userLocationUpdated', handleCustomUpdate)
+
     // Cleanup timeout and watcher
     return () => {
       clearTimeout(loadingTimeout)
       debugLog("?? Cleaning up location watcher")
       stopWatchingLocation()
+      window.removeEventListener('storage', handleStorageChange)
+      window.removeEventListener('userLocationUpdated', handleCustomUpdate)
     }
   }, [])
 
   const requestLocation = async () => {
     debugLog("?????? User requested location update - clearing cache and fetching fresh")
-    setLoading(true)
+    setGlobalLocationLoading(true)
     setError(null)
 
     try {
@@ -1621,7 +1759,7 @@ export function useLocation() {
       setError(err.message || "Failed to get location")
       throw err
     } finally {
-      setLoading(false)
+      setGlobalLocationLoading(false)
     }
   }
 

@@ -49,7 +49,7 @@ export default function AddressSelectorPage() {
   const navigate = useNavigate()
   const goBack = useAppBackNavigation()
   const { location, loading, requestLocation } = useGeoLocation()
-  const { addresses = [], addAddress, updateAddress, setDefaultAddress, userProfile, isAuthenticated } = useProfile()
+  const { addresses = [], addAddress, updateAddress, setDefaultAddress, userProfile, isAuthenticated, loading: profileLoading } = useProfile()
   const [showAddressForm, setShowAddressForm] = useState(false)
   const [mapPosition, setMapPosition] = useState([22.7196, 75.8577]) // Default Indore coordinates [lat, lng]
   const [addressFormData, setAddressFormData] = useState({
@@ -211,7 +211,7 @@ export default function AddressSelectorPage() {
 
   const handleUseCurrentLocation = async () => {
     try {
-      toast.loading("Getting location...", { id: "geo" })
+      // toast.loading("Getting location...", { id: "geo" })
       const loc = await requestLocation(true, true)
       if (loc?.latitude) {
         const newPos = [loc.latitude, loc.longitude]
@@ -223,8 +223,14 @@ export default function AddressSelectorPage() {
           googleMapRef.current.setZoom(17)
         }
         
-        try { localStorage.setItem("deliveryAddressMode", "current") } catch {}
-        toast.success("Location updated", { id: "geo" })
+        try { 
+          localStorage.setItem("deliveryAddressMode", "current")
+          window.dispatchEvent(new CustomEvent("userLocationUpdated"))
+          
+          // Redirect to home page immediately after location is confirmed
+          handleBack()
+        } catch {}
+        // toast.success("Location updated", { id: "geo" })
         // Removed handleBack() to prevent unwanted redirection
       }
     } catch (e) {
@@ -236,9 +242,13 @@ export default function AddressSelectorPage() {
     const id = getAddressId(address)
     if (id) {
       await setDefaultAddress(id)
-      try { localStorage.setItem("deliveryAddressMode", "saved") } catch {}
-      toast.success("Address selected")
-      handleBack()
+      try { 
+        localStorage.setItem("deliveryAddressMode", "saved")
+        window.dispatchEvent(new CustomEvent("userLocationUpdated"))
+        // Move navigation here to trigger immediately with the event
+        handleBack()
+      } catch {}
+      // toast.success("Address selected")
     }
   }
 
@@ -364,8 +374,11 @@ export default function AddressSelectorPage() {
       if (created) {
         const id = getAddressId(created)
         if (id) await setDefaultAddress(id)
-        try { localStorage.setItem("deliveryAddressMode", "saved") } catch {}
-        toast.success("Address saved")
+        try { 
+          localStorage.setItem("deliveryAddressMode", "saved")
+          window.dispatchEvent(new CustomEvent("userLocationUpdated"))
+        } catch {}
+        // toast.success("Address saved")
         handleBack()
       }
     } catch (error) {
@@ -665,7 +678,18 @@ export default function AddressSelectorPage() {
           </div>
 
           <div className="space-y-4">
-            {addresses.length === 0 ? (
+            {profileLoading ? (
+              // Skeleton loading state
+              [1, 2].map((i) => (
+                <div key={i} className="w-full flex items-start gap-4 p-4 bg-slate-50 dark:bg-[#1a1a1a] rounded-xl animate-pulse">
+                  <div className="h-10 w-10 rounded-full bg-gray-200 dark:bg-gray-800 flex-shrink-0" />
+                  <div className="flex-1 space-y-2">
+                    <div className="h-4 bg-gray-200 dark:bg-gray-800 rounded w-1/4" />
+                    <div className="h-3 bg-gray-200 dark:bg-gray-800 rounded w-3/4" />
+                  </div>
+                </div>
+              ))
+            ) : addresses.length === 0 ? (
               <div className="text-center py-10 opacity-50">
                  <MapPin className="h-12 w-12 mx-auto mb-2 text-gray-400" />
                  <p>No addresses saved yet</p>

@@ -2722,7 +2722,6 @@ export default function Home() {
                     activeTab={activeTab}
                     setActiveTab={setActiveTab}
                     location={effectiveLocation}
-                    handleLocationClick={handleLocationClick}
                     handleSearchFocus={handleSearchFocus}
                     placeholderIndex={placeholderIndex}
                     placeholders={placeholders}

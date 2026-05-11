@@ -16,8 +16,17 @@ const debugError = (...args) => {}
  * @returns {Object} { location, loading, error, permissionGranted, requestLocation }
  */
 export function useLocationSimple() {
-  const [location, setLocation] = useState(null)
-  const [loading, setLoading] = useState(true)
+  const [location, setLocation] = useState(() => {
+    try {
+      const cached = localStorage.getItem("userLocation")
+      return cached ? JSON.parse(cached) : null
+    } catch { return null }
+  })
+  const [loading, setLoading] = useState(() => {
+    try {
+      return !localStorage.getItem("userLocation")
+    } catch { return true }
+  })
   const [error, setError] = useState(null)
   const [permissionGranted, setPermissionGranted] = useState(false)
 

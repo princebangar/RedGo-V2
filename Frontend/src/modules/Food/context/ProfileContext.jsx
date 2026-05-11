@@ -58,7 +58,10 @@ export function ProfileProvider({ children }) {
   
   const [loading, setLoading] = useState(true)
 
-  const [addresses, setAddresses] = useState([])
+  const [addresses, setAddresses] = useState(() => {
+    const saved = localStorage.getItem("userAddresses")
+    return saved ? JSON.parse(saved) : []
+  })
 
   const [paymentMethods, setPaymentMethods] = useState(() => {
     const saved = localStorage.getItem("userPaymentMethods")
@@ -292,13 +295,10 @@ export function ProfileProvider({ children }) {
         isDefault: String(getAddressId(addr)) === String(id),
       }))
 
-      localStorage.setItem("userAddresses", JSON.stringify(updatedAddresses))
-      localStorage.setItem("deliveryAddressMode", "saved")
-      window.dispatchEvent(new CustomEvent("deliveryAddressModeUpdated"))
-
       const selectedAddress =
         updatedAddresses.find((addr) => addr.isDefault) || updatedAddresses[0]
 
+      let syncedLocation = null;
       if (selectedAddress) {
         const coordinates = selectedAddress?.location?.coordinates
         const lngFromCoords =
@@ -342,7 +342,7 @@ export function ProfileProvider({ children }) {
               ? parts.join(", ")
               : selectedAddress?.formattedAddress || selectedAddress?.address || ""
 
-          const syncedLocation = {
+          syncedLocation = {
             ...existingLocation,
             latitude: lat,
             longitude: lng,
@@ -358,7 +358,16 @@ export function ProfileProvider({ children }) {
             formattedAddress:
               resolvedAddress || existingLocation?.formattedAddress || "",
           }
+        }
+      }
 
+      // Defer side effects to avoid "updating component while rendering another" error
+      setTimeout(() => {
+        localStorage.setItem("userAddresses", JSON.stringify(updatedAddresses))
+        localStorage.setItem("deliveryAddressMode", "saved")
+        window.dispatchEvent(new CustomEvent("deliveryAddressModeUpdated"))
+
+        if (syncedLocation) {
           localStorage.setItem("userLocation", JSON.stringify(syncedLocation))
           window.dispatchEvent(
             new CustomEvent("userLocationUpdated", {
@@ -366,7 +375,7 @@ export function ProfileProvider({ children }) {
             }),
           )
         }
-      }
+      }, 0)
 
       return updatedAddresses
     })

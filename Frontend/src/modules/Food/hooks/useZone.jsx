@@ -32,12 +32,14 @@ const applyZonePayload = (data, { setZoneId, setZone, setZoneStatus }) => {
     setZoneStatus('IN_SERVICE')
     localStorage.setItem('userZoneId', data.zoneId)
     localStorage.setItem('userZone', JSON.stringify(data.zone))
+    localStorage.setItem('userZoneStatus', 'IN_SERVICE')
   } else {
     setZoneId(null)
     setZone(null)
     setZoneStatus('OUT_OF_SERVICE')
     localStorage.removeItem('userZoneId')
     localStorage.removeItem('userZone')
+    localStorage.setItem('userZoneStatus', 'OUT_OF_SERVICE')
   }
 }
 
@@ -47,12 +49,20 @@ const applyZonePayload = (data, { setZoneId, setZone, setZoneStatus }) => {
  * Automatically detects zone when location is available
  */
 export function useZone(location) {
-  const [zoneId, setZoneId] = useState(null)
-  const [zoneStatus, setZoneStatus] = useState('loading') // 'loading' | 'IN_SERVICE' | 'OUT_OF_SERVICE'
-  const [zone, setZone] = useState(null)
+  const [zoneId, setZoneId] = useState(() => localStorage.getItem("userZoneId"))
+  const [zoneStatus, setZoneStatus] = useState(() => localStorage.getItem("userZoneStatus") || "loading")
+  const [zone, setZone] = useState(() => {
+    try {
+      const cached = localStorage.getItem("userZone")
+      return cached ? JSON.parse(cached) : null
+    } catch { return null }
+  })
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState(null)
-  const prevCoordsRef = useRef({ latitude: null, longitude: null })
+  
+  const initialLat = roundCoord(location?.latitude, 6)
+  const initialLng = roundCoord(location?.longitude, 6)
+  const prevCoordsRef = useRef({ latitude: initialLat, longitude: initialLng })
   const debounceTimerRef = useRef(null)
 
   // Detect zone when location is available
@@ -122,38 +132,36 @@ export function useZone(location) {
     }
   }, []);
 
+  const lat = roundCoord(location?.latitude, 6)
+  const lng = roundCoord(location?.longitude, 6)
+  const coordsChanged =
+    prevCoordsRef.current.latitude !== lat ||
+    prevCoordsRef.current.longitude !== lng;
+
   // Auto-detect zone when location changes
   useEffect(() => {
-    const lat = roundCoord(location?.latitude, 6)
-    const lng = roundCoord(location?.longitude, 6)
-
-    // Check if coordinates have changed significantly (threshold: ~10 meters)
-    const coordThreshold = 0.0001; // approximately 10 meters
-    const coordsChanged =
-      !prevCoordsRef.current.latitude ||
-      !prevCoordsRef.current.longitude ||
-      Math.abs(prevCoordsRef.current.latitude - (lat || 0)) > coordThreshold ||
-      Math.abs(prevCoordsRef.current.longitude - (lng || 0)) > coordThreshold;
 
     if (Number.isFinite(lat) && Number.isFinite(lng)) {
       // Only detect zone if coordinates changed significantly
       if (coordsChanged) {
+        setLoading(true);
         prevCoordsRef.current = { latitude: lat, longitude: lng }
         if (debounceTimerRef.current) {
           clearTimeout(debounceTimerRef.current)
         }
         debounceTimerRef.current = setTimeout(() => {
           detectZone(lat, lng)
-        }, 350)
+        }, 50)
       }
     } else {
       // Try to use cached zone if location not available
       const cachedZoneId = localStorage.getItem("userZoneId");
       if (cachedZoneId) {
         const cachedZone = localStorage.getItem("userZone");
+        const cachedStatus = localStorage.getItem("userZoneStatus");
         setZoneId(cachedZoneId);
         setZone(cachedZone ? JSON.parse(cachedZone) : null);
-        setZoneStatus("IN_SERVICE");
+        setZoneStatus(cachedStatus || "IN_SERVICE");
       } else {
         setZoneStatus("OUT_OF_SERVICE");
         setZoneId(null);
@@ -181,7 +189,7 @@ export function useZone(location) {
     zoneId,
     zone,
     zoneStatus,
-    loading,
+    loading: loading || coordsChanged,
     error,
     isInService: zoneStatus === "IN_SERVICE",
     isOutOfService: zoneStatus === "OUT_OF_SERVICE",

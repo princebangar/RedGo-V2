@@ -35,7 +35,6 @@ export default function HomeHeader({
   setActiveTab,
   location,
   savedAddressText,
-  handleLocationClick,
   handleSearchFocus,
   placeholderIndex,
   placeholders,
@@ -87,9 +86,10 @@ export default function HomeHeader({
       <div className="relative z-10 space-y-2.5">
         <div className="flex items-start gap-3">
           {/* Left: Location Selector */}
-          <div
-            className="flex items-center gap-2 cursor-pointer group min-w-0 flex-1"
-            onClick={handleLocationClick}
+          <Link
+            to="/food/user/address-selector"
+            state={{ from: window.location.pathname }}
+            className="flex items-center gap-2 cursor-pointer group min-w-0 flex-1 relative z-50 text-left no-underline"
           >
             <div className="bg-white/10 p-1.5 rounded-xl group-active:scale-95 transition-all">
               <MapPin className="h-4 w-4 text-white/90 fill-white/20" />
@@ -147,7 +147,7 @@ export default function HomeHeader({
                 })()}
               </span>
             </div>
-          </div>
+          </Link>
 
           {/* Right: Actions Column (Wallet, Profile, Veg Toggle) */}
           <div className="flex flex-col items-end gap-3 shrink-0">

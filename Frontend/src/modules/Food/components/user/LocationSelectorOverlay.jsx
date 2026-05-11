@@ -745,10 +745,12 @@ export default function LocationSelectorOverlay({ isOpen, onClose }) {
         return
       }
 
-      // Show loading toast
+      // Location Fetching is now handled by the global loader in UserLayout
+      /*
       toast.loading("Fetching your current location...", {
         id: "location-request",
       })
+      */
 
       // Request location - this will automatically prompt for permission if needed
       // Clear any cached location first to ensure fresh coordinates

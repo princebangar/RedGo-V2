@@ -1,5 +1,6 @@
 import { Outlet, useLocation, useNavigate, useNavigationType } from "react-router-dom"
-import { useEffect, useState, createContext, useContext } from "react"
+import { useEffect, useState, createContext, useContext, useRef, useCallback, useMemo } from "react"
+import { toast } from "sonner"
 import { ProfileProvider } from "@food/context/ProfileContext"
 import LocationPrompt from "./LocationPrompt"
 import { CartProvider } from "@food/context/CartContext"
@@ -14,6 +15,9 @@ import DesktopNavbar from "./DesktopNavbar"
 import BackToTop from "./BackToTop"
 import { useUserNotifications } from "../../hooks/useUserNotifications"
 import { useProfile } from "@food/context/ProfileContext"
+import { useLocation as useGeoLocation } from "../../hooks/useLocation"
+import { useZone } from "../../hooks/useZone"
+import OutOfZoneScreen from "./OutOfZoneScreen"
 
 // Sync orderType with route
 function RouteSyncHandler() {
@@ -126,18 +130,19 @@ export function useLocationSelector() {
 function LocationSelectorProvider({ children }) {
   const navigate = useNavigate()
 
-  const openLocationSelector = () => {
+  const openLocationSelector = useCallback(() => {
     // Navigate to the standalone address selector page
-    navigate("/food/user/address-selector")
-  }
+    // Using window.location.pathname to avoid hook issues in some contexts
+    navigate("/food/user/address-selector", { state: { from: window.location.pathname } })
+  }, [navigate])
 
-  const closeLocationSelector = () => { }
+  const closeLocationSelector = useCallback(() => { }, [])
 
-  const value = {
+  const value = useMemo(() => ({
     isLocationSelectorOpen: false,
     openLocationSelector,
     closeLocationSelector
-  }
+  }), [openLocationSelector, closeLocationSelector])
 
   return (
     <LocationSelectorContext.Provider value={value}>
@@ -146,32 +151,53 @@ function LocationSelectorProvider({ children }) {
   )
 }
 
-export default function UserLayout() {
+function UserLayoutContent() {
   const location = useLocation()
-
+  const { location: geoLocation, loading: isGeoLoading } = useGeoLocation()
+  const { isOutOfService: isOutOfZone, loading: isZoneLoading } = useZone(geoLocation)
+  const { openLocationSelector } = useLocationSelector()
   const navigationType = useNavigationType()
+
+  const path = location.pathname.startsWith("/food")
+    ? location.pathname.substring(5) || "/"
+    : location.pathname
+  const normalizedPath = path.length > 1 ? path.replace(/\/+$/, "") : path
+
+  const isMainPage = normalizedPath === "/" || 
+    normalizedPath === "" || 
+    normalizedPath === "/user" || 
+    normalizedPath === "/dining" || 
+    normalizedPath === "/user/dining" || 
+    normalizedPath === "/takeaway" || 
+    normalizedPath === "/user/takeaway" ||
+    normalizedPath === "/under-250" ||
+    normalizedPath === "/user/under-250";
+
+  // Debounced loading state to prevent flickering and ensure smooth navigation transitions
+  const [showGlobalLoader, setShowGlobalLoader] = useState(false)
+  useEffect(() => {
+    if (isZoneLoading || isGeoLoading) {
+      setShowGlobalLoader(true)
+    } else {
+      const timer = setTimeout(() => setShowGlobalLoader(false), 400)
+      return () => clearTimeout(timer)
+    }
+  }, [isZoneLoading, isGeoLoading])
 
   // Global Refresh Handler - Scroll to top ONLY on browser refresh
   useEffect(() => {
-    // Detect browser reload using modern and legacy Performance APIs
     const isReload = 
       performance.getEntriesByType('navigation')[0]?.type === 'reload' || 
       window.performance?.navigation?.type === 1;
 
     if (isReload) {
-      // Force scroll to top on refresh
       window.scrollTo({ top: 0, left: 0, behavior: 'instant' });
-      
-      // Clear Home-page specific scroll persistence to prevent it from out-scrolling us
       sessionStorage.removeItem("homeScrollY");
       sessionStorage.removeItem("homeVisibleCount");
     }
   }, []);
 
   useEffect(() => {
-    // Reset scroll to top whenever location changes (pathname, search, or hash)
-    // but skip on POP navigation (back/forward) to allow native scroll restoration.
-    // Also skip if we are on the Home page root paths, as they handle their own restoration.
     const rootPaths = ["/", "/user", "/food", "/dining", "/user/dining", "/takeaway", "/user/takeaway"];
     const isAtRoot = rootPaths.includes(location.pathname);
     
@@ -180,21 +206,7 @@ export default function UserLayout() {
     }
   }, [location.pathname, location.search, location.hash, navigationType]);
 
-  useUserNotifications()
-
-  // Note: Authentication checks and redirects are handled by ProtectedRoute components
-  // UserLayout should not interfere with authentication redirects
-
-  // Show bottom navigation only on home page, dining page, under-250 page, and profile page
-  const path = location.pathname.startsWith("/food")
-    ? location.pathname.substring(5) || "/"
-    : location.pathname
-  const normalizedPath =
-    path.length > 1 ? path.replace(/\/+$/, "") : path
-
-  const isProfileRoot =
-    normalizedPath === "/profile" ||
-    normalizedPath === "/user/profile"
+  const isProfileRoot = normalizedPath === "/profile" || normalizedPath === "/user/profile"
 
   const showBottomNav = normalizedPath === "/" ||
     normalizedPath === "/user" ||
@@ -205,9 +217,96 @@ export default function UserLayout() {
     normalizedPath === "/under-250" ||
     normalizedPath === "/user/under-250" ||
     isProfileRoot ||
-    normalizedPath === "" // Handle empty string case for root relative to /food
+    normalizedPath === ""
 
   const isUnder250 = normalizedPath === "/under-250" || normalizedPath === "/user/under-250"
+  const lastOutOfZoneRef = useRef(isOutOfZone)
+
+  // Out of Zone Branded Toast Trigger
+  useEffect(() => {
+    // Only show toast if out of zone, loader is gone, and we are on a main page where the out-of-zone screen is shown
+    if (isOutOfZone && !lastOutOfZoneRef.current && !showGlobalLoader && isMainPage) {
+      const timer = setTimeout(() => {
+        toast.custom((t) => (
+          <div
+            className="max-w-[90%] w-[380px] bg-white shadow-[0_8px_30px_rgb(0,0,0,0.12)] rounded-3xl pointer-events-auto flex items-center gap-4 p-3.5 border border-gray-50 duration-300 animate-in fade-in slide-in-from-top-4"
+          >
+            <div className="flex-shrink-0">
+              <div className="h-14 w-14 rounded-2xl bg-gradient-to-br from-[#DC2626] to-[#991B1B] flex items-center justify-center p-1.5 shadow-lg">
+                <img 
+                  src="/assets/images/redgo-toast-logo.png" 
+                  alt="RedGo" 
+                  className="w-full h-full object-contain brightness-0 invert" 
+                />
+              </div>
+            </div>
+            <div className="flex-1 pr-2">
+              <p className="text-[14px] font-bold text-gray-800 leading-tight">
+                Restaurants are unavailable here right now.
+              </p>
+              <p className="text-[13px] font-medium text-gray-500 mt-1">
+                Please choose a different location
+              </p>
+            </div>
+          </div>
+        ), {
+          duration: 4000,
+          position: 'top-center',
+          id: 'out-of-zone-toast'
+        });
+      }, 300); // Shorter delay after loader is gone
+
+      lastOutOfZoneRef.current = true;
+      return () => clearTimeout(timer);
+    }
+    
+    // Reset the ref if user moves back into a zone
+    if (!isOutOfZone) {
+      lastOutOfZoneRef.current = false;
+    }
+  }, [isOutOfZone, showGlobalLoader, isMainPage]);
+
+
+  return (
+    <>
+      <RouteSyncHandler />
+      
+      {/* Location Fetching Loader - Unified for all location changes with transition buffer */}
+      {showGlobalLoader && (
+        <div className="fixed inset-0 z-[1000] bg-white/60 backdrop-blur-sm flex flex-col items-center justify-center animate-in fade-in duration-300 pointer-events-auto">
+          <div className="relative">
+            <div className="w-14 h-14 border-[3px] border-gray-100/30 rounded-full"></div>
+            <div className="absolute top-0 left-0 w-14 h-14 border-[3px] border-[#DC2626] border-t-transparent rounded-full animate-spin"></div>
+          </div>
+          <p className="mt-5 text-[15px] font-bold text-gray-800 tracking-tight">Fetching location...</p>
+        </div>
+      )}
+
+      {/* Desktop Navbar - Hidden on mobile, visible on medium+ screens */}
+      <div className="hidden md:block">
+        {showBottomNav && !isOutOfZone && <DesktopNavbar showLogo={!isUnder250} />}
+      </div>
+      <LocationPrompt />
+      
+      {isOutOfZone && isMainPage ? (
+        <OutOfZoneScreen 
+          location={geoLocation} 
+          handleLocationClick={openLocationSelector} 
+        />
+      ) : (
+        <main className={showBottomNav ? "md:pt-40" : ""}>
+          <Outlet />
+        </main>
+      )}
+
+      {(normalizedPath === "/" || normalizedPath === "" || normalizedPath === "/user") && !isOutOfZone && <BackToTop />}
+      {showBottomNav && !isOutOfZone && <BottomNavigation />}
+    </>
+  )
+}
+
+export default function UserLayout() {
+  useUserNotifications()
 
   return (
     <div className="min-h-screen bg-[#f5f5f5] dark:bg-[#0a0a0a] transition-colors duration-200">
@@ -216,18 +315,7 @@ export default function UserLayout() {
           <OrdersProvider>
             <SearchOverlayProvider>
               <LocationSelectorProvider>
-                <RouteSyncHandler />
-                {/* <Navbar /> */}
-                {/* Desktop Navbar - Hidden on mobile, visible on medium+ screens */}
-                <div className="hidden md:block">
-                  {showBottomNav && <DesktopNavbar showLogo={!isUnder250} />}
-                </div>
-                <LocationPrompt />
-                <main className={showBottomNav ? "md:pt-40" : ""}>
-                  <Outlet />
-                </main>
-                {(normalizedPath === "/" || normalizedPath === "" || normalizedPath === "/user") && <BackToTop />}
-                {showBottomNav && <BottomNavigation />}
+                <UserLayoutContent />
               </LocationSelectorProvider>
             </SearchOverlayProvider>
           </OrdersProvider>
