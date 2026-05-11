@@ -2718,18 +2718,22 @@ export default function Home() {
             )}
             <div className="relative z-10">
               {orderType !== "takeaway" && !isTakeawayPage ? (
-                <HomeHeader
-                  activeTab={activeTab}
-                  setActiveTab={setActiveTab}
-                  location={effectiveLocation}
-                  handleLocationClick={handleLocationClick}
-                  handleSearchFocus={handleSearchFocus}
-                  placeholderIndex={placeholderIndex}
-                  placeholders={placeholders}
-                  vegMode={vegMode}
-                  handleVegModeChange={handleVegModeChange}
-                  vegModeToggleRef={vegModeToggleRef}
-                />
+                  <HomeHeader
+                    activeTab={activeTab}
+                    setActiveTab={setActiveTab}
+                    location={effectiveLocation}
+                    handleLocationClick={handleLocationClick}
+                    handleSearchFocus={handleSearchFocus}
+                    placeholderIndex={placeholderIndex}
+                    placeholders={placeholders}
+                    vegMode={vegMode}
+                    handleVegModeChange={handleVegModeChange}
+                    vegModeToggleRef={vegModeToggleRef}
+                    // Pass Banner Props to Unified Component
+                    showBanner={activeTab === "food" && orderType !== "takeaway" && !isTakeawayPage}
+                    videoUrl={festVideoActive ? "" : festBannerVideoUrl}
+                    hideFoodImages={festVideoActive}
+                  />
               ) : (
                 <div className="bg-white/0 dark:bg-black/0 px-4 pt-6 pb-2 border-b-0 dark:border-gray-800 backdrop-blur-sm">
                   <div className="flex items-center justify-between">
@@ -2758,13 +2762,6 @@ export default function Home() {
                 </div>
               )}
 
-              {activeTab === "food" && orderType !== "takeaway" && !isTakeawayPage && (
-                <FestBanner
-                  isVegMode={vegMode}
-                  videoUrl={festVideoActive ? "" : festBannerVideoUrl}
-                  hideFoodImages={festVideoActive}
-                />
-              )}
             </div>
           </div>
 
