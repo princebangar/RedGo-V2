@@ -17,7 +17,7 @@ import { restaurantAPI, zoneAPI, uploadAPI, api } from "@food/api"
 import { MobileTimePicker } from "@mui/x-date-pickers/MobileTimePicker"
 import { LocalizationProvider } from "@mui/x-date-pickers/LocalizationProvider"
 import { AdapterDateFns } from "@mui/x-date-pickers/AdapterDateFns"
-import { determineStepToShow } from "@food/utils/onboardingUtils"
+import { determineStepToShow, clearOnboardingFromLocalStorage, clearAllFilesFromDB } from "@food/utils/onboardingUtils"
 import { toast } from "sonner"
 import { useCompanyName } from "@food/hooks/useCompanyName"
 import { getGoogleMapsApiKey } from "@food/utils/googleMapsApiKey"
@@ -142,21 +142,6 @@ const deleteFileFromDB = async (key) => {
   }
 }
 
-const clearAllFilesFromDB = async () => {
-  try {
-    const db = await openOnboardingFilesDB()
-    const tx = db.transaction(FILES_STORE, "readwrite")
-    tx.objectStore(FILES_STORE).clear()
-    await new Promise((resolve, reject) => {
-      tx.oncomplete = () => resolve(true)
-      tx.onerror = () => reject(tx.error || new Error("IndexedDB clear transaction failed"))
-      tx.onabort = () => reject(tx.error || new Error("IndexedDB clear transaction aborted"))
-    })
-  } catch (err) {
-    debugError("IndexedDB clear failed:", err)
-  }
-}
-
 const getUploadableMenuFiles = (menuImages = []) =>
   (Array.isArray(menuImages) ? menuImages : [])
     .filter((img) => isUploadableFile(img))
@@ -195,6 +180,7 @@ const normalizePhoneDigits = (value) => {
 }
 
 const normalizePincode = (value) => String(value || "").replace(/\D/g, "").slice(0, 6)
+
 
 const getVerifiedPhoneFromStoredRestaurant = () => {
   try {
@@ -293,7 +279,15 @@ const saveOnboardingToLocalStorage = (step1, step2, step3, currentStep) => {
       currentStep,
       timestamp: Date.now(),
     }
-    localStorage.setItem(ONBOARDING_STORAGE_KEY, JSON.stringify(dataToSave))
+
+    const userStr = localStorage.getItem("restaurant_user")
+    let key = ONBOARDING_STORAGE_KEY
+    if (userStr) {
+      const user = JSON.parse(userStr)
+      const userId = user._id || user.id
+      if (userId) key = `restaurant_onboarding_data_${userId}`
+    }
+    localStorage.setItem(key, JSON.stringify(dataToSave))
   } catch (error) {
     debugError("Failed to save onboarding data to localStorage:", error)
   }
@@ -301,7 +295,14 @@ const saveOnboardingToLocalStorage = (step1, step2, step3, currentStep) => {
 
 const loadOnboardingFromLocalStorage = () => {
   try {
-    const stored = localStorage.getItem(ONBOARDING_STORAGE_KEY)
+    const userStr = localStorage.getItem("restaurant_user")
+    let key = ONBOARDING_STORAGE_KEY
+    if (userStr) {
+      const user = JSON.parse(userStr)
+      const userId = user._id || user.id
+      if (userId) key = `restaurant_onboarding_data_${userId}`
+    }
+    const stored = localStorage.getItem(key)
     if (stored) {
       return JSON.parse(stored)
     }
@@ -313,7 +314,15 @@ const loadOnboardingFromLocalStorage = () => {
 
 const clearOnboardingFromLocalStorage = () => {
   try {
-    localStorage.removeItem(ONBOARDING_STORAGE_KEY)
+    const userStr = localStorage.getItem("restaurant_user")
+    let key = ONBOARDING_STORAGE_KEY
+    if (userStr) {
+      const user = JSON.parse(userStr)
+      const userId = user._id || user.id
+      if (userId) key = `restaurant_onboarding_data_${userId}`
+    }
+    localStorage.removeItem(key)
+    localStorage.removeItem("restaurant_pendingPhone")
   } catch (error) {
     debugError("Failed to clear onboarding data from localStorage:", error)
   }
@@ -833,7 +842,7 @@ export default function RestaurantOnboarding() {
         }, 7000)
 
         const currentPhone = getVerifiedPhoneFromStoredRestaurant()
-        const localData = loadOnboardingFromLocalStorage()
+        let localData = loadOnboardingFromLocalStorage()
         
         // 1. First fetch API data to have the latest backend state
         let apiData = null;
@@ -945,6 +954,7 @@ export default function RestaurantOnboarding() {
             }
           } else if (savedPhone && normalizedCurrent && savedPhone !== normalizedCurrent) {
              debugLog("? Phone mismatch, data belongs to different user. Clearing local cache.")
+             localData = null; // Bypass IndexedDB check for mismatched user
              clearOnboardingFromLocalStorage()
              clearAllFilesFromDB().catch(e => debugError("Cleanup failed:", e))
           }

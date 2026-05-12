@@ -4,7 +4,7 @@ const debugWarn = (...args) => {}
 const debugError = (...args) => {}
 
 
-const getOnboardingStorageKey = () => {
+export const getOnboardingStorageKey = () => {
     try {
       const userStr = localStorage.getItem("restaurant_user")
       if (userStr) {
@@ -266,3 +266,20 @@ export const checkOnboardingStatus = async () => {
   }
 }
 
+
+export const clearOnboardingFromLocalStorage = () => {
+  const key = getOnboardingStorageKey()
+  localStorage.removeItem(key)
+  localStorage.removeItem("restaurant_pendingPhone")
+}
+
+export const clearAllFilesFromDB = async () => {
+  try {
+    if (typeof indexedDB === "undefined") return
+    const ONBOARDING_FILES_DB = "RestaurantOnboardingFiles"
+    const request = indexedDB.deleteDatabase(ONBOARDING_FILES_DB)
+    request.onerror = (e) => console.error("Database deletion error", e)
+  } catch (err) {
+    console.error("Failed to delete IndexedDB database", err)
+  }
+}

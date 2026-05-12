@@ -6,10 +6,19 @@ import { toast } from "sonner"
 import { restaurantAPI } from "@food/api"
 import logoNew from "@/assets/logo.png"
 
+import { clearOnboardingFromLocalStorage, clearAllFilesFromDB } from "@/modules/Food/utils/onboardingUtils"
+
 const DEFAULT_COUNTRY_CODE = "+91"
 
 export default function RestaurantLogin() {
   const navigate = useNavigate()
+
+  useEffect(() => {
+    // Clear any stale onboarding data when landing on the login page
+    clearOnboardingFromLocalStorage()
+    clearAllFilesFromDB()
+  }, [])
+
   const phoneInputRef = useRef(null)
   const [phone, setPhone] = useState(() => sessionStorage.getItem("restaurantLoginPhone") || "")
   const [loading, setLoading] = useState(false)
