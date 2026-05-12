@@ -817,12 +817,6 @@ export default function RestaurantOnboarding() {
     
     // Check if step is specified in URL (from OTP login redirect)
     const stepParam = searchParams.get("step")
-    if (stepParam) {
-      const stepNum = parseInt(stepParam, 10)
-      if (stepNum >= 1 && stepNum <= 3) {
-        setStep(stepNum)
-      }
-    }
 
     const loadData = async () => {
       try {
@@ -941,7 +935,7 @@ export default function RestaurantOnboarding() {
           } else if (savedPhone && normalizedCurrent && savedPhone !== normalizedCurrent) {
              debugLog("? Phone mismatch, data belongs to different user. Clearing local cache.")
              clearOnboardingFromLocalStorage()
-             await clearAllFilesFromDB()
+             clearAllFilesFromDB().catch(e => debugError("Cleanup failed:", e))
           }
         }
 
@@ -986,7 +980,7 @@ export default function RestaurantOnboarding() {
     }
 
     loadData()
-  }, [searchParams, isOnboardingHydrated])
+  }, [searchParams.toString(), isOnboardingHydrated])
 
   useEffect(() => {
     if (!verifiedPhoneNumber) return
