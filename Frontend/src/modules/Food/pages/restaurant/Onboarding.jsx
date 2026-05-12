@@ -312,21 +312,6 @@ const loadOnboardingFromLocalStorage = () => {
   return null
 }
 
-const clearOnboardingFromLocalStorage = () => {
-  try {
-    const userStr = localStorage.getItem("restaurant_user")
-    let key = ONBOARDING_STORAGE_KEY
-    if (userStr) {
-      const user = JSON.parse(userStr)
-      const userId = user._id || user.id
-      if (userId) key = `restaurant_onboarding_data_${userId}`
-    }
-    localStorage.removeItem(key)
-    localStorage.removeItem("restaurant_pendingPhone")
-  } catch (error) {
-    debugError("Failed to clear onboarding data from localStorage:", error)
-  }
-}
 
 const syncOnboardingFileCache = (step2, step3) => {
   onboardingFileCache = {
