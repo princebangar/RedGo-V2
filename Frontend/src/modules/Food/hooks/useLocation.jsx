@@ -1614,13 +1614,15 @@ export function useLocation() {
 
         debugLog("?? Permission granted! Fetching/Watching location...", shouldForceRefresh ? "(FORCE REFRESH)" : "");
 
-        // Only fetch once on initial app open if we have no stored coordinates yet.
-        // Do not keep re-geocoding just because the address text is placeholder.
-        const shouldFetch = shouldForceRefresh || !hasInitialLocation
+        // ALWAYS fetch fresh location on app open if permission is granted to ensure live tracking
+        // We use sessionStorage to ensure we only fetch ONCE per tab/app session, and NOT on every page refresh.
+        const hasFetchedInSession = sessionStorage.getItem('hasAutoFetchedLocation');
+        const shouldFetch = !hasFetchedInSession;
 
         if (shouldFetch) {
-          debugLog("?? Fetching location - shouldForceRefresh:", shouldForceRefresh, "hasInitialLocation:", hasInitialLocation)
-          getLocation(true, shouldForceRefresh) // forceFresh = true if cached location is incomplete
+          sessionStorage.setItem('hasAutoFetchedLocation', 'true');
+          debugLog("?? Fetching fresh location on app open - permission granted")
+          getLocation(true, true) // forceFresh = true to bypass cache and get exact live location
             .then((location) => {
               if (location &&
                 location.formattedAddress !== "Select location" &&

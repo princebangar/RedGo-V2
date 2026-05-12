@@ -513,7 +513,7 @@ export default function Home() {
   ] = useState([]);
   const [loadingLandingConfig, setLoadingLandingConfig] = useState(true);
   const [restaurantsData, setRestaurantsData] = useState(HOME_RESTAURANTS_CACHE || []);
-  const [loadingRestaurants, setLoadingRestaurants] = useState(!HOME_RESTAURANTS_CACHE);
+  const [loadingRestaurants, setLoadingRestaurants] = useState(!HOME_RESTAURANTS_CACHE || (Array.isArray(HOME_RESTAURANTS_CACHE) && HOME_RESTAURANTS_CACHE.length === 0));
   const [realCategories, setRealCategories] = useState(HOME_CATEGORIES_CACHE || []);
   const [loadingRealCategories, setLoadingRealCategories] = useState(!HOME_CATEGORIES_CACHE);
   const [menuCategories, setMenuCategories] = useState([]);
@@ -1492,7 +1492,8 @@ export default function Home() {
     async (filters = {}) => {
       const requestSeq = ++restaurantsRequestSeqRef.current;
       try {
-        if (!HOME_RESTAURANTS_CACHE || filters.activeFilters || filters.sortBy || filters.selectedCuisine) {
+        const isCacheEmpty = !HOME_RESTAURANTS_CACHE || (Array.isArray(HOME_RESTAURANTS_CACHE) && HOME_RESTAURANTS_CACHE.length === 0);
+        if (isCacheEmpty || filters.activeFilters || filters.sortBy || filters.selectedCuisine) {
           setLoadingRestaurants(true);
         }
 

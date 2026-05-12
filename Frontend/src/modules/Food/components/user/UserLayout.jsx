@@ -175,11 +175,16 @@ function UserLayoutContent() {
 
   // Debounced loading state to prevent flickering and ensure smooth navigation transitions
   const [showGlobalLoader, setShowGlobalLoader] = useState(false)
+  const [isInitialChecking, setIsInitialChecking] = useState(true)
+
   useEffect(() => {
     if (isZoneLoading || isGeoLoading) {
       setShowGlobalLoader(true)
     } else {
-      const timer = setTimeout(() => setShowGlobalLoader(false), 400)
+      const timer = setTimeout(() => {
+        setShowGlobalLoader(false)
+        setIsInitialChecking(false) // First load completed
+      }, 400)
       return () => clearTimeout(timer)
     }
   }, [isZoneLoading, isGeoLoading])
@@ -229,7 +234,7 @@ function UserLayoutContent() {
       const timer = setTimeout(() => {
         toast.custom((t) => (
           <div
-            className="max-w-[90%] w-[380px] bg-white shadow-[0_8px_30px_rgb(0,0,0,0.12)] rounded-3xl pointer-events-auto flex items-center gap-4 p-3.5 border border-gray-50 duration-300 animate-in fade-in slide-in-from-top-4"
+            className="w-[calc(100vw-32px)] sm:w-[380px] bg-white shadow-[0_8px_30px_rgb(0,0,0,0.12)] rounded-3xl pointer-events-auto flex items-center gap-4 p-3.5 border border-gray-50 duration-300 animate-in fade-in slide-in-from-top-4"
           >
             <div className="flex-shrink-0">
               <div className="h-14 w-14 rounded-2xl bg-gradient-to-br from-[#DC2626] to-[#991B1B] flex items-center justify-center p-1.5 shadow-lg">
@@ -288,7 +293,9 @@ function UserLayoutContent() {
       </div>
       <LocationPrompt />
       
-      {isOutOfZone && isMainPage ? (
+      {isInitialChecking ? (
+        <div className="flex-1 min-h-screen bg-[#f5f5f5] dark:bg-[#0a0a0a]" />
+      ) : isOutOfZone && isMainPage ? (
         <OutOfZoneScreen 
           location={geoLocation} 
           handleLocationClick={openLocationSelector} 
