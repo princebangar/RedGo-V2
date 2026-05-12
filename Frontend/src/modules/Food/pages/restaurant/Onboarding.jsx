@@ -551,6 +551,7 @@ export default function RestaurantOnboarding() {
   const [zones, setZones] = useState([])
   const [zonesLoading, setZonesLoading] = useState(false)
   const [isOnboardingHydrated, setIsOnboardingHydrated] = useState(false)
+  const isHydratingRef = useRef(false)
 
   const [step1, setStep1] = useState({
     restaurantName: "",
@@ -813,14 +814,24 @@ export default function RestaurantOnboarding() {
 
   // Load from localStorage on mount and check URL parameter
   useEffect(() => {
-    if (isOnboardingHydrated) return;
+    if (isOnboardingHydrated || isHydratingRef.current) return;
+    isHydratingRef.current = true;
     
     // Check if step is specified in URL (from OTP login redirect)
-    const stepParam = searchParams.get("step")
+    const stepParam = new URLSearchParams(window.location.search).get("step")
 
     const loadData = async () => {
       try {
         setLoading(true);
+        // Fail-safe: Force loading off after 7 seconds if something hangs on mobile
+        const failSafeTimer = setTimeout(() => {
+          if (!isOnboardingHydrated) {
+            debugWarn("Hydration fail-safe triggered")
+            setIsOnboardingHydrated(true)
+            setLoading(false)
+          }
+        }, 7000)
+
         const currentPhone = getVerifiedPhoneFromStoredRestaurant()
         const localData = loadOnboardingFromLocalStorage()
         
@@ -971,16 +982,18 @@ export default function RestaurantOnboarding() {
           if (s >= 1 && s <= 3) setStep(s);
         }
 
+        clearTimeout(failSafeTimer)
       } catch (err) {
         debugError("Onboarding hydration failed:", err)
       } finally {
         setIsOnboardingHydrated(true)
         setLoading(false)
+        isHydratingRef.current = false
       }
     }
 
     loadData()
-  }, [searchParams.toString(), isOnboardingHydrated])
+  }, [])
 
   useEffect(() => {
     if (!verifiedPhoneNumber) return
