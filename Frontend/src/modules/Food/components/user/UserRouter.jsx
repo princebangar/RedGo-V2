@@ -1,5 +1,5 @@
 import React, { Suspense, lazy } from "react"
-import { Routes, Route, Navigate } from "react-router-dom"
+import { Routes, Route, Navigate, Outlet } from "react-router-dom"
 import UserLayout from "./UserLayout"
 import Loader from "@food/components/Loader"
 import ProtectedRoute from "@food/components/ProtectedRoute"
@@ -97,142 +97,24 @@ export default function UserRouter() {
   return (
     <Suspense fallback={<Loader />}>
       <Routes>
-        <Route element={
-          <ProtectedRoute requiredRole="user" loginPath="/user/auth/login">
-            <UserLayout />
-          </ProtectedRoute>
-        }>
-          {/* Home & Discovery */}
-          <Route path="" element={<Home />} />
-          <Route path="takeaway" element={<Home />} />
-          <Route path="dining" element={<Dining />} />
-          <Route path="dining/:category" element={<DiningCategory />} />
-          <Route path="dining/explore/upto50" element={<DiningExplore50 />} />
-          <Route path="dining/explore/near-rated" element={<DiningExploreNear />} />
-          <Route path="dining/coffee" element={<Coffee />} />
-          <Route path="dining/:diningType/:slug" element={<DiningRestaurantDetails />} />
-          <Route path="dining/book/:slug" element={<TableBooking />} />
-          <Route path="dining/book-confirmation" element={<TableBookingConfirmation />} />
-          <Route path="dining/book-success" element={<TableBookingSuccess />} />
-          <Route path="dining/modification-policy" element={<TableModificationPolicy />} />
-          <Route path="dining/cancellation-policy" element={<TableCancellationPolicy />} />
-          <Route path="dining/edit-user" element={<TableEditUserPage />} />
-          <Route
-            path="bookings"
-            element={<MyBookings />}
-          />
-          <Route path="under-250" element={<Under250 />} />
-          <Route path="categories" element={<Categories />} />
-          <Route path="category/:category" element={<CategoryPage />} />
-          <Route path="restaurants" element={<Restaurants />} />
-          <Route path="restaurants/:slug" element={<RestaurantDetails />} />
-          <Route path="search" element={<SearchResults />} />
-          <Route path="product/:id" element={<ProductDetail />} />
-
-          {/* Cart */}
-          <Route path="cart" element={<Cart />} />
-          <Route path="cart/checkout" element={<Checkout />} />
-          <Route path="cart/select-address" element={<SelectAddress />} />
-          <Route path="address-selector" element={<AddressSelectorPage />} />
-
-          {/* Orders - Protected (require user auth) */}
-          <Route
-            path="orders"
-            element={<Orders />}
-          />
-          <Route
-            path="orders/:orderId"
-            element={<OrderTracking />}
-          />
-          <Route
-            path="orders/:orderId/invoice"
-            element={<OrderInvoice />}
-          />
-          <Route
-            path="orders/:orderId/details"
-            element={<UserOrderDetails />}
-          />
-
-          {/* Offers */}
-          <Route path="offers" element={<Offers />} />
-
-          {/* Gourmet */}
-          <Route path="gourmet" element={<Gourmet />} />
-
-
-          {/* Collections */}
-          <Route path="collections" element={<Collections />} />
-          <Route path="collections/:id" element={<CollectionDetail />} />
-
-
-
-          {/* Profile - Protected (require user auth) */}
-          <Route
-            path="profile"
-            element={<Profile />}
-          />
-          <Route
-            path="profile/edit"
-            element={<EditProfile />}
-          />
-          <Route
-            path="profile/payments"
-            element={<Payments />}
-          />
-          <Route
-            path="profile/payments/new"
-            element={<AddPayment />}
-          />
-          <Route
-            path="profile/payments/:id/edit"
-            element={<EditPayment />}
-          />
-          <Route
-            path="profile/favorites"
-            element={<Favorites />}
-          />
-          <Route
-            path="profile/support"
-            element={<Support />}
-          />
-          <Route
-            path="profile/coupons"
-            element={<Coupons />}
-          />
-          <Route
-            path="profile/about"
-            element={<About />}
-          />
-
-          <Route
-            path="profile/report-safety-emergency"
-            element={<ReportSafetyEmergency />}
-          />
-          <Route
-            path="profile/accessibility"
-            element={<Accessibility />}
-          />
-          <Route
-            path="profile/logout"
-            element={<Logout />}
-          />
-          <Route
-            path="profile/refer-earn"
-            element={<ReferEarn />}
-          />
-          <Route
-            path="profile/dining-bookings"
-            element={<MyBookings />}
-          />
-
-          {/* Public Legal Policies (stay public) */}
+        <Route element={<UserLayout />}>
+          {/* ========================================== */}
+          {/* PUBLIC ROUTES (No login required)          */}
+          {/* ========================================== */}
+          
+          {/* Public Legal Policies & Support */}
           <Route path="profile/terms" element={<Terms />} />
           <Route path="profile/privacy" element={<Privacy />} />
           <Route path="profile/refund" element={<Refund />} />
           <Route path="profile/shipping" element={<Shipping />} />
           <Route path="profile/cancellation" element={<Cancellation />} />
+          <Route path="profile/support" element={<Support />} />
+          
+          {/* Help Center */}
+          <Route path="help" element={<Help />} />
+          <Route path="help/orders/:orderId" element={<OrderHelp />} />
 
-          {/* Auth - User login is centralized at /user/auth/login */}
+          {/* Auth Redirects & Callbacks */}
           <Route path="auth/login" element={
             <AuthRedirect module="user">
               <Navigate to="/user/auth/login" replace />
@@ -250,27 +132,81 @@ export default function UserRouter() {
           } />
           <Route path="auth/callback" element={<AuthCallback />} />
 
-          {/* Help */}
-          <Route path="help" element={<Help />} />
-          <Route path="help/orders/:orderId" element={<OrderHelp />} />
 
-          {/* Notifications - Protected (user auth) */}
-          <Route
-            path="notifications"
-            element={<Notifications />}
-          />
+          {/* ========================================== */}
+          {/* PROTECTED ROUTES (Login required)          */}
+          {/* ========================================== */}
+          <Route element={<ProtectedRoute requiredRole="user" loginPath="/user/auth/login"><Outlet /></ProtectedRoute>}>
+            {/* Home & Discovery */}
+            <Route path="" element={<Home />} />
+            <Route path="takeaway" element={<Home />} />
+            <Route path="dining" element={<Dining />} />
+            <Route path="dining/:category" element={<DiningCategory />} />
+            <Route path="dining/explore/upto50" element={<DiningExplore50 />} />
+            <Route path="dining/explore/near-rated" element={<DiningExploreNear />} />
+            <Route path="dining/coffee" element={<Coffee />} />
+            <Route path="dining/:diningType/:slug" element={<DiningRestaurantDetails />} />
+            <Route path="dining/book/:slug" element={<TableBooking />} />
+            <Route path="dining/book-confirmation" element={<TableBookingConfirmation />} />
+            <Route path="dining/book-success" element={<TableBookingSuccess />} />
+            <Route path="dining/modification-policy" element={<TableModificationPolicy />} />
+            <Route path="dining/cancellation-policy" element={<TableCancellationPolicy />} />
+            <Route path="dining/edit-user" element={<TableEditUserPage />} />
+            <Route path="bookings" element={<MyBookings />} />
+            <Route path="under-250" element={<Under250 />} />
+            <Route path="categories" element={<Categories />} />
+            <Route path="category/:category" element={<CategoryPage />} />
+            <Route path="restaurants" element={<Restaurants />} />
+            <Route path="restaurants/:slug" element={<RestaurantDetails />} />
+            <Route path="search" element={<SearchResults />} />
+            <Route path="product/:id" element={<ProductDetail />} />
 
-          {/* Wallet - Protected (user auth) */}
-          <Route
-            path="wallet"
-            element={<Wallet />}
-          />
+            {/* Cart */}
+            <Route path="cart" element={<Cart />} />
+            <Route path="cart/checkout" element={<Checkout />} />
+            <Route path="cart/select-address" element={<SelectAddress />} />
+            <Route path="address-selector" element={<AddressSelectorPage />} />
 
-          {/* Complaints - Protected (user auth) */}
-          <Route
-            path="complaints/submit/:orderId"
-            element={<SubmitComplaint />}
-          />
+            {/* Orders */}
+            <Route path="orders" element={<Orders />} />
+            <Route path="orders/:orderId" element={<OrderTracking />} />
+            <Route path="orders/:orderId/invoice" element={<OrderInvoice />} />
+            <Route path="orders/:orderId/details" element={<UserOrderDetails />} />
+
+            {/* Offers */}
+            <Route path="offers" element={<Offers />} />
+
+            {/* Gourmet */}
+            <Route path="gourmet" element={<Gourmet />} />
+
+            {/* Collections */}
+            <Route path="collections" element={<Collections />} />
+            <Route path="collections/:id" element={<CollectionDetail />} />
+
+            {/* Profile */}
+            <Route path="profile" element={<Profile />} />
+            <Route path="profile/edit" element={<EditProfile />} />
+            <Route path="profile/payments" element={<Payments />} />
+            <Route path="profile/payments/new" element={<AddPayment />} />
+            <Route path="profile/payments/:id/edit" element={<EditPayment />} />
+            <Route path="profile/favorites" element={<Favorites />} />
+            <Route path="profile/coupons" element={<Coupons />} />
+            <Route path="profile/about" element={<About />} />
+            <Route path="profile/report-safety-emergency" element={<ReportSafetyEmergency />} />
+            <Route path="profile/accessibility" element={<Accessibility />} />
+            <Route path="profile/logout" element={<Logout />} />
+            <Route path="profile/refer-earn" element={<ReferEarn />} />
+            <Route path="profile/dining-bookings" element={<MyBookings />} />
+
+            {/* Notifications */}
+            <Route path="notifications" element={<Notifications />} />
+
+            {/* Wallet */}
+            <Route path="wallet" element={<Wallet />} />
+
+            {/* Complaints */}
+            <Route path="complaints/submit/:orderId" element={<SubmitComplaint />} />
+          </Route>
         </Route>
       </Routes>
     </Suspense>

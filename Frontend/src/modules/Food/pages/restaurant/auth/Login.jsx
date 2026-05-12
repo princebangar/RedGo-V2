@@ -166,20 +166,12 @@ export default function RestaurantLogin() {
           <div className="mt-8 text-center">
             <p className="text-[11px] text-gray-400 font-medium leading-relaxed max-w-[320px] mx-auto">
               By continuing, you agree to RedGo's <br />
-              <Link to="/food/restaurant/terms" className="text-gray-900 dark:text-white font-bold hover:text-[#DC2626] transition-colors">Terms of Service</Link> & <Link to="/food/restaurant/privacy" className="text-gray-900 dark:text-white font-bold hover:text-[#DC2626] transition-colors">Privacy Policy</Link>
+              <Link to="/food/restaurant/terms" className="text-gray-900 dark:text-white hover:text-[#DC2626] transition-colors uppercase tracking-wider font-semibold">TERMS</Link>
+              <span className="mx-2 text-gray-400 font-bold">•</span>
+              <Link to="/food/restaurant/privacy" className="text-gray-900 dark:text-white hover:text-[#DC2626] transition-colors uppercase tracking-wider font-semibold">PRIVACY</Link>
             </p>
           </div>
 
-          <div className="mt-12 flex justify-center items-center gap-6 opacity-30 grayscale hover:opacity-60 transition-opacity">
-            <div className="flex items-center gap-1.5">
-              <ShieldCheck className="w-4 h-4" />
-              <span className="text-[10px] font-black uppercase tracking-widest">Business Verified</span>
-            </div>
-            <div className="flex items-center gap-1.5">
-              <Heart className="w-4 h-4" />
-              <span className="text-[10px] font-black uppercase tracking-widest">Partner Success</span>
-            </div>
-          </div>
         </motion.div>
       </div>
     </div>

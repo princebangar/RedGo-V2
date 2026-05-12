@@ -90,7 +90,6 @@ export default function RestaurantRouter() {
           <Route path="feedback" element={<Feedback />} />
           <Route path="share-feedback" element={<ShareFeedback />} />
           <Route path="dish-ratings" element={<DishRatings />} />
-          <Route path="help-centre/support" element={<RestaurantSupport />} />
           <Route path="fssai" element={<FssaiDetails />} />
           <Route path="fssai/update" element={<FssaiUpdate />} />
           <Route path="hyperpure" element={<Hyperpure />} />
@@ -107,9 +106,10 @@ export default function RestaurantRouter() {
         </Route>
         <Route path="onboarding" element={<RestaurantOnboarding />} />
         
-        {/* Public Legal Routes */}
+        {/* Public Legal & Support Routes */}
         <Route path="privacy" element={<PrivacyPolicyPage />} />
         <Route path="terms" element={<TermsAndConditionsPage />} />
+        <Route path="help-centre/support" element={<RestaurantSupport />} />
         </Routes>
       </Suspense>
     </div>

@@ -45,6 +45,9 @@ const DeliveryV2Router = () => {
         <Route path="signup/details" element={<AuthRedirect module="delivery"><SignupStep1 /></AuthRedirect>} />
         <Route path="signup/documents" element={<AuthRedirect module="delivery"><SignupStep2 /></AuthRedirect>} />
         <Route path="terms" element={<TermsAndConditionsV2 />} />
+        <Route path="privacy" element={<PrivacyPolicyV2 />} />
+        <Route path="profile/terms" element={<TermsAndConditionsV2 />} />
+        <Route path="profile/privacy" element={<PrivacyPolicyV2 />} />
 
         {/* Protected Core Routes */}
         <Route element={
@@ -67,9 +70,6 @@ const DeliveryV2Router = () => {
           <Route path="help/tickets/create" element={<CreateSupportTicketV2 />} />
           <Route path="help/tickets/:ticketId" element={<ViewSupportTicketV2 />} />
           <Route path="help/id-card" element={<ShowIdCardV2 />} />
-          <Route path="profile/terms" element={<TermsAndConditionsV2 />} />
-          <Route path="profile/privacy" element={<PrivacyPolicyV2 />} />
-          
           {/* Financial Deep-Pages */}
           <Route path="pocket/payout" element={<PayoutV2 />} />
           <Route path="pocket/statement" element={<PocketStatementV2 />} />

@@ -1,7 +1,7 @@
 import React, { useEffect, useState, useRef } from "react"
 import { motion, AnimatePresence } from "framer-motion"
 import { Link, useNavigate } from "react-router-dom"
-import { Phone, ArrowRight, ShieldCheck, Loader2, Utensils, Star, Heart, X, User } from "lucide-react"
+import { Phone, ArrowRight, ShieldCheck, Loader2, Utensils, Star, Heart, X, User, Pencil } from "lucide-react"
 import { toast } from "sonner"
 import { authAPI, userAPI } from "@food/api"
 import { setAuthData } from "@food/utils/auth"
@@ -101,12 +101,16 @@ export default function UnifiedOTPFastLogin() {
     setShowRestorePopup(false)
     setDeletedAccountData(null)
     setPendingVerify(null)
-    setOtp("")
-    setNewName("")
-    setResendTimer(0)
     // Small delay for smooth transition so the background doesn't flicker while modal is closing
     setTimeout(() => {
-      setStep(1)
+      if (step === 2) {
+        // This naturally triggers the popstate listener which sets step back to 1
+        window.history.back()
+      } else {
+        setStep(1)
+        setOtp("")
+        setResendTimer(0)
+      }
     }, 150)
   }
 
@@ -146,7 +150,7 @@ export default function UnifiedOTPFastLogin() {
 
       const response = await authAPI.verifyOTP(phone, otpCode, "login", null, null, "user", null, null, fcmToken, platform, null, confirmAction)
       const data = response?.data?.data || response?.data || {}
-      
+
       // Handle deleted account found
       if (data.deletedAccountFound) {
         setDeletedAccountData(data)
@@ -159,10 +163,10 @@ export default function UnifiedOTPFastLogin() {
       // Handle name required (Success response with flag)
       if (data.needsName) {
         setShowRestorePopup(false)
-        setPendingVerify({ 
-          phone: phoneNumber, 
-          otp: otpCode, 
-          fcmToken, 
+        setPendingVerify({
+          phone: phoneNumber,
+          otp: otpCode,
+          fcmToken,
           platform,
           confirmAction // Preserve the action (new) for the subsequent name submission
         })
@@ -181,7 +185,7 @@ export default function UnifiedOTPFastLogin() {
       }
 
       setAuthData("user", accessToken, user, refreshToken)
-      
+
       // If user has no name, show name modal instead of immediate navigation
       if (!user.name || user.name.trim() === "") {
         setTempAuth({ accessToken, user, refreshToken })
@@ -192,17 +196,17 @@ export default function UnifiedOTPFastLogin() {
     } catch (err) {
       const status = err?.response?.status
       let msg = err?.response?.data?.message || err?.response?.data?.error || err?.message || "Invalid OTP. Please try again."
-      
+
       // Legacy check for string-based name requirement (backward compatibility)
       const nameRequired = /name\s+is\s+required.*first[- ]?time|first[- ]?time.*name\s+is\s+required|first[- ]?time\s*sign\s*up/i.test(String(msg))
       if (nameRequired) {
         setShowRestorePopup(false)
-        setPendingVerify({ 
-          phone: phoneNumber, 
-          otp: otpCode, 
-          fcmToken, 
+        setPendingVerify({
+          phone: phoneNumber,
+          otp: otpCode,
+          fcmToken,
           platform,
-          confirmAction 
+          confirmAction
         })
         setShowNameModal(true)
         return
@@ -285,6 +289,26 @@ export default function UnifiedOTPFastLogin() {
     return () => clearInterval(intervalId)
   }, [step, resendTimer])
 
+  // Intercept hardware back button to return to step 1 instead of leaving the page
+  useEffect(() => {
+    const handlePopState = () => {
+      if (step === 2) {
+        setStep(1)
+        setOtp("")
+        setResendTimer(0)
+      }
+    }
+
+    if (step === 2) {
+      window.history.pushState({ otpStep: true }, "")
+      window.addEventListener("popstate", handlePopState)
+    }
+
+    return () => {
+      window.removeEventListener("popstate", handlePopState)
+    }
+  }, [step])
+
   const formatResendTimer = (seconds) => {
     const mins = Math.floor(seconds / 60)
     const secs = seconds % 60
@@ -295,59 +319,94 @@ export default function UnifiedOTPFastLogin() {
 
   return (
     <div className="min-h-screen bg-white dark:bg-[#0a0a0a] flex flex-col relative overflow-hidden font-['Poppins']">
-      {/* Decorative Background Elements */}
-      <div className="absolute top-0 left-0 w-full h-[600px] bg-gradient-to-b from-[#DC2626]/10 via-[#DC2626]/5 to-transparent pointer-events-none" />
-      <div className="absolute top-[-100px] right-[-100px] w-[500px] h-[500px] bg-[#DC2626]/5 rounded-full blur-[120px] pointer-events-none animate-pulse" />
-      <div className="absolute bottom-[-100px] left-[-100px] w-[400px] h-[400px] bg-[#DC2626]/5 rounded-full blur-[120px] pointer-events-none" />
+      <style>
+        {`
+          @keyframes floatDish1 {
+            0%, 100% { transform: translateX(0vw) translateY(0px) rotate(0deg); }
+            50% { transform: translateX(25vw) translateY(-15px) rotate(8deg); }
+          }
+          @keyframes floatDish2 {
+            0%, 100% { transform: translateX(0vw) translateY(0px) rotate(0deg); }
+            50% { transform: translateX(-25vw) translateY(-15px) rotate(-8deg); }
+          }
+          .animate-float-dish-1 {
+            animation: floatDish1 12s ease-in-out infinite;
+          }
+          .animate-float-dish-2 {
+            animation: floatDish2 12s ease-in-out infinite;
+          }
+        `}
+      </style>
+
+      {/* Top Wave (Log In style) */}
+      <div className="absolute top-0 left-0 w-full h-[40vh] pointer-events-none z-0 transform scale-[1.05] origin-center">
+        <svg viewBox="0 0 1440 320" className="w-full h-full block" preserveAspectRatio="none" overflow="visible">
+          <defs>
+            <linearGradient id="topRedGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+              <stop offset="0%" stopColor="#B80B3D" />
+              <stop offset="100%" stopColor="#66001D" />
+            </linearGradient>
+          </defs>
+          <path fill="url(#topRedGrad)" d="M -50,-50 L -50,280 C 200,100 800,100 1490,100 L 1490,-50 Z" filter="drop-shadow(0px 5px 15px rgba(0,0,0,0.15))" />
+        </svg>
+        <img
+          src="/food_dish.png"
+          alt="Delicious food"
+          className="absolute top-[8%] left-[5%] w-[14vh] h-[14vh] md:w-[120px] md:h-[120px] object-contain animate-float-dish-1 drop-shadow-xl"
+        />
+      </div>
+
+      {/* Bottom Wave (Log In style) */}
+      <div className="absolute bottom-0 left-0 w-full h-[50vh] pointer-events-none z-0 transform scale-[1.05] origin-center">
+        <svg viewBox="0 0 1440 320" className="w-full h-full block" preserveAspectRatio="none" overflow="visible">
+          <defs>
+            <linearGradient id="botRedGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+              <stop offset="0%" stopColor="#B80B3D" />
+              <stop offset="100%" stopColor="#66001D" />
+            </linearGradient>
+          </defs>
+          <path fill="url(#botRedGrad)" d="M -50,370 L -50,220 C 640,220 1240,220 1490,40 L 1490,370 Z" filter="drop-shadow(0px -5px 15px rgba(0,0,0,0.15))" />
+        </svg>
+        <img
+          src="/food_dish_2.png"
+          alt="Delicious food"
+          className="absolute bottom-[8%] right-[5%] w-[18vh] h-[18vh] md:w-[150px] md:h-[150px] object-contain animate-float-dish-2 drop-shadow-2xl"
+        />
+      </div>
 
       {/* Main Content */}
-      <div className="flex-1 flex flex-col items-center justify-center px-6 py-12 relative z-10">
+      <div className="flex-1 flex flex-col items-center justify-center px-6 py-12 pb-24 relative z-10">
         <motion.div
           initial={{ opacity: 0, y: 30 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.8, ease: "easeOut" }}
-          className="w-full max-w-md lg:max-w-lg"
+          className="w-full max-w-sm flex flex-col"
         >
-          {/* Logo & Header */}
-          <div className="text-center mb-8">
-            <motion.div
-              initial={{ scale: 0, opacity: 0 }}
-              animate={{ scale: 1, opacity: 1 }}
-              transition={{ type: "spring", stiffness: 200, damping: 20 }}
-              className="relative inline-block mb-4"
-            >
-              <img 
-                src={logoNew} 
-                alt="RedGo Logo" 
-                className="w-40 h-40 md:w-48 md:h-48 object-contain mx-auto"
-              />
-            </motion.div>
-
-            <motion.p
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              transition={{ delay: 0.5 }}
-              className="text-gray-400 dark:text-gray-500 font-semibold text-sm uppercase tracking-[0.2em]"
-            >
-              TASTE THE DIFFERENCE
-            </motion.p>
-          </div>
-
-          {/* Login Card */}
-          <div className="bg-white/80 dark:bg-[#1a1a1a]/80 backdrop-blur-2xl rounded-[3rem] p-8 sm:p-12 shadow-[0_40px_80px_-20px_rgba(126,56,102,0.2)] dark:shadow-none border border-white/20 dark:border-gray-800 relative overflow-hidden">
-            <div className="absolute top-0 left-0 w-full h-2 bg-gradient-to-r from-transparent via-[#DC2626]/20 to-transparent" />
-
-            <div className="mb-10 text-center sm:text-left">
-              <h2 className="text-3xl font-black text-gray-900 dark:text-white mb-2 font-['Outfit'] tracking-tight">
-                {step === 1 ? "Welcome Back" : "Security Check"}
-              </h2>
-              <div className="h-1 w-10 bg-[#DC2626] rounded-full mb-3 hidden sm:block" />
-              <p className="text-base text-gray-500 dark:text-gray-400 font-medium">
-                {step === 1
-                  ? "Enter your details to access your account"
-                  : `We've sent a code to +91 ${phoneNumber}`}
-              </p>
+          {/* Main Title (Design Reference: Log In text) */}
+          <div className="mb-10 text-center flex flex-col items-center">
+            <img 
+              src="/redgo_logo_transparent.png" 
+              alt="RedGo Logo" 
+              className="h-28 mb-4 object-contain drop-shadow-md" 
+            />
+            <div className="text-sm text-gray-500 dark:text-gray-400 mt-2 font-medium flex items-center justify-center gap-1.5">
+              {step === 1 ? (
+                <span>Login or signup with your phone number</span>
+              ) : (
+                <>
+                  <span>We've sent a code to +91 {phoneNumber}</span>
+                  <button 
+                    onClick={handleEditNumber}
+                    className="p-1.5 ml-1 bg-gradient-to-r from-[#B80B3D] to-[#66001D] hover:from-[#90082E] hover:to-[#4A0014] rounded-[10px] text-white shadow-md shadow-[#B80B3D]/20 transition-all hover:scale-105 active:scale-95"
+                    aria-label="Edit phone number"
+                  >
+                    <Pencil className="w-4 h-4" strokeWidth={2.5} />
+                  </button>
+                </>
+              )}
             </div>
+          </div>
+          <div className="relative">
 
             <AnimatePresence mode="wait">
               {step === 1 ? (
@@ -360,8 +419,8 @@ export default function UnifiedOTPFastLogin() {
                   className="space-y-6"
                 >
                   <div className="relative group">
-                    <div className="absolute inset-y-0 left-5 flex items-center pointer-events-none">
-                      <span className="text-sm font-bold text-[#DC2626] border-r border-gray-200 dark:border-gray-800 pr-3">+91</span>
+                    <div className="absolute inset-y-0 left-6 flex items-center pointer-events-none">
+                      <span className="text-sm font-medium text-gray-500 dark:text-gray-400 pr-3 border-r border-gray-300 dark:border-gray-600">+91</span>
                     </div>
                     <input
                       type="tel"
@@ -370,29 +429,21 @@ export default function UnifiedOTPFastLogin() {
                       value={phoneNumber}
                       onChange={(e) => setPhoneNumber(e.target.value.replace(/\D/g, "").slice(0, 10))}
                       maxLength={10}
-                      className="block w-full pl-16 pr-6 py-4 bg-gray-50 dark:bg-gray-900/50 text-gray-900 dark:text-white border-2 border-transparent focus:border-[#DC2626]/50 rounded-2xl outline-none transition-all placeholder:text-gray-300 font-bold text-lg shadow-sm"
-                      placeholder="Phone number"
+                      className="block w-full pl-20 pr-6 py-3.5 bg-gray-50 dark:bg-gray-800 border-2 border-gray-300 dark:border-gray-600 shadow-sm text-gray-900 dark:text-white rounded-full outline-none transition-all duration-300 placeholder:text-gray-400 font-medium text-base focus:bg-white dark:focus:bg-gray-900 focus:border-[#B80B3D] focus:ring-4 focus:ring-[#B80B3D]/10 hover:border-gray-400"
+                      placeholder="Mobile number"
                     />
                   </div>
 
                   <button
                     type="submit"
                     disabled={loading || phoneNumber.length < 10}
-                    className="w-full py-4.5 bg-[#DC2626] hover:bg-[#B91C1C] disabled:bg-gray-200 dark:disabled:bg-gray-800 disabled:text-gray-400 text-white rounded-2xl font-bold text-lg shadow-xl shadow-[#DC2626]/20 transition-all active:scale-[0.98] flex items-center justify-center gap-2 group overflow-hidden relative"
+                    className="w-full py-3.5 bg-gradient-to-r from-[#B80B3D] to-[#66001D] hover:from-[#A10935] hover:to-[#4F0016] disabled:opacity-50 text-white rounded-full font-medium text-base shadow-[0_8px_20px_rgba(184,11,61,0.3)] disabled:shadow-none transition-all active:scale-[0.98] flex items-center justify-center gap-2"
                   >
                     {loading ? (
-                      <Loader2 className="w-6 h-6 animate-spin" />
+                      <Loader2 className="w-5 h-5 animate-spin" />
                     ) : (
-                      <>
-                        <span>Continue</span>
-                        <ArrowRight className="w-5 h-5 group-hover:translate-x-1 transition-transform" />
-                      </>
+                      "Log in"
                     )}
-                    <motion.div
-                      className="absolute inset-0 bg-white/20 translate-x-[-100%]"
-                      whileHover={{ translateX: "100%" }}
-                      transition={{ duration: 0.6 }}
-                    />
                   </button>
                 </motion.form>
               ) : (
@@ -436,7 +487,7 @@ export default function UnifiedOTPFastLogin() {
                             }
                           }
                         }}
-                        className="w-full h-16 text-center text-3xl font-bold bg-gray-50 dark:bg-gray-900 border-2 border-transparent focus:border-[#DC2626]/50 rounded-2xl outline-none transition-all text-gray-900 dark:text-white shadow-sm"
+                        className="w-14 h-14 sm:w-16 sm:h-16 text-center text-2xl font-bold bg-gray-50 dark:bg-gray-800 border-2 border-gray-300 dark:border-gray-600 shadow-sm rounded-[20px] outline-none transition-all duration-300 text-gray-900 dark:text-white focus:bg-white dark:focus:bg-gray-900 focus:border-[#B80B3D] focus:ring-4 focus:ring-[#B80B3D]/10 hover:border-gray-400"
                         placeholder="•"
                       />
                     ))}
@@ -445,33 +496,26 @@ export default function UnifiedOTPFastLogin() {
                   <div className="flex flex-col items-center gap-4">
                     <div className="flex items-center gap-2 text-xs font-semibold">
                       {resendTimer > 0 ? (
-                        <span className="text-gray-400">Resend code in <span className="text-[#DC2626]">{formatResendTimer(resendTimer)}</span></span>
+                        <span className="text-gray-400">Resend code in <span className="text-[#B80B3D]">{formatResendTimer(resendTimer)}</span></span>
                       ) : (
                         <button
                           type="button"
                           onClick={handleResendOTP}
-                          className="text-[#DC2626] hover:underline"
+                          className="text-[#B80B3D] hover:underline"
                         >
                           Didn't receive code? Resend
                         </button>
                       )}
                     </div>
 
-                    <button
-                      type="button"
-                      onClick={handleEditNumber}
-                      className="text-xs text-gray-400 hover:text-[#DC2626] transition-colors"
-                    >
-                      Edit phone number
-                    </button>
                   </div>
 
                   <button
                     type="submit"
                     disabled={loading || otp.length < 4}
-                    className="w-full py-4.5 bg-[#DC2626] hover:bg-[#B91C1C] disabled:bg-gray-200 dark:disabled:bg-gray-800 disabled:text-gray-400 text-white rounded-2xl font-bold text-lg shadow-xl shadow-[#DC2626]/20 transition-all active:scale-[0.98] flex items-center justify-center gap-2"
+                    className="w-full py-3.5 bg-gradient-to-r from-[#B80B3D] to-[#66001D] hover:from-[#A10935] hover:to-[#4F0016] disabled:opacity-50 text-white rounded-full font-medium text-base shadow-[0_8px_20px_rgba(184,11,61,0.3)] disabled:shadow-none transition-all active:scale-[0.98] flex items-center justify-center gap-2 mt-4"
                   >
-                    {loading ? <Loader2 className="w-6 h-6 animate-spin" /> : "Verify & Continue"}
+                    {loading ? <Loader2 className="w-5 h-5 animate-spin" /> : "Verify & Continue"}
                   </button>
                 </motion.form>
               )}
@@ -480,28 +524,20 @@ export default function UnifiedOTPFastLogin() {
 
           {/* Footer Info */}
           <div className="mt-8 text-center">
-            <p className="text-[11px] text-gray-400 font-medium leading-relaxed max-w-[320px] mx-auto">
+            <p className="text-[11px] text-gray-400/80 font-medium leading-relaxed max-w-[320px] mx-auto">
               By continuing, you agree to our <br />
-              <Link to="/food/user/profile/terms" className="text-gray-900 dark:text-white font-bold hover:text-[#DC2626] transition-colors">Terms of Service</Link> & <Link to="/food/user/profile/privacy" className="text-gray-900 dark:text-white font-bold hover:text-[#DC2626] transition-colors">Privacy Policy</Link>
+              <Link to="/food/user/profile/terms" className="text-gray-400 hover:text-[#B80B3D] transition-colors uppercase tracking-wider font-semibold">TERMS</Link>
+              <span className="mx-2 text-gray-400/80 font-bold">•</span>
+              <Link to="/food/user/profile/privacy" className="text-gray-400 hover:text-[#B80B3D] transition-colors uppercase tracking-wider font-semibold">PRIVACY</Link>
             </p>
           </div>
 
-          <div className="mt-12 flex justify-center items-center gap-6 opacity-30 grayscale hover:opacity-60 transition-opacity">
-            <div className="flex items-center gap-1.5">
-              <ShieldCheck className="w-4 h-4" />
-              <span className="text-[10px] font-black uppercase tracking-widest">Secure Payment</span>
-            </div>
-            <div className="flex items-center gap-1.5">
-              <Heart className="w-4 h-4" />
-              <span className="text-[10px] font-black uppercase tracking-widest">Handmade with Love</span>
-            </div>
-          </div>
         </motion.div>
       </div>
 
       {/* Name Collection Modal */}
-      <Dialog 
-        open={showNameModal} 
+      <Dialog
+        open={showNameModal}
         onOpenChange={(open) => {
           // Prevent closing on backdrop click or escape key
           if (!open) return;
@@ -512,7 +548,7 @@ export default function UnifiedOTPFastLogin() {
           className="sm:max-w-[425px] rounded-3xl border-none p-0 overflow-hidden bg-white dark:bg-[#1a1a1a]"
           showCloseButton={false}
         >
-          <div className="bg-[#DC2626] p-8 text-center relative">
+          <div className="bg-gradient-to-br from-[#B80B3D] to-[#66001D] p-8 text-center relative">
             <button
               onClick={handleEditNumber}
               className="absolute top-4 right-4 p-2 bg-white/20 hover:bg-white/30 backdrop-blur-md rounded-xl text-white transition-all active:scale-95 z-20"
@@ -522,7 +558,7 @@ export default function UnifiedOTPFastLogin() {
             </button>
 
             <div className="absolute top-[-20%] right-[-10%] w-32 h-32 bg-white/10 rounded-full blur-2xl" />
-            <motion.div 
+            <motion.div
               initial={{ scale: 0 }}
               animate={{ scale: 1 }}
               className="w-20 h-20 bg-white/20 backdrop-blur-md rounded-full flex items-center justify-center mx-auto mb-4 border border-white/30"
@@ -534,7 +570,7 @@ export default function UnifiedOTPFastLogin() {
               We'd love to know your name to personalize your experience.
             </DialogDescription>
           </div>
-          
+
           <form onSubmit={handleNameSubmit} className="p-8 pt-6 space-y-6">
             <div className="space-y-4">
               <Label htmlFor="name" className="text-sm font-medium text-gray-700 dark:text-gray-300 ml-1">
@@ -546,17 +582,17 @@ export default function UnifiedOTPFastLogin() {
                   value={newName}
                   onChange={(e) => setNewName(e.target.value)}
                   placeholder="Enter your name"
-                  className="pl-4 h-14 bg-gray-50 dark:bg-gray-800 border-gray-100 dark:border-gray-700 rounded-2xl focus:ring-2 focus:ring-[#DC2626] transition-all group-hover:border-[#DC2626]/30"
+                  className="pl-4 h-14 bg-gray-50 dark:bg-gray-800 border-gray-100 dark:border-gray-700 rounded-2xl focus:ring-2 focus:ring-[#B80B3D] transition-all group-hover:border-[#B80B3D]/30"
                   autoFocus
                 />
               </div>
             </div>
 
             <div className="flex flex-col gap-3">
-              <Button 
-                type="submit" 
+              <Button
+                type="submit"
                 disabled={isUpdatingName}
-                className="w-full h-14 bg-[#DC2626] hover:bg-[#B91C1C] text-white rounded-2xl font-bold text-lg shadow-lg shadow-[#DC2626]/20 transition-all hover:scale-[1.02] active:scale-[0.98]"
+                className="w-full h-14 bg-gradient-to-r from-[#B80B3D] to-[#66001D] hover:from-[#90082E] hover:to-[#4A0014] text-white rounded-2xl font-bold text-lg shadow-lg shadow-[#B80B3D]/20 transition-all hover:scale-[1.02] active:scale-[0.98]"
               >
                 {isUpdatingName ? (
                   <Loader2 className="h-5 w-5 animate-spin" />
@@ -592,9 +628,9 @@ export default function UnifiedOTPFastLogin() {
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
               className="absolute inset-0 bg-black/60 backdrop-blur-sm"
-              // Removed onClick to prevent closing on backdrop click
+            // Removed onClick to prevent closing on backdrop click
             />
-            <motion.div 
+            <motion.div
               initial={{ opacity: 0, scale: 0.9, y: 20 }}
               animate={{ opacity: 1, scale: 1, y: 0 }}
               exit={{ opacity: 0, scale: 0.9, y: 20 }}
@@ -613,18 +649,18 @@ export default function UnifiedOTPFastLogin() {
               <div className="w-20 h-20 bg-[#DC2626]/10 rounded-full flex items-center justify-center mx-auto mb-6">
                 <Phone className="h-10 w-10 text-[#DC2626]" />
               </div>
-              
+
               <h3 className="text-2xl font-bold text-gray-900 dark:text-white mb-3">Account Found!</h3>
               <p className="text-gray-500 dark:text-gray-400 mb-8 leading-relaxed">
-                A deleted account for <span className="font-bold text-gray-900 dark:text-white">+91 {phoneNumber}</span> was found. 
+                A deleted account for <span className="font-bold text-gray-900 dark:text-white">+91 {phoneNumber}</span> was found.
                 Do you want to restore your old data or start fresh with a new account?
               </p>
 
               <div className="space-y-4">
                 <button
                   onClick={async () => {
-                     await processVerify(phoneNumber, otp, "restore");
-                     setShowRestorePopup(false);
+                    await processVerify(phoneNumber, otp, "restore");
+                    setShowRestorePopup(false);
                   }}
                   className="w-full h-14 bg-[#DC2626] hover:bg-[#B91C1C] text-white font-bold rounded-2xl shadow-xl shadow-[#DC2626]/20 transition-all active:scale-[0.98]"
                 >
@@ -632,8 +668,8 @@ export default function UnifiedOTPFastLogin() {
                 </button>
                 <button
                   onClick={async () => {
-                     await processVerify(phoneNumber, otp, "new");
-                     setShowRestorePopup(false);
+                    await processVerify(phoneNumber, otp, "new");
+                    setShowRestorePopup(false);
                   }}
                   className="w-full h-14 border-2 border-gray-200 dark:border-gray-800 text-gray-700 dark:text-gray-300 font-bold rounded-2xl hover:bg-gray-50 dark:hover:bg-gray-800 transition-all active:scale-[0.98]"
                 >
