@@ -21,7 +21,7 @@ import { determineStepToShow } from "@food/utils/onboardingUtils"
 import { toast } from "sonner"
 import { useCompanyName } from "@food/hooks/useCompanyName"
 import { getGoogleMapsApiKey } from "@food/utils/googleMapsApiKey"
-import { clearModuleAuth, clearAuthData } from "@food/utils/auth"
+import { clearModuleAuth, clearAuthData, isModuleAuthenticated, getModuleToken } from "@food/utils/auth"
 import { ImageSourcePicker } from "@food/components/ImageSourcePicker"
 import { EMAIL_REGEX } from "@/shared/utils/emailValidation"
 const debugLog = (...args) => {}
@@ -814,8 +814,11 @@ export default function RestaurantOnboarding() {
         // 1. First fetch API data to have the latest backend state
         let apiData = null;
         try {
-          const res = await restaurantAPI.getCurrentRestaurant()
-          apiData = res?.data?.data?.restaurant || res?.data?.restaurant
+          // Only fetch if we have a token (existing user session)
+          if (getModuleToken("restaurant")) {
+            const res = await restaurantAPI.getCurrentRestaurant()
+            apiData = res?.data?.data?.restaurant || res?.data?.restaurant
+          }
         } catch (err) {
           debugError("API fetch skipped/failed:", err)
         }

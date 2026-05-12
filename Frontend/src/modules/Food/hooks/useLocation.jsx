@@ -1603,25 +1603,24 @@ export function useLocation() {
         // we should SKIP automatic fetching/watching to allow the user to choose when to enable it.
         // UNLESS we already have a valid initial location from localStorage/DB, in which case we might want to refresh?
         // Actually, even then, we shouldn't prompt.
+        // If permission NOT granted via API, we still proceed on iOS/Safari because the Permissions API
+        // is notoriously buggy on Apple devices and often returns 'prompt' even if already granted.
+        // We rely on the browser's native behavior to either silently fetch (if granted) or show prompt.
         if (!permissionGranted) {
-          // If we have an initial location, we are fine (it's displayed).
-          // If we don't, we show "Select Location".
-          // In either case, we avoid the PROMPT.
-          // Ensure loading is false so UI doesn't hang
-          setLoading(false);
-          return;
+          debugLog("?? Permissions API says not granted, but proceeding to try native fetch for Safari support");
         }
-
-        debugLog("?? Permission granted! Fetching/Watching location...", shouldForceRefresh ? "(FORCE REFRESH)" : "");
 
         // ALWAYS fetch fresh location on app open if permission is granted to ensure live tracking
         // We use sessionStorage to ensure we only fetch ONCE per tab/app session, and NOT on every page refresh.
-        const hasFetchedInSession = sessionStorage.getItem('hasAutoFetchedLocation');
+        const hasFetchedInSession = sessionStorage.getItem('hasAutoFetchedLocation_v2');
         const shouldFetch = !hasFetchedInSession;
 
         if (shouldFetch) {
-          sessionStorage.setItem('hasAutoFetchedLocation', 'true');
+          sessionStorage.setItem('hasAutoFetchedLocation_v2', 'true');
           debugLog("?? Fetching fresh location on app open - permission granted")
+          
+          // CRITICAL: We call getLocation which will use navigator.geolocation.getCurrentPosition
+          // On Safari, this is the ONLY reliable way to check/use location.
           getLocation(true, true) // forceFresh = true to bypass cache and get exact live location
             .then((location) => {
               if (location &&
@@ -1640,8 +1639,6 @@ export function useLocation() {
                 setPermissionGranted(true)
                 if (AUTO_START_LIVE_WATCH) startWatchingLocation()
               } else {
-                // Placeholder result means reverse-geocode failed or was unavailable.
-                // Requirement: no more automatic retries; user can trigger manual refresh.
                 debugWarn("?? Location fetch returned placeholder; not retrying automatically")
               }
             })
