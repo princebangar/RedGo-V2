@@ -543,7 +543,7 @@ export default function RestaurantOnboarding() {
     }
   }
 
-  const [verifiedPhoneNumber, setVerifiedPhoneNumber] = useState("")
+  const [verifiedPhoneNumber, setVerifiedPhoneNumber] = useState(() => getVerifiedPhoneFromStoredRestaurant())
   const [keyboardInset, setKeyboardInset] = useState(0)
   const [isEditing, setIsEditing] = useState(true)
   const [hasExistingRestaurantProfile, setHasExistingRestaurantProfile] = useState(false)
@@ -813,8 +813,8 @@ export default function RestaurantOnboarding() {
 
   // Load from localStorage on mount and check URL parameter
   useEffect(() => {
-    setVerifiedPhoneNumber(getVerifiedPhoneFromStoredRestaurant())
-
+    if (isOnboardingHydrated) return;
+    
     // Check if step is specified in URL (from OTP login redirect)
     const stepParam = searchParams.get("step")
     if (stepParam) {
@@ -947,25 +947,28 @@ export default function RestaurantOnboarding() {
 
         // 4. Finally re-hydrate heavy files from IndexedDB if they exist 
         // (IndexedDB is reliable for large files which don't fit in localStorage)
-        const [prof, pan, gst, fs] = await Promise.all([
-          getFileFromDB("profileImage"),
-          getFileFromDB("panImage"),
-          getFileFromDB("gstImage"),
-          getFileFromDB("fssaiImage"),
-        ]);
+        // Optimization: Only attempt this if we have existing local or API data to restore.
+        if (localData || apiData) {
+          debugLog("? Checking IndexedDB for saved files...")
+          const [prof, pan, gst, fs] = await Promise.all([
+            getFileFromDB("profileImage"),
+            getFileFromDB("panImage"),
+            getFileFromDB("gstImage"),
+            getFileFromDB("fssaiImage"),
+          ]);
 
-        if (prof) setStep2(p => ({ ...p, profileImage: prof }));
-        if (pan) setStep3(p => ({ ...p, panImage: pan }));
-        if (gst) setStep3(p => ({ ...p, gstImage: gst }));
-        if (fs) setStep3(p => ({ ...p, fssaiImage: fs }));
+          if (prof) setStep2(p => ({ ...p, profileImage: prof }));
+          if (pan) setStep3(p => ({ ...p, panImage: pan }));
+          if (gst) setStep3(p => ({ ...p, gstImage: gst }));
+          if (fs) setStep3(p => ({ ...p, fssaiImage: fs }));
 
-        const restoredMenuImages = []
-        for (let i = 0; i < 10; i++) {
-          const img = await getFileFromDB(`menuImage_${i}`)
-          if (img) restoredMenuImages.push(img)
-        }
-        if (restoredMenuImages.length) {
-          setStep2(p => ({ ...p, menuImages: [...p.menuImages.filter(im => !isUploadableFile(im)), ...restoredMenuImages] }));
+          // Parallelize menu images hydration
+          const menuPromises = Array.from({ length: 10 }, (_, i) => getFileFromDB(`menuImage_${i}`))
+          const restoredMenuImages = (await Promise.all(menuPromises)).filter(Boolean)
+          
+          if (restoredMenuImages.length) {
+            setStep2(p => ({ ...p, menuImages: [...p.menuImages.filter(im => !isUploadableFile(im)), ...restoredMenuImages] }));
+          }
         }
 
         // If step is explicitly in URL, use it
@@ -983,7 +986,7 @@ export default function RestaurantOnboarding() {
     }
 
     loadData()
-  }, [searchParams])
+  }, [searchParams, isOnboardingHydrated])
 
   useEffect(() => {
     if (!verifiedPhoneNumber) return
