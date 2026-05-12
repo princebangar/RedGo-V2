@@ -61,7 +61,15 @@ const FILES_STORE = "files"
 
 const openOnboardingFilesDB = () => {
   return new Promise((resolve, reject) => {
+    const timeout = setTimeout(() => {
+      reject(new Error("IndexedDB connection timeout"))
+    }, 2000)
+
     try {
+      if (typeof indexedDB === "undefined") {
+        clearTimeout(timeout)
+        return reject(new Error("IndexedDB not supported"))
+      }
       const request = indexedDB.open(ONBOARDING_FILES_DB, 1)
       request.onupgradeneeded = (e) => {
         const db = e.target.result
@@ -69,9 +77,20 @@ const openOnboardingFilesDB = () => {
           db.createObjectStore(FILES_STORE)
         }
       }
-      request.onsuccess = (e) => resolve(e.target.result)
-      request.onerror = (e) => reject(e.target.error)
+      request.onsuccess = (e) => {
+        clearTimeout(timeout)
+        resolve(e.target.result)
+      }
+      request.onerror = (e) => {
+        clearTimeout(timeout)
+        reject(e.target.error)
+      }
+      request.onblocked = () => {
+        clearTimeout(timeout)
+        reject(new Error("IndexedDB blocked"))
+      }
     } catch (err) {
+      clearTimeout(timeout)
       reject(err)
     }
   })
