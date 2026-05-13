@@ -18,6 +18,7 @@ import { useProfile } from "@food/context/ProfileContext"
 import { useLocation as useGeoLocation } from "../../hooks/useLocation"
 import { useZone } from "../../hooks/useZone"
 import OutOfZoneScreen from "./OutOfZoneScreen"
+import { isModuleAuthenticated } from "../../utils/auth"
 
 // Sync orderType with route
 function RouteSyncHandler() {
@@ -183,13 +184,15 @@ function UserLayoutContent() {
   // Debounced loading state to prevent flickering and ensure smooth navigation transitions
   const [showGlobalLoader, setShowGlobalLoader] = useState(false)
   const [isInitialChecking, setIsInitialChecking] = useState(() => {
-    // If it's a policy or auth page, we don't need the initial location check delay
-    return !(isAuthPage || isPolicyPage);
+    // If it's a policy or auth page, or if the user is not authenticated, we don't need the initial location check delay
+    const isAuthenticated = isModuleAuthenticated('user');
+    return !(isAuthPage || isPolicyPage || !isAuthenticated);
   })
 
   useEffect(() => {
-    // Skip location/zone check for auth, policy and support pages
-    if (isAuthPage || isPolicyPage) {
+    // Skip location/zone check for auth, policy, support pages, or if not logged in
+    const isAuthenticated = isModuleAuthenticated('user');
+    if (isAuthPage || isPolicyPage || !isAuthenticated) {
       setShowGlobalLoader(false)
       setIsInitialChecking(false)
       return
@@ -230,7 +233,7 @@ function UserLayoutContent() {
 
   const isProfileRoot = normalizedPath === "/profile" || normalizedPath === "/user/profile"
 
-  const showBottomNav = normalizedPath === "/" ||
+  const showBottomNav = (normalizedPath === "/" ||
     normalizedPath === "/user" ||
     normalizedPath === "/dining" ||
     normalizedPath === "/user/dining" ||
@@ -239,7 +242,7 @@ function UserLayoutContent() {
     normalizedPath === "/under-250" ||
     normalizedPath === "/user/under-250" ||
     isProfileRoot ||
-    normalizedPath === ""
+    normalizedPath === "") && isModuleAuthenticated('user')
 
   const isUnder250 = normalizedPath === "/under-250" || normalizedPath === "/user/under-250"
   const lastOutOfZoneRef = useRef(isOutOfZone)

@@ -43,14 +43,16 @@ export default function AuthInitializer({ children }) {
     return () => clearTimeout(timer);
   }, []);
 
-  // Skip the initialization loader for policy/help pages to prevent double loaders
+  // Skip the initialization loader for policy/help pages or if no tokens exist to prevent flickering for guests
   const isPolicyPage = window.location.pathname.includes('terms') || 
                        window.location.pathname.includes('privacy') || 
                        window.location.pathname.includes('support-info') ||
                        window.location.pathname.includes('help');
+  
+  const hasAnyToken = ['user', 'restaurant', 'delivery', 'admin'].some(m => !!getModuleToken(m));
 
-  // Show loader while rehydrating auth state on app initialization (skip for policy pages)
-  if (isRehydrating && !isPolicyPage) {
+  // Show loader while rehydrating auth state on app initialization (skip for policy pages or guests)
+  if (isRehydrating && !isPolicyPage && hasAnyToken) {
     return <Loader />;
   }
 
