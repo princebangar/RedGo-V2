@@ -376,12 +376,7 @@ export default function UnifiedOTPFastLogin() {
 
       {/* Main Content */}
       <div className="flex-1 flex flex-col items-center justify-center px-6 py-12 pb-24 relative z-10">
-        <motion.div
-          initial={{ opacity: 0, y: 30 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.8, ease: "easeOut" }}
-          className="w-full max-w-sm flex flex-col"
-        >
+        <div className="w-full max-w-sm flex flex-col">
           {/* Main Title (Design Reference: Log In text) */}
           <div className="mb-10 text-center flex flex-col items-center">
             <img 
@@ -534,7 +529,7 @@ export default function UnifiedOTPFastLogin() {
             </p>
           </div>
 
-        </motion.div>
+        </div>
       </div>
 
       {/* Name Collection Modal */}
