@@ -1,6 +1,6 @@
 import React, { Suspense, lazy, useEffect } from 'react'
 import { Routes, Route, Navigate, useLocation, useNavigate } from 'react-router-dom'
-import { AppShellSkeleton } from '@food/components/ui/loading-skeletons'
+import { Loader2 } from 'lucide-react'
 
 const NATIVE_LAST_ROUTE_KEY = 'native_last_route'
 
@@ -9,7 +9,14 @@ const FoodApp = lazy(() => import('../modules/Food/routes'))
 const AuthApp = lazy(() => import('../modules/auth/routes'))
 import ProtectedRoute from '@food/components/ProtectedRoute'
 
-const PageLoader = () => <AppShellSkeleton />
+const PageLoader = () => (
+  <div className="fixed inset-0 z-[9999] flex flex-col items-center justify-center p-6 bg-white dark:bg-[#0a0a0a]">
+    <Loader2 className="h-10 w-10 animate-spin text-[#CB202D]" />
+    <p className="mt-4 text-gray-500 font-bold uppercase tracking-widest text-[10px]">
+      Loading...
+    </p>
+  </div>
+)
 
 /**
  * FoodAppWrapper — Quick-spicy App. को /food prefix के साथ render करता है.
@@ -21,7 +28,7 @@ const PageLoader = () => <AppShellSkeleton />
  */
 const FoodAppWrapper = () => {
   return (
-    <Suspense fallback={<PageLoader />}>
+    <Suspense fallback={null}>
       <FoodApp />
     </Suspense>
   )

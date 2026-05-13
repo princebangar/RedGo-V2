@@ -29,13 +29,14 @@ import { PocketDetailsV2 } from './pages/pocket/PocketDetailsV2';
 import { ProfileDetailsV2 } from './pages/profile/ProfileDetailsV2';
 import TermsAndConditionsV2 from './pages/TermsAndConditionsV2';
 import PrivacyPolicyV2 from './pages/PrivacyPolicyV2';
+import DeliveryCMSHelpSupportPage from './pages/CMSHelpSupportPage';
 import NotificationsV2 from './pages/NotificationsV2';
 
 
 
 const DeliveryV2Router = () => {
   return (
-    <Suspense fallback={<Loader />}>
+    <Suspense fallback={null}>
       <Routes>
         {/* Auth routes */}
         <Route path="welcome" element={<AuthRedirect module="delivery"><Welcome /></AuthRedirect>} />
@@ -48,6 +49,7 @@ const DeliveryV2Router = () => {
         <Route path="privacy" element={<PrivacyPolicyV2 />} />
         <Route path="profile/terms" element={<TermsAndConditionsV2 />} />
         <Route path="profile/privacy" element={<PrivacyPolicyV2 />} />
+        <Route path="help/content" element={<DeliveryCMSHelpSupportPage />} />
 
         {/* Protected Core Routes */}
         <Route element={

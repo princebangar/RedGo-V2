@@ -163,7 +163,7 @@ export function useZone(location) {
         setZone(cachedZone ? JSON.parse(cachedZone) : null);
         setZoneStatus(cachedStatus || "IN_SERVICE");
       } else {
-        setZoneStatus("OUT_OF_SERVICE");
+        setZoneStatus("loading"); // Default to loading instead of OUT_OF_SERVICE if location not yet fetched
         setZoneId(null);
         setZone(null);
       }

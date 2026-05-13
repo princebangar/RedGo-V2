@@ -102,6 +102,7 @@ const AboutUs = lazy(() => import("@food/pages/admin/settings/AboutUs"));
 const RefundPolicy = lazy(() => import("@food/pages/admin/settings/RefundPolicy"));
 const ShippingPolicy = lazy(() => import("@food/pages/admin/settings/ShippingPolicy"));
 const CancellationPolicy = lazy(() => import("@food/pages/admin/settings/CancellationPolicy"));
+const SupportCMS = lazy(() => import("@food/pages/admin/settings/SupportCMS"));
 const ReactRegistration = lazy(() => import("@food/pages/admin/settings/ReactRegistration"));
 // System Settings
 const ThirdParty = lazy(() => import("@food/pages/admin/system/ThirdParty"));
@@ -132,7 +133,7 @@ const AdminForgotPassword = lazy(() => import("@food/pages/admin/auth/AdminForgo
 
 export default function AdminRouter() {
   return (
-    <Suspense fallback={<Loader />}>
+    <Suspense fallback={null}>
       <Routes>
         {/* Protected Routes - With Layout */}
         {/* Admin Login - Same as earlier */}
@@ -273,6 +274,7 @@ export default function AdminRouter() {
             <Route path="pages-social-media/refund" element={<RefundPolicy />} />
             <Route path="pages-social-media/shipping" element={<ShippingPolicy />} />
             <Route path="pages-social-media/cancellation" element={<CancellationPolicy />} />
+            <Route path="pages-social-media/support" element={<SupportCMS />} />
             <Route path="pages-social-media/react-registration" element={<ReactRegistration />} />
             
             <Route path="3rd-party-configurations/party" element={<ThirdParty />} />

@@ -40,7 +40,7 @@ const resolveBackPath = ({ pathname, search, state }) => {
   }
 
   if (
-    /^\/user\/profile\/(terms|privacy|refund|shipping|cancellation)$/.test(
+    /^\/user\/profile\/(terms|privacy|refund|shipping|cancellation|support-info)$/.test(
       normalizedPath,
     )
   ) {

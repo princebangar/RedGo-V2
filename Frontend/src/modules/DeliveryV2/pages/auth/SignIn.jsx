@@ -167,6 +167,8 @@ export default function DeliverySignIn() {
               <Link to="/food/delivery/terms" className="text-gray-900 dark:text-white hover:text-[#DC2626] transition-colors uppercase tracking-wider font-semibold">TERMS</Link>
               <span className="mx-2 text-gray-400 font-bold">•</span>
               <Link to="/food/delivery/privacy" className="text-gray-900 dark:text-white hover:text-[#DC2626] transition-colors uppercase tracking-wider font-semibold">PRIVACY</Link>
+              <span className="mx-2 text-gray-400 font-bold">•</span>
+              <Link to="/food/delivery/help/content" className="text-gray-900 dark:text-white hover:text-[#DC2626] transition-colors uppercase tracking-wider font-semibold">SUPPORT</Link>
             </p>
           </div>
 

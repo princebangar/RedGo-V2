@@ -154,7 +154,7 @@ function LocationSelectorProvider({ children }) {
 function UserLayoutContent() {
   const location = useLocation()
   const { location: geoLocation, loading: isGeoLoading } = useGeoLocation()
-  const { isOutOfService: isOutOfZone, loading: isZoneLoading } = useZone(geoLocation)
+  const { isOutOfService: isOutOfZone, loading: isZoneLoading, zoneStatus } = useZone(geoLocation)
   const { openLocationSelector } = useLocationSelector()
   const navigationType = useNavigationType()
 
@@ -173,11 +173,28 @@ function UserLayoutContent() {
     normalizedPath === "/under-250" ||
     normalizedPath === "/user/under-250";
 
+  // Determine if this is a policy or auth page immediately
+  const isAuthPage = normalizedPath.includes('auth/');
+  const isPolicyPage = normalizedPath.includes('terms') || 
+                       normalizedPath.includes('privacy') || 
+                       normalizedPath.includes('support-info') ||
+                       normalizedPath.includes('help');
+
   // Debounced loading state to prevent flickering and ensure smooth navigation transitions
   const [showGlobalLoader, setShowGlobalLoader] = useState(false)
-  const [isInitialChecking, setIsInitialChecking] = useState(true)
+  const [isInitialChecking, setIsInitialChecking] = useState(() => {
+    // If it's a policy or auth page, we don't need the initial location check delay
+    return !(isAuthPage || isPolicyPage);
+  })
 
   useEffect(() => {
+    // Skip location/zone check for auth, policy and support pages
+    if (isAuthPage || isPolicyPage) {
+      setShowGlobalLoader(false)
+      setIsInitialChecking(false)
+      return
+    }
+
     if (isZoneLoading || isGeoLoading) {
       setShowGlobalLoader(true)
     } else {
@@ -187,7 +204,7 @@ function UserLayoutContent() {
       }, 400)
       return () => clearTimeout(timer)
     }
-  }, [isZoneLoading, isGeoLoading])
+  }, [isZoneLoading, isGeoLoading, isAuthPage, isPolicyPage])
 
   // Global Refresh Handler - Scroll to top ONLY on browser refresh
   useEffect(() => {
@@ -276,14 +293,14 @@ function UserLayoutContent() {
     <>
       <RouteSyncHandler />
       
-      {/* Location Fetching Loader - Unified for all location changes with transition buffer */}
-      {showGlobalLoader && (
+      {/* Location Fetching Loader - Only shown on main pages after login */}
+      {showGlobalLoader && !isInitialChecking && (
         <div className="fixed inset-0 z-[1000] bg-white/60 backdrop-blur-sm flex flex-col items-center justify-center animate-in fade-in duration-300 pointer-events-auto">
           <div className="relative">
             <div className="w-14 h-14 border-[3px] border-gray-100/30 rounded-full"></div>
             <div className="absolute top-0 left-0 w-14 h-14 border-[3px] border-[#DC2626] border-t-transparent rounded-full animate-spin"></div>
           </div>
-          <p className="mt-5 text-[15px] font-bold text-gray-800 tracking-tight">Fetching location...</p>
+          <p className="mt-5 text-[15px] font-bold text-gray-800 tracking-tight">Updating location...</p>
         </div>
       )}
 
@@ -295,7 +312,7 @@ function UserLayoutContent() {
       
       {isInitialChecking ? (
         <div className="flex-1 min-h-screen bg-[#f5f5f5] dark:bg-[#0a0a0a]" />
-      ) : isOutOfZone && isMainPage ? (
+      ) : (zoneStatus === "OUT_OF_SERVICE") && isMainPage ? (
         <OutOfZoneScreen 
           location={geoLocation} 
           handleLocationClick={openLocationSelector} 

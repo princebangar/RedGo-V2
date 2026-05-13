@@ -90,7 +90,7 @@ export default function App() {
         <ScrollToTop />
         <RestaurantGlobalNotificationListener />
         <PushSoundEnableButton />
-        <Suspense fallback={<Loader />}>
+        <Suspense fallback={null}>
           <Routes>
             {/* Restaurant Module - Already mapped to /restaurant */}
             <Route

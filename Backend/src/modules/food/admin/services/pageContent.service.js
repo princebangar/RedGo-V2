@@ -21,7 +21,10 @@ const normalizeLegalForResponse = (legal) => {
     if (!legal || typeof legal !== 'object') return legal;
     const title = legal.title ?? '';
     const content = decodeHtmlEntities(legal.content ?? '');
-    return { ...legal, title, content };
+    const email = legal.email ?? '';
+    const mobile = legal.mobile ?? '';
+    const faq = decodeHtmlEntities(legal.faq ?? '');
+    return { ...legal, title, content, email, mobile, faq };
 };
 
 const normalizeAboutForResponse = (about) => {
@@ -50,20 +53,24 @@ export const upsertLegalPage = async (key, payload, updatedBy) => {
     const allowedKeys = [
         'terms', 'terms_user', 'terms_restaurant', 'terms_delivery',
         'privacy', 'privacy_user', 'privacy_restaurant', 'privacy_delivery',
-        'refund', 'shipping', 'cancellation'
+        'refund', 'shipping', 'cancellation',
+        'support_user', 'support_restaurant', 'support_delivery'
     ];
     if (!allowedKeys.includes(k)) {
         throw new ValidationError('Invalid page key');
     }
     const title = String(payload?.title || '').trim();
     const content = decodeHtmlEntities(String(payload?.content || '')).trim();
+    const email = String(payload?.email || '').trim();
+    const mobile = String(payload?.mobile || '').trim();
+    const faq = decodeHtmlEntities(String(payload?.faq || '')).trim();
 
     const doc = await FoodPageContent.findOneAndUpdate(
         { key: k },
         {
             $set: {
                 key: k,
-                legal: { title, content },
+                legal: { title, content, email, mobile, faq },
                 about: undefined,
                 updatedBy: updatedBy || null,
                 updatedByRole: 'ADMIN'

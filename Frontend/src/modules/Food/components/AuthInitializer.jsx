@@ -43,8 +43,14 @@ export default function AuthInitializer({ children }) {
     return () => clearTimeout(timer);
   }, []);
 
-  // Show loader while rehydrating auth state on app initialization
-  if (isRehydrating) {
+  // Skip the initialization loader for policy/help pages to prevent double loaders
+  const isPolicyPage = window.location.pathname.includes('terms') || 
+                       window.location.pathname.includes('privacy') || 
+                       window.location.pathname.includes('support-info') ||
+                       window.location.pathname.includes('help');
+
+  // Show loader while rehydrating auth state on app initialization (skip for policy pages)
+  if (isRehydrating && !isPolicyPage) {
     return <Loader />;
   }
 

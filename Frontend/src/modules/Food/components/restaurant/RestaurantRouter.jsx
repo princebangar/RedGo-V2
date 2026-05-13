@@ -50,11 +50,12 @@ const OTP = lazy(() => import("@food/pages/restaurant/auth/OTP"))
 const Signup = lazy(() => import("@food/pages/restaurant/auth/Signup"))
 const ForgotPassword = lazy(() => import("@food/pages/restaurant/auth/ForgotPassword"))
 const VerificationPending = lazy(() => import("@food/pages/restaurant/auth/VerificationPending"))
+const CMSHelpSupportPage = lazy(() => import("@food/pages/restaurant/CMSHelpSupportPage"))
 
 export default function RestaurantRouter() {
   return (
     <div className="restaurant-theme">
-      <Suspense fallback={<Loader />}>
+      <Suspense fallback={null}>
         <Routes>
         {/* Auth Routes */}
         <Route path="welcome" element={<AuthRedirect module="restaurant"><Welcome /></AuthRedirect>} />
@@ -110,6 +111,7 @@ export default function RestaurantRouter() {
         <Route path="privacy" element={<PrivacyPolicyPage />} />
         <Route path="terms" element={<TermsAndConditionsPage />} />
         <Route path="help-centre/support" element={<RestaurantSupport />} />
+        <Route path="help-content" element={<CMSHelpSupportPage />} />
         </Routes>
       </Suspense>
     </div>

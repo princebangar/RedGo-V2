@@ -13,6 +13,12 @@ export default function PrivacyPolicy() {
     title: "Privacy Policy",
     content: "",
   });
+  const [initialData, setInitialData] = useState({
+    title: "Privacy Policy",
+    content: "",
+  });
+
+  const hasChanges = JSON.stringify(privacyData) !== JSON.stringify(initialData);
 
   useEffect(() => {
     fetchPrivacyData();
@@ -27,22 +33,28 @@ export default function PrivacyPolicy() {
       if (response.data.success && response.data.data) {
         const content = response.data.data.content || "";
         const textContent = legalHtmlToPlainText(content);
-        setPrivacyData({
+        const fetchedData = {
           title: response.data.data.title || `Privacy Policy - ${activeRole.charAt(0).toUpperCase() + activeRole.slice(1)}`,
           content: textContent,
-        });
+        };
+        setPrivacyData(fetchedData);
+        setInitialData(fetchedData);
       } else {
-        setPrivacyData({
+        const defaultData = {
           title: `Privacy Policy - ${activeRole.charAt(0).toUpperCase() + activeRole.slice(1)}`,
           content: "",
-        });
+        };
+        setPrivacyData(defaultData);
+        setInitialData(defaultData);
       }
     } catch (error) {
       console.error("Error fetching privacy data:", error);
-      setPrivacyData({
+      const errorData = {
         title: `Privacy Policy - ${activeRole.charAt(0).toUpperCase() + activeRole.slice(1)}`,
         content: "",
-      });
+      };
+      setPrivacyData(errorData);
+      setInitialData(errorData);
     } finally {
       setLoading(false);
     }
@@ -65,10 +77,12 @@ export default function PrivacyPolicy() {
         toast.success(`${activeRole.charAt(0).toUpperCase() + activeRole.slice(1)} privacy policy updated successfully`);
         const content = response.data.data.content || "";
         const textContent = legalHtmlToPlainText(content);
-        setPrivacyData({
+        const savedData = {
           ...response.data.data,
           content: textContent,
-        });
+        };
+        setPrivacyData(savedData);
+        setInitialData(savedData);
       }
     } catch (error) {
       console.error("Error saving privacy policy:", error);
@@ -111,7 +125,7 @@ export default function PrivacyPolicy() {
             <div className="flex items-center gap-2">
               <span className="w-2 h-2 rounded-full bg-orange-500 animate-pulse"></span>
               <span className="text-sm font-medium text-slate-700">
-                Editing {getRoleLabel(activeRole)} Portal Privacy
+                {viewMode === "preview" ? "Previewing" : "Editing"} {getRoleLabel(activeRole)} Portal Privacy
               </span>
             </div>
 
@@ -139,23 +153,25 @@ export default function PrivacyPolicy() {
 
           <div className="p-6">
             {loading ? (
-              <div className="min-h-[500px] flex flex-col items-center justify-center space-y-4">
+              <div className="min-h-[150px] flex flex-col items-center justify-center space-y-4">
                 <div className="w-10 h-10 border-4 border-orange-500/30 border-t-orange-500 rounded-full animate-spin"></div>
                 <p className="text-sm text-slate-500 font-medium italic">Synchronizing content...</p>
               </div>
             ) : (
               <>
-                <div className="mb-4">
-                  <label className="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">
-                    Page Title
-                  </label>
-                  <input
-                    type="text"
-                    value={privacyData.title}
-                    onChange={(e) => setPrivacyData((prev) => ({ ...prev, title: e.target.value }))}
-                    className="w-full px-4 py-2 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500/20 focus:border-orange-500 text-slate-700 font-medium"
-                  />
-                </div>
+                {viewMode === "edit" && (
+                  <div className="mb-4">
+                    <label className="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">
+                      Page Title
+                    </label>
+                    <input
+                      type="text"
+                      value={privacyData.title}
+                      onChange={(e) => setPrivacyData((prev) => ({ ...prev, title: e.target.value }))}
+                      className="w-full px-4 py-2 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500/20 focus:border-orange-500 text-slate-700 font-medium"
+                    />
+                  </div>
+                )}
 
                 {viewMode === "edit" ? (
                   <div className="relative group">
@@ -163,11 +179,11 @@ export default function PrivacyPolicy() {
                       value={privacyData.content}
                       onChange={(e) => setPrivacyData((prev) => ({ ...prev, content: e.target.value }))}
                       placeholder={`Enter privacy policy for ${activeRole} here...`}
-                      className="min-h-[500px] w-full text-sm text-slate-700 leading-relaxed resize-none border-slate-200 group-focus-within:border-orange-500 transition-colors bg-slate-50/30"
+                      className="min-h-[150px] w-full text-sm text-slate-700 leading-relaxed resize-y border-slate-200 group-focus-within:border-orange-500 transition-colors bg-slate-50/30"
                     />
                   </div>
                 ) : (
-                  <div className="min-h-[500px] w-full bg-white">
+                  <div className="min-h-[150px] w-full bg-white">
                     <div
                       className="prose prose-orange max-w-none prose-headings:text-slate-900 prose-headings:font-bold prose-p:text-slate-600 prose-p:leading-7 prose-strong:text-slate-900 prose-ul:text-slate-600 prose-li:my-2 bg-slate-50/30 rounded-xl border border-slate-100 p-8"
                       dangerouslySetInnerHTML={{ __html: plainTextToLegalHtml(privacyData.content) }}
@@ -179,6 +195,7 @@ export default function PrivacyPolicy() {
           </div>
         </div>
 
+        {viewMode === "edit" && (
         <div className="flex items-center justify-between mt-8 p-6 bg-white border border-slate-200 rounded-2xl shadow-sm">
           <div className="text-sm text-slate-500">
             <span className="font-semibold text-slate-700">Tip:</span> Your changes are only published once you hit save.
@@ -186,12 +203,13 @@ export default function PrivacyPolicy() {
           <button
             type="button"
             onClick={handleSubmit}
-            disabled={saving || loading}
-            className="flex items-center gap-2 px-8 py-3 bg-orange-500 text-white rounded-xl hover:bg-orange-600 transition-all duration-200 font-bold shadow-lg shadow-orange-500/25 disabled:opacity-50 disabled:cursor-not-allowed group"
+            disabled={saving || loading || !hasChanges}
+            className="flex items-center gap-2 px-8 py-3 bg-orange-500 text-white rounded-xl hover:bg-orange-600 transition-all duration-200 font-bold shadow-lg shadow-orange-500/25 disabled:opacity-50 disabled:cursor-not-allowed disabled:shadow-none group"
           >
             {saving ? "Saving..." : "Save Changes"}
           </button>
         </div>
+        )}
       </div>
     </div>
   );

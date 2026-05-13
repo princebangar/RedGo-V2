@@ -74,6 +74,7 @@ const ReportSafetyEmergency = lazy(() => import("@food/pages/user/profile/Report
 const Accessibility = lazy(() => import("@food/pages/user/profile/Accessibility"))
 const Logout = lazy(() => import("@food/pages/user/profile/Logout"))
 const ReferEarn = lazy(() => import("@food/pages/user/profile/ReferEarn"))
+const UserCMSHelpSupportPage = lazy(() => import("@food/pages/user/profile/UserCMSHelpSupportPage"))
 
 // Auth
 const SignIn = lazy(() => import("@food/pages/user/auth/SignIn"))
@@ -95,7 +96,7 @@ const SubmitComplaint = lazy(() => import("@food/pages/user/complaints/SubmitCom
 
 export default function UserRouter() {
   return (
-    <Suspense fallback={<Loader />}>
+    <Suspense fallback={null}>
       <Routes>
         <Route element={<UserLayout />}>
           {/* ========================================== */}
@@ -109,6 +110,7 @@ export default function UserRouter() {
           <Route path="profile/shipping" element={<Shipping />} />
           <Route path="profile/cancellation" element={<Cancellation />} />
           <Route path="profile/support" element={<Support />} />
+          <Route path="profile/support-info" element={<UserCMSHelpSupportPage />} />
           
           {/* Help Center */}
           <Route path="help" element={<Help />} />

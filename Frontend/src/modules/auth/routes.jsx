@@ -8,7 +8,7 @@ const Portal = lazy(() => import("./pages/Portal"))
 
 export default function AuthRoutes() {
   return (
-    <Suspense fallback={<Loader />}>
+    <Suspense fallback={null}>
       <Routes>
         <Route path="login" element={<AuthRedirect module="user"><Login /></AuthRedirect>} />
         <Route path="portal" element={<Navigate to="/" replace />} />

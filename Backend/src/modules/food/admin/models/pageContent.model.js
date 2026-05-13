@@ -15,7 +15,10 @@ const featureSchema = new mongoose.Schema(
 const legalPageSchema = new mongoose.Schema(
     {
         title: { type: String, default: '' },
-        content: { type: String, default: '' } // stored as HTML string
+        content: { type: String, default: '' }, // stored as HTML string
+        email: { type: String, default: '' },
+        mobile: { type: String, default: '' },
+        faq: { type: String, default: '' }
     },
     { _id: false }
 );
@@ -42,7 +45,8 @@ const pageContentSchema = new mongoose.Schema(
             enum: [
                 'terms', 'terms_user', 'terms_restaurant', 'terms_delivery',
                 'privacy', 'privacy_user', 'privacy_restaurant', 'privacy_delivery',
-                'refund', 'shipping', 'cancellation', 'about'
+                'refund', 'shipping', 'cancellation', 'about',
+                'support_user', 'support_restaurant', 'support_delivery'
             ]
         },
         legal: { type: legalPageSchema, default: undefined },

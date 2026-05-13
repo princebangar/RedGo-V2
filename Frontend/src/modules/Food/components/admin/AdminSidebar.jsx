@@ -47,6 +47,7 @@ import {
   PiggyBank,
   Lock,
   UserX,
+  Headset,
 } from "lucide-react"
 import { cn } from "@food/utils/utils"
 import { Input } from "@food/components/ui/input"
@@ -102,6 +103,7 @@ const iconMap = {
   Lock,
   X,
   UserX,
+  Headset,
 }
 
 export default function AdminSidebar({ isOpen = false, onClose, onCollapseChange }) {
