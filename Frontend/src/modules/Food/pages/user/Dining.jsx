@@ -582,14 +582,14 @@ export default function Dining() {
               <Link
                 to="/food/user/wallet"
                 state={{ from: '/food/user' }}
-                className="h-9 w-9 flex items-center justify-center rounded-full bg-white/10 border-[1.5px] border-white shadow-none active:scale-90 transition-all ring-1 ring-red-500/80 transform-gpu translate-z-0"
+                className="h-8 w-8 flex items-center justify-center rounded-full bg-white/10 border border-white shadow-none active:scale-90 transition-all transform-gpu translate-z-0"
               >
-                <Wallet className="h-5 w-5 text-white antialiased" strokeWidth={2} />
+                <Wallet className="h-4.5 w-4.5 text-white antialiased" strokeWidth={2} />
               </Link>
               
               <Link 
                 to="/food/user/profile" 
-                className="h-10 w-10 relative flex items-center justify-center rounded-full border-[1.5px] border-white shadow-none cursor-pointer active:scale-95 transition-all overflow-hidden ring-1 ring-red-500/80 transform-gpu translate-z-0"
+                className="h-9 w-9 relative flex items-center justify-center rounded-full border border-white shadow-none cursor-pointer active:scale-95 transition-all overflow-hidden transform-gpu translate-z-0"
               >
                 <Avatar className="h-full w-full bg-[#FFF5E6]">
                   {userProfile?.profileImage && (

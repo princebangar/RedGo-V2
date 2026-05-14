@@ -23,9 +23,14 @@ export const updateCurrentUserProfile = async (userId, body) => {
     if (body.phone !== undefined) {
         const nextPhone = String(body.phone || '').trim();
         const currentPhone = String(user.phone || '').trim();
-        // OTP login is phone-based in this project; don't allow changing it from profile edit.
+        
         if (nextPhone && nextPhone !== currentPhone) {
-            throw new ValidationError('Phone number cannot be changed');
+            // Check if phone is already taken by another user
+            const existingUser = await FoodUser.findOne({ phone: nextPhone, _id: { $ne: userId } });
+            if (existingUser) {
+                throw new ValidationError('Phone number is already in use by another account');
+            }
+            user.phone = nextPhone;
         }
     }
 

@@ -1025,7 +1025,7 @@ export default function PageNavbar({
 
   return (
     <nav
-      className={`relative ${zIndexClass} w-full px-3 sm:px-4 md:px-6 lg:px-8 py-1 sm:py-1.5 transition-all duration-300 ${isReddish ? "bg-gradient-to-r from-white via-[#f8fafc] to-white shadow-sm border-b border-gray-100" : (variant === "transparent" ? "bg-transparent shadow-none" : "bg-transparent shadow-none")} border-0`}
+      className={`relative ${zIndexClass} w-full px-3 sm:px-4 md:px-6 lg:px-8 py-0.5 sm:py-1 transition-all duration-300 ${isReddish ? "bg-gradient-to-r from-white via-[#f8fafc] to-white shadow-sm border-b border-gray-100" : (variant === "transparent" ? "bg-transparent shadow-none" : "bg-transparent shadow-none")} border-0`}
       onClick={onNavClick}
     >
       <div className="flex items-center justify-between max-w-7xl mx-auto">
@@ -1094,11 +1094,11 @@ export default function PageNavbar({
               <Button
                 variant="ghost"
                 size="icon"
-                className="h-9 w-9 sm:h-10 sm:w-10 rounded-full p-0 hover:opacity-80 transition-opacity"
+                className="h-8 w-8 sm:h-9 sm:w-9 rounded-full p-0 hover:opacity-80 transition-opacity"
                 title="Wallet"
               >
                 <div className={`h-full w-full rounded-full ${(isReddish || isTransparent) ? (isTransparent ? "bg-gradient-to-br from-[#FF4D4D] via-[#DC2626] to-[#991B1B] shadow-sm" : "bg-white shadow-sm") : "bg-white/10"} flex items-center justify-center border ${(isReddish || isTransparent) ? (isTransparent ? "border-white/10" : "border-gray-200/50") : "border-white/20"}`}>
-                  <Wallet className={`h-5 w-5 sm:h-6 sm:w-6 ${isTransparent ? "text-white" : finalIconColor}`} strokeWidth={2.5} />
+                  <Wallet className={`h-4.5 w-4.5 sm:h-5 sm:w-5 ${isTransparent ? "text-white" : finalIconColor}`} strokeWidth={2.5} />
                 </div>
               </Button>
             </Link>
@@ -1126,7 +1126,7 @@ export default function PageNavbar({
 
           {showProfile && (
             <Link to="/food/user/profile" state={{ from: routerLocation.pathname }}>
-              <Avatar className={`h-10 w-10 rounded-full border border-white transition-all active:scale-95 shadow-sm overflow-hidden cursor-pointer ring-1 ${routerLocation.pathname.includes('/under-250') ? 'ring-blue-500/60 shadow-[0_0_10px_rgba(59,130,246,0.3)]' : 'ring-red-500/50'}`}>
+              <Avatar className="h-9 w-9 rounded-full border border-white transition-all active:scale-95 shadow-none overflow-hidden cursor-pointer transform-gpu translate-z-0">
                 <AvatarImage 
                   src={userProfile?.profileImage?.url || userProfile?.profileImage} 
                   alt="Profile" 

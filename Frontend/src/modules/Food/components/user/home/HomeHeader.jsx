@@ -155,19 +155,18 @@ export default function HomeHeader({
           <div className="flex flex-col items-end gap-3 shrink-0">
             {/* Row 1: Wallet and Profile */}
             <div className="flex items-center gap-3">
-              {/* Wallet Link - Icon Only */}
               <Link
                 to="/food/user/wallet"
                 state={{ from: '/food/user' }}
-                className="h-10 w-10 flex items-center justify-center rounded-full bg-white/10 border-[1.5px] border-white shadow-none active:scale-90 transition-all ring-1 ring-red-500/80"
+                className="flex items-center justify-center p-1.5 active:scale-90 transition-all transform-gpu translate-z-0"
               >
-                <Wallet className="h-5 w-5 text-white" />
+                <Wallet className="h-[26px] w-[26px] text-white antialiased" strokeWidth={2.2} />
               </Link>
 
               {/* Profile Photo - Increased size for better clarity */}
               <Link
                 to="/food/user/profile"
-                className="h-10 w-10 relative flex items-center justify-center rounded-full border-[1.5px] border-white shadow-none cursor-pointer active:scale-95 transition-all overflow-hidden ring-1 ring-red-500/80"
+                className="h-9 w-9 relative flex items-center justify-center rounded-full border-[1.5px] border-white shadow-none cursor-pointer active:scale-95 transition-all overflow-hidden transform-gpu translate-z-0"
               >
                 <Avatar className="h-full w-full bg-[#FFF5E6]">
                   {userProfile?.profileImage && (
