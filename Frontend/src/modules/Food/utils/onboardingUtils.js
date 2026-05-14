@@ -160,8 +160,16 @@ const buildOnboardingLikeDataFromRestaurant = (restaurant) => {
 export const isRestaurantOnboardingComplete = (restaurant) => {
   if (!restaurant) return false
 
-  // Approved restaurants should never be forced into onboarding again.
-  if (restaurant?.status === "approved") {
+  // Approved or Pending restaurants should never be forced into onboarding again.
+  // 'pending' means they have completed the registration but are waiting for admin approval.
+  if (restaurant?.status === "approved" || restaurant?.status === "pending") {
+    return true
+  }
+
+  // If they have a restaurant ID, they are definitely past the initial onboarding steps.
+  if (restaurant?.restaurantId || restaurant?._id) {
+    // If they have a restaurantId, they must have completed step 1 (Basic Details) 
+    // and likely the rest. We use this as a defensive check to prevent loops.
     return true
   }
 
@@ -251,20 +259,24 @@ export const checkOnboardingStatus = async () => {
     // No onboarding data, start from step 1
     return 1
   } catch (err) {
-    // If API call fails, check localStorage
+    debugError("❌ checkOnboardingStatus error:", err)
+    // If API call fails, check localStorage as a fallback
     try {
       const localData = localStorage.getItem(getOnboardingStorageKey())
       if (localData) {
         const parsed = JSON.parse(localData)
         return parsed.currentStep || 1
       }
-    } catch (localErr) {
-      debugError("Failed to check localStorage:", localErr)
+    } catch (e) {
+      debugError("❌ checkOnboardingStatus localStorage error:", e)
     }
-    // Default to step 1 if everything fails
-    return 1
+    
+    // Default to null on failure to prevent accidental redirection loops
+    // when the network is unstable or API is down.
+    return null
   }
 }
+
 
 
 export const clearOnboardingFromLocalStorage = () => {

@@ -340,6 +340,7 @@ function TimePickerWheel({
 
 export default function ExploreMore() {
   const navigate = useNavigate()
+  const lenisRef = useRef(null)
   const [profileOpen, setProfileOpen] = useState(false)
   const [searchOpen, setSearchOpen] = useState(false)
   const [searchQuery, setSearchQuery] = useState("")
@@ -381,16 +382,34 @@ export default function ExploreMore() {
 
   // Lock scroll when any popup is open
   useEffect(() => {
-    const isPopupOpen = logoutConfirmOpen || showBalanceWarning || deleteConfirmOpen || takeawayModalOpen;
+    const isPopupOpen = 
+      profileOpen || 
+      scheduleOffOpen || 
+      dateTimePickerOpen || 
+      successPopupOpen || 
+      existingScheduleOpen || 
+      searchOpen || 
+      logoutConfirmOpen || 
+      showBalanceWarning || 
+      deleteConfirmOpen || 
+      takeawayModalOpen;
+
     if (isPopupOpen) {
       document.body.style.overflow = 'hidden';
+      lenisRef.current?.stop();
     } else {
       document.body.style.overflow = 'unset';
+      lenisRef.current?.start();
     }
     return () => {
       document.body.style.overflow = 'unset';
+      lenisRef.current?.start();
     };
-  }, [logoutConfirmOpen, showBalanceWarning, deleteConfirmOpen, takeawayModalOpen]);
+  }, [
+    profileOpen, scheduleOffOpen, dateTimePickerOpen, successPopupOpen, 
+    existingScheduleOpen, searchOpen, logoutConfirmOpen, 
+    showBalanceWarning, deleteConfirmOpen, takeawayModalOpen
+  ]);
 
   // Fetch restaurant data on mount
   useEffect(() => {
@@ -727,17 +746,6 @@ export default function ExploreMore() {
     setSuccessPopupOpen(true)
   }
 
-  // Prevent body scroll when popup is open
-  useEffect(() => {
-    if (profileOpen || scheduleOffOpen || dateTimePickerOpen || successPopupOpen || existingScheduleOpen || searchOpen) {
-      document.body.style.overflow = 'hidden'
-    } else {
-      document.body.style.overflow = 'unset'
-    }
-    return () => {
-      document.body.style.overflow = 'unset'
-    }
-  }, [profileOpen, scheduleOffOpen, dateTimePickerOpen, successPopupOpen, existingScheduleOpen, searchOpen])
 
   // Lenis smooth scrolling
   useEffect(() => {
@@ -746,6 +754,7 @@ export default function ExploreMore() {
       easing: (t) => Math.min(1, 1.001 - Math.pow(2, -10 * t)),
       smoothWheel: true,
     })
+    lenisRef.current = lenis
 
     function raf(time) {
       lenis.raf(time)
@@ -1257,21 +1266,21 @@ export default function ExploreMore() {
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
               transition={{ duration: 0.2 }}
-              className="fixed inset-0 bg-black/50 z-50"
+              className="fixed inset-0 bg-black/60 z-[100] backdrop-blur-[2px]"
               onClick={() => setProfileOpen(false)}
             />
 
-            {/* Popup Sheet */}
+            {/* Centered Modal */}
             <motion.div
-              initial={{ y: "100%" }}
-              animate={{ y: 0 }}
-              exit={{ y: "100%" }}
+              initial={{ opacity: 0, scale: 0.9, y: 20 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.9, y: 20 }}
               transition={{
                 type: "spring",
-                damping: 30,
+                damping: 25,
                 stiffness: 300
               }}
-              className="fixed bottom-0 left-0 right-0 bg-white rounded-t-[2.5rem] shadow-[0_-15px_50px_-12px_rgba(0,0,0,0.3)] z-50 max-h-[90vh] overflow-y-auto"
+              className="fixed inset-0 m-auto w-[92%] max-w-sm h-fit bg-white rounded-[2.5rem] shadow-[0_20px_60px_-12px_rgba(0,0,0,0.4)] z-[101] overflow-hidden"
               onClick={(e) => e.stopPropagation()}
             >
               {/* Header */}
@@ -1328,9 +1337,6 @@ export default function ExploreMore() {
                         {userData.email}
                       </p>
                     )}
-                    <p className="text-[10px] font-bold text-[#DC2626] uppercase tracking-widest mt-2 bg-[#DC2626]/5 w-fit px-2.5 py-1 rounded-full border border-[#DC2626]/10">
-                      {userData.role}
-                    </p>
                   </div>
                 </button>
               </div>
@@ -1349,46 +1355,6 @@ export default function ExploreMore() {
 
               </div>
 
-              {/* Footer Links */}
-              <div className="px-6 py-4 border-t border-gray-200">
-                <div className="flex items-center justify-center gap-2 text-sm text-gray-500">
-                  <a
-                    href="#"
-                    className="hover:text-gray-700 transition-colors border-b border-dotted border-gray-400"
-                    onClick={(e) => {
-                      e.preventDefault()
-                      // Navigate to terms of service
-                      debugLog("Terms of Service clicked")
-                    }}
-                  >
-                    Terms of Service
-                  </a>
-                  <span className="text-gray-400">|</span>
-                  <a
-                    href="#"
-                    className="hover:text-gray-700 transition-colors border-b border-dotted border-gray-400"
-                    onClick={(e) => {
-                      e.preventDefault()
-                      // Navigate to privacy policy
-                      debugLog("Privacy Policy clicked")
-                    }}
-                  >
-                    Privacy Policy
-                  </a>
-                  <span className="text-gray-400">|</span>
-                  <a
-                    href="#"
-                    className="hover:text-gray-700 transition-colors border-b border-dotted border-gray-400"
-                    onClick={(e) => {
-                      e.preventDefault()
-                      // Navigate to code of conduct
-                      debugLog("Code of Conduct clicked")
-                    }}
-                  >
-                    Code of Conduct
-                  </a>
-                </div>
-              </div>
             </motion.div>
           </>
         )}

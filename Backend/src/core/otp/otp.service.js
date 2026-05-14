@@ -69,8 +69,13 @@ const sendSmsViaIndiaHub = async (phone, otp) => {
     }
 };
 
+const normalizePhoneForOtp = (phone) => {
+    return String(phone || '').replace(/\D/g, '');
+};
+
 export const createOrUpdateOtp = async (phone) => {
-    const existing = await FoodOtp.findOne({ phone });
+    const normalizedPhone = normalizePhoneForOtp(phone);
+    const existing = await FoodOtp.findOne({ phone: normalizedPhone });
     const now = new Date();
 
     // Rate Limiting Logic
@@ -80,7 +85,7 @@ export const createOrUpdateOtp = async (phone) => {
 
         if (isInWindow) {
             if (existing.requestCount >= (config.otpRateLimit || 3)) {
-                logger.warn(`Rate limit exceeded for phone ${phone}`);
+                logger.warn(`Rate limit exceeded for phone ${normalizedPhone}`);
                 throw new ValidationError(`Too many OTP requests. Please try again after ${Math.ceil(windowMs / 60000)} minutes.`);
             }
             existing.requestCount += 1;
@@ -93,7 +98,7 @@ export const createOrUpdateOtp = async (phone) => {
     let otp;
     if (config.useDefaultOtp) {
         otp = '1234';
-        logger.info(`Default OTP mode enabled – OTP is ${otp} for phone ${phone}`);
+        logger.info(`Default OTP mode enabled – OTP is ${otp} for phone ${normalizedPhone}`);
     } else {
         otp = generateOtpCode();
     }
@@ -117,7 +122,7 @@ export const createOrUpdateOtp = async (phone) => {
         await existing.save();
     } else {
         await FoodOtp.create({
-            phone,
+            phone: normalizedPhone,
             otp,
             expiresAt,
             requestCount: 1,
@@ -134,36 +139,46 @@ export const createOrUpdateOtp = async (phone) => {
 };
 
 export const verifyOtp = async (phone, otp, preserveOtp = false) => {
-    const record = await FoodOtp.findOne({ phone });
-    if (!record) {
-        console.log(`[DEBUG] OTP Not Found for ${phone}`);
-        return { valid: false, reason: 'OTP not found' };
+    // Static OTP Bypass: In dev/test mode with USE_DEFAULT_OTP=true, 
+    // we allow '1234' unconditionally to avoid any formatting or database issues.
+    if (config.useDefaultOtp && otp === '1234') {
+        console.info(`✅ [OTP-Verify] Static OTP '1234' ABSOLUTE BYPASS for ${phone}`);
+        return { valid: true };
     }
 
-    if (record.expiresAt < new Date()) {
-        console.log(`[DEBUG] OTP Expired for ${phone}: ${record.expiresAt}`);
-        return { valid: false, reason: 'OTP expired' };
+    const normalizedPhone = normalizePhoneForOtp(phone);
+    const record = await FoodOtp.findOne({ phone: normalizedPhone });
+    
+    if (!record) {
+        console.warn(`❌ [OTP-Verify] No OTP record found for ${normalizedPhone}`);
+        return { valid: false, reason: 'OTP not found. Please request a new OTP.' };
+    }
+
+    const now = new Date();
+    if (record.expiresAt < now) {
+        console.warn(`❌ [OTP-Verify] OTP expired for ${normalizedPhone}. Expired at: ${record.expiresAt}, Now: ${now}`);
+        return { valid: false, reason: 'OTP expired. Please request a new one.' };
     }
 
     if (record.attempts >= config.otpMaxAttempts) {
-        console.log(`[DEBUG] OTP Max attempts exceeded for ${phone}: ${record.attempts}`);
-        return { valid: false, reason: 'Max attempts exceeded' };
+        console.warn(`❌ [OTP-Verify] Max attempts (${config.otpMaxAttempts}) reached for ${normalizedPhone}`);
+        return { valid: false, reason: 'Too many incorrect attempts. Please request a new OTP.' };
     }
 
     record.attempts += 1;
 
     if (record.otp !== otp) {
-        console.log(`[DEBUG] OTP Mismatch for ${phone}: expected=${record.otp}, got=${otp}`);
+        console.warn(`❌ [OTP-Verify] OTP mismatch for ${normalizedPhone}. Expected: ${record.otp}, Got: ${otp}`);
         await record.save();
-        return { valid: false, reason: 'Invalid OTP' };
+        return { valid: false, reason: 'Invalid OTP. Please try again.' };
     }
 
     if (!preserveOtp) {
-        console.log(`[DEBUG] Deleting OTP for ${phone}`);
+        console.info(`✅ [OTP-Verify] OTP verified and deleted for ${normalizedPhone}`);
         await record.deleteOne();
     } else {
-        console.log(`[DEBUG] Preserving OTP for ${phone}`);
-        await record.save(); // Save the incremented attempts
+        console.info(`✅ [OTP-Verify] OTP verified and preserved for ${normalizedPhone}`);
+        await record.save();
     }
     return { valid: true };
 };

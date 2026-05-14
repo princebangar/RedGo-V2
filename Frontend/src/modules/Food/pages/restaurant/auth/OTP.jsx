@@ -161,14 +161,21 @@ export default function RestaurantOTP() {
         }
       }
     } catch (err) {
-      const message = err?.response?.data?.message || "Invalid OTP. Please try again."
+      const message = err?.response?.data?.error || err?.response?.data?.message || "Invalid OTP. Please try again."
       
-      if (/pending approval/i.test(message)) {
+      if (/pending approval|rejected/i.test(message)) {
         const pendingPhone = authData?.phone || authData?.email || contactInfo
         setRestaurantPendingPhone(pendingPhone)
+        
+        // If it's a rejection, we might want a different screen, 
+        // but for now, we'll show the pending/rejection info on the same status page.
         navigate("/food/restaurant/pending-verification", {
           replace: true,
-          state: { phone: pendingPhone || "" },
+          state: { 
+            phone: pendingPhone || "",
+            isRejected: /rejected/i.test(message),
+            message: message 
+          },
         })
         return
       }

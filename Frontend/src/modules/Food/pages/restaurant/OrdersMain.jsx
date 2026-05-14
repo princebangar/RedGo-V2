@@ -1272,7 +1272,16 @@ export default function OrdersMain() {
         const response = await restaurantAPI.getCurrentRestaurant();
         const restaurant =
           response?.data?.data?.restaurant || response?.data?.restaurant;
+        
         if (restaurant) {
+          // Log restaurant status for debugging redirection issues
+          console.log("🏪 [OrdersMain] Restaurant Status Check:", {
+            id: restaurant._id || restaurant.restaurantId,
+            status: restaurant.status,
+            isActive: restaurant.isActive,
+            hasOnboarding: !!restaurant.onboarding
+          });
+
           setRestaurantStatus({
             isActive: restaurant.isActive,
             rejectionReason: restaurant.rejectionReason || null,
@@ -1281,15 +1290,23 @@ export default function OrdersMain() {
           });
 
           // Check if onboarding is incomplete and redirect if needed
+          // isRestaurantOnboardingComplete now handles 'pending' and existing restaurant IDs
           if (!isRestaurantOnboardingComplete(restaurant)) {
-            // Onboarding is incomplete, redirect to onboarding page
+            console.warn("⚠️ [OrdersMain] Onboarding detected as INCOMPLETE. Checking next step...");
+            
             const incompleteStep = await checkOnboardingStatus();
+            
             if (incompleteStep) {
+              console.log(`🚀 [OrdersMain] Redirecting to onboarding step ${incompleteStep}`);
               navigate(`/restaurant/onboarding?step=${incompleteStep}`, {
                 replace: true,
               });
               return;
+            } else {
+              console.log("✅ [OrdersMain] No incomplete step found, staying on dashboard.");
             }
+          } else {
+            console.log("✅ [OrdersMain] Onboarding is COMPLETE. No redirect needed.");
           }
         }
       } catch (error) {

@@ -418,6 +418,7 @@ export const verifyRestaurantOtpAndLogin = async (phone, otp, fcmToken, platform
   const isDeleted = existingRestaurant && existingRestaurant.status === "deleted";
   const preserveOtp = isDeleted && !confirmAction;
 
+  console.log(`[DEBUG] Restaurant OTP Login Attempt: phone=${phone}, otp=${otp}, confirmAction=${confirmAction}`);
   const result = await verifyOtp(phone, otp, preserveOtp);
   if (!result.valid) {
     throw new AuthError(result.reason || "OTP verification failed");
@@ -497,11 +498,12 @@ export const verifyRestaurantOtpAndLogin = async (phone, otp, fcmToken, platform
 
   // If restaurant approval status is used, only allow login for approved restaurants.
   if (restaurant.status && restaurant.status !== "approved") {
-    throw new AuthError(
-      restaurant.status === "pending"
-        ? "Your restaurant registration is pending approval."
-        : "Your restaurant registration has been rejected. Please contact support.",
-    );
+    const message = restaurant.status === "pending"
+      ? "Your restaurant registration is pending approval."
+      : "Your restaurant registration has been rejected. Please contact support.";
+    
+    console.warn(`⚠️ [Auth-Restaurant] Login blocked for ${phone}: status=${restaurant.status}, message=${message}`);
+    throw new AuthError(message);
   }
 
   const payload = { userId: restaurant._id.toString(), role: ROLES.RESTAURANT };
