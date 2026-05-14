@@ -96,7 +96,7 @@ const SubmitComplaint = lazy(() => import("@food/pages/user/complaints/SubmitCom
 
 export default function UserRouter() {
   return (
-    <Suspense fallback={null}>
+    <Suspense fallback={<div className="flex-1 min-h-screen bg-white dark:bg-[#0a0a0a]" />}>
       <Routes>
         <Route element={<UserLayout />}>
           {/* ========================================== */}

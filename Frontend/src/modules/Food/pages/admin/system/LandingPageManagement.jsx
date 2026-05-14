@@ -952,7 +952,7 @@ export default function LandingPageManagement() {
 
       const formData = new FormData()
       files.forEach((file) => {
-        formData.append('images', file)
+        formData.append('files', file)
       })
 
       const response = await api.post('/food/hero-banners/dining/multiple', formData, getAuthConfig({

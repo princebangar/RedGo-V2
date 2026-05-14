@@ -15,6 +15,7 @@ import {
     uploadRestaurantCoverImagesController,
     uploadRestaurantMenuImagesController,
     getRestaurantComplaintsController,
+    listRestaurantsUnder250Controller,
     createDiningRequestController,
     getPendingDiningRequestController
 } from '../controllers/restaurant.controller.js';
@@ -81,6 +82,7 @@ router.get('/restaurants', cacheResponse(300, 'restaurants'), listApprovedRestau
 router.get('/restaurants/:id', cacheResponse(600, 'restaurant_detail'), getApprovedRestaurantController);
 router.get('/restaurants/:id/menu', cacheResponse(600, 'restaurant_menu'), getPublicRestaurantMenuController);
 router.get('/restaurants/:id/outlet-timings', cacheResponse(600, 'restaurant_timings'), getOutletTimingsByRestaurantIdController);
+router.get('/under-250', cacheResponse(300, 'under_250'), listRestaurantsUnder250Controller);
 router.get('/offers', cacheResponse(300, 'offers'), listPublicOffersController);
 // Public: categories list (zone-aware; returns zone categories + global)
 router.get('/categories/public', cacheResponse(600, 'categories'), listCategoriesController);

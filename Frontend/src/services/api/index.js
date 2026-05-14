@@ -1375,6 +1375,9 @@ export const restaurantAPI = {
   /** Public: list approved restaurants for user app */
   getRestaurants: (params = {}, config = {}) =>
     getPublicRestaurantsOnce(params, config),
+  /** Public: list restaurants with dishes under ₹250 */
+  getRestaurantsUnder250: (params = {}, config = {}) =>
+    getPublicRestaurantsUnder250Once(params, config),
   /** Public: get single approved restaurant by id or slug */
   getRestaurantById: (id, config = {}) =>
     apiClient.get(`/food/restaurant/restaurants/${String(id)}`, { ...config }),
@@ -1462,6 +1465,7 @@ function createInFlightCache({ ttlMs }) {
 // Public user-app endpoints can be called by multiple components/effects on refresh (and React StrictMode in dev).
 // A small in-flight + short TTL cache collapses duplicate requests without changing functionality.
 const publicRestaurantsCache = createInFlightCache({ ttlMs: 3000 });
+const publicRestaurantsUnder250Cache = createInFlightCache({ ttlMs: 3000 });
 const publicRestaurantMenuCache = createInFlightCache({ ttlMs: 3000 });
 const publicRestaurantOutletTimingsCache = createInFlightCache({ ttlMs: 3000 });
 const publicGenericGetCache = createInFlightCache({ ttlMs: 3000 });
@@ -1488,15 +1492,36 @@ export const publicGetOnce = (url, config = {}) => {
   );
 };
 
+const getPublicRestaurantsUnder250Once = (params = {}, config = {}) => {
+  const { noCache, ...axiosConfig } = config || {};
+  if (noCache) {
+    return apiClient.get("/food/restaurant/under-250", {
+      params: params ?? {},
+      ...axiosConfig,
+    });
+  }
+  const keyParams = params ?? {};
+  if (keyParams && typeof keyParams === "object") {
+    delete keyParams._ts;
+  }
+  const key = `under-250:${stableStringify(keyParams)}`;
+  return publicRestaurantsUnder250Cache.getOrCreate(key, () =>
+    apiClient.get("/food/restaurant/under-250", {
+      params: params ?? {},
+      ...axiosConfig,
+    }),
+  );
+};
+
 const getPublicRestaurantsOnce = (params = {}, config = {}) => {
   const { noCache, ...axiosConfig } = config || {};
   if (noCache) {
     return apiClient.get("/food/restaurant/restaurants", {
-      params: { limit: 1000, ...params },
+      params: { limit: 40, ...params },
       ...axiosConfig,
     });
   }
-  const keyParams = { limit: 1000, ...params };
+  const keyParams = { limit: 40, ...params };
   // `_ts` is an explicit cache-buster in many call sites; ignore it for dedupe purposes.
   if (keyParams && typeof keyParams === "object") {
     delete keyParams._ts;
@@ -1504,7 +1529,7 @@ const getPublicRestaurantsOnce = (params = {}, config = {}) => {
   const key = `restaurants:${stableStringify(keyParams)}`;
   return publicRestaurantsCache.getOrCreate(key, () =>
     apiClient.get("/food/restaurant/restaurants", {
-      params: { limit: 1000, ...params },
+      params: { limit: 40, ...params },
       ...axiosConfig,
     }),
   );

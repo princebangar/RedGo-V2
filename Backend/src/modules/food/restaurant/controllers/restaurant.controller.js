@@ -12,7 +12,8 @@ import {
     uploadRestaurantCoverImages,
     uploadRestaurantMenuImages,
     listPublicOffers,
-    getRestaurantComplaints
+    getRestaurantComplaints,
+    listRestaurantsUnderPriceLimit
 } from '../services/restaurant.service.js';
 import {
     createDiningRequest,
@@ -155,6 +156,15 @@ export const getRestaurantComplaintsController = async (req, res, next) => {
         const restaurantId = req.user?.userId;
         const data = await getRestaurantComplaints(restaurantId, req.query || {});
         return sendResponse(res, 200, 'Complaints fetched successfully', data);
+    } catch (error) {
+        next(error);
+    }
+};
+
+export const listRestaurantsUnder250Controller = async (req, res, next) => {
+    try {
+        const data = await listRestaurantsUnderPriceLimit(req.query || {}, 250);
+        return sendResponse(res, 200, 'Under 250 restaurants fetched successfully', data);
     } catch (error) {
         next(error);
     }

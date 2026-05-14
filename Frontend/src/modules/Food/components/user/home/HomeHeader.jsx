@@ -2,8 +2,11 @@ import { useState, useEffect, useMemo } from 'react';
 import { Link } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { MapPin, ChevronDown, Search, Mic, CheckCircle2, Tag, Gift, AlertCircle, Clock, X, IndianRupee, User, Wallet, Utensils, Soup } from 'lucide-react';
+import { Avatar, AvatarFallback, AvatarImage } from "@food/components/ui/avatar";
 import { useProfile } from "@food/context/ProfileContext";
 import useNotificationInbox from "@food/hooks/useNotificationInbox";
+import VoiceSearchOverlay from "@food/components/user/VoiceSearchOverlay";
+import { useNavigate } from 'react-router-dom';
 
 // Images for banner - exactly as in FestBanner.jsx
 const bannerImages = {
@@ -41,12 +44,15 @@ export default function HomeHeader({
   vegMode = false,
   handleVegModeChange,
   vegModeToggleRef,
+  handleVoiceSearchClick,
   // Banner Props integrated
   videoUrl = "",
   hideFoodImages = false,
   showBanner = false
 }) {
+  const navigate = useNavigate();
   const { userProfile } = useProfile();
+  const [isVoiceOverlayOpen, setIsVoiceOverlayOpen] = useState(false);
 
   // FestBanner Logic
   const [imgIndex, setImgIndex] = useState(0);
@@ -78,10 +84,6 @@ export default function HomeHeader({
 
   return (
     <div className="relative pt-2 pb-4 px-4 transition-all duration-700 overflow-hidden bg-transparent shadow-none">
-      {/* Subtle Artistic Glows - Adds depth without being 'boring' */}
-      <div className="absolute top-[-20%] right-[-10%] w-48 h-48 bg-[#DC2626]/5 blur-[80px] rounded-full pointer-events-none" />
-      <div className="absolute bottom-[-20%] left-[-10%] w-48 h-48 bg-[#48c479]/5 blur-[80px] rounded-full pointer-events-none" />
-
       {/* Main Header Content */}
       <div className="relative z-10 space-y-2.5">
         <div className="flex items-start gap-3">
@@ -157,21 +159,28 @@ export default function HomeHeader({
               <Link
                 to="/food/user/wallet"
                 state={{ from: '/food/user' }}
-                className="h-9 w-9 flex items-center justify-center rounded-full bg-white/10 border border-white/20 shadow-xl active:scale-90 transition-all"
+                className="h-10 w-10 flex items-center justify-center rounded-full bg-white/10 border-[1.5px] border-white shadow-none active:scale-90 transition-all ring-1 ring-red-500/80"
               >
-                <div className="bg-white/10 p-1.5 rounded-full">
-                  <Wallet className="h-4.5 w-4.5 text-white" />
-                </div>
+                <Wallet className="h-5 w-5 text-white" />
               </Link>
 
-              {/* Profile Initials - Compact circle, Large text inside */}
+              {/* Profile Photo - Increased size for better clarity */}
               <Link
                 to="/food/user/profile"
-                className="h-9 w-9 relative flex items-center justify-center rounded-full bg-[#FFF5E6] border border-white/60 shadow-2xl cursor-pointer active:scale-90 transition-all overflow-hidden"
+                className="h-10 w-10 relative flex items-center justify-center rounded-full border-[1.5px] border-white shadow-none cursor-pointer active:scale-95 transition-all overflow-hidden ring-1 ring-red-500/80"
               >
-                <span className="text-[22px] font-black text-[#DC2626] leading-none tracking-tighter antialiased">
-                  {initials || 'U'}
-                </span>
+                <Avatar className="h-full w-full bg-[#FFF5E6]">
+                  {userProfile?.profileImage && (
+                    <AvatarImage 
+                      src={userProfile.profileImage} 
+                      alt="Profile" 
+                      className="object-cover"
+                    />
+                  )}
+                  <AvatarFallback className="bg-[#FFF5E6] text-[20px] font-black text-[#DC2626] leading-none tracking-tighter antialiased">
+                    {initials || 'U'}
+                  </AvatarFallback>
+                </Avatar>
               </Link>
             </div>
           </div>
@@ -205,11 +214,21 @@ export default function HomeHeader({
                 className="h-5 w-5 text-gray-400"
                 onClick={(e) => {
                   e.stopPropagation();
+                  setIsVoiceOverlayOpen(true);
                   handleVoiceSearchClick?.();
                 }}
               />
             </div>
           </div>
+
+          <VoiceSearchOverlay 
+            isOpen={isVoiceOverlayOpen}
+            onClose={() => setIsVoiceOverlayOpen(false)}
+            onSearchResult={(transcript) => {
+              // Navigate to search with the transcript
+              navigate(`/food/user/search?q=${encodeURIComponent(transcript)}`);
+            }}
+          />
 
           {/* Veg Mode Toggle - Styled like SS2 (Label above toggle) */}
           <div

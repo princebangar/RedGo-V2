@@ -40,6 +40,7 @@ import {
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import Footer from "@food/components/user/Footer";
+import VoiceSearchOverlay from "@food/components/user/VoiceSearchOverlay";
 import AddToCartButton from "@food/components/user/AddToCartButton";
 import StickyCartCard from "@food/components/user/StickyCartCard";
 import OrderTrackingCard from "@food/components/user/OrderTrackingCard";
@@ -78,7 +79,7 @@ const debugError = (...args) => { };
 // Import shared food images - prevents duplication
 import { foodImages } from "@food/constants/images";
 
-import { Avatar, AvatarFallback } from "@food/components/ui/avatar";
+import { Avatar, AvatarFallback, AvatarImage } from "@food/components/ui/avatar";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -355,7 +356,7 @@ const RestaurantImageCarousel = React.memo(
                   alt={`${restaurant.name} - Image ${idx + 1}`}
                   className="w-full h-full"
                   objectFit="cover"
-                  priority={priority && idx === currentIndex}
+                  priority={priority && isVisible}
                   onLoad={() => {
                     setLoadedBySrc((prev) => ({ ...prev, [item.src]: true }));
                   }}
@@ -1157,6 +1158,7 @@ export default function Home() {
   const [sortBy, setSortBy] = useState(null); // null, 'price-low', 'price-high', 'rating-high', 'rating-low'
   const [selectedCuisine, setSelectedCuisine] = useState(null);
   const [isFilterOpen, setIsFilterOpen] = useState(false);
+  const [isVoiceOverlayOpen, setIsVoiceOverlayOpen] = useState(false);
   const [appliedFilters, setAppliedFilters] = useState({
     activeFilters: new Set(),
     sortBy: null,
@@ -1493,7 +1495,7 @@ export default function Home() {
       const requestSeq = ++restaurantsRequestSeqRef.current;
       try {
         const isCacheEmpty = !HOME_RESTAURANTS_CACHE || (Array.isArray(HOME_RESTAURANTS_CACHE) && HOME_RESTAURANTS_CACHE.length === 0);
-        if (isCacheEmpty || filters.activeFilters || filters.sortBy || filters.selectedCuisine) {
+        if (isCacheEmpty || filters.activeFilters || filters.sortBy || filters.selectedCuisine || orderType) {
           setLoadingRestaurants(true);
         }
 
@@ -1503,17 +1505,26 @@ export default function Home() {
         const params = {};
 
         // Always send user coordinates when available so backend can compute distance/sort.
+        // Round to 4 decimal places (~11m precision) to stabilize cache keys.
         if (
           Number.isFinite(effectiveLocation?.latitude) &&
           Number.isFinite(effectiveLocation?.longitude)
         ) {
-          params.lat = effectiveLocation.latitude;
-          params.lng = effectiveLocation.longitude;
+          params.lat = parseFloat(effectiveLocation.latitude.toFixed(4));
+          params.lng = parseFloat(effectiveLocation.longitude.toFixed(4));
         }
 
+        // Limit results for performance
+        params.limit = 40;
+
         // Sort by
-        if (filters.sortBy) {
-          params.sortBy = filters.sortBy;
+        if (filters.sortBy || sortBy) {
+          params.sortBy = filters.sortBy || sortBy;
+        }
+
+        // Order Type (Takeaway/Delivery)
+        if (orderType) {
+          params.orderType = orderType;
         }
 
         // Cuisine
@@ -1961,10 +1972,13 @@ export default function Home() {
     [activeFilters, sortBy, selectedCuisine, fetchRestaurants],
   );
 
-  // Fetch restaurants when appliedFilters change
+  // Fetch restaurants when appliedFilters change - added small debounce to prevent request storms on refresh
   useEffect(() => {
-    fetchRestaurants(appliedFilters);
-  }, [appliedFilters, fetchRestaurants]);
+    const timer = setTimeout(() => {
+      fetchRestaurants(appliedFilters);
+    }, 100);
+    return () => clearTimeout(timer);
+  }, [appliedFilters, fetchRestaurants, orderType]);
 
   // Recalculate distances when user location updates
   useEffect(() => {
@@ -2692,7 +2706,7 @@ export default function Home() {
 
         <div className="md:hidden relative overflow-x-clip bg-white dark:bg-[#0a0a0a]">
           {/* Brand Top Section (Red Theme) */}
-          <div className="relative overflow-hidden rounded-b-[2rem] shadow-lg mb-2">
+          <div className="relative overflow-hidden rounded-b-[2rem] shadow-lg mb-2 bg-[#ef4f5f]">
             {/* Background Image */}
             <div className="absolute inset-0 z-0">
               <img
@@ -2735,7 +2749,7 @@ export default function Home() {
                     hideFoodImages={festVideoActive}
                   />
               ) : (
-                <div className="bg-white/0 dark:bg-black/0 px-4 pt-6 pb-2 border-b-0 dark:border-gray-800 backdrop-blur-sm">
+                <div className="bg-white/0 dark:bg-black/0 px-4 pt-2 pb-4 border-b-0 dark:border-gray-800 backdrop-blur-sm">
                   <div className="flex items-center justify-between">
                     <div className="flex flex-col">
                       <span className="text-[10px] font-bold text-gray-200 uppercase tracking-[0.2em] mb-0.5 drop-shadow-md">Self-Pickup</span>
@@ -2750,10 +2764,20 @@ export default function Home() {
                       >
                         <Search className="h-5 w-5 text-white" strokeWidth={2.5} />
                       </button>
-                      <Link to="/food/user/profile" className="h-10 w-10 flex items-center justify-center rounded-full bg-white border-2 border-red-500 shadow-sm active:scale-95 transition-all overflow-hidden">
-                        <Avatar className="h-full w-full">
-                          <AvatarFallback className="bg-red-100 text-red-600 font-bold text-sm">
-                            {userProfile?.name ? userProfile.name.charAt(0).toUpperCase() : (userProfile?.fullName ? userProfile.fullName.charAt(0).toUpperCase() : "U")}
+                      <Link 
+                        to="/food/user/profile" 
+                        className="h-10 w-10 relative flex items-center justify-center rounded-full border-[1.5px] border-white shadow-none cursor-pointer active:scale-95 transition-all overflow-hidden ring-1 ring-red-500/80"
+                      >
+                        <Avatar className="h-full w-full bg-[#FFF5E6]">
+                          {userProfile?.profileImage && (
+                            <AvatarImage 
+                              src={userProfile.profileImage} 
+                              alt="Profile" 
+                              className="object-cover"
+                            />
+                          )}
+                          <AvatarFallback className="bg-[#FFF5E6] text-[20px] font-black text-[#DC2626] leading-none tracking-tighter antialiased">
+                            {userProfile?.name ? userProfile.name.charAt(0).toUpperCase() : (userProfile?.fullName ? userProfile.fullName.charAt(0).toUpperCase() : (userProfile?.firstName ? userProfile.firstName.charAt(0).toUpperCase() : "U"))}
                           </AvatarFallback>
                         </Avatar>
                       </Link>
@@ -2855,7 +2879,7 @@ export default function Home() {
                       animate={{ opacity: 1 }}
                       exit={{ opacity: 0 }}
                       transition={{ duration: 0.2 }}
-                      className="fixed top-0 left-0 right-0 z-[100] bg-white/70 dark:bg-[#0a0a0a]/70 backdrop-blur-xl shadow-lg border-b border-white/10 dark:border-white/5 safe-top"
+                      className="fixed top-0 left-0 right-0 z-[100] bg-white/80 dark:bg-[#0a0a0a]/80 backdrop-blur-md shadow-lg border-b border-white/10 dark:border-white/5 safe-top"
                     >
                       {/* Search Bar + Veg Mode Row (Always visible when sticky) */}
                       <AnimatePresence>
@@ -2875,7 +2899,13 @@ export default function Home() {
                                 <span className="absolute inset-0 text-base text-gray-400 font-medium">Search "biryani"</span>
                               </div>
                               <div className="h-5 w-[1px] bg-gray-200 dark:bg-white/10 mx-2" />
-                              <Mic className="h-5 w-5 text-[#DC2626] dark:text-[#a14b84]" />
+                              <Mic 
+                                className="h-5 w-5 text-[#DC2626] dark:text-[#a14b84]" 
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setIsVoiceOverlayOpen(true);
+                                }}
+                              />
                             </div>
 
                             {/* Veg Mode Toggle in Sticky Header */}
@@ -3249,7 +3279,7 @@ export default function Home() {
                           <div className="relative">
                             <RestaurantImageCarousel
                               restaurant={restaurant}
-                              priority={index < 3}
+                              priority={index < 2}
                               backendOrigin={BACKEND_ORIGIN}
                             />
 
@@ -3378,6 +3408,14 @@ export default function Home() {
           </div>
         </motion.section>
       </div>
+
+      <VoiceSearchOverlay 
+        isOpen={isVoiceOverlayOpen}
+        onClose={() => setIsVoiceOverlayOpen(false)}
+        onSearchResult={(transcript) => {
+          navigate(`/food/user/search?q=${encodeURIComponent(transcript)}`);
+        }}
+      />
 
       {/* Filter Modal - Bottom Sheet */}
       <AnimatePresence>

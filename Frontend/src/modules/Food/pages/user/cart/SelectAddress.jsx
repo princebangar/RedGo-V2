@@ -126,6 +126,7 @@ export default function SelectAddress() {
       if (newId) {
         await setDefaultAddress(newId)
       }
+      sessionStorage.setItem("manual_location_update", "true");
       toast.success("Address saved")
       navigate(from, { replace: true })
     } catch (err) {

@@ -1688,6 +1688,24 @@ export function useLocation() {
 
     window.addEventListener('storage', handleStorageChange)
     window.addEventListener('userLocationUpdated', handleCustomUpdate)
+    
+    // Auto-fetch location ONLY when user successfully LOGS IN
+    // This avoids triggering it during profile updates
+    const handleLoginSuccess = () => {
+      // Check if we already fetched for this specific login session to be safe
+      const hasFetchedThisLogin = sessionStorage.getItem('lastLoginLocationFetch');
+      if (hasFetchedThisLogin) return;
+
+      debugLog("?? Login success, triggering one-time automatic location fetch...")
+      setTimeout(() => {
+        requestLocation().then(() => {
+          sessionStorage.setItem('lastLoginLocationFetch', 'true');
+        }).catch(err => {
+          debugError("Failed to auto-fetch location after login:", err)
+        })
+      }, 1000)
+    }
+    window.addEventListener('userLoginSuccess', handleLoginSuccess)
 
     // Cleanup timeout and watcher
     return () => {
@@ -1696,6 +1714,7 @@ export function useLocation() {
       stopWatchingLocation()
       window.removeEventListener('storage', handleStorageChange)
       window.removeEventListener('userLocationUpdated', handleCustomUpdate)
+      window.removeEventListener('userLoginSuccess', handleLoginSuccess)
     }
   }, [])
 

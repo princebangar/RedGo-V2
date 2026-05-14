@@ -52,8 +52,9 @@ export default function AuthInitializer({ children }) {
   const hasAnyToken = ['user', 'restaurant', 'delivery', 'admin'].some(m => !!getModuleToken(m));
 
   // Show loader while rehydrating auth state on app initialization (skip for policy pages or guests)
+  // Show nothing while rehydrating auth state to prevent flickering
   if (isRehydrating && !isPolicyPage && hasAnyToken) {
-    return <Loader />;
+    return null;
   }
 
   return children;

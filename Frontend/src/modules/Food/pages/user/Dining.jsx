@@ -1,18 +1,18 @@
 import { useState, useCallback, useEffect, useMemo, useRef } from "react"
 import { Link, useNavigate } from "react-router-dom"
 import { motion, AnimatePresence } from "framer-motion"
-import { MapPin, Search, Mic, SlidersHorizontal, Star, X, ArrowDownUp, Timer, IndianRupee, Clock, Bookmark, UtensilsCrossed } from "lucide-react"
+import { MapPin, Search, Mic, SlidersHorizontal, Star, X, ArrowDownUp, Timer, IndianRupee, Clock, Bookmark, UtensilsCrossed, ChevronDown, Wallet } from "lucide-react"
 import { Button } from "@food/components/ui/button"
 import { Input } from "@food/components/ui/input"
 import { Badge } from "@food/components/ui/badge"
 import { Card, CardContent } from "@food/components/ui/card"
+import { Avatar, AvatarFallback, AvatarImage } from "@food/components/ui/avatar";
 import AnimatedPage from "@food/components/user/AnimatedPage"
 import { useSearchOverlay, useLocationSelector } from "@food/components/user/UserLayout"
 import { useLocation as useLocationHook } from "@food/hooks/useLocation"
 import { useZone } from "@food/hooks/useZone"
 import { useProfile } from "@food/context/ProfileContext"
 import { diningAPI } from "@food/api"
-import PageNavbar from "@food/components/user/PageNavbar"
 import OptimizedImage from "@food/components/OptimizedImage"
 const debugLog = (...args) => {}
 const debugWarn = (...args) => {}
@@ -144,6 +144,13 @@ export default function Dining() {
   const { zoneId } = useZone(location)
   const { openSearch, closeSearch, setSearchValue } = useSearchOverlay()
   const { addFavorite, removeFavorite, isFavorite } = useProfile()
+  const { userProfile } = useProfile();
+
+  const initials = useMemo(() => {
+    if (!userProfile) return "";
+    const name = userProfile.firstName || userProfile.name || "";
+    return name[0]?.toUpperCase() || "U";
+  }, [userProfile]);
 
   const [categories, setCategories] = useState([])
   const [restaurantList, setRestaurantList] = useState([])
@@ -522,14 +529,83 @@ export default function Dining() {
       `}</style>
       
       {/* Premium Sticky Header - High Z-Index & Optimized Blur */}
-      <div className="sticky top-0 z-[100] w-full bg-white dark:bg-[#0a0a0a] supports-[backdrop-filter]:bg-white/90 backdrop-blur-xl shadow-sm md:hidden border-b border-gray-100 dark:border-gray-800 transition-all duration-300">
-        {/* Navbar Section */}
-        <div className="relative z-20 py-2 px-2">
-          <PageNavbar
-            textColor="dark"
-            zIndex={20}
-            onNavClick={(e) => e.stopPropagation()}
-          />
+      <div className="sticky top-0 z-[100] w-full bg-gradient-to-b from-[#ef4f5f] to-[#d63031] dark:bg-[#0a0a0a] md:hidden rounded-b-[2rem] border-b-2 border-white/20 antialiased">
+        {/* Navbar Section - Custom Takeaway Style */}
+        <div className="relative z-20 pt-3 pb-3.5 px-4">
+          <div className="flex items-center justify-between">
+            {/* Left: Location Selection (Takeaway Style) */}
+            <Link
+              to="/food/user/address-selector"
+              state={{ from: window.location.pathname }}
+              className="flex flex-col min-w-0"
+            >
+              <div className="flex items-center gap-1">
+                <span className="text-[10px] font-bold text-gray-200 uppercase tracking-[0.2em] drop-shadow-md">Dining</span>
+              </div>
+              <h1 className="text-xl font-bold text-white flex items-center gap-1.5 drop-shadow-md">
+                <span className="truncate max-w-[180px]">
+                  {(() => {
+                    const loc = resolveLocationForDining();
+                    const area = loc?.area || loc?.subLocality || loc?.mainTitle || loc?.neighborhood;
+                    const city = (loc?.city || "").toLowerCase();
+                    const state = (loc?.state || "").toLowerCase();
+
+                    if (area && !/^-?\d+(\.\d+)?$/.test(area.trim())) {
+                      const areaLower = area.toLowerCase();
+                      if (areaLower !== city && areaLower !== state) {
+                        return area;
+                      }
+                    }
+
+                    if (loc?.address && loc.address !== "Select location") {
+                      const parts = loc.address.split(',').map(p => p.trim());
+                      for (const part of parts) {
+                        const partLower = part.toLowerCase();
+                        if (partLower &&
+                          partLower !== city &&
+                          partLower !== state &&
+                          !/^-?\d/.test(part) &&
+                          part.length > 2) {
+                          return part;
+                        }
+                      }
+                    }
+
+                    return loc?.area || loc?.city || "Select Location";
+                  })()}
+                </span>
+                <ChevronDown className="h-4 w-4 text-white/80" />
+              </h1>
+            </Link>
+
+            <div className="flex items-center gap-3">
+              <Link
+                to="/food/user/wallet"
+                state={{ from: '/food/user' }}
+                className="h-9 w-9 flex items-center justify-center rounded-full bg-white/10 border-[1.5px] border-white shadow-none active:scale-90 transition-all ring-1 ring-red-500/80 transform-gpu translate-z-0"
+              >
+                <Wallet className="h-5 w-5 text-white antialiased" strokeWidth={2} />
+              </Link>
+              
+              <Link 
+                to="/food/user/profile" 
+                className="h-10 w-10 relative flex items-center justify-center rounded-full border-[1.5px] border-white shadow-none cursor-pointer active:scale-95 transition-all overflow-hidden ring-1 ring-red-500/80 transform-gpu translate-z-0"
+              >
+                <Avatar className="h-full w-full bg-[#FFF5E6]">
+                  {userProfile?.profileImage && (
+                    <AvatarImage 
+                      src={userProfile.profileImage} 
+                      alt="Profile" 
+                      className="object-cover"
+                    />
+                  )}
+                  <AvatarFallback className="bg-[#FFF5E6] text-[20px] font-black text-[#DC2626] leading-none tracking-tighter antialiased">
+                    {initials || 'U'}
+                  </AvatarFallback>
+                </Avatar>
+              </Link>
+            </div>
+          </div>
         </div>
 
         {/* Search Bar Section */}
@@ -568,7 +644,7 @@ export default function Dining() {
 
       {/* Banner Section */}
       <div
-        className="relative w-full px-3 sm:px-4 md:px-6 lg:px-8 pb-3 sm:pb-5"
+        className="relative w-full px-3 sm:px-4 md:px-6 lg:px-8 pt-5 pb-3 sm:pb-5"
       >
         <motion.div
           initial={{ opacity: 0, y: 24, scale: 0.98 }}
@@ -597,9 +673,8 @@ export default function Dining() {
                       priority={index === 0}
                       sizes="100vw"
                     />
-                    <div className="absolute inset-0 bg-gradient-to-r from-black/60 via-black/25 to-transparent" />
                     <div className="absolute inset-x-0 bottom-0 p-4 sm:p-5 md:p-6 lg:p-8">
-                      <div className="max-w-[75%] rounded-2xl bg-black/20 px-3 py-3 text-white backdrop-blur-sm sm:px-4 md:px-5">
+                      <div className="max-w-[75%] rounded-2xl px-3 py-3 text-white sm:px-4 md:px-5">
                         {banner.promoCode && (
                           <p className="text-[11px] font-semibold uppercase tracking-[0.3em] text-white/85 sm:text-xs">
                             {banner.promoCode}
@@ -662,17 +737,7 @@ export default function Dining() {
       {/* Content */}
       <div className="max-w-7xl mx-auto px-3 sm:px-6 md:px-8 lg:px-10 xl:px-12 pt-3 sm:pt-6 md:pt-8 lg:pt-10 pb-4 md:pb-6 lg:pb-8">
         {/* Categories Section */}
-        <div className="mb-4">
-          <div className="mb-3 sm:mb-4">
-            <div className="flex items-center gap-2 sm:gap-4">
-              <div className="h-px flex-1 bg-[#ece5dc]/60" />
-              <h3 className="font-['Poppins',_'Nunito_Sans',sans-serif] text-[9px] sm:text-[11px] font-medium uppercase tracking-[0.25em] text-[#8f8478] text-center whitespace-nowrap">
-                What are you looking for?
-              </h3>
-              <div className="h-px flex-1 bg-[#ece5dc]/60" />
-            </div>
-          </div>
-
+        <div className="mb-0">
           <div className="grid grid-cols-3 gap-2.5 sm:gap-3 md:gap-4">
             {loading
               ? loadingCategoryCards.map((key, index) => (
@@ -721,15 +786,22 @@ export default function Dining() {
         </div>
 
         {/* Popular Restaurants Around You Section */}
-          <div className="mb-4 mt-2 sm:mt-4">
+        <div className="mb-4 mt-4 sm:mt-6">
           <div className="mb-6">
-            <div className="flex items-center justify-between mb-4 px-1">
-              <h3 className="text-lg sm:text-xl font-bold text-gray-900 dark:text-white tracking-tight">
-                Popular Restaurants Within 10km
-              </h3>
-              <p className="text-xs sm:text-sm font-medium text-gray-500 dark:text-gray-400">
-                {filteredRestaurants.length} nearby places
-              </p>
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 px-1">
+              <div className="flex items-center gap-3">
+                <div className="h-8 w-1 bg-[#ef4f5f] rounded-full shadow-[0_0_10px_rgba(239,79,95,0.4)]" />
+                <h3 className="text-xl sm:text-2xl font-black text-gray-900 dark:text-white tracking-tight whitespace-nowrap">
+                  Popular Restaurants Within 10km
+                </h3>
+              </div>
+              <div className="flex items-center">
+                <div className="px-3 py-1 bg-red-50 dark:bg-red-950/30 border border-red-100 dark:border-red-900/50 rounded-full shadow-sm">
+                  <p className="text-[10px] sm:text-xs font-black text-[#ef4f5f] uppercase tracking-widest">
+                    {filteredRestaurants.length} NEARBY PLACES
+                  </p>
+                </div>
+              </div>
             </div>
           </div>
 

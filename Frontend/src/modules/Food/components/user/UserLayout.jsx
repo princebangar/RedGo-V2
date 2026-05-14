@@ -139,11 +139,16 @@ function LocationSelectorProvider({ children }) {
 
   const closeLocationSelector = useCallback(() => { }, [])
 
+  // Debounced loading state to prevent flickering and ensure smooth navigation transitions
+  const [showGlobalLoader, setShowGlobalLoader] = useState(false)
+
   const value = useMemo(() => ({
     isLocationSelectorOpen: false,
     openLocationSelector,
-    closeLocationSelector
-  }), [openLocationSelector, closeLocationSelector])
+    closeLocationSelector,
+    showGlobalLoader,
+    setShowGlobalLoader
+  }), [openLocationSelector, closeLocationSelector, showGlobalLoader])
 
   return (
     <LocationSelectorContext.Provider value={value}>
@@ -182,7 +187,7 @@ function UserLayoutContent() {
                        normalizedPath.includes('help');
 
   // Debounced loading state to prevent flickering and ensure smooth navigation transitions
-  const [showGlobalLoader, setShowGlobalLoader] = useState(false)
+  const { showGlobalLoader, setShowGlobalLoader } = useLocationSelector()
   const [isInitialChecking, setIsInitialChecking] = useState(() => {
     // If it's a policy or auth page, or if the user is not authenticated, we don't need the initial location check delay
     const isAuthenticated = isModuleAuthenticated('user');
@@ -199,11 +204,19 @@ function UserLayoutContent() {
     }
 
     if (isZoneLoading || isGeoLoading) {
-      setShowGlobalLoader(true)
+      // Logic from user: show loader ONLY if we don't have location data yet OR if it's a manual update
+      const hasLocationData = geoLocation?.latitude && geoLocation?.longitude;
+      const hasZoneData = zoneStatus && zoneStatus !== "loading";
+      const isManualUpdate = sessionStorage.getItem("manual_location_update") === "true";
+
+      if (!hasLocationData || !hasZoneData || isManualUpdate) {
+        setShowGlobalLoader(true)
+      }
     } else {
       const timer = setTimeout(() => {
         setShowGlobalLoader(false)
         setIsInitialChecking(false) // First load completed
+        sessionStorage.removeItem("manual_location_update"); // Clear manual flag
       }, 400)
       return () => clearTimeout(timer)
     }
@@ -233,7 +246,7 @@ function UserLayoutContent() {
 
   const isProfileRoot = normalizedPath === "/profile" || normalizedPath === "/user/profile"
 
-  const showBottomNav = (normalizedPath === "/" ||
+  const showBottomNav = !isInitialChecking && (normalizedPath === "/" ||
     normalizedPath === "/user" ||
     normalizedPath === "/dining" ||
     normalizedPath === "/user/dining" ||
@@ -300,28 +313,36 @@ function UserLayoutContent() {
       {showGlobalLoader && !isInitialChecking && (
         <div className="fixed inset-0 z-[1000] bg-white/60 backdrop-blur-sm flex flex-col items-center justify-center animate-in fade-in duration-300 pointer-events-auto">
           <div className="relative">
-            <div className="w-14 h-14 border-[3px] border-gray-100/30 rounded-full"></div>
-            <div className="absolute top-0 left-0 w-14 h-14 border-[3px] border-[#DC2626] border-t-transparent rounded-full animate-spin"></div>
+            <div className="w-10 h-10 border-[3px] border-gray-100/30 rounded-full"></div>
+            <div className="absolute top-0 left-0 w-10 h-10 border-[3px] border-[#DC2626] border-t-transparent rounded-full animate-spin"></div>
           </div>
-          <p className="mt-5 text-[15px] font-bold text-gray-800 tracking-tight">Updating location...</p>
+          <p className="mt-4 text-[13px] font-bold text-gray-800 tracking-tight">Updating location...</p>
         </div>
       )}
 
       {/* Desktop Navbar - Hidden on mobile, visible on medium+ screens */}
-      <div className="hidden md:block">
-        {showBottomNav && !isOutOfZone && <DesktopNavbar showLogo={!isUnder250} />}
-      </div>
-      <LocationPrompt />
+      {!isInitialChecking && (
+        <div className="hidden md:block">
+          {showBottomNav && !isOutOfZone && <DesktopNavbar showLogo={!isUnder250} />}
+        </div>
+      )}
+      {!isInitialChecking && <LocationPrompt />}
       
       {isInitialChecking ? (
-        <div className="flex-1 min-h-screen bg-[#f5f5f5] dark:bg-[#0a0a0a]" />
+        <div className="flex-1 min-h-screen bg-white dark:bg-[#0a0a0a] flex flex-col items-center justify-center">
+          <div className="relative">
+            <div className="w-10 h-10 border-[3px] border-gray-100/50 rounded-full"></div>
+            <div className="absolute top-0 left-0 w-10 h-10 border-[3px] border-[#DC2626] border-t-transparent rounded-full animate-spin"></div>
+          </div>
+          <p className="mt-4 text-[11px] font-bold text-gray-400 uppercase tracking-[0.2em] animate-pulse">Loading...</p>
+        </div>
       ) : (zoneStatus === "OUT_OF_SERVICE") && isMainPage ? (
         <OutOfZoneScreen 
           location={geoLocation} 
           handleLocationClick={openLocationSelector} 
         />
       ) : (
-        <main className={showBottomNav ? "md:pt-40" : ""}>
+        <main className={`${showBottomNav ? "md:pt-40" : ""} min-h-screen flex flex-col`}>
           <Outlet />
         </main>
       )}

@@ -4,19 +4,28 @@ import { toast } from 'sonner';
 export const useVoiceSearch = (onResult) => {
     const [isListening, setIsListening] = useState(false);
     const recognitionRef = useRef(null);
+    const isStartingRef = useRef(false);
 
     const stopListening = useCallback(() => {
         if (recognitionRef.current) {
             try {
+                recognitionRef.current.onstart = null;
+                recognitionRef.current.onresult = null;
+                recognitionRef.current.onerror = null;
+                recognitionRef.current.onend = null;
                 recognitionRef.current.stop();
             } catch (e) {
-                console.warn('Speech recognition stop error:', e);
+                // Ignore errors on stop
             }
-            setIsListening(false);
+            recognitionRef.current = null;
         }
+        setIsListening(false);
+        isStartingRef.current = false;
     }, []);
 
     const startListening = useCallback(() => {
+        if (isListening || isStartingRef.current) return;
+
         const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
 
         if (!SpeechRecognition) {
@@ -25,6 +34,7 @@ export const useVoiceSearch = (onResult) => {
         }
 
         try {
+            isStartingRef.current = true;
             const recognition = new SpeechRecognition();
             recognition.lang = 'en-IN';
             recognition.interimResults = false;
@@ -32,6 +42,7 @@ export const useVoiceSearch = (onResult) => {
 
             recognition.onstart = () => {
                 setIsListening(true);
+                isStartingRef.current = false;
             };
 
             recognition.onresult = (event) => {
@@ -44,31 +55,33 @@ export const useVoiceSearch = (onResult) => {
 
             recognition.onerror = (event) => {
                 const errorType = event.error;
-                console.error('Speech recognition error:', errorType);
                 
+                // Only show errors that are actual problems
                 if (errorType === 'not-allowed') {
-                    toast.error("Microphone access denied. Please allow permission.");
+                    toast.error("Microphone access denied.");
                 } else if (errorType === 'no-speech') {
-                    toast.error("No speech detected. Try again.");
+                    // Silent on no-speech to avoid annoying toasts
                 } else if (errorType === 'network') {
-                    toast.error("Voice search requires an active internet connection.");
-                } else {
-                    toast.error(`Voice search error: ${errorType}`);
+                    toast.error("Network error during voice search.");
+                } else if (errorType !== 'aborted') {
+                    console.error('Speech recognition error:', errorType);
                 }
+                
                 stopListening();
             };
 
             recognition.onend = () => {
                 setIsListening(false);
+                isStartingRef.current = false;
             };
 
             recognitionRef.current = recognition;
             recognition.start();
         } catch (error) {
+            isStartingRef.current = false;
             console.error('Speech recognition initialization failed:', error);
-            toast.error("Could not start voice search.");
         }
-    }, [onResult, stopListening]);
+    }, [isListening, onResult, stopListening]);
 
     return {
         isListening,

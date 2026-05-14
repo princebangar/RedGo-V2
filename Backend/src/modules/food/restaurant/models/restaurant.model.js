@@ -390,6 +390,8 @@ restaurantSchema.index({ restaurantName: 1 });
 restaurantSchema.index({ restaurantNameNormalized: 1 });
 restaurantSchema.index({ city: 1 });
 restaurantSchema.index({ "location.city": 1 });
+restaurantSchema.index({ location: "2dsphere", "takeawaySettings.isEnabled": 1 });
+restaurantSchema.index({ location: "2dsphere", "diningSettings.isEnabled": 1 });
 restaurantSchema.index({ location: "2dsphere" });
 restaurantSchema.index({ restaurantName: 1, ownerPhone: 1 });
 // Enforce uniqueness at the database level to avoid race conditions in registration.
@@ -405,6 +407,9 @@ restaurantSchema.index(
   },
 );
 restaurantSchema.index({ status: 1, createdAt: -1 });
+restaurantSchema.index({ "takeawaySettings.isEnabled": 1 });
+restaurantSchema.index({ "diningSettings.isEnabled": 1 });
+restaurantSchema.index({ zoneId: 1, status: 1 });
 
 export const FoodRestaurant = mongoose.model(
   "FoodRestaurant",

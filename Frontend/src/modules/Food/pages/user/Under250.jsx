@@ -11,7 +11,7 @@ import { useLocation } from "@food/hooks/useLocation"
 import { useZone } from "@food/hooks/useZone"
 import { useCart } from "@food/context/CartContext"
 import PageNavbar from "@food/components/user/PageNavbar"
-import offerImage from "@food/assets/offerimage.png"
+import under250Banner from "@food/assets/under250_banner.jpg"
 import AddToCartAnimation from "@food/components/user/AddToCartAnimation"
 import OptimizedImage from "@food/components/OptimizedImage"
 import api from "@food/api"
@@ -64,6 +64,7 @@ export default function Under250() {
   const initialFiltersRef = useRef(readUnder250Filters())
   const { location } = useLocation()
   const { zoneId, zoneStatus, isInService, isOutOfService } = useZone(location)
+  const { showGlobalLoader } = useLocationSelector()
   const navigate = useNavigate()
   const { addToCart, updateQuantity, removeFromCart, getCartItem, cart } = useCart()
   const [activeCategory, setActiveCategory] = useState(initialFiltersRef.current.activeCategory)
@@ -355,108 +356,89 @@ export default function Under250() {
 
   // Fetch restaurants with dishes under ₹250 from backend
   useEffect(() => {
+    let cancelled = false;
+
     const fetchRestaurantsUnder250 = async () => {
       try {
         setLoadingRestaurants(true)
-        const response = await restaurantAPI.getRestaurants(zoneId ? { zoneId } : {})
-        const restaurantsRaw = Array.isArray(response?.data?.data?.restaurants)
-          ? response.data.data.restaurants
-          : []
+        // Use the new dedicated backend endpoint for high performance
+        const response = await restaurantAPI.getRestaurantsUnder250(zoneId ? { zoneId } : {})
+        
+        if (cancelled) return;
+
+        const data = response?.data?.data;
+        const restaurantsRaw = Array.isArray(data?.restaurants) ? data.restaurants : [];
+        
         const userLat = Number(location?.latitude)
         const userLng = Number(location?.longitude)
+        
+        // Final transformation of backend data for UI
+        const restaurants = restaurantsRaw.map(restaurant => {
+          const restaurantId = restaurant?.restaurantId || restaurant?.id || restaurant?._id;
+          
+          // Distance calculation if needed
+          const restaurantLocation = restaurant?.location;
+          const restaurantLat = Number(
+            restaurantLocation?.latitude ??
+            (Array.isArray(restaurantLocation?.coordinates) ? restaurantLocation.coordinates[1] : null)
+          );
+          const restaurantLng = Number(
+            restaurantLocation?.longitude ??
+            (Array.isArray(restaurantLocation?.coordinates) ? restaurantLocation.coordinates[0] : null)
+          );
+          const distanceInKm = (
+            Number.isFinite(userLat) &&
+            Number.isFinite(userLng) &&
+            Number.isFinite(restaurantLat) &&
+            Number.isFinite(restaurantLng)
+          )
+            ? calculateDistance(userLat, userLng, restaurantLat, restaurantLng)
+            : null;
 
-        const restaurantsWithUnder250Dishes = await Promise.all(
-          restaurantsRaw.map(async (restaurant, index) => {
-            const restaurantId = restaurant?.restaurantId || restaurant?._id
-            if (!restaurantId) return null
+          const fallbackDistance =
+            typeof restaurant?.distance === "number"
+              ? formatDistance(restaurant.distance)
+              : (restaurant?.distance || "");
 
-            try {
-              const menuResponse = await restaurantAPI.getMenuByRestaurantId(restaurantId)
-              const menu = getMenuFromResponse(menuResponse)
-              const menuItems = flattenMenuItems(menu)
-                .filter((item) => Number(item?.price || 0) <= under250PriceLimit && item?.isAvailable !== false)
-                .map((item) => {
-                  const foodType = String(item?.foodType || "").toLowerCase()
-                  const isVeg = foodType.includes("veg") && !foodType.includes("non")
-                  return {
-                    ...item,
-                    id: String(item?.id || item?._id || `${restaurantId}-${item?.name || "dish"}`),
-                    price: Number(item?.price || 0),
-                    isVeg,
-                    image:
-                      item?.image ||
-                      restaurant?.coverImages?.[0]?.url ||
-                      restaurant?.coverImages?.[0] ||
-                      restaurant?.menuImages?.[0]?.url ||
-                      restaurant?.menuImages?.[0] ||
-                      restaurant?.profileImage?.url ||
-                      "",
-                  }
-                })
+          return {
+            ...restaurant,
+            id: String(restaurantId),
+            restaurantId: String(restaurantId),
+            name: restaurant?.restaurantName || restaurant?.name || "Restaurant",
+            rating: Number(restaurant?.rating || 0),
+            totalRatings: Number(restaurant?.totalRatings || restaurant?.ratingCount || 0),
+            deliveryTime:
+              restaurant?.estimatedDeliveryTime ||
+              (restaurant?.estimatedDeliveryTimeMinutes ? `${restaurant.estimatedDeliveryTimeMinutes} mins` : "30 mins"),
+            distance: distanceInKm !== null ? formatDistance(distanceInKm) : fallbackDistance,
+            distanceInKm,
+            // Backend already filtered and attached menuItems
+            menuItems: (restaurant.menuItems || []).map(item => ({
+              ...item,
+              id: String(item.id || item._id),
+              price: Number(item.price || 0),
+              image:
+                item?.image ||
+                restaurant?.profileImage?.url ||
+                restaurant?.profileImage ||
+                ""
+            }))
+          };
+        });
 
-              if (menuItems.length === 0) return null
-
-              const deliveryMinutes =
-                Number(restaurant?.estimatedDeliveryTimeMinutes) ||
-                Number(restaurant?.estimatedDeliveryTime) ||
-                null
-              const restaurantLocation = restaurant?.location
-              const restaurantLat = Number(
-                restaurantLocation?.latitude ??
-                (Array.isArray(restaurantLocation?.coordinates) ? restaurantLocation.coordinates[1] : null)
-              )
-              const restaurantLng = Number(
-                restaurantLocation?.longitude ??
-                (Array.isArray(restaurantLocation?.coordinates) ? restaurantLocation.coordinates[0] : null)
-              )
-              const distanceInKm = (
-                Number.isFinite(userLat) &&
-                Number.isFinite(userLng) &&
-                Number.isFinite(restaurantLat) &&
-                Number.isFinite(restaurantLng)
-              )
-                ? calculateDistance(userLat, userLng, restaurantLat, restaurantLng)
-                : null
-              const fallbackDistance =
-                typeof restaurant?.distance === "number"
-                  ? formatDistance(restaurant.distance)
-                  : (restaurant?.distance || "")
-
-              return {
-                id: String(restaurantId),
-                restaurantId: String(restaurantId),
-                slug:
-                  restaurant?.slug ||
-                  String(restaurant?.restaurantName || restaurant?.name || "")
-                    .toLowerCase()
-                    .replace(/\s+/g, "-"),
-                name: restaurant?.restaurantName || restaurant?.name || "Restaurant",
-                rating: Number(restaurant?.rating || 0),
-                totalRatings: Number(restaurant?.totalRatings || restaurant?.ratingCount || 0),
-                deliveryTime:
-                  restaurant?.estimatedDeliveryTime ||
-                  (deliveryMinutes ? `${deliveryMinutes} mins` : "30 mins"),
-                distance: distanceInKm !== null ? formatDistance(distanceInKm) : fallbackDistance,
-                distanceInKm,
-                originalIndex: index,
-                menuItems,
-              }
-            } catch {
-              return null
-            }
-          })
-        )
-
-        setUnder250Restaurants(restaurantsWithUnder250Dishes.filter(Boolean))
+        setUnder250Restaurants(restaurants);
+        setLoadingRestaurants(false);
       } catch (error) {
-        debugError('Error fetching restaurants under 250:', error)
-        setUnder250Restaurants([])
-      } finally {
-        setLoadingRestaurants(false)
+        if (!cancelled) {
+          debugError('Error fetching restaurants under 250:', error)
+          setUnder250Restaurants([])
+          setLoadingRestaurants(false)
+        }
       }
     }
 
     fetchRestaurantsUnder250()
+    return () => { cancelled = true; };
   }, [zoneId, isOutOfService, location?.latitude, location?.longitude, under250PriceLimit])
 
   // Fetch categories from backend (no static fallback list)
@@ -589,6 +571,13 @@ export default function Under250() {
       } else if (currentScrollY < lastScrollY.current) {
         // Scrolling up
         setViewCartButtonBottom("bottom-[92px]")
+      }
+
+      // Update banner scroll state for navbar transparency
+      if (currentScrollY > 100) {
+        setHasScrolledPastBanner(true)
+      } else {
+        setHasScrolledPastBanner(false)
       }
 
       lastScrollY.current = currentScrollY
@@ -855,13 +844,20 @@ export default function Under250() {
     <div className={`relative min-h-screen bg-white dark:bg-[#0a0a0a] ${shouldShowGrayscale ? 'grayscale opacity-75' : ''}`}>
       <div
         ref={stickyHeaderRef}
-        className={`fixed top-0 left-0 right-0 z-40 w-full md:hidden transition-all duration-300 ${hasScrolledPastBanner
-          ? "bg-white/95 backdrop-blur-sm shadow-sm border-b border-gray-200"
-          : "bg-transparent"
-          }`}
+        className={`fixed top-1.5 left-0 right-0 z-40 w-full transition-all duration-300 ${
+          hasScrolledPastBanner 
+            ? "bg-white shadow-sm border-b border-gray-200" 
+            : "bg-transparent shadow-none"
+        }`}
       >
-        <div className="relative z-50 pt-2 sm:pt-3 pb-2">
-          <PageNavbar textColor="black" zIndex={20} showProfile={true} showLogo={false} />
+        <div className="relative z-50">
+          <PageNavbar 
+            variant={hasScrolledPastBanner ? "reddish" : "transparent"} 
+            zIndex={20} 
+            showProfile={true} 
+            showLogo={false} 
+            showCart={false}
+          />
         </div>
       </div>
 
@@ -869,57 +865,21 @@ export default function Under250() {
       <div
         ref={bannerShellRef}
         data-banner-shell="true"
-        className="relative w-full overflow-hidden h-[clamp(240px,42vw,520px)] md:-mt-40"
+        className="relative w-full overflow-hidden h-[clamp(210px,34vw,430px)]"
       >
         {/* Banner Image */}
-        {bannerImages.length > 0 && (
-          <div
-            className="absolute inset-0 z-0 overflow-hidden"
-            onTouchStart={handleBannerTouchStart}
-            onTouchMove={handleBannerTouchMove}
-            onTouchEnd={handleBannerTouchEnd}
-          >
-            {/* Shining Glint Effect */}
-            <div className="absolute inset-0 z-10 pointer-events-none overflow-hidden">
-              <motion.div 
-                animate={{ 
-                  x: ['-200%', '200%'],
-                }}
-                transition={{ 
-                  duration: 3, 
-                  repeat: Infinity, 
-                  repeatDelay: 4,
-                  ease: "easeInOut"
-                }}
-                className="absolute inset-0 bg-gradient-to-r from-transparent via-white/20 to-transparent skew-x-[-20deg] w-[150%] h-full"
-              />
-            </div>
-
-            <div
-              className="flex h-full w-full transition-transform duration-500 ease-out"
-              style={{ transform: `translateX(-${currentBannerIndex * 100}%)` }}
-            >
-              {bannerImages.map((bannerImage, index) => (
-                <div key={`${bannerImage}-${index}`} className="relative h-full w-full shrink-0">
-                  <OptimizedImage
-                    src={bannerImage}
-                    alt={`Under 250 Banner ${index + 1}`}
-                    className="w-full h-full"
-                    objectFit="cover"
-                    priority={index === 0}
-                    sizes="100vw"
-                  />
-                  {/* Subtle Gradient Overlay for depth */}
-                  <div className="absolute inset-x-0 bottom-0 h-1/2 bg-gradient-to-t from-black/20 to-transparent pointer-events-none" />
-                </div>
-              ))}
-            </div>
-            {/* Indicators removed as requested */}
-          </div>
-        )}
-        {bannerImages.length === 0 && !loadingBanner && (
-          <div className="absolute top-0 left-0 right-0 bottom-0 z-0 bg-gradient-to-br from-[#fcf4f9] to-[#f5e8f1] dark:from-[#7F1D1D] dark:to-[#991B1B] overflow-hidden" />
-        )}
+        <div className="absolute inset-0 z-0">
+          <OptimizedImage
+            src={bannerImages.length > 0 ? bannerImages[currentBannerIndex] : under250Banner}
+            alt="Under 250 Banner"
+            priority={true}
+            className="w-full h-full"
+            objectFit="cover"
+            style={{ objectPosition: "center 90%" }}
+          />
+          {/* Subtle gradient overlay to ensure navbar readability if needed */}
+          <div className="absolute inset-0 bg-gradient-to-b from-black/5 to-transparent pointer-events-none" />
+        </div>
       </div>
 
       {/* Content Section */}
@@ -1012,9 +972,26 @@ export default function Under250() {
 
 
         {/* Restaurant Menu Sections */}
-        {loadingRestaurants ? (
-          <div className="flex justify-center items-center py-12">
-            <div className="text-gray-500 dark:text-gray-400">Loading restaurants...</div>
+        {(loadingRestaurants || showGlobalLoader) ? (
+          <div className="space-y-8 pt-4 sm:pt-6 md:pt-8 lg:pt-10">
+            {[1, 2].map((i) => (
+              <div key={i} className="animate-pulse space-y-4">
+                {/* Skeleton Header */}
+                <div className="flex flex-col gap-2">
+                  <div className="h-6 sm:h-8 w-48 bg-gray-200 dark:bg-gray-800 rounded-lg"></div>
+                  <div className="flex gap-4">
+                    <div className="h-4 w-24 bg-gray-100 dark:bg-gray-900 rounded"></div>
+                    <div className="h-4 w-24 bg-gray-100 dark:bg-gray-900 rounded"></div>
+                  </div>
+                </div>
+                {/* Skeleton Grid */}
+                <div className="flex gap-4 overflow-hidden pb-4">
+                  {[1, 2, 3].map((j) => (
+                    <div key={j} className="flex-shrink-0 w-[200px] sm:w-[220px] h-64 bg-gray-50 dark:bg-[#1a1a1a] rounded-xl border border-gray-100 dark:border-gray-800"></div>
+                  ))}
+                </div>
+              </div>
+            ))}
           </div>
         ) : sortedAndFilteredRestaurants.length === 0 ? (
           <div className="flex justify-center items-center py-12">

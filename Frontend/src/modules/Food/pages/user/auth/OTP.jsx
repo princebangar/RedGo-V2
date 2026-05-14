@@ -263,7 +263,7 @@ export default function OTP() {
       setUserAuthData("user", accessToken, user, refreshToken)
 
       // Dispatch custom event for same-tab updates
-      window.dispatchEvent(new Event("userAuthChanged"))
+      window.dispatchEvent(new Event("userLoginSuccess"))
 
       setSuccess(true)
 
@@ -350,7 +350,7 @@ export default function OTP() {
 
       setUserAuthData("user", accessToken, user, refreshToken)
 
-      window.dispatchEvent(new Event("userAuthChanged"))
+      window.dispatchEvent(new Event("userLoginSuccess"))
 
       setSuccess(true)
 

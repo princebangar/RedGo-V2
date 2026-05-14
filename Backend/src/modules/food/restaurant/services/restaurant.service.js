@@ -1235,7 +1235,7 @@ export const uploadRestaurantMenuImages = async (restaurantId, files = []) => {
 };
 
 export const listApprovedRestaurants = async (query = {}) => {
-    const limit = Math.min(Math.max(parseInt(query.limit, 10) || 100, 1), 1000);
+    const limit = Math.min(Math.max(parseInt(query.limit, 10) || 40, 1), 1000);
     const page = Math.max(parseInt(query.page, 10) || 1, 1);
     const skip = (page - 1) * limit;
 
@@ -1303,10 +1303,14 @@ export const listApprovedRestaurants = async (query = {}) => {
     if (zoneIdRaw && mongoose.Types.ObjectId.isValid(zoneIdRaw)) {
         // Try fast path (precomputed restaurant.zoneId).
         filter.$or = [{ zoneId: new mongoose.Types.ObjectId(zoneIdRaw) }];
-        const zoneDoc = await FoodZone.findOne({ _id: zoneIdRaw, isActive: true }).lean();
-        const polygon = zoneToPolygon(zoneDoc);
-        if (polygon) {
-            filter.$or.push({ location: { $geoWithin: { $geometry: polygon } } });
+        
+        // Use a short-lived cache for the zone doc to avoid repeated lookups
+        const zoneDoc = await FoodZone.findById(zoneIdRaw).select('isActive coordinates location').lean();
+        if (zoneDoc && zoneDoc.isActive) {
+            const polygon = zoneToPolygon(zoneDoc);
+            if (polygon) {
+                filter.$or.push({ location: { $geoWithin: { $geometry: polygon } } });
+            }
         }
     }
 
@@ -1379,17 +1383,22 @@ export const listApprovedRestaurants = async (query = {}) => {
             sortStage
         ];
 
-        const [pageDocs, totalDocs] = await Promise.all([
-            FoodRestaurant.aggregate([
-                ...basePipeline,
-                { $project: projection },
-                { $skip: skip },
-                { $limit: limit }
-            ]),
-            FoodRestaurant.aggregate([...basePipeline, { $count: 'count' }])
+        const aggregationResult = await FoodRestaurant.aggregate([
+            ...basePipeline,
+            {
+                $facet: {
+                    metadata: [{ $count: 'total' }],
+                    data: [
+                        { $project: projection },
+                        { $skip: skip },
+                        { $limit: limit }
+                    ]
+                }
+            }
         ]);
 
-        const total = totalDocs?.[0]?.count || 0;
+        const pageDocs = aggregationResult[0]?.data || [];
+        const total = aggregationResult[0]?.metadata[0]?.total || 0;
  
         // Attach recommended dishes to each restaurant
         const restaurantIds = pageDocs.map(r => r._id);
@@ -1575,5 +1584,71 @@ export const listPublicOffers = async () => {
 export const getRestaurantComplaints = async (restaurantId, query = {}) => {
     const { getRestaurantComplaints: getComplaintsInternal } = await import('../../admin/services/admin.service.js');
     return getComplaintsInternal({ ...query, restaurantId });
+};
+
+/**
+ * List restaurants that have at least one approved, available dish under a price limit (e.g. ₹250).
+ * This collapses 50+ frontend requests into ONE optimized backend call.
+ */
+export const listRestaurantsUnderPriceLimit = async (query = {}, priceLimit = 250) => {
+    const zoneIdRaw = String(query.zoneId || '').trim();
+    if (!zoneIdRaw || !mongoose.Types.ObjectId.isValid(zoneIdRaw)) {
+        throw new ValidationError('Valid zoneId is required for Under 250 fetching');
+    }
+
+    // 1. Find all eligible food items in one go
+    const eligibleItems = await FoodItem.find({
+        price: { $lte: priceLimit },
+        isAvailable: true,
+        approvalStatus: 'approved'
+    }).select('restaurantId name price image foodType description isVeg isRecommended').lean();
+
+    if (eligibleItems.length === 0) {
+        return { restaurants: [], total: 0 };
+    }
+
+    // Map items to their restaurants
+    const restaurantItemsMap = {};
+    eligibleItems.forEach(item => {
+        const rid = String(item.restaurantId);
+        if (!restaurantItemsMap[rid]) restaurantItemsMap[rid] = [];
+        restaurantItemsMap[rid].push({
+            ...item,
+            id: String(item._id),
+            isVeg: item.isVeg ?? (String(item.foodType || '').toLowerCase().includes('veg') && !String(item.foodType || '').toLowerCase().includes('non'))
+        });
+    });
+
+    const eligibleRestaurantIds = Object.keys(restaurantItemsMap);
+
+    // 2. Fetch the restaurants (filtered by zone and status)
+    const filter = {
+        _id: { $in: eligibleRestaurantIds },
+        status: 'approved',
+        zoneId: new mongoose.Types.ObjectId(zoneIdRaw)
+    };
+
+    const restaurantsRaw = await FoodRestaurant.find(filter)
+        .select('restaurantName slug area city rating totalRatings estimatedDeliveryTime estimatedDeliveryTimeMinutes profileImage coverImages menuImages location pureVegRestaurant')
+        .lean();
+
+    // 3. Assemble final list
+    const restaurants = restaurantsRaw.map(r => {
+        const rid = String(r._id);
+        const items = restaurantItemsMap[rid] || [];
+        
+        return {
+            ...r,
+            id: rid,
+            restaurantId: rid,
+            name: r.restaurantName,
+            menuItems: items
+        };
+    });
+
+    return {
+        restaurants,
+        total: restaurants.length
+    };
 };
 

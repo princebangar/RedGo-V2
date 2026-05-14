@@ -1,6 +1,6 @@
-import { Link } from "react-router-dom"
+import { Link, useLocation as useRouteLocation } from "react-router-dom"
 import { useState, useEffect, useRef, useMemo } from "react"
-import { ChevronDown, ShoppingCart, Wallet } from "lucide-react"
+import { ChevronDown, ShoppingCart, Wallet, User } from "lucide-react"
 import { Button } from "@food/components/ui/button"
 import { useLocation } from "@food/hooks/useLocation"
 import { useCart } from "@food/context/CartContext"
@@ -8,14 +8,21 @@ import { useLocationSelector } from "./UserLayout"
 import { FaLocationDot } from "react-icons/fa6"
 import { getCachedSettings, loadBusinessSettings } from "@food/utils/businessSettings"
 import quickSpicyLogo from "@food/assets/quicky-spicy-logo.png"
+import { Avatar, AvatarFallback, AvatarImage } from "@food/components/ui/avatar"
+import { useProfile } from "@food/context/ProfileContext"
 
 export default function PageNavbar({
   textColor = "white",
   zIndex = 20,
   showProfile = false,
   showLogo = true,
-  onNavClick
+  showCart = true,
+  showWallet = true,
+  onNavClick,
+  variant = "default" // "default", "reddish", or "transparent"
 }) {
+  const routerLocation = useRouteLocation()
+  const { userProfile } = useProfile()
   const { location, loading, requestLocation } = useLocation()
   const { getCartCount } = useCart()
   const { openLocationSelector } = useLocationSelector()
@@ -1003,15 +1010,22 @@ export default function PageNavbar({
     openLocationSelector()
   }
 
-  const textColorClass = textColor === "white" ? "text-white" : "text-[#DC2626]"
-  const iconFill = textColor === "white" ? "white" : "#DC2626"
-  const ringColor = textColor === "white" ? "ring-white/30" : "ring-[#DC2626]/30"
+  const isReddish = variant === "reddish"
+  const isTransparent = variant === "transparent"
+  const finalTextColorClass = (isReddish || isTransparent) ? "text-[#1a1a1a]" : (textColor === "white" ? "text-white" : "text-[#DC2626]")
+  const finalIconColor = (isReddish || isTransparent) ? "text-[#1a1a1a]" : (textColor === "white" ? "text-white" : "text-[#DC2626]")
+  
+  const initials = useMemo(() => {
+    if (!userProfile) return ""
+    const name = userProfile.firstName || userProfile.name || ""
+    return name[0]?.toUpperCase() || "U"
+  }, [userProfile])
 
   const zIndexClass = zIndex === 50 ? "z-50" : "z-20"
 
   return (
     <nav
-      className={`relative ${zIndexClass} w-full px-3 sm:px-4 md:px-6 lg:px-8 py-2 sm:py-3 bg-transparent !bg-transparent shadow-none border-0`}
+      className={`relative ${zIndexClass} w-full px-3 sm:px-4 md:px-6 lg:px-8 py-1 sm:py-1.5 transition-all duration-300 ${isReddish ? "bg-gradient-to-r from-white via-[#f8fafc] to-white shadow-sm border-b border-gray-100" : (variant === "transparent" ? "bg-transparent shadow-none" : "bg-transparent shadow-none")} border-0`}
       onClick={onNavClick}
     >
       <div className="flex items-center justify-between max-w-7xl mx-auto">
@@ -1026,12 +1040,11 @@ export default function PageNavbar({
                 className="h-9 w-auto sm:h-12 md:h-14 object-contain scale-[1.6] sm:scale-[1.8] origin-left"
                 crossOrigin="anonymous"
                 onError={(e) => {
-                  // Fallback to name if image fails
                   e.target.style.display = 'none'
                 }}
               />
             ) : companyName ? (
-              <span className={`text-lg font-bold text-${textColor}`}>
+              <span className={`text-lg font-bold ${finalTextColorClass}`}>
                 {companyName}
               </span>
             ) : (
@@ -1044,34 +1057,31 @@ export default function PageNavbar({
           </Link>
         )}
 
-        {/* Center: Location Selector (Centered) */}
-        <div className="flex-1 flex items-center justify-center min-w-0 absolute left-1/2 -translate-x-1/2">
+        {/* Center/Left: Location Selector */}
+        <div className={`flex-1 flex items-center ${(isReddish || isTransparent) ? "justify-start" : "justify-center absolute left-1/2 -translate-x-1/2"} min-w-0`}>
           <Button
             variant="ghost"
             onClick={handleLocationClick}
             disabled={loading}
-            className="h-auto px-0 py-0 hover:bg-transparent transition-colors flex-shrink-0"
+            className={`h-auto px-0 py-0 hover:bg-transparent transition-colors flex-shrink-0 ${(isReddish || isTransparent) ? "flex items-center gap-1.5" : ""}`}
           >
             {loading ? (
-              <span className={`text-sm font-bold ${textColorClass}`}>
+              <span className={`text-sm font-bold ${finalTextColorClass}`}>
                 Loading...
               </span>
             ) : (
-              <div className="flex flex-col items-center min-w-0">
-                <div className="flex items-center justify-center gap-1">
-                  <span className={`text-sm sm:text-base font-bold ${textColorClass} truncate max-w-[140px] sm:max-w-[200px]`}>
+              <div className={`flex flex-col ${(isReddish || isTransparent) ? "items-start" : "items-center"} min-w-0`}>
+                <div className="flex items-center justify-start gap-1">
+                  <span className={`text-[15px] sm:text-[17px] font-black ${finalTextColorClass} truncate max-w-[140px] sm:max-w-[200px] leading-none`}>
                     {displayArea}
                   </span>
-                  <ChevronDown className={`h-3 w-3 sm:h-4 sm:w-4 ${textColorClass} flex-shrink-0`} strokeWidth={2.5} />
+                  <ChevronDown className={`h-3.5 w-3.5 sm:h-4 sm:w-4 ${finalIconColor} flex-shrink-0`} strokeWidth={3.5} />
                 </div>
-                {displayAddress && (
-                  <span className={`text-[10px] sm:text-xs font-medium ${textColorClass}/70 truncate max-w-[140px] sm:max-w-[200px] text-center`}>
-                    {displayAddress}
+                {(displayAddress || displayCity) && (
+                  <span className={`text-[10px] sm:text-[12px] font-bold text-gray-500 truncate max-w-[140px] sm:max-w-[200px] ${(isReddish || isTransparent) ? "text-left" : "text-center"} leading-tight mt-0.5`}>
+                    {displayAddress}{displayAddress && displayCity ? ", " : ""}{displayCity}
                   </span>
                 )}
-                <span className={`text-[9px] sm:text-[10px] font-black uppercase tracking-[0.2em] ${textColorClass}/60 text-center`}>
-                  {displayCity}
-                </span>
               </div>
             )}
           </Button>
@@ -1079,52 +1089,53 @@ export default function PageNavbar({
 
         {/* Right: Actions (Wallet & Cart) */}
         <div className="flex items-center gap-2 sm:gap-3 flex-shrink-0 ml-auto">
-          <Link to="/user/wallet">
-            <Button
-              variant="ghost"
-              size="icon"
-              className="h-8 w-8 sm:h-9 sm:w-9 rounded-full p-0 hover:opacity-80 transition-opacity"
-              title="Wallet"
-            >
-              <div className={`h-full w-full rounded-full bg-transparent flex items-center justify-center shadow-md border border-gray-100/50 dark:border-white/10`}>
-                <Wallet className={`h-4.5 w-4.5 sm:h-5.5 sm:w-5.5 ${textColor === "white" ? "text-white" : "text-[#DC2626] dark:text-[#a14b84]"}`} strokeWidth={3} />
-              </div>
-            </Button>
-          </Link>
- 
-          <Link to="/user/cart">
-            <Button
-              variant="ghost"
-              size="icon"
-              className="relative h-8 w-8 sm:h-9 sm:w-9 rounded-full p-0 hover:opacity-80 transition-opacity"
-              title="Cart"
-            >
-              <div className={`h-full w-full rounded-full bg-transparent flex items-center justify-center shadow-md border border-gray-100/50 dark:border-white/10`}>
-                <ShoppingCart className={`h-4.5 w-4.5 sm:h-5.5 sm:w-5.5 ${textColor === "white" ? "text-white" : "text-[#DC2626] dark:text-[#a14b84]"}`} strokeWidth={3} />
-              </div>
-              {cartCount > 0 && (
-                <span className="absolute -top-1 -right-1 w-4.5 h-4.5 bg-[#DC2626] rounded-full flex items-center justify-center ring-2 ring-white">
-                  <span className="text-[10px] font-black text-white">{cartCount > 99 ? "99+" : cartCount}</span>
-                </span>
-              )}
-            </Button>
-          </Link>
- 
-          {/* Profile - Only shown if showProfile is true */}
-          {showProfile && (
-            <Link to="/user/profile">
+          {showWallet && (
+            <Link to="/food/user/wallet" state={{ from: routerLocation.pathname }}>
               <Button
                 variant="ghost"
                 size="icon"
-                className="h-8 w-8 sm:h-9 sm:w-9 rounded-full p-0 hover:opacity-80 transition-opacity"
-                title="Profile"
+                className="h-9 w-9 sm:h-10 sm:w-10 rounded-full p-0 hover:opacity-80 transition-opacity"
+                title="Wallet"
               >
-                <div className={`h-full w-full rounded-full bg-transparent flex items-center justify-center shadow-md border border-gray-100/50 dark:border-white/10`}>
-                  <span className={`text-sm sm:text-base font-black ${textColor === "white" ? "text-white" : "text-[#DC2626] dark:text-[#a14b84]"}`}>
-                    A
-                  </span>
+                <div className={`h-full w-full rounded-full ${(isReddish || isTransparent) ? (isTransparent ? "bg-gradient-to-br from-[#FF4D4D] via-[#DC2626] to-[#991B1B] shadow-sm" : "bg-white shadow-sm") : "bg-white/10"} flex items-center justify-center border ${(isReddish || isTransparent) ? (isTransparent ? "border-white/10" : "border-gray-200/50") : "border-white/20"}`}>
+                  <Wallet className={`h-5 w-5 sm:h-6 sm:w-6 ${isTransparent ? "text-white" : finalIconColor}`} strokeWidth={2.5} />
                 </div>
               </Button>
+            </Link>
+          )}
+
+          {showCart && (
+            <Link to="/food/user/cart" state={{ from: routerLocation.pathname }}>
+              <Button
+                variant="ghost"
+                size="icon"
+                className="relative h-9 w-9 sm:h-10 sm:w-10 rounded-full p-0 hover:opacity-80 transition-opacity"
+                title="Cart"
+              >
+                <div className={`h-full w-full rounded-full ${(isReddish || isTransparent) ? "bg-white shadow-sm" : "bg-white/10"} flex items-center justify-center border ${(isReddish || isTransparent) ? "border-gray-200/50" : "border-white/20"}`}>
+                  <ShoppingCart className={`h-5 w-5 sm:h-6 sm:w-6 ${finalIconColor}`} strokeWidth={2.5} />
+                </div>
+                {cartCount > 0 && (
+                  <span className="absolute -top-1 -right-1 bg-[#DC2626] text-white text-[10px] font-bold h-4 w-4 sm:h-5 sm:w-5 rounded-full flex items-center justify-center border-2 border-white dark:border-[#1a1a1a]">
+                    {cartCount > 99 ? "99+" : cartCount}
+                  </span>
+                )}
+              </Button>
+            </Link>
+          )}
+
+          {showProfile && (
+            <Link to="/food/user/profile" state={{ from: routerLocation.pathname }}>
+              <Avatar className={`h-10 w-10 rounded-full border border-white transition-all active:scale-95 shadow-sm overflow-hidden cursor-pointer ring-1 ${routerLocation.pathname.includes('/under-250') ? 'ring-blue-500/60 shadow-[0_0_10px_rgba(59,130,246,0.3)]' : 'ring-red-500/50'}`}>
+                <AvatarImage 
+                  src={userProfile?.profileImage?.url || userProfile?.profileImage} 
+                  alt="Profile" 
+                  className="object-cover"
+                />
+                <AvatarFallback className="bg-gradient-to-br from-[#DC2626] to-[#991B1B] text-white font-bold text-sm uppercase">
+                  {(userProfile?.name || "U").charAt(0)}
+                </AvatarFallback>
+              </Avatar>
             </Link>
           )}
         </div>

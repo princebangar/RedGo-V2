@@ -224,6 +224,7 @@ export default function AddressSelectorPage() {
         }
         
         try { 
+          sessionStorage.setItem("manual_location_update", "true");
           localStorage.setItem("deliveryAddressMode", "current")
           window.dispatchEvent(new CustomEvent("userLocationUpdated"))
           
@@ -243,6 +244,7 @@ export default function AddressSelectorPage() {
     if (id) {
       await setDefaultAddress(id)
       try { 
+        sessionStorage.setItem("manual_location_update", "true");
         localStorage.setItem("deliveryAddressMode", "saved")
         window.dispatchEvent(new CustomEvent("userLocationUpdated"))
         // Move navigation here to trigger immediately with the event
@@ -375,6 +377,7 @@ export default function AddressSelectorPage() {
         const id = getAddressId(created)
         if (id) await setDefaultAddress(id)
         try { 
+          sessionStorage.setItem("manual_location_update", "true");
           localStorage.setItem("deliveryAddressMode", "saved")
           window.dispatchEvent(new CustomEvent("userLocationUpdated"))
         } catch {}
