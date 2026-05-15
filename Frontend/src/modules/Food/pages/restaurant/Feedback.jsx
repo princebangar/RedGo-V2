@@ -1,7 +1,8 @@
 import { useState, useEffect, useRef } from "react"
-import { useNavigate, useSearchParams } from "react-router-dom"
+import { useNavigate, useSearchParams, useLocation } from "react-router-dom"
 import { motion, AnimatePresence } from "framer-motion"
-import { Bell, HelpCircle, Menu, Search, SlidersHorizontal, Calendar, ChevronLeft, X, Loader2, ChevronRight, Star } from "lucide-react"
+import { Bell, HelpCircle, Menu, Search, SlidersHorizontal, Calendar, ChevronLeft, X, Loader2, ChevronRight, Star, ArrowLeft } from "lucide-react"
+import useRestaurantBackNavigation from "@food/hooks/useRestaurantBackNavigation"
 import { DateRangeCalendar } from "@food/components/ui/date-range-calendar"
 import BottomNavOrders from "@food/components/restaurant/BottomNavOrders"
 import { restaurantAPI } from "@food/api"
@@ -56,6 +57,9 @@ export default function Feedback() {
   const tabFromUrl = searchParams.get("tab")
   const [activeTab, setActiveTab] = useState(tabFromUrl === "complaints" ? "complaints" : "reviews")
   const navigate = useNavigate()
+  const location = useLocation()
+  const goBack = useRestaurantBackNavigation()
+  const showBack = location.state?.from
   const [isTransitioning, setIsTransitioning] = useState(false)
   
   // Update active tab when URL param changes
@@ -390,14 +394,25 @@ export default function Feedback() {
     <div className="min-h-screen bg-gray-100 dark:bg-[#0a0a0a] flex flex-col" onTouchStart={handleTouchStart} onTouchMove={handleTouchMove} onTouchEnd={handleTouchEnd}>
       <div className="sticky bg-white dark:bg-[#0a0a0a] top-0 z-40 px-4 py-3 border-b border-gray-200 dark:border-gray-800">
         <div className="flex items-center justify-between">
-          <div>
-            <p className="text-[10px] tracking-wider text-gray-500 uppercase">Showing data for</p>
-            <p className="text-md font-bold text-gray-900 dark:text-white">{restaurantData?.name || "Restaurant"}</p>
+          <div className="flex items-center gap-3">
+            {showBack && (
+              <button
+                onClick={goBack}
+                className="p-1.5 hover:bg-gray-100 rounded-lg transition-colors"
+                aria-label="Go back"
+              >
+                <ArrowLeft className="w-5 h-5 text-gray-900" />
+              </button>
+            )}
+            <div>
+              <p className="text-[10px] tracking-wider text-gray-500 uppercase">Showing data for</p>
+              <p className="text-md font-bold text-gray-900 dark:text-white">{restaurantData?.name || "Restaurant"}</p>
+            </div>
           </div>
           <div className="flex items-center gap-2">
             <button
               type="button"
-              onClick={() => navigate("/food/restaurant/help-centre/support")}
+              onClick={() => navigate("/food/restaurant/help-centre/support", { state: { from: location.pathname } })}
               className="p-1 rounded-full hover:bg-gray-100 dark:hover:bg-gray-800 active:scale-95 transition-all"
               aria-label="Open support"
             >
@@ -412,12 +427,12 @@ export default function Feedback() {
               key={tab.id}
               onClick={() => setActiveTab(tab.id)}
               className={`px-6 py-2 rounded-full text-sm font-bold transition-all relative ${
-                activeTab === tab.id ? "bg-black dark:bg-white text-white dark:text-black" : "bg-white dark:bg-[#1a1a1a] text-gray-600 dark:text-gray-400 border border-gray-200 dark:border-gray-800"
+                activeTab === tab.id ? "bg-gradient-to-br from-[#B80B3D] to-[#66001D] text-white" : "bg-white dark:bg-[#1a1a1a] text-gray-600 dark:text-gray-400 border border-gray-200 dark:border-gray-800"
               }`}
             >
               {tab.label}
               {tab.id === 'complaints' && complaints.length > 0 && activeTab !== 'complaints' && (
-                <span className="absolute -top-1 -right-1 w-2.5 h-2.5 bg-red-500 rounded-full border-2 border-white dark:border-[#0a0a0a]" />
+                <span className="absolute -top-1 -right-1 w-2.5 h-2.5 bg-gradient-to-br from-[#B80B3D] to-[#66001D] rounded-full border-2 border-white dark:border-[#0a0a0a]" />
               )}
             </button>
           ))}
@@ -428,14 +443,14 @@ export default function Feedback() {
         {activeTab === "complaints" ? (
           <div className="space-y-4">
             <div className="flex gap-2">
-              <button onClick={() => setIsDateSelectorOpen(true)} className="flex-1 bg-white dark:bg-[#1a1a1a] p-3 rounded-xl border border-gray-200 dark:border-gray-800 flex justify-between items-center">
+              <button onClick={() => setIsDateSelectorOpen(true)} className="flex-1 bg-white dark:bg-gradient-to-br from-[#B80B3D] to-[#66001D] p-3 rounded-xl border border-gray-200 dark:border-gray-800 flex justify-between items-center">
                 <div className="text-left">
                   <p className="text-xs font-bold text-gray-900 dark:text-white">{selectedDateRange}</p>
                   <p className="text-[10px] text-gray-500">Select date range</p>
                 </div>
                 <Calendar className="w-4 h-4 text-gray-400" />
               </button>
-              <button onClick={() => setIsComplaintsFilterOpen(true)} className="bg-white dark:bg-[#1a1a1a] p-3 rounded-xl border border-gray-200 dark:border-gray-800">
+              <button onClick={() => setIsComplaintsFilterOpen(true)} className="bg-white dark:bg-gradient-to-br from-[#B80B3D] to-[#66001D] p-3 rounded-xl border border-gray-200 dark:border-gray-800">
                 <SlidersHorizontal className="w-4 h-4 text-gray-900 dark:text-white" />
               </button>
             </div>
@@ -450,7 +465,7 @@ export default function Feedback() {
               ) : (
                 <div className="space-y-4 pb-20">
                   {complaints.map((complaint) => (
-                    <div key={complaint._id} className="bg-white dark:bg-[#1a1a1a] rounded-2xl p-4 border border-gray-100 dark:border-gray-800 shadow-sm space-y-3">
+                    <div key={complaint._id} className="bg-white dark:bg-gradient-to-br from-[#B80B3D] to-[#66001D] rounded-2xl p-4 border border-gray-100 dark:border-gray-800 shadow-sm space-y-3">
                       <div className="flex justify-between items-center">
                         <span className={`text-[9px] font-black px-2 py-0.5 rounded-full uppercase tracking-tighter ${
                           complaint.status === 'open' ? 'bg-orange-100 dark:bg-orange-900/30 text-orange-600' : 'bg-green-100 dark:bg-green-900/30 text-green-600'
@@ -469,13 +484,13 @@ export default function Feedback() {
                       </div>
  
                       <div className="bg-gray-50 dark:bg-gray-800/50 rounded-xl p-3 relative">
-                        <p className="text-[10px] font-black text-red-500 uppercase mb-1">{complaint.issueType}</p>
+                        <p className="text-[10px] font-black text-[#B80B3D] uppercase mb-1">{complaint.issueType}</p>
                         <p className="text-sm text-gray-800 dark:text-gray-200 font-semibold leading-relaxed">{complaint.description}</p>
                       </div>
  
                       {complaint.adminResponse && (
                         <div className="bg-blue-50 dark:bg-blue-900/20 rounded-xl p-3 border border-blue-100 dark:border-blue-900/30">
-                          <p className="text-[9px] font-black text-blue-600 dark:text-blue-400 uppercase mb-1">Admin Response</p>
+                          <p className="text-[9px] font-black text-[#B80B3D] dark:text-blue-400 uppercase mb-1">Admin Response</p>
                           <p className="text-sm text-blue-900 dark:text-blue-200 font-medium">{complaint.adminResponse}</p>
                         </div>
                       )}
@@ -488,18 +503,18 @@ export default function Feedback() {
         ) : (
           <div className="space-y-4">
             <div className="flex gap-2">
-              <div className="flex-1 bg-white dark:bg-[#1a1a1a] p-3 rounded-xl border border-gray-200 dark:border-gray-800 flex items-center gap-2">
+              <div className="flex-1 bg-white dark:bg-gradient-to-br from-[#B80B3D] to-[#66001D] p-3 rounded-xl border border-gray-200 dark:border-gray-800 flex items-center gap-2">
                 <Search className="w-4 h-4 text-gray-400" />
                 <input type="text" placeholder="Search reviews" className="flex-1 text-sm bg-transparent focus:outline-none dark:text-white" />
               </div>
-              <button onClick={() => setIsFilterOpen(true)} className="bg-white dark:bg-[#1a1a1a] p-3 rounded-xl border border-gray-200 dark:border-gray-800">
+              <button onClick={() => setIsFilterOpen(true)} className="bg-white dark:bg-gradient-to-br from-[#B80B3D] to-[#66001D] p-3 rounded-xl border border-gray-200 dark:border-gray-800">
                 <SlidersHorizontal className="w-4 h-4 text-gray-900 dark:text-white" />
               </button>
             </div>
 
             <div className="space-y-4 pb-20">
               {displayedReviews.map((review) => (
-                <div key={review.id} className="bg-white dark:bg-[#1a1a1a] rounded-2xl p-4 border border-gray-100 dark:border-gray-800 shadow-sm space-y-3">
+                <div key={review.id} className="bg-white dark:bg-gradient-to-br from-[#B80B3D] to-[#66001D] rounded-2xl p-4 border border-gray-100 dark:border-gray-800 shadow-sm space-y-3">
                   <div className="flex items-center justify-between text-[10px] text-gray-400 font-bold uppercase">
                     <span>Order #{review.orderNumber}</span>
                     <span>{review.date}</span>
@@ -537,7 +552,7 @@ export default function Feedback() {
               animate={{ y: 0 }}
               exit={{ y: "100%" }}
               transition={{ type: "spring", damping: 30, stiffness: 300 }}
-              className="fixed bottom-0 left-0 right-0 bg-white dark:bg-[#1a1a1a] rounded-t-3xl shadow-2xl z-50 p-4"
+              className="fixed bottom-0 left-0 right-0 bg-white dark:bg-gradient-to-br from-[#B80B3D] to-[#66001D] rounded-t-3xl shadow-2xl z-50 p-4"
             >
               <div className="flex justify-center mb-4">
                 <div className="h-1 w-10 rounded-full bg-gray-300 dark:bg-gray-700" />
@@ -552,7 +567,7 @@ export default function Feedback() {
                     key={range}
                     onClick={() => handleDateRangeSelect(range)}
                     className={`py-3 rounded-xl border-2 text-sm font-bold capitalize transition-all ${
-                      selectedDateRange === range ? "border-black dark:border-white bg-black dark:bg-white text-white dark:text-black" : "border-gray-100 dark:border-gray-800 bg-white dark:bg-[#0a0a0a] text-gray-600 dark:text-gray-400"
+                      selectedDateRange === range ? "border-black dark:border-white bg-gradient-to-br from-[#B80B3D] to-[#66001D] dark:bg-white text-white dark:text-black" : "border-gray-100 dark:border-gray-800 bg-white dark:bg-[#0a0a0a] text-gray-600 dark:text-gray-400"
                     }`}
                   >
                     {range === "last5days" ? "Last 5 Days" : range.replace(/([A-Z])/g, ' $1').trim()}
@@ -579,7 +594,7 @@ export default function Feedback() {
               initial={{ scale: 0.9, opacity: 0 }}
               animate={{ scale: 1, opacity: 1 }}
               exit={{ scale: 0.9, opacity: 0 }}
-              className="fixed inset-0 m-auto w-[90%] max-w-sm h-fit bg-white dark:bg-[#1a1a1a] rounded-3xl shadow-2xl z-[60] p-6"
+              className="fixed inset-0 m-auto w-[90%] max-w-sm h-fit bg-white dark:bg-gradient-to-br from-[#B80B3D] to-[#66001D] rounded-3xl shadow-2xl z-[60] p-6"
             >
               <DateRangeCalendar
                 startDate={customDateRange.start}
@@ -591,7 +606,7 @@ export default function Feedback() {
               />
               <button
                 onClick={handleCustomDateApply}
-                className="w-full bg-black dark:bg-white text-white dark:text-black py-4 rounded-2xl font-bold mt-4 shadow-xl active:scale-[0.98] transition-all"
+                className="w-full bg-gradient-to-br from-[#B80B3D] to-[#66001D] dark:bg-white text-white dark:text-black py-4 rounded-2xl font-bold mt-4 shadow-xl active:scale-[0.98] transition-all"
               >
                 Apply Custom Range
               </button>
@@ -608,7 +623,7 @@ export default function Feedback() {
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
-              className="fixed inset-0 bg-black/40 z-50 backdrop-blur-sm"
+              className="fixed inset-0 bg-black/50/40 z-50 backdrop-blur-sm"
               onClick={() => setIsComplaintsFilterOpen(false)}
             />
             <motion.div
@@ -616,7 +631,7 @@ export default function Feedback() {
               animate={{ y: 0 }}
               exit={{ y: "100%" }}
               transition={{ type: "spring", damping: 25, stiffness: 200 }}
-              className="fixed bottom-0 left-0 right-0 bg-white dark:bg-[#1a1a1a] rounded-t-[32px] shadow-2xl z-50 overflow-hidden"
+              className="fixed bottom-0 left-0 right-0 bg-white dark:bg-gradient-to-br from-[#B80B3D] to-[#66001D] rounded-t-[32px] shadow-2xl z-50 overflow-hidden"
               style={{ maxHeight: "80vh" }}
             >
               <div className="p-6 flex flex-col h-full">
@@ -643,7 +658,7 @@ export default function Feedback() {
                           }}
                           className={`px-4 py-2.5 rounded-xl text-sm font-bold transition-all ${
                             complaintsFilterValues.issueType?.includes(type)
-                              ? "bg-slate-900 dark:bg-white text-white dark:text-black shadow-lg shadow-slate-200 dark:shadow-none"
+                              ? "bg-gradient-to-br from-[#B80B3D] to-[#66001D] dark:bg-white text-white dark:text-black shadow-lg shadow-slate-200 dark:shadow-none"
                               : "bg-slate-50 dark:bg-gray-800 text-slate-600 dark:text-gray-400 hover:bg-slate-100 dark:hover:bg-gray-700"
                           }`}
                         >
@@ -663,7 +678,7 @@ export default function Feedback() {
                   </button>
                   <button
                     onClick={handleComplaintsFilterApply}
-                    className="flex-[2] bg-slate-900 dark:bg-white text-white dark:text-black py-4 rounded-2xl font-bold shadow-xl shadow-slate-200 dark:shadow-none active:scale-[0.98] transition-all"
+                    className="flex-[2] bg-gradient-to-br from-[#B80B3D] to-[#66001D] dark:bg-white text-white dark:text-black py-4 rounded-2xl font-bold shadow-xl shadow-slate-200 dark:shadow-none active:scale-[0.98] transition-all"
                   >
                     Apply Filters
                   </button>
@@ -677,3 +692,10 @@ export default function Feedback() {
     </div>
   )
 }
+
+
+
+
+
+
+

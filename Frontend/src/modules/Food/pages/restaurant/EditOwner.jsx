@@ -265,7 +265,7 @@ export default function EditOwner() {
             <button
               onClick={handlePhotoClick}
               disabled={loading || saving}
-              className="text-blue-600 text-sm font-normal hover:text-blue-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              className="text-[#B80B3D] text-sm font-normal hover:text-blue-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
             >
               Edit photo
             </button>
@@ -293,7 +293,7 @@ export default function EditOwner() {
                   className="w-full pr-10"
                   disabled={loading || saving}
                 />
-                <Edit className="absolute right-3 top-1/2 -translate-y-1/2 w-5 h-5 text-blue-600" />
+                <Edit className="absolute right-3 top-1/2 -translate-y-1/2 w-5 h-5 text-[#B80B3D]" />
               </div>
             </div>
 
@@ -322,7 +322,7 @@ export default function EditOwner() {
                   className="w-full pr-10 focus-visible:border-black focus-visible:ring-0"
                   disabled={loading || saving}
                 />
-                <Edit className="absolute right-3 top-1/2 -translate-y-1/2 w-5 h-5 text-blue-600" />
+                <Edit className="absolute right-3 top-1/2 -translate-y-1/2 w-5 h-5 text-[#B80B3D]" />
               </div>
             </div>
           </div>
@@ -339,7 +339,7 @@ export default function EditOwner() {
             disabled={!hasChanges || loading || saving}
             className={`w-full py-3 ${
               hasChanges && !loading && !saving
-                ? "bg-black hover:bg-gray-900 text-white" 
+                ? "bg-gradient-to-br from-[#B80B3D] to-[#66001D] hover:bg-gradient-to-br from-[#B80B3D] to-[#66001D] text-white" 
                 : "bg-gray-200 text-gray-500 cursor-not-allowed"
             } transition-colors`}
           >
@@ -360,4 +360,11 @@ export default function EditOwner() {
     </>
   )
 }
+
+
+
+
+
+
+
 

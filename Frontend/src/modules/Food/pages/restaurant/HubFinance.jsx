@@ -1,7 +1,9 @@
 import { useState, useMemo, useRef, useEffect } from "react"
 import { useNavigate, useSearchParams } from "react-router-dom"
 import { motion, AnimatePresence } from "framer-motion"
-import { Bell, Menu, ChevronDown, Calendar, Download, ArrowRight, FileText, Wallet, X } from "lucide-react"
+import { Bell, Menu, ChevronDown, Calendar, Download, ArrowRight, FileText, Wallet, X, ArrowLeft } from "lucide-react"
+import { useLocation } from "react-router-dom"
+import useRestaurantBackNavigation from "@food/hooks/useRestaurantBackNavigation"
 import BottomNavOrders from "@food/components/restaurant/BottomNavOrders"
 import { restaurantAPI } from "@food/api"
 const debugLog = (...args) => {}
@@ -11,6 +13,9 @@ const debugError = (...args) => {}
 
 export default function HubFinance() {
   const navigate = useNavigate()
+  const location = useLocation()
+  const goBack = useRestaurantBackNavigation()
+  const showBack = location.state?.from
   const [searchParams] = useSearchParams()
   const [activeTab, setActiveTab] = useState(() => {
     const tabParam = searchParams.get("tab")
@@ -179,7 +184,7 @@ export default function HubFinance() {
   }, [invoiceOrders])
 
   const handleViewDetails = () => {
-    navigate("/restaurant/finance-details", { state: { financeData, restaurantData } })
+    navigate("/food/restaurant/finance-details", { state: { financeData, restaurantData, from: location.pathname } })
   }
 
   const getWithdrawalStatusClass = (statusRaw) => {
@@ -702,7 +707,16 @@ export default function HubFinance() {
     <div className="min-h-screen bg-gray-100 flex flex-col">
       {/* Navbar */}
       <div className="sticky bg-white top-0 z-40 px-4 py-3 border-b border-gray-200">
-        <div className="flex items-center justify-between">
+        <div className="flex items-center justify-between gap-3">
+          {showBack && (
+            <button
+              onClick={goBack}
+              className="p-1.5 hover:bg-gray-100 rounded-lg transition-colors"
+              aria-label="Go back"
+            >
+              <ArrowLeft className="w-5 h-5 text-gray-900" />
+            </button>
+          )}
           <div className="flex-1 min-w-0 flex items-start gap-2">
             <div className="flex-1 min-w-0">
               <div className="flex items-center gap-1">
@@ -732,20 +746,20 @@ export default function HubFinance() {
           <div className="flex items-center gap-1 ml-2">
             <button
               className="p-2 hover:bg-gray-100 rounded-full transition-colors"
-              onClick={() => navigate("/restaurant/withdrawal-history")}
+              onClick={() => navigate("/food/restaurant/withdrawal-history", { state: { from: location.pathname } })}
               title="Withdrawal History"
             >
               <Wallet className="w-5 h-5 text-gray-700" />
             </button>
             <button
               className="p-2 hover:bg-gray-100 rounded-full transition-colors"
-              onClick={() => navigate("/restaurant/notifications")}
+              onClick={() => navigate("/food/restaurant/notifications", { state: { from: location.pathname } })}
             >
               <Bell className="w-5 h-5 text-gray-700" />
             </button>
             <button
               className="p-2 hover:bg-gray-100 rounded-full transition-colors"
-              onClick={() => navigate("/restaurant/explore")}
+              onClick={() => navigate("/food/restaurant/explore")}
             >
               <Menu className="w-5 h-5 text-gray-700" />
             </button>
@@ -760,7 +774,7 @@ export default function HubFinance() {
             onClick={() => setActiveTab("payouts")}
             className={`flex-1 py-3 px-4 rounded-full font-medium text-sm transition-colors ${
               activeTab === "payouts"
-                ? "bg-black text-white"
+                ? "bg-gradient-to-br from-[#B80B3D] to-[#66001D] text-white"
                 : "bg-white text-gray-600 border border-gray-300"
             }`}
           >
@@ -770,7 +784,7 @@ export default function HubFinance() {
             onClick={() => setActiveTab("invoices")}
             className={`flex-1 py-3 px-4 rounded-full font-medium text-sm transition-colors ${
               activeTab === "invoices"
-                ? "bg-black text-white"
+                ? "bg-gradient-to-br from-[#B80B3D] to-[#66001D] text-white"
                 : "bg-white text-gray-600 border border-gray-300"
             }`}
           >
@@ -802,7 +816,7 @@ export default function HubFinance() {
                       disabled={!(financeData?.currentCycle?.estimatedPayout > 0)}
                       className={`w-full py-3 px-4 rounded-lg font-semibold flex items-center justify-center gap-2 mt-4 transition-colors ${
                         financeData?.currentCycle?.estimatedPayout > 0
-                          ? "bg-black text-white hover:bg-gray-800"
+                          ? "bg-gradient-to-br from-[#B80B3D] to-[#66001D] text-white hover:bg-gray-800"
                           : "bg-gray-200 text-gray-500 cursor-not-allowed"
                       }`}
                     >
@@ -1025,7 +1039,7 @@ export default function HubFinance() {
                   <div className="relative" ref={downloadMenuRef}>
                     <button 
                       onClick={() => setShowDownloadMenu(!showDownloadMenu)}
-                      className="bg-black text-white rounded-lg px-4 py-3 flex items-center justify-center gap-2 hover:bg-gray-800 transition-colors"
+                      className="bg-gradient-to-br from-[#B80B3D] to-[#66001D] text-white rounded-lg px-4 py-3 flex items-center justify-center gap-2 hover:bg-gray-800 transition-colors"
                     >
                       <Download className="w-4 h-4" />
                       <span className="text-sm font-medium">Get report</span>
@@ -1046,7 +1060,7 @@ export default function HubFinance() {
                             className="w-full flex items-center gap-3 px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 transition-colors"
                           >
                             <div className="w-6 h-6 rounded-md bg-red-50 flex items-center justify-center">
-                              <FileText className="w-4 h-4 text-red-600" />
+                              <FileText className="w-4 h-4 text-[#B80B3D]" />
                             </div>
                             <span>Download PDF</span>
                           </button>
@@ -1243,7 +1257,7 @@ export default function HubFinance() {
                     className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-black focus:border-transparent outline-none"
                   />
                   {withdrawalAmount && parseFloat(withdrawalAmount) > (financeData?.currentCycle?.estimatedPayout || 0) && (
-                    <p className="text-sm text-red-600 mt-1">Amount cannot exceed available balance</p>
+                    <p className="text-sm text-[#B80B3D] mt-1">Amount cannot exceed available balance</p>
                   )}
                 </div>
 
@@ -1300,7 +1314,7 @@ export default function HubFinance() {
                       }
                     }}
                     disabled={submittingWithdrawal || !withdrawalAmount || parseFloat(withdrawalAmount) <= 0 || parseFloat(withdrawalAmount) > (financeData?.currentCycle?.estimatedPayout || 0)}
-                    className="flex-1 px-4 py-3 bg-black text-white rounded-lg font-medium hover:bg-gray-800 transition-colors disabled:bg-gray-300 disabled:cursor-not-allowed"
+                    className="flex-1 px-4 py-3 bg-gradient-to-br from-[#B80B3D] to-[#66001D] text-white rounded-lg font-medium hover:bg-gray-800 transition-colors disabled:bg-gray-300 disabled:cursor-not-allowed"
                   >
                     {submittingWithdrawal ? 'Submitting...' : 'Submit Request'}
                   </button>
@@ -1315,4 +1329,11 @@ export default function HubFinance() {
     </div>
   )
 }
+
+
+
+
+
+
+
 

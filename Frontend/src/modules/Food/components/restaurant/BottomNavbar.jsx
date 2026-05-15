@@ -18,7 +18,7 @@ export default function BottomNavbar({ onMenuClick }) {
         <button
           onClick={() => navigate("/food/restaurant")}
           className={`flex flex-col items-center gap-1 p-2 transition-colors ${
-            isActive("/food/restaurant") ? "text-[#DC2626]" : "text-gray-600"
+            isActive("/food/restaurant") ? "text-[#B80B3D]" : "text-gray-600"
           }`}
         >
           <Home className="w-6 h-6" />
@@ -26,7 +26,7 @@ export default function BottomNavbar({ onMenuClick }) {
         <button
           onClick={() => navigate("/food/restaurant/orders")}
           className={`flex flex-col items-center gap-1 p-2 transition-colors ${
-            isActive("/food/restaurant/orders") ? "text-[#DC2626]" : "text-gray-600"
+            isActive("/food/restaurant/orders") ? "text-[#B80B3D]" : "text-gray-600"
           }`}
         >
           <ShoppingBag className="w-6 h-6" />
@@ -34,13 +34,13 @@ export default function BottomNavbar({ onMenuClick }) {
         <button
           onClick={() => navigate("/food/restaurant/explore")}
           className={`flex flex-col items-center gap-1 p-2 -mt-8 transition-colors ${
-            isActive("/food/restaurant/explore") ? "text-[#DC2626]" : "text-gray-600"
+            isActive("/food/restaurant/explore") ? "text-[#B80B3D]" : "text-gray-600"
           }`}
         >
           <div
             className={`rounded-full p-3 shadow-lg border-2 transition-colors ${
               isActive("/food/restaurant/explore")
-                ? "bg-[#DC2626] border-white"
+                ? "bg-gradient-to-br from-[#B80B3D] to-[#66001D] border-white"
                 : "bg-white border-gray-200"
             }`}
           >
@@ -54,7 +54,7 @@ export default function BottomNavbar({ onMenuClick }) {
         <button
           onClick={() => navigate("/food/restaurant/wallet")}
           className={`flex flex-col items-center gap-1 p-2 transition-colors ${
-            isActive("/food/restaurant/wallet") ? "text-[#DC2626]" : "text-gray-600"
+            isActive("/food/restaurant/wallet") ? "text-[#B80B3D]" : "text-gray-600"
           }`}
         >
           <Wallet className="w-6 h-6" />
@@ -73,7 +73,7 @@ export default function BottomNavbar({ onMenuClick }) {
             navigate("/food/restaurant/food/all")
           }}
           className={`flex flex-col items-center gap-1 p-2 transition-colors ${
-            isActive("/food/restaurant/food/all") ? "text-[#DC2626]" : "text-gray-600"
+            isActive("/food/restaurant/food/all") ? "text-[#B80B3D]" : "text-gray-600"
           }`}
         >
           <Menu className="w-6 h-6" />
@@ -82,4 +82,11 @@ export default function BottomNavbar({ onMenuClick }) {
     </div>
   )
 }
+
+
+
+
+
+
+
 

@@ -29,13 +29,14 @@ import {
   ArrowLeft
 } from "lucide-react"
 import { Card, CardContent } from "@food/components/ui/card"
-import { useNavigate } from "react-router-dom"
+import { useNavigate, useLocation } from "react-router-dom"
 import { restaurantAPI } from "@food/api"
 import { flattenMenuItems, getMenuFromResponse } from "@food/utils/menuItems"
 import { getRestaurantData } from "@food/utils/restaurantManagement"
 
 export default function RestaurantDetailsPage() {
   const navigate = useNavigate()
+  const location = useLocation()
   const [activeCategory, setActiveCategory] = useState("all")
   const [showMenu, setShowMenu] = useState(false)
   const [restaurantData, setRestaurantData] = useState(() => getRestaurantData())
@@ -157,7 +158,7 @@ export default function RestaurantDetailsPage() {
         <div className="absolute bottom-0 left-0 right-0 bg-white rounded-t-3xl p-4 md:p-6">
           <div className="flex items-start gap-4">
             <div className="flex-shrink-0">
-              <div className="bg-primary-orange rounded-lg p-3">
+              <div className="bg-gradient-to-br from-[#B80B3D] to-[#66001D] rounded-lg p-3">
                 {restaurantData.logo && !logoLoadFailed ? (
                   <img 
                     src={restaurantData.logo} 
@@ -178,7 +179,7 @@ export default function RestaurantDetailsPage() {
                 <motion.button
                   whileHover={{ scale: 1.1 }}
                   whileTap={{ scale: 0.9 }}
-                  onClick={() => navigate("/restaurant/edit")}
+                  onClick={() => navigate("/food/restaurant/edit", { state: { from: location.pathname } })}
                   className="flex-shrink-0 ml-2 p-2 hover:bg-gray-100 rounded-lg transition-colors"
                 >
                   <Edit className="w-4 h-4 md:w-5 md:h-5 text-gray-600" />
@@ -239,7 +240,7 @@ export default function RestaurantDetailsPage() {
                 {activeCategory === category.id && (
                   <motion.div
                     layoutId="activeCategory"
-                    className="absolute inset-0 bg-primary-orange rounded-full z-0"
+                    className="absolute inset-0 bg-gradient-to-br from-[#B80B3D] to-[#66001D] rounded-full z-0"
                     transition={{ type: "spring", stiffness: 500, damping: 30 }}
                   />
                 )}
@@ -267,7 +268,7 @@ export default function RestaurantDetailsPage() {
             >
               <Card 
                 className="bg-white shadow-sm border border-gray-100 hover:shadow-md transition-shadow cursor-pointer"
-                onClick={() => navigate(`/restaurant/food/${item.id}`)}
+                onClick={() => navigate(`/food/restaurant/food/${item.id}`, { state: { from: location.pathname } })}
               >
                 <CardContent className="p-0 py-0 gap-0">
                   <div className="flex gap-2 p-2 md:p-2.5">
@@ -292,7 +293,7 @@ export default function RestaurantDetailsPage() {
                           {item.name}
                         </h4>
                         <button className="flex-shrink-0 ml-2 p-1 hover:bg-gray-100 rounded transition-colors">
-                          <div className="w-1 h-1 bg-red-500 rounded-full"></div>
+                          <div className="w-1 h-1 bg-gradient-to-br from-[#B80B3D] to-[#66001D] rounded-full"></div>
                         </button>
                       </div>
                       
@@ -342,4 +343,11 @@ export default function RestaurantDetailsPage() {
     </div>
   )
 }
+
+
+
+
+
+
+
 

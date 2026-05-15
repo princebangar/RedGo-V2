@@ -1,5 +1,5 @@
 import { useState } from "react"
-import { useNavigate } from "react-router-dom"
+import { useNavigate, useLocation } from "react-router-dom"
 import useRestaurantBackNavigation from "@food/hooks/useRestaurantBackNavigation"
 import { motion } from "framer-motion"
 import { 
@@ -55,6 +55,7 @@ const helpTopics = [
 
 export default function HelpCentre() {
   const navigate = useNavigate()
+  const location = useLocation()
   const goBack = useRestaurantBackNavigation()
   const [searchQuery, setSearchQuery] = useState("")
 
@@ -114,7 +115,7 @@ export default function HelpCentre() {
                 className="w-full flex items-center gap-4 px-0 py-4 border-b border-gray-200 hover:bg-gray-50 transition-colors text-left"
                 onClick={() => {
                   if (topic.path) {
-                    navigate(topic.path)
+                    navigate(topic.path, { state: { from: location.pathname } })
                   }
                 }}
               >
@@ -157,3 +158,10 @@ export default function HelpCentre() {
     </div>
   )
 }
+
+
+
+
+
+
+

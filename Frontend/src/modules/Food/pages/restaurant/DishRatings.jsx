@@ -36,3 +36,10 @@ export default function DishRatings() {
     </div>
   )
 }
+
+
+
+
+
+
+

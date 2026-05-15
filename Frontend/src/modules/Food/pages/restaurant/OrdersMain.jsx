@@ -22,6 +22,7 @@ import {
   Users,
   MessageSquare,
   FileText,
+  Search,
 } from "lucide-react";
 import { toast } from "sonner";
 import BottomNavOrders from "@food/components/restaurant/BottomNavOrders";
@@ -510,7 +511,7 @@ function CancelledOrders({ onSelectOrder, refreshToken = 0 }) {
                         {order.itemsSummary}
                       </p>
                       {order.cancellationReason && (
-                        <p className="text-[10px] text-red-600 mt-1 line-clamp-1">
+                        <p className="text-[10px] text-[#B80B3D] mt-1 line-clamp-1">
                           Reason: {order.cancellationReason}
                         </p>
                       )}
@@ -840,7 +841,7 @@ function AllOrders({ onSelectOrder, onCancel }) {
         </div>
         <button 
           onClick={() => navigate('/food/restaurant/orders/all')}
-          className="text-xs font-bold text-blue-600 hover:underline flex items-center gap-1"
+          className="text-xs font-bold text-[#B80B3D] hover:underline flex items-center gap-1"
         >
           Full History
           <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -1008,7 +1009,7 @@ function ScheduledOrders({ onSelectOrder, refreshToken }) {
         </div>
         <button
           onClick={() => navigate("/food/restaurant/orders/all")}
-          className="text-xs font-bold text-blue-600 hover:underline flex items-center gap-1">
+          className="text-xs font-bold text-[#B80B3D] hover:underline flex items-center gap-1">
           Full History
           <svg
             className="w-3 h-3"
@@ -2308,16 +2309,39 @@ export default function OrdersMain() {
 
   return (
     <div className="min-h-screen bg-gray-100 flex flex-col">
-      {/* Restaurant Navbar - Sticky at top */}
-      <div className="sticky top-0 z-50 bg-white">
-        <RestaurantNavbar showNotifications={true} />
+      <div className="sticky top-0 z-50">
+        <RestaurantNavbar showNotifications={true} hideSearch={true} />
       </div>
 
       {/* Top Filter Bar - Sticky below navbar */}
-      <div className="sticky top-[50px] z-40 pb-2 bg-gray-100">
+      <div className="sticky top-[72px] z-40 bg-gray-100 px-4 pb-2">
+        {/* Search Bar - Moved here to look like part of the content area */}
+        <div className="py-3">
+          <div className="relative group">
+            <div className="absolute inset-y-0 left-3 flex items-center pointer-events-none">
+              <Search className="h-4.5 w-4.5 text-slate-400 group-focus-within:text-[#B80B3D] transition-colors" />
+            </div>
+            <input
+              type="text"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              placeholder="Search by order ID or dish name"
+              className="w-full pl-10 pr-4 py-3 bg-white border border-slate-100 rounded-2xl text-[14px] font-semibold text-slate-900 placeholder:text-slate-400 placeholder:font-medium focus:outline-none focus:ring-2 focus:ring-[#B80B3D]/10 focus:border-[#B80B3D]/20 transition-all shadow-sm"
+            />
+            {searchQuery && (
+              <button
+                onClick={() => setSearchQuery("")}
+                className="absolute inset-y-0 right-3 flex items-center"
+              >
+                <X className="h-4 w-4 text-slate-400 hover:text-slate-600" />
+              </button>
+            )}
+          </div>
+        </div>
+
         <div
           ref={filterBarRef}
-          className="flex gap-2 overflow-x-auto scrollbar-hide bg-transparent rounded-full px-3 py-2 mt-2"
+          className="flex gap-2 overflow-x-auto scrollbar-hide bg-transparent rounded-full py-1"
           style={{
             scrollbarWidth: "none",
             msOverflowStyle: "none",
@@ -2357,7 +2381,7 @@ export default function OrdersMain() {
                 {isActive && (
                   <motion.div
                     layoutId="activeFilterBackground"
-                    className="absolute inset-0 bg-primary-orange rounded-full -z-10"
+                    className="absolute inset-0 bg-gradient-to-br from-[#B80B3D] to-[#66001D] rounded-full -z-10"
                     initial={false}
                     transition={{
                       type: "spring",
@@ -2370,7 +2394,7 @@ export default function OrdersMain() {
                   <span className="flex items-center gap-1.5">
                     {tab.label}
                     {tab.id === 'table-booking' && pendingBookingsCount > 0 && (
-                      <span className="px-1.5 py-0.5 rounded-full bg-red-100 text-red-600 text-[10px] font-black animate-bounce">
+                      <span className="px-1.5 py-0.5 rounded-full bg-red-100 text-[#B80B3D] text-[10px] font-black animate-bounce">
                         {pendingBookingsCount}
                       </span>
                     )}
@@ -2382,7 +2406,7 @@ export default function OrdersMain() {
                   </span>
                   {((tab.id === 'table-booking' && pendingBookingsCount > 0) || 
                     (tab.id === 'all' && pendingOrdersCount > 0)) && (
-                    <span className="w-2 h-2 rounded-full bg-red-500 animate-pulse shadow-[0_0_8px_rgba(239,68,68,0.6)]" />
+                    <span className="w-2 h-2 rounded-full bg-gradient-to-br from-[#B80B3D] to-[#66001D] animate-pulse shadow-[0_0_8px_rgba(239,68,68,0.6)]" />
                   )}
                 </div>
               </motion.button>
@@ -2484,10 +2508,10 @@ export default function OrdersMain() {
                 <>
                   <div className="flex items-start gap-3 mb-3">
                     <div className="flex-shrink-0 rounded-full p-2 bg-red-100">
-                      <AlertCircle className="w-5 h-5 text-red-600" />
+                      <AlertCircle className="w-5 h-5 text-[#B80B3D]" />
                     </div>
                     <div className="flex-1 min-w-0">
-                      <h3 className="text-lg font-bold text-red-600 mb-2">
+                      <h3 className="text-lg font-bold text-[#B80B3D] mb-2">
                         Denied Verification
                       </h3>
                       <div className="bg-red-50 border border-red-200 rounded-lg p-3 mb-3">
@@ -2524,7 +2548,7 @@ export default function OrdersMain() {
                   <button
                     onClick={handleReverify}
                     disabled={isReverifying}
-                    className="w-full px-6 py-2.5 bg-blue-600 text-white rounded-lg font-semibold text-sm hover:bg-blue-700 transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2">
+                    className="w-full px-6 py-2.5 bg-gradient-to-br from-[#B80B3D] to-[#66001D] text-white rounded-lg font-semibold text-sm hover:bg-blue-700 transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2">
                     {isReverifying ? (
                       <>
                         <Loader2 className="w-4 h-4 animate-spin" />
@@ -2557,7 +2581,7 @@ export default function OrdersMain() {
             className="mt-4 mb-4 rounded-2xl shadow-sm px-6 py-4 bg-white border border-blue-200">
             <div className="flex items-center gap-3 mb-2">
               <div className="p-2 rounded-full bg-blue-100">
-                <Clock className="w-4 h-4 text-blue-600" />
+                <Clock className="w-4 h-4 text-[#B80B3D]" />
               </div>
               <h3 className="text-base font-bold text-gray-900">
                 Dining Activation Request Pending
@@ -2688,7 +2712,7 @@ export default function OrdersMain() {
                   {(popupOrder || newOrder)?.restaurantNote && (
                     <div className="mb-4 bg-blue-50 border border-blue-200 rounded-lg p-3">
                       <div className="flex items-center gap-2 mb-1">
-                        <FileText className="w-4 h-4 text-blue-600" />
+                        <FileText className="w-4 h-4 text-[#B80B3D]" />
                         <p className="text-[10px] font-bold text-blue-800 uppercase tracking-wider">
                           Note for Restaurant
                         </p>
@@ -2749,7 +2773,7 @@ export default function OrdersMain() {
                                   key={index}
                                   className="flex items-start gap-3">
                                   <div
-                                    className={`w-2 h-2 rounded-full mt-1.5 shrink-0 ${item.isVeg ? "bg-green-500" : "bg-red-500"}`}></div>
+                                    className={`w-2 h-2 rounded-full mt-1.5 shrink-0 ${item.isVeg ? "bg-green-500" : "bg-gradient-to-br from-[#B80B3D] to-[#66001D]"}`}></div>
                                   <div className="flex-1">
                                     <div className="flex items-start justify-between">
                                       <p className="text-sm font-medium text-gray-900">
@@ -2889,7 +2913,7 @@ export default function OrdersMain() {
                               ? "Order canceled by user"
                               : "Order cancelled"}
                           </p>
-                          <p className="mt-1 text-xs text-red-600">
+                          <p className="mt-1 text-xs text-[#B80B3D]">
                             This order is no longer available for acceptance.
                           </p>
                         </div>
@@ -2900,9 +2924,9 @@ export default function OrdersMain() {
                       <div className="space-y-3">
                         <div
                           ref={acceptSliderRef}
-                          className="relative h-14 rounded-2xl bg-gray-900 overflow-hidden select-none touch-pan-y">
+                          className="relative h-14 rounded-2xl bg-gradient-to-br from-[#B80B3D] to-[#66001D] overflow-hidden select-none touch-pan-y">
                           <motion.div
-                            className="absolute inset-y-0 left-0 bg-blue-600"
+                            className="absolute inset-y-0 left-0 bg-gradient-to-br from-[#B80B3D] to-[#66001D]"
                             initial={{ width: "100%" }}
                             animate={{ width: `${(countdown / 240) * 100}%` }}
                             transition={{ duration: 1, ease: "linear" }}
@@ -2952,7 +2976,7 @@ export default function OrdersMain() {
                         <button
                           onClick={handleRejectClick}
                           disabled={isAcceptingOrder}
-                          className="w-full bg-white border-2 border-red-500 text-red-600 py-3 rounded-lg font-semibold text-sm hover:bg-red-50 transition-colors disabled:opacity-60">
+                          className="w-full bg-white border-2 border-red-500 text-[#B80B3D] py-3 rounded-lg font-semibold text-sm hover:bg-red-50 transition-colors disabled:opacity-60">
                           Reject Order
                         </button>
                       </div>
@@ -3001,7 +3025,7 @@ export default function OrdersMain() {
                         onClick={() => setRejectReason(reason)}
                         className={`w-full text-left p-4 rounded-lg border-2 transition-all ${
                           rejectReason === reason
-                            ? "border-primary-orange bg-primary-orange/10"
+                            ? "border-primary-orange bg-gradient-to-br from-[#B80B3D] to-[#66001D]/10"
                             : "border-gray-200 bg-white hover:border-gray-300"
                         }`}>
                         <div className="flex items-center justify-between">
@@ -3014,7 +3038,7 @@ export default function OrdersMain() {
                             {reason}
                           </span>
                           {rejectReason === reason && (
-                            <div className="w-5 h-5 rounded-full bg-primary-orange flex items-center justify-center">
+                            <div className="w-5 h-5 rounded-full bg-gradient-to-br from-[#B80B3D] to-[#66001D] flex items-center justify-center">
                               <svg
                                 className="w-3 h-3 text-white"
                                 fill="none"
@@ -3047,7 +3071,7 @@ export default function OrdersMain() {
                     disabled={!rejectReason}
                     className={`flex-1 py-3 rounded-lg font-semibold text-sm transition-colors ${
                       rejectReason
-                        ? "!bg-primary-orange !text-white hover:!bg-primary-orange/90"
+                        ? "!bg-gradient-to-br from-[#B80B3D] to-[#66001D] !text-white hover:!bg-gradient-to-br from-[#B80B3D] to-[#66001D]/90"
                         : "bg-gray-200 text-gray-400 cursor-not-allowed"
                     }`}>
                     Confirm Rejection
@@ -3103,7 +3127,7 @@ export default function OrdersMain() {
                           <div
                             className={`w-5 h-5 rounded-full border-2 flex items-center justify-center ${
                               cancelReason === reason
-                                ? "border-red-500 bg-red-500"
+                                ? "border-red-500 bg-gradient-to-br from-[#B80B3D] to-[#66001D]"
                                 : "border-gray-300"
                             }`}>
                             {cancelReason === reason && (
@@ -3147,7 +3171,7 @@ export default function OrdersMain() {
                     disabled={!cancelReason}
                     className={`flex-1 py-3 rounded-lg font-semibold text-sm transition-colors ${
                       cancelReason
-                        ? "!bg-red-600 !text-white hover:bg-red-700"
+                        ? "!bg-gradient-to-br from-[#B80B3D] to-[#66001D] !text-white hover:bg-red-700"
                         : "bg-gray-200 text-gray-400 cursor-not-allowed"
                     }`}>
                     Confirm Cancellation
@@ -3163,7 +3187,7 @@ export default function OrdersMain() {
       <AnimatePresence>
         {isSheetOpen && selectedOrder && (
           <motion.div
-            className="fixed inset-0 z-50 bg-black/40 flex items-end justify-center"
+            className="fixed inset-0 z-50 bg-black/50/40 flex items-end justify-center"
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
@@ -3267,7 +3291,7 @@ export default function OrdersMain() {
 
               {selectedOrder.status === "cancelled" && selectedOrder.cancellationReason && (
                 <div className="mb-4 p-3 bg-red-50 border border-red-100 rounded-xl">
-                  <p className="text-[10px] font-bold text-red-500 uppercase mb-1">Cancellation Reason</p>
+                  <p className="text-[10px] font-bold text-[#B80B3D] uppercase mb-1">Cancellation Reason</p>
                   <p className="text-xs text-red-700 font-medium">{selectedOrder.cancellationReason}</p>
                 </div>
               )}
@@ -3281,13 +3305,13 @@ export default function OrdersMain() {
 
               {selectedOrder.restaurantNote && (
                 <div className="mb-4 p-3 bg-blue-50 border border-blue-100 rounded-xl">
-                  <p className="text-[10px] font-bold text-blue-600 uppercase mb-1">Note for Restaurant</p>
+                  <p className="text-[10px] font-bold text-[#B80B3D] uppercase mb-1">Note for Restaurant</p>
                   <p className="text-xs text-blue-700 font-medium">{selectedOrder.restaurantNote}</p>
                 </div>
               )}
 
               <button
-                className="w-full bg-primary-orange text-white py-2.5 rounded-xl text-sm font-medium hover:bg-primary-orange/90 transition-colors"
+                className="w-full bg-gradient-to-br from-[#B80B3D] to-[#66001D] text-white py-2.5 rounded-xl text-sm font-medium hover:bg-gradient-to-br from-[#B80B3D] to-[#66001D]/90 transition-colors"
                 onClick={() => setIsSheetOpen(false)}>
                 Close
               </button>
@@ -3329,7 +3353,7 @@ function OrderCard({
   const normalizedStatus = String(status || "").toLowerCase();
   const isReady = normalizedStatus === "ready";
   const isPreparing = normalizedStatus === "preparing";
-  const brandColor = "#DC2626";
+  const brandColor = "#B80B3D";
 
   const statusLabel = String(status || "")
     .replace(/_/g, " ")
@@ -4151,9 +4175,16 @@ function EmptyState({ message = "Temporarily closed" }) {
             window.location.reload();
           }
         }}
-        className="bg-black text-white px-6 py-3 rounded-lg font-medium hover:bg-gray-800 transition-colors">
+        className="bg-gradient-to-br from-[#B80B3D] to-[#66001D] text-white px-6 py-3 rounded-lg font-medium hover:bg-gray-800 transition-colors">
         View status
       </button>
     </div>
   );
 }
+
+
+
+
+
+
+

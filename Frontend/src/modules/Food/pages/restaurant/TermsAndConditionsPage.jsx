@@ -14,3 +14,10 @@ export default function TermsAndConditionsPage() {
     />
   )
 }
+
+
+
+
+
+
+

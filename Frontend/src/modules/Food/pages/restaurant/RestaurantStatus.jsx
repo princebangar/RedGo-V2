@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react"
-import { useNavigate } from "react-router-dom"
+import { useNavigate, useLocation } from "react-router-dom"
 import useRestaurantBackNavigation from "@food/hooks/useRestaurantBackNavigation"
 import Lenis from "lenis"
 import { ArrowLeft, Settings, ChevronRight } from "lucide-react"
@@ -32,6 +32,7 @@ const persistRestaurantOnlineStatus = (isOnline) => {
 
 export default function RestaurantStatus() {
   const navigate = useNavigate()
+  const location = useLocation()
   const goBack = useRestaurantBackNavigation()
   const [deliveryStatus, setDeliveryStatus] = useState(false)
   const [takeawayStatus, setTakeawayStatus] = useState(false)
@@ -276,9 +277,8 @@ export default function RestaurantStatus() {
   }
 
   // Handle dialog close and navigate to outlet timings
-  const handleGoToOutletTimings = () => {
     setShowOutletClosedDialog(false)
-    navigate("/restaurant/outlet-timings")
+    navigate("/food/restaurant/outlet-timings", { state: { from: location.pathname } })
   }
 
   // Format time from 24-hour to 12-hour format
@@ -394,7 +394,7 @@ export default function RestaurantStatus() {
               <button
                 onClick={() => {
                   // Navigate to restaurant settings
-                  navigate("/restaurant/explore")
+                  navigate("/food/restaurant/explore", { state: { from: location.pathname } })
                 }}
                 className="ml-3 p-2 bg-gray-200 hover:bg-gray-300 rounded-full transition-colors shrink-0"
                 aria-label="Explore more"
@@ -457,8 +457,8 @@ export default function RestaurantStatus() {
             </p>
             {!isDayClosed && (
               <button
-                onClick={() => navigate("/restaurant/outlet-timings")}
-                className="flex items-center gap-1 text-blue-600 hover:text-blue-700 text-sm font-medium"
+                onClick={() => navigate("/food/restaurant/outlet-timings", { state: { from: location.pathname } })}
+                className="flex items-center gap-1 text-[#B80B3D] hover:text-blue-700 text-sm font-medium"
               >
                 Details
                 <ChevronRight className="w-4 h-4" />
@@ -474,7 +474,7 @@ export default function RestaurantStatus() {
   {/* Warning Message - Only show if outside timings AND day is not closed */}
   {!isWithinTimings && restaurantData && !isDayClosed && (
         <div className="bg-pink-50 rounded-b-lg rounded-t-none p-4 flex items-start gap-3">
-          <div className="w-5 h-5 rounded-full bg-red-600 flex items-center justify-center shrink-0 mt-0.5">
+          <div className="w-5 h-5 rounded-full bg-gradient-to-br from-[#B80B3D] to-[#66001D] flex items-center justify-center shrink-0 mt-0.5">
             <span className="text-white text-xs font-bold">!</span>
           </div>
           <p className="text-sm text-gray-700 flex-1">
@@ -488,7 +488,7 @@ export default function RestaurantStatus() {
         <DialogContent className="sm:max-w-md p-4 w-[90%] gap-2 flex flex-col">
           <DialogHeader className="text-center">
             <div className="mx-auto mb-3 flex h-16 w-16 items-center justify-center rounded-full bg-orange-100">
-              <span className="text-3xl">??</span>
+              <span className="text-[#B80B3D]xl">??</span>
             </div>
             <DialogTitle className="text-lg font-semibold text-gray-900 text-center">
               Outlet Timings Closed
@@ -504,7 +504,7 @@ export default function RestaurantStatus() {
             </Button>
             <Button
               onClick={handleGoToOutletTimings}
-              className="w-full sm:w-auto bg-blue-600 hover:bg-blue-700 text-white"
+              className="w-full sm:w-auto bg-gradient-to-br from-[#B80B3D] to-[#66001D] hover:bg-blue-700 text-white"
             >
               Go to Outlet Timings
             </Button>
@@ -517,7 +517,7 @@ export default function RestaurantStatus() {
         <DialogContent className="sm:max-w-md p-4 w-[90%] gap-2 flex flex-col">
           <DialogHeader className="text-center">
             <div className="mx-auto mb-3 flex h-16 w-16 items-center justify-center rounded-full bg-orange-100">
-              <span className="text-3xl">??</span>
+              <span className="text-[#B80B3D]xl">??</span>
             </div>
             <DialogTitle className="text-lg font-semibold text-gray-900 text-center">
               Outside Delivery Timings
@@ -537,9 +537,9 @@ export default function RestaurantStatus() {
             <Button
               onClick={() => {
                 setShowOutsideTimingsDialog(false)
-                navigate("/restaurant/outlet-timings")
+                navigate("/food/restaurant/outlet-timings", { state: { from: location.pathname } })
               }}
-              className="w-full sm:w-auto bg-blue-600 hover:bg-blue-700 text-white"
+              className="w-full sm:w-auto bg-gradient-to-br from-[#B80B3D] to-[#66001D] hover:bg-blue-700 text-white"
             >
               Change Outlet Timings
             </Button>
@@ -551,4 +551,11 @@ export default function RestaurantStatus() {
     </div>
   )
 }
+
+
+
+
+
+
+
 

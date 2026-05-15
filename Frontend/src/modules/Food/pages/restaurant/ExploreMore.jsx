@@ -46,6 +46,14 @@ const debugWarn = (...args) => {}
 const debugError = (...args) => {}
 
 
+const isCoordinateString = (str) => {
+  if (!str) return false
+  const trimmed = str.trim()
+  // Matches "22.123, 75.123" or similar variants
+  const coordRegex = /^-?\d+\.\d+,\s*-?\d+\.\d+/
+  return coordRegex.test(trimmed)
+}
+
 // Time Picker Wheel Component
 function TimePickerWheel({
   isOpen,
@@ -327,7 +335,7 @@ function TimePickerWheel({
           <div className="border-t border-gray-200 px-4 py-4 flex justify-center">
             <button
               onClick={handleConfirm}
-              className="text-[#DC2626] hover:text-[#6a2f56] font-bold text-base transition-colors"
+              className="text-[#B80B3D] hover:text-[#6a2f56] font-bold text-base transition-colors"
             >
               Okay
             </button>
@@ -440,11 +448,15 @@ export default function ExploreMore() {
     if (!location) return ""
 
     if (location.formattedAddress && location.formattedAddress.trim() !== "" && location.formattedAddress !== "Select location") {
-      return location.formattedAddress.trim()
+      if (!isCoordinateString(location.formattedAddress)) {
+        return location.formattedAddress.trim()
+      }
     }
 
     if (location.address && location.address.trim() !== "") {
-      return location.address.trim()
+      if (!isCoordinateString(location.address)) {
+        return location.address.trim()
+      }
     }
 
     const parts = []
@@ -469,14 +481,14 @@ export default function ExploreMore() {
 
     if (location.city) {
       const city = location.city.trim()
-      if (!parts.some((part) => part.includes(city))) {
+      if (!parts.some((part) => part.toLowerCase().includes(city.toLowerCase()))) {
         parts.push(city)
       }
     }
 
     if (location.state) {
       const state = location.state.trim()
-      if (!parts.some((part) => part.includes(state))) {
+      if (!parts.some((part) => part.toLowerCase().includes(state.toLowerCase()))) {
         parts.push(state)
       }
     }
@@ -487,6 +499,27 @@ export default function ExploreMore() {
 
     return parts.join(", ") || ""
   }
+
+  // Sync address logic with Navbar
+  const restaurantDisplayAddress = useMemo(() => {
+    if (!restaurantData) return ""
+    let newLocation = ""
+
+    if (restaurantData.location) {
+      newLocation = formatAddress(restaurantData.location)
+    }
+
+    if (!newLocation && (restaurantData.city || restaurantData.area)) {
+      newLocation = [restaurantData.area, restaurantData.city].filter(Boolean).join(", ")
+    }
+
+    if (!newLocation && restaurantData.address && restaurantData.address.trim() !== "") {
+      if (!isCoordinateString(restaurantData.address)) {
+        newLocation = restaurantData.address.trim()
+      }
+    }
+    return newLocation
+  }, [restaurantData])
 
   // Get user data from logged in session and restaurant data
   const userData = useMemo(() => {
@@ -525,7 +558,6 @@ export default function ExploreMore() {
 
   // Get restaurant display data
   const restaurantDisplayName = restaurantData?.name || "Loading..."
-  const restaurantDisplayAddress = restaurantData?.location ? formatAddress(restaurantData.location) : ""
 
   const handleLogout = async () => {
     if (isLoggingOut) return // Prevent multiple clicks
@@ -873,7 +905,7 @@ export default function ExploreMore() {
                     setTempTakeawayEnabled(restaurantData?.isTakeawayEnabled || false)
                     setTakeawayModalOpen(true)
                   } else if (item.route) {
-                    navigate(item.route)
+                    navigate(item.route, { state: { from: location.pathname } })
                   }
                 }}
                 className="w-full flex items-center justify-center p-6 bg-white rounded-lg shadow-md border-2 border-gray-200 hover:shadow-md transition-shadow duration-200 min-h-[110px]"
@@ -891,7 +923,7 @@ export default function ExploreMore() {
                       initial={{ scale: 0 }}
                       animate={{ scale: 1 }}
                       transition={{ delay: delay + 0.15 + (index * 0.02), type: "spring", stiffness: 500 }}
-                      className="absolute -top-1 -right-1 bg-red-600 text-white text-[10px] font-semibold px-1.5 py-0.5 rounded"
+                      className="absolute -top-1 -right-1 bg-gradient-to-br from-[#B80B3D] to-[#66001D] text-white text-[10px] font-semibold px-1.5 py-0.5 rounded"
                     >
                       {item.badge}
                     </motion.span>
@@ -950,7 +982,7 @@ export default function ExploreMore() {
             </button>
             <button
               onClick={() => setProfileOpen(true)}
-              className={`p-2 transition-all duration-200 rounded-full ${profileOpen ? "bg-[#DC2626] text-white shadow-lg" : "bg-gray-100 hover:bg-gray-200 text-gray-900"}`}
+              className={`p-2 transition-all duration-200 rounded-full ${profileOpen ? "bg-gradient-to-br from-[#B80B3D] to-[#66001D] text-white shadow-lg" : "bg-gray-100 hover:bg-gray-200 text-gray-900"}`}
               aria-label="Profile"
             >
               <UserRound className="w-5 h-5" />
@@ -979,13 +1011,16 @@ export default function ExploreMore() {
                     <Store className="w-5 h-5 text-gray-900" />
                   </div>
                   <div className="flex-1 min-w-0 text-left">
-                    <h2 className="text-base font-semibold text-gray-900 mb-0.5">
+                    <h2 className="text-[17px] font-bold text-gray-900 truncate tracking-tight leading-none">
                       {restaurantDisplayName}
                     </h2>
                     {restaurantDisplayAddress && (
-                      <p className="text-sm text-gray-500 break-words text-wrap">
-                        {restaurantDisplayAddress}
-                      </p>
+                      <div className="flex items-start gap-1 mt-1.5 opacity-90">
+                        <MapPin className="w-3 h-3 text-[#B80B3D] shrink-0 mt-0.5" />
+                        <p className="text-[12px] text-gray-600 font-semibold leading-relaxed" title={restaurantDisplayAddress}>
+                          {restaurantDisplayAddress}
+                        </p>
+                      </div>
                     )}
                   </div>
                 </div>
@@ -1098,8 +1133,8 @@ export default function ExploreMore() {
                 onClick={(e) => e.stopPropagation()}
               >
               <div className="text-center">
-                <div className="mx-auto mb-3 flex h-12 w-12 items-center justify-center rounded-full bg-[#DC2626]/10">
-                  <LogOut className="w-5 h-5 text-[#DC2626]" />
+                <div className="mx-auto mb-3 flex h-12 w-12 items-center justify-center rounded-full bg-gradient-to-br from-[#B80B3D] to-[#66001D]/10">
+                  <LogOut className="w-5 h-5 text-[#B80B3D]" />
                 </div>
                 <h3 className="text-lg font-bold text-gray-900">Logout?</h3>
                 <p className="mt-1 text-sm text-gray-500">Are you sure you want to logout?</p>
@@ -1121,7 +1156,7 @@ export default function ExploreMore() {
                     setLogoutConfirmOpen(false)
                   }}
                   disabled={isLoggingOut}
-                  className="rounded-2xl bg-[#DC2626] px-4 py-3 text-sm font-bold text-white transition-all hover:bg-[#6a2f56] active:scale-95 disabled:opacity-50"
+                  className="rounded-2xl bg-gradient-to-br from-[#B80B3D] to-[#66001D] px-4 py-3 text-sm font-bold text-white transition-all hover:bg-[#6a2f56] active:scale-95 disabled:opacity-50"
                 >
                   {isLoggingOut ? "Logging out..." : "Yes"}
                 </button>
@@ -1178,7 +1213,7 @@ export default function ExploreMore() {
                     value={searchQuery}
                     onChange={(e) => setSearchQuery(e.target.value)}
                     autoFocus
-                    className="w-full px-4 py-2 pr-10 bg-gray-100 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#DC2626] text-gray-900 placeholder-gray-500"
+                    className="w-full px-4 py-2 pr-10 bg-gray-100 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#B80B3D] text-gray-900 placeholder-gray-500"
                   />
                   {searchQuery && (
                     <button
@@ -1224,7 +1259,7 @@ export default function ExploreMore() {
                                   </div>
                                   <span className="flex-1 text-base text-gray-900">{item.label}</span>
                                   {item.badge && (
-                                    <span className="bg-red-600 text-white text-xs font-semibold px-2 py-1 rounded">
+                                    <span className="bg-gradient-to-br from-[#B80B3D] to-[#66001D] text-white text-xs font-semibold px-2 py-1 rounded">
                                       {item.badge}
                                     </span>
                                   )}
@@ -1266,7 +1301,7 @@ export default function ExploreMore() {
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
               transition={{ duration: 0.2 }}
-              className="fixed inset-0 bg-black/60 z-[100] backdrop-blur-[2px]"
+              className="fixed inset-0 bg-black/50/60 z-[100] backdrop-blur-[2px]"
               onClick={() => setProfileOpen(false)}
             />
 
@@ -1305,7 +1340,7 @@ export default function ExploreMore() {
                   className="w-full flex items-start gap-4 text-left p-2 -m-2 hover:bg-gray-50 rounded-xl transition-colors group"
                 >
                   {/* Avatar */}
-                  <div className="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center shrink-0 overflow-hidden ring-4 ring-[#DC2626]/10 group-hover:ring-[#DC2626]/20 transition-all">
+                  <div className="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center shrink-0 overflow-hidden ring-4 ring-[#B80B3D]/10 group-hover:ring-[#B80B3D]/20 transition-all">
                     {userData.profileImage?.url ? (
                       <img
                         src={userData.profileImage.url}
@@ -1313,8 +1348,8 @@ export default function ExploreMore() {
                         className="w-full h-full object-cover"
                       />
                     ) : (
-                      <div className="w-full h-full flex items-center justify-center bg-gradient-to-br from-[#DC2626]/5 to-[#DC2626]/20">
-                        <User className="w-8 h-8 text-[#DC2626]" />
+                      <div className="w-full h-full flex items-center justify-center bg-gradient-to-br from-[#B80B3D]/5 to-[#B80B3D]/20">
+                        <User className="w-8 h-8 text-[#B80B3D]" />
                       </div>
                     )}
                   </div>
@@ -1347,9 +1382,9 @@ export default function ExploreMore() {
                 <button
                   onClick={handleLogout}
                   disabled={isLoggingOut}
-                  className="w-full bg-[#DC2626]/10 text-[#DC2626] border border-[#DC2626]/20 hover:bg-[#DC2626]/20 active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed font-bold py-4 px-4 rounded-2xl transition-all flex items-center justify-center gap-2"
+                  className="w-full bg-gradient-to-br from-[#B80B3D] to-[#66001D]/10 text-[#B80B3D] border border-[#B80B3D]/20 hover:bg-gradient-to-br from-[#B80B3D] to-[#66001D]/20 active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed font-bold py-4 px-4 rounded-2xl transition-all flex items-center justify-center gap-2"
                 >
-                  <LogOut className="w-5 h-5 text-[#DC2626]" />
+                  <LogOut className="w-5 h-5 text-[#B80B3D]" />
                   {isLoggingOut ? "Logging out..." : "Logout"}
                 </button>
 
@@ -1522,7 +1557,7 @@ export default function ExploreMore() {
                 {/* Submit Button */}
                 <button
                   onClick={handleSubmitScheduleOff}
-                  className="w-full bg-[#DC2626] hover:bg-[#6a2f56] text-white font-bold py-3.5 px-4 rounded-xl transition-all shadow-md active:scale-[0.98] mt-4"
+                  className="w-full bg-gradient-to-br from-[#B80B3D] to-[#66001D] hover:bg-[#6a2f56] text-white font-bold py-3.5 px-4 rounded-xl transition-all shadow-md active:scale-[0.98] mt-4"
                 >
                   Submit
                 </button>
@@ -1608,7 +1643,7 @@ export default function ExploreMore() {
                     setStartTime({ hour: "9", minute: "00", period: "am" })
                     setEndTime({ hour: "5", minute: "00", period: "pm" })
                   }}
-                  className="w-full bg-[#DC2626] text-white py-3.5 rounded-xl font-bold text-sm hover:bg-[#6a2f56] transition-all shadow-md active:scale-[0.98]"
+                  className="w-full bg-gradient-to-br from-[#B80B3D] to-[#66001D] text-white py-3.5 rounded-xl font-bold text-sm hover:bg-[#6a2f56] transition-all shadow-md active:scale-[0.98]"
                 >
                   Done 
                 </button>
@@ -1717,7 +1752,7 @@ export default function ExploreMore() {
                   onClick={() => {
                     handleDeleteSchedule()
                   }}
-                  className="w-full bg-red-600 hover:bg-red-700 text-white font-semibold py-3 px-4 rounded-lg transition-colors"
+                  className="w-full bg-gradient-to-br from-[#B80B3D] to-[#66001D] hover:bg-red-700 text-white font-semibold py-3 px-4 rounded-lg transition-colors"
                 >
                   Delete Schedule
                 </button>
@@ -1814,7 +1849,7 @@ export default function ExploreMore() {
                     setIsTakeawayUpdating(false);
                   }
                 }}
-                className={`w-full bg-gray-900 text-white font-bold py-4 rounded-2xl active:scale-[0.98] transition-all flex items-center justify-center gap-2 ${
+                className={`w-full bg-gradient-to-br from-[#B80B3D] to-[#66001D] text-white font-bold py-4 rounded-2xl active:scale-[0.98] transition-all flex items-center justify-center gap-2 ${
                   isTakeawayUpdating ? "opacity-70 cursor-not-allowed" : ""
                 }`}
               >
@@ -1836,7 +1871,7 @@ export default function ExploreMore() {
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
-              className="fixed inset-0 bg-black/60 z-[10000] backdrop-blur-sm"
+              className="fixed inset-0 bg-black/50/60 z-[10000] backdrop-blur-sm"
               onClick={() => setShowBalanceWarning(false)}
             />
             <motion.div
@@ -1855,7 +1890,7 @@ export default function ExploreMore() {
                 
                 <div className="bg-gray-50 rounded-2xl p-4 mb-5 text-center">
                   <p className="text-[10px] text-gray-500 uppercase font-black tracking-widest mb-1">{balanceData.type}</p>
-                  <p className="text-3xl font-black text-black">₹{balanceData.balance.toLocaleString('en-IN')}</p>
+                  <p className="text-[#B80B3D]xl font-black text-black">₹{balanceData.balance.toLocaleString('en-IN')}</p>
                 </div>
 
                 <p className="text-sm text-gray-500 mb-6 leading-relaxed">
@@ -1875,7 +1910,7 @@ export default function ExploreMore() {
                   </button>
                   <button
                     onClick={() => setShowBalanceWarning(false)}
-                    className="w-full h-12 rounded-xl bg-black text-white font-bold hover:bg-gray-900 transition-colors"
+                    className="w-full h-12 rounded-xl bg-gradient-to-br from-[#B80B3D] to-[#66001D] text-white font-bold hover:bg-gradient-to-br from-[#B80B3D] to-[#66001D] transition-colors"
                   >
                     Cancel & Withdraw
                   </button>
@@ -1901,7 +1936,7 @@ export default function ExploreMore() {
                 {/* Icon Circle */}
                 <div className="flex justify-center mb-4">
                   <div className="w-16 h-16 rounded-full bg-red-100 flex items-center justify-center">
-                    <Trash2 className="w-8 h-8 text-red-600" />
+                    <Trash2 className="w-8 h-8 text-[#B80B3D]" />
                   </div>
                 </div>
 
@@ -1912,7 +1947,7 @@ export default function ExploreMore() {
 
                 <div className="mb-5 bg-red-50 border-l-4 border-red-500 rounded-r-xl p-3 text-left">
                   <div className="flex items-center gap-2 mb-1">
-                    <AlertTriangle className="w-4 h-4 text-red-600 flex-shrink-0" />
+                    <AlertTriangle className="w-4 h-4 text-[#B80B3D] flex-shrink-0" />
                     <span className="text-xs font-bold text-red-700 uppercase tracking-wider">Warning</span>
                   </div>
                   <p className="text-[11px] text-red-800 font-medium leading-tight">
@@ -1927,7 +1962,7 @@ export default function ExploreMore() {
                     placeholder="Type DELETE to confirm" 
                     value={deleteCaptcha}
                     onChange={(e) => setDeleteCaptcha(e.target.value.toUpperCase())}
-                    className="w-full h-12 px-4 rounded-xl border-2 border-gray-100 focus:border-red-500 focus:ring-4 focus:ring-red-50 outline-none transition-all font-bold text-center tracking-widest placeholder:tracking-normal placeholder:font-medium placeholder:text-gray-400"
+                    className="w-full h-12 px-4 rounded-xl border-2 border-gray-100 focus:border-[#B80B3D] focus:ring-4 focus:ring-red-50 outline-none transition-all font-bold text-center tracking-widest placeholder:tracking-normal placeholder:font-medium placeholder:text-gray-400"
                   />
                 </div>
 
@@ -1957,7 +1992,7 @@ export default function ExploreMore() {
                       }
                     }}
                     disabled={isDeleting || deleteCaptcha !== "DELETE"}
-                    className="flex-1 h-12 rounded-xl bg-red-600 text-white font-bold text-sm transition-all hover:bg-red-700 active:scale-95 disabled:opacity-50"
+                    className="flex-1 h-12 rounded-xl bg-gradient-to-br from-[#B80B3D] to-[#66001D] text-white font-bold text-sm transition-all hover:bg-red-700 active:scale-95 disabled:opacity-50"
                   >
                     {isDeleting ? "Deleting..." : "Delete Account"}
                   </button>
@@ -1972,4 +2007,11 @@ export default function ExploreMore() {
     </motion.div>
   )
 }
+
+
+
+
+
+
+
 

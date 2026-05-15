@@ -100,6 +100,7 @@ const resolveRestaurantBackPath = ({ pathname, state }) => {
 
   if (
     normalizedPath === "/help-centre/support" ||
+    normalizedPath === "/help-content" ||
     normalizedPath === "/share-feedback"
   ) {
     return explicitBackPath || "/food/restaurant/feedback"

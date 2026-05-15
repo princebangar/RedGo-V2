@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react"
-import { useNavigate } from "react-router-dom"
+import { useNavigate, useLocation } from "react-router-dom"
 import { ArrowLeft, Wallet } from "lucide-react"
+import useRestaurantBackNavigation from "@food/hooks/useRestaurantBackNavigation"
 import BottomNavOrders from "@food/components/restaurant/BottomNavOrders"
 import { restaurantAPI } from "@food/api"
 const debugLog = (...args) => {}
@@ -10,6 +11,8 @@ const debugError = (...args) => {}
 
 export default function WithdrawalHistoryPage() {
   const navigate = useNavigate()
+  const location = useLocation()
+  const goBack = useRestaurantBackNavigation()
   const [withdrawalHistoryTab, setWithdrawalHistoryTab] = useState('pending')
   const [withdrawalRequests, setWithdrawalRequests] = useState([])
   const [loadingWithdrawalRequests, setLoadingWithdrawalRequests] = useState(false)
@@ -51,7 +54,7 @@ export default function WithdrawalHistoryPage() {
       <div className="sticky bg-white top-0 z-40 px-4 py-3 border-b border-gray-200">
         <div className="flex items-center gap-3">
           <button
-            onClick={() => navigate("/restaurant/hub-finance")}
+            onClick={goBack}
             className="p-1.5 hover:bg-gray-100 rounded-lg transition-colors"
             aria-label="Go back"
           >
@@ -70,7 +73,7 @@ export default function WithdrawalHistoryPage() {
             onClick={() => setWithdrawalHistoryTab('pending')}
             className={`flex-1 px-4 py-3 rounded-lg font-medium text-sm transition-colors ${
               withdrawalHistoryTab === 'pending'
-                ? "bg-black text-white"
+                ? "bg-gradient-to-br from-[#B80B3D] to-[#66001D] text-white"
                 : "bg-gray-100 text-gray-600 hover:bg-gray-200"
             }`}
           >
@@ -80,7 +83,7 @@ export default function WithdrawalHistoryPage() {
             onClick={() => setWithdrawalHistoryTab('successful')}
             className={`flex-1 px-4 py-3 rounded-lg font-medium text-sm transition-colors ${
               withdrawalHistoryTab === 'successful'
-                ? "bg-black text-white"
+                ? "bg-gradient-to-br from-[#B80B3D] to-[#66001D] text-white"
                 : "bg-gray-100 text-gray-600 hover:bg-gray-200"
             }`}
           >
@@ -184,5 +187,12 @@ export default function WithdrawalHistoryPage() {
     </div>
   )
 }
+
+
+
+
+
+
+
 
 

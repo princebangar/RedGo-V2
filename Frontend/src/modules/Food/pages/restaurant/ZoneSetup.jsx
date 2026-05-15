@@ -397,7 +397,7 @@ export default function ZoneSetup() {
             >
               <ArrowLeft className="w-5 h-5 text-gray-700" />
             </button>
-            <div className="w-10 h-10 rounded-lg bg-red-500 flex items-center justify-center">
+            <div className="w-10 h-10 rounded-lg bg-gradient-to-br from-[#B80B3D] to-[#66001D] flex items-center justify-center">
               <MapPin className="w-5 h-5 text-white" />
             </div>
             <div>
@@ -418,13 +418,13 @@ export default function ZoneSetup() {
                 value={locationSearch}
                 onChange={(e) => setLocationSearch(e.target.value)}
                 placeholder="Search for your restaurant location..."
-                className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-red-500 focus:border-transparent"
+                className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#B80B3D] focus:border-transparent"
               />
             </div>
             <button
               onClick={handleSaveLocation}
               disabled={!selectedLocation || saving}
-              className="flex items-center gap-2 px-6 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors disabled:bg-gray-400 disabled:cursor-not-allowed"
+              className="flex items-center gap-2 px-6 py-2 bg-gradient-to-br from-[#B80B3D] to-[#66001D] text-white rounded-lg hover:bg-red-700 transition-colors disabled:bg-gray-400 disabled:cursor-not-allowed"
             >
               {saving ? (
                 <>
@@ -469,7 +469,7 @@ export default function ZoneSetup() {
           {mapLoading && (
             <div className="absolute inset-0 bg-white flex items-center justify-center z-10">
               <div className="text-center">
-                <Loader2 className="w-8 h-8 animate-spin text-red-600 mx-auto mb-2" />
+                <Loader2 className="w-8 h-8 animate-spin text-[#B80B3D] mx-auto mb-2" />
                 <p className="text-gray-600">Loading map...</p>
                 <p className="text-xs text-gray-400 mt-2">If this takes too long, please refresh the page</p>
               </div>
@@ -480,4 +480,11 @@ export default function ZoneSetup() {
     </div>
   )
 }
+
+
+
+
+
+
+
 

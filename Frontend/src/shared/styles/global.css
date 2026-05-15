@@ -23,9 +23,9 @@
   --card-foreground: #1a0505;
   --popover: #ffffff;
   --popover-foreground: #3c0f3d;
-  --primary: #DC2626;
+  --primary: #B80B3D;
   --primary-foreground: #ffffff;
-  --secondary: #DC2626;
+  --secondary: #B80B3D;
   --secondary-foreground: #ffffff;
   --muted: #f1f5f9;
   --muted-foreground: #fca5a5;
@@ -34,15 +34,15 @@
   --destructive: #ef4444;
   --border: #e2e8f0;
   --input: #e2e8f0;
-  --ring: #DC2626;
+  --ring: #B80B3D;
   --sidebar: #ffffff;
   --sidebar-foreground: #1a0505;
-  --sidebar-primary: #DC2626;
+  --sidebar-primary: #B80B3D;
   --sidebar-primary-foreground: #ffffff;
-  --sidebar-accent: #DC2626;
+  --sidebar-accent: #B80B3D;
   --sidebar-accent-foreground: #ffffff;
   --sidebar-border: #e2e8f0;
-  --sidebar-ring: #DC2626;
+  --sidebar-ring: #B80B3D;
 }
 
 @theme inline {
@@ -78,7 +78,7 @@
   --color-sidebar-ring: var(--sidebar-ring);
   
   --color-page-bg: #F9F9FB;
-  --color-primary-orange: #DC2626;
+  --color-primary-orange: #B80B3D;
   --font-poppins: var(--font-poppins);
   --font-outfit: var(--font-outfit);
 }

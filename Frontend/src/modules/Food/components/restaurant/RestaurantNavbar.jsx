@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from "react"
-import { useNavigate } from "react-router-dom"
+import { useNavigate, useLocation } from "react-router-dom"
 import { Search, Menu, ChevronRight, MapPin, X, Bell, HelpCircle } from "lucide-react"
 import { restaurantAPI } from "@food/api"
 import { getCachedSettings, loadBusinessSettings } from "@food/utils/businessSettings"
@@ -20,14 +20,24 @@ const extractRestaurantPayload = (response) =>
   null
 
 
+const isCoordinateString = (str) => {
+  if (!str) return false
+  const trimmed = str.trim()
+  // Matches "22.123, 75.123" or similar variants
+  const coordRegex = /^-?\d+\.\d+,\s*-?\d+\.\d+/
+  return coordRegex.test(trimmed)
+}
+
 export default function RestaurantNavbar({
   restaurantName: propRestaurantName,
   location: propLocation,
   showSearch = true,
+  hideSearch = false,
   showOfflineOnlineTag = true,
   showNotifications = true,
 }) {
   const navigate = useNavigate()
+  const routerLocation = useLocation()
   const [isSearchActive, setIsSearchActive] = useState(false)
   const [searchValue, setSearchValue] = useState("")
   const [status, setStatus] = useState("Offline")
@@ -154,18 +164,17 @@ export default function RestaurantNavbar({
   const formatAddress = (location) => {
     if (!location) return ""
     
-    // Priority 1: Use formattedAddress if available (stored address from database)
     if (location.formattedAddress && location.formattedAddress.trim() !== "" && location.formattedAddress !== "Select location") {
-      // Check if it's just coordinates (latitude, longitude format)
-      const isCoordinates = /^-?\d+\.\d+,\s*-?\d+\.\d+$/.test(location.formattedAddress.trim())
-      if (!isCoordinates) {
+      if (!isCoordinateString(location.formattedAddress)) {
         return location.formattedAddress.trim()
       }
     }
     
     // Priority 2: Use address field if available
     if (location.address && location.address.trim() !== "") {
-      return location.address.trim()
+      if (!isCoordinateString(location.address)) {
+        return location.address.trim()
+      }
     }
     
     // Priority 3: Build from individual components
@@ -225,7 +234,7 @@ export default function RestaurantNavbar({
   // Get restaurant name (use prop if provided, otherwise use fetched data)
   const restaurantName = propRestaurantName || restaurantData?.name || "Restaurant"
 
-  const [location, setLocation] = useState("")
+  const [restaurantAddress, setRestaurantAddress] = useState("")
 
   // Update location when restaurantData or propLocation changes
   useEffect(() => {
@@ -251,9 +260,7 @@ export default function RestaurantNavbar({
         if (restaurantData.location.formattedAddress && 
             restaurantData.location.formattedAddress.trim() !== "" && 
             restaurantData.location.formattedAddress !== "Select location") {
-          // Check if it's just coordinates (latitude, longitude format)
-          const isCoordinates = /^-?\d+\.\d+,\s*-?\d+\.\d+$/.test(restaurantData.location.formattedAddress.trim())
-          if (!isCoordinates) {
+          if (!isCoordinateString(restaurantData.location.formattedAddress)) {
             newLocation = restaurantData.location.formattedAddress.trim()
             debugLog('? Using formattedAddress:', newLocation)
           }
@@ -270,19 +277,26 @@ export default function RestaurantNavbar({
         
         // Additional fallback: check if address is directly on location
         if (!newLocation && restaurantData.location.address && restaurantData.location.address.trim() !== "") {
-          newLocation = restaurantData.location.address.trim()
-          debugLog('? Using location.address:', newLocation)
+          if (!isCoordinateString(restaurantData.location.address)) {
+            newLocation = restaurantData.location.address.trim()
+            debugLog('? Using location.address:', newLocation)
+          }
         }
       }
       
-      // Priority 3: Fallback - check if address is directly on restaurantData (not in location object)
+      // Fallback: Use city/area if only coordinates were found
+      if (!newLocation && (restaurantData.city || restaurantData.area)) {
+        newLocation = [restaurantData.area, restaurantData.city].filter(Boolean).join(", ")
+      }
+
       if (!newLocation && restaurantData.address && restaurantData.address.trim() !== "") {
-        newLocation = restaurantData.address.trim()
-        debugLog('? Using restaurantData.address:', newLocation)
+        if (!isCoordinateString(restaurantData.address)) {
+          newLocation = restaurantData.address.trim()
+        }
       }
     }
     
-    setLocation(newLocation)
+    setRestaurantAddress(newLocation)
     
     // Debug log
     if (newLocation) {
@@ -329,15 +343,14 @@ export default function RestaurantNavbar({
   }, [restaurantData])
 
   const handleStatusClick = () => {
-    navigate("/food/restaurant/status")
+    navigate("/food/restaurant/status", { state: { from: routerLocation.pathname } })
   }
 
   const handleSearchClick = () => {
-    setIsSearchActive(true)
+    // No-op as search is now permanent
   }
 
   const handleSearchClose = () => {
-    setIsSearchActive(false)
     setSearchValue("")
   }
 
@@ -346,144 +359,114 @@ export default function RestaurantNavbar({
   }
 
   const handleMenuClick = () => {
-    navigate("/food/restaurant/explore")
+    navigate("/food/restaurant/explore", { state: { from: routerLocation.pathname } })
   }
 
   const handleNotificationsClick = () => {
-    navigate("/food/restaurant/notifications")
+    navigate("/food/restaurant/notifications", { state: { from: routerLocation.pathname } })
   }
 
   return (
-    <div className="w-full bg-white border-b border-gray-200 px-4 py-3 flex items-center justify-between relative">
-      {/* Search Overlay */}
-      {isSearchActive && (
-        <div className="absolute inset-0 bg-white z-50 flex items-center px-4 gap-3">
-          <div className="flex-1 relative flex items-center">
-            <Search className="absolute left-0 w-5 h-5 text-gray-400" />
+    <>
+      <div className="w-full bg-gradient-to-br from-[#B80B3D] to-[#66001D] rounded-b-[35px] flex flex-col shadow-[0_10px_30px_rgba(184,11,61,0.25)] pb-2 relative z-10">
+        {/* Top Navbar */}
+        <div className="px-4 py-3 flex items-center justify-between">
+          {/* Left Side - Restaurant Info */}
+          <div className="flex-1 min-w-0 pr-2 flex items-center gap-3">
+            <div className="min-w-0">
+              {/* Restaurant Name */}
+              <div className="flex items-center gap-1.5 min-w-0">
+                <h1 className="text-[17px] font-bold text-white truncate tracking-tight leading-none">
+                  {loading ? "Loading..." : (restaurantName || "Restaurant")}
+                </h1>
+              </div>
+              {!loading && restaurantAddress && restaurantAddress.trim() !== "" && (
+                <div className="flex items-center gap-1 mt-1.5 opacity-90">
+                  <MapPin className="w-2.5 h-2.5 text-white/80 shrink-0" />
+                  <p className="text-[11px] text-white/90 truncate font-medium" title={restaurantAddress}>
+                    {restaurantAddress}
+                  </p>
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* Right Side - Interactive Elements */}
+          <div className="flex items-center gap-0.5 shrink-0">
+            {/* Offline/Online Status Tag */}
+            {showOfflineOnlineTag && (
+              <button
+                onClick={handleStatusClick}
+                className={`flex items-center gap-1 px-2 py-1 rounded-full transition-all duration-300 backdrop-blur-md border ${
+                  status === "Online" 
+                    ? "bg-white/15 border-white/20 text-white" 
+                    : "bg-gradient-to-br from-[#B80B3D] to-[#66001D]/20 border-white/10 text-white/70"
+                } active:scale-95 shadow-sm hover:bg-white/25`}
+              >
+                <div className="relative flex items-center justify-center">
+                  <span className={`w-1.5 h-1.5 rounded-full ${
+                    status === "Online" ? "bg-emerald-400" : "bg-white/30"
+                  }`}></span>
+                  {status === "Online" && (
+                    <span className="absolute w-1.5 h-1.5 rounded-full bg-emerald-400 animate-ping opacity-60"></span>
+                  )}
+                </div>
+                <span className="text-[11px] font-bold tracking-tight px-0.5">
+                  {status}
+                </span>
+              </button>
+            )}
+
+            {/* Notifications Icon */}
+            {showNotifications && (
+              <button
+                onClick={handleNotificationsClick}
+                className="relative p-2.5 hover:bg-white/10 rounded-full transition-colors group"
+                aria-label="Notifications"
+              >
+                <Bell className="w-5 h-5 text-white" />
+                {unreadCount > 0 && (
+                  <span className="absolute top-2 right-2.5 w-2.5 h-2.5 rounded-full bg-emerald-400 border-2 border-[#B80B3D] shadow-[0_0_8px_rgba(52,211,153,0.4)]" />
+                )}
+              </button>
+            )}
+          </div>
+        </div>
+      </div>
+
+      {/* Persistent Search Bar - Outside the bordered navbar div */}
+      {showSearch && !hideSearch && (
+        <div className="px-4 py-3 bg-white">
+          <div className="relative group">
+            <div className="absolute inset-y-0 left-3 flex items-center pointer-events-none">
+              <Search className="h-4.5 w-4.5 text-slate-400 group-focus-within:text-[#B80B3D] transition-colors" />
+            </div>
             <input
               type="text"
               value={searchValue}
               onChange={handleSearchChange}
               placeholder="Search by order ID or dish name"
-              className="w-full pl-8 pr-4 py-2 text-gray-900 placeholder-gray-500 font-medium focus:outline-none"
-              autoFocus
+              className="w-full pl-10 pr-4 py-3 bg-slate-50 border border-slate-100 rounded-2xl text-[14px] font-semibold text-slate-900 placeholder:text-slate-400 placeholder:font-medium focus:outline-none focus:ring-2 focus:ring-[#B80B3D]/10 focus:border-[#B80B3D]/20 transition-all shadow-sm"
             />
-          </div>
-          <button
-            onClick={handleSearchClose}
-            className="w-8 h-8 rounded-full flex items-center justify-center bg-gray-100 hover:bg-gray-200 transition-colors shrink-0"
-            aria-label="Close search"
-          >
-            <X className="w-5 h-5 text-gray-700" />
-          </button>
-        </div>
-      )}
-
-      {/* Left Side - Restaurant Info */}
-      <div className="flex-1 min-w-0 pr-4 flex items-center gap-3">
-        {logoUrl && (
-          <img src={logoUrl} alt="Logo" className="h-10 w-10 object-contain rounded-lg" />
-        )}
-        <div className="min-w-0">
-          {/* Restaurant Name & Company */}
-          <div className="flex items-baseline gap-1.5 min-w-0">
-            <h1 className="text-[15px] font-bold text-gray-900 truncate">
-              {loading ? "Loading..." : (restaurantName || "Restaurant")}
-            </h1>
-            {companyName && !loading && (
-              <span className="text-[9px] text-gray-400 font-bold uppercase tracking-tight shrink-0">
-                {companyName}
-              </span>
+            {searchValue && (
+              <button
+                onClick={handleSearchClose}
+                className="absolute inset-y-0 right-3 flex items-center"
+              >
+                <X className="h-4 w-4 text-slate-400 hover:text-slate-600" />
+              </button>
             )}
           </div>
-          {!loading && location && location.trim() !== "" && (
-            <div className="flex items-center gap-1 mt-0.5 opacity-80">
-              <MapPin className="w-2.5 h-2.5 text-gray-500 shrink-0" />
-              <p className="text-[10px] text-gray-500 truncate font-medium" title={location}>
-                {location}
-              </p>
-            </div>
-          )}
         </div>
-      </div>
-
-      {/* Right Side - Interactive Elements */}
-      <div className="flex items-center">
-        {/* Offline/Online Status Tag */}
-        {showOfflineOnlineTag && (
-          <button
-            onClick={handleStatusClick}
-            className={`flex items-center gap-1.5 px-2 py-1 border rounded-full hover:opacity-80 transition-all ${
-              status === "Online" 
-                ? "bg-green-50 border-green-300" 
-                : "bg-gray-100 border-gray-300"
-            }`}
-          >
-            <span className={`w-1.5 h-1.5 rounded-full ${
-              status === "Online" ? "bg-green-500" : "bg-gray-500"
-            }`}></span>
-            <span className={`text-sm font-medium ${
-              status === "Online" ? "text-green-700" : "text-gray-700"
-            }`}>
-              {status}
-            </span>
-            <ChevronRight className={`w-4 h-4 ${
-              status === "Online" ? "text-green-700" : "text-gray-700"
-            }`} />
-          </button>
-        )}
-
-        {/* Search Icon */}
-        {showSearch && (
-          <button
-            onClick={handleSearchClick}
-            className="p-2 ml-1 hover:bg-gray-100 rounded-full transition-colors"
-            aria-label="Search"
-          >
-            <Search className="w-5 h-5 text-gray-700" />
-          </button>
-        )}
-
-        {/* Notifications Icon */}
-        {showNotifications && (
-            <button
-              onClick={handleNotificationsClick}
-              className="relative p-2 ml-1 hover:bg-gray-100 rounded-full transition-colors"
-              aria-label="Notifications"
-            >
-              <Bell className="w-5 h-5 text-gray-700" />
-              {unreadCount > 0 && (
-                <span className="absolute top-2 right-2 w-2.5 h-2.5 rounded-full bg-red-500 border border-white animate-pulse shadow-[0_0_8px_rgba(239,68,68,0.4)]" />
-              )}
-            </button>
-          )}
-
-        {/* Support/Help Icon */}
-        <button
-          onClick={() => navigate("/food/restaurant/support")}
-          className="p-2 hover:bg-gray-100 rounded-full transition-colors"
-          aria-label="Support"
-        >
-          <HelpCircle className="w-5 h-5 text-gray-700" />
-        </button>
-
-        {/* Hamburger Menu Icon */}
-        <button
-          onClick={handleMenuClick}
-          className="p-2 hover:bg-gray-100 rounded-full transition-colors"
-          aria-label="Menu"
-        >
-          <Menu className="w-5 h-5 text-gray-700" />
-        </button>
-      </div>
+      )}
       
       {/* Real-time Dining Booking Popup */}
       {newReservation && (
         <div className="fixed top-20 left-4 right-4 z-[100] animate-in slide-in-from-top duration-300">
-          <div className="bg-white rounded-3xl shadow-[0_20px_50px_rgba(0,0,0,0.15)] border border-[#DC2626]/10 overflow-hidden">
+          <div className="bg-white rounded-3xl shadow-[0_20px_50px_rgba(0,0,0,0.15)] border border-[#B80B3D]/10 overflow-hidden">
             <div className="p-4 flex items-center gap-4">
-              <div className="w-12 h-12 rounded-2xl bg-purple-50 flex items-center justify-center shrink-0">
-                <Utensils className="w-6 h-6 text-[#DC2626]" />
+              <div className="w-12 h-12 rounded-2xl bg-red-50 flex items-center justify-center shrink-0">
+                <Utensils className="w-6 h-6 text-[#B80B3D]" />
               </div>
               <div className="flex-1 min-w-0">
                 <h4 className="font-black text-slate-900 text-sm">New Table Request!</h4>
@@ -504,7 +487,7 @@ export default function RestaurantNavbar({
                   clearNewReservation();
                   navigate("/food/restaurant/dining-reservations");
                 }}
-                className="flex-1 h-10 bg-[#DC2626] text-white text-xs font-bold rounded-xl uppercase tracking-widest shadow-lg shadow-purple-200"
+                className="flex-1 h-10 bg-gradient-to-r from-[#B80B3D] to-[#66001D] text-white text-xs font-bold rounded-xl uppercase tracking-widest shadow-lg shadow-red-100"
               >
                 View Request
               </button>
@@ -518,7 +501,14 @@ export default function RestaurantNavbar({
           </div>
         </div>
       )}
-    </div>
+    </>
   )
 }
+
+
+
+
+
+
+
 

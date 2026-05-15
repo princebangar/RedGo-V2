@@ -88,7 +88,7 @@ export default function VerificationPending() {
             <p className="mb-2 text-xs font-semibold uppercase tracking-[0.32em] text-amber-600">
               Verification Pending
             </p>
-            <h1 className="text-3xl font-extrabold text-slate-950">
+            <h1 className="text-[#B80B3D]xl font-extrabold text-slate-950">
               Your restaurant is under review
             </h1>
             <p className="mt-3 text-sm leading-6 text-slate-600">
@@ -118,7 +118,7 @@ export default function VerificationPending() {
 
           <div className="space-y-3">
             <Button
-              className="h-12 w-full rounded-xl bg-blue-600 text-base font-semibold hover:bg-blue-700"
+              className="h-12 w-full rounded-xl bg-gradient-to-br from-[#B80B3D] to-[#66001D] text-base font-semibold hover:bg-blue-700"
               onClick={() => {
                 clearRestaurantPendingPhone()
                 navigate("/food/restaurant/login", { replace: true })
@@ -132,3 +132,10 @@ export default function VerificationPending() {
     </div>
   )
 }
+
+
+
+
+
+
+

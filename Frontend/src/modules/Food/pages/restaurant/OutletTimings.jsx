@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from "react"
 import { useNavigate } from "react-router-dom"
+import useRestaurantBackNavigation from "@food/hooks/useRestaurantBackNavigation"
 import { motion, AnimatePresence } from "framer-motion"
 import Lenis from "lenis"
 import { ArrowLeft, ChevronUp, ChevronDown, Clock, Edit2 } from "lucide-react"
@@ -58,6 +59,7 @@ const getDefaultDays = () => ({
 export default function OutletTimings() {
   const companyName = useCompanyName()
   const navigate = useNavigate()
+  const goBack = useRestaurantBackNavigation()
   const [expandedDay, setExpandedDay] = useState("Monday")
   const isInternalUpdate = useRef(false)
   const [days, setDays] = useState(getDefaultDays)
@@ -186,7 +188,7 @@ export default function OutletTimings() {
         <div className="bg-white border-b border-gray-200 px-4 py-3 sticky top-0 z-50">
           <div className="flex items-center gap-3">
             <button
-              onClick={() => navigate("/food/restaurant/explore")}
+              onClick={goBack}
               className="p-1.5 hover:bg-gray-100 rounded-lg transition-colors"
               aria-label="Go back"
             >
@@ -201,9 +203,9 @@ export default function OutletTimings() {
           {/* Appzeto delivery Section Header */}
           <div className="mb-6">
             <div className="text-center mb-2">
-              <h2 className="text-base font-semibold text-blue-600">{companyName} delivery</h2>
+              <h2 className="text-base font-semibold text-[#B80B3D]">{companyName} delivery</h2>
             </div>
-            <div className="h-0.5 bg-blue-600"></div>
+            <div className="h-0.5 bg-gradient-to-br from-[#B80B3D] to-[#66001D]"></div>
           </div>
 
           {/* Day-wise Accordion */}
@@ -388,4 +390,11 @@ export default function OutletTimings() {
     </LocalizationProvider>
   )
 }
+
+
+
+
+
+
+
 

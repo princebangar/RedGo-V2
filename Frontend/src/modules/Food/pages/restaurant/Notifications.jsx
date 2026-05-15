@@ -3,6 +3,7 @@ import { useNavigate } from "react-router-dom"
 import { ArrowLeft, Bell, RefreshCw, X } from "lucide-react"
 import { restaurantAPI } from "@food/api"
 import useNotificationInbox from "@food/hooks/useNotificationInbox"
+import useRestaurantBackNavigation from "@food/hooks/useRestaurantBackNavigation"
 const debugLog = (...args) => {}
 const debugWarn = (...args) => {}
 const debugError = (...args) => {}
@@ -24,6 +25,7 @@ const getStatusLabel = (status = "") => {
 
 export default function Notifications() {
   const navigate = useNavigate()
+  const goBack = useRestaurantBackNavigation()
   const [loading, setLoading] = useState(true)
   const [orders, setOrders] = useState([])
   const [dismissedIds, setDismissedIds] = useState(() => {
@@ -136,7 +138,7 @@ export default function Notifications() {
       {/* Header */}
       <div className="px-4 pt-4 pb-3 flex items-center gap-3 border-b border-gray-200">
         <button
-          onClick={() => navigate("/restaurant")}
+          onClick={goBack}
           className="p-2 rounded-full hover:bg-gray-100"
           aria-label="Back"
         >
@@ -157,7 +159,7 @@ export default function Notifications() {
           <div className="flex justify-end mb-2">
             <button
               onClick={clearAll}
-              className="text-xs font-medium text-red-600 hover:text-red-700"
+              className="text-xs font-medium text-[#B80B3D] hover:text-red-700"
             >
               Clear all
             </button>
@@ -178,7 +180,7 @@ export default function Notifications() {
               >
                 <div className="min-w-0">
                   <div className="flex items-center gap-2">
-                    {item.source === "broadcast" && <Bell className="w-4 h-4 text-blue-600" />}
+                    {item.source === "broadcast" && <Bell className="w-4 h-4 text-[#B80B3D]" />}
                     <p className="text-sm font-medium text-gray-900">{item.message}</p>
                   </div>
                   {item.source === "broadcast" ? (
@@ -206,4 +208,11 @@ export default function Notifications() {
     </div>
   )
 }
+
+
+
+
+
+
+
 

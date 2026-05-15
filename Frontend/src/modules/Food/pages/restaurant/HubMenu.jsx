@@ -1139,7 +1139,7 @@ export default function HubMenu() {
                 onClick={() => handleFilterSelect(filter.id)}
                 className={`flex items-center gap-2 px-2 py-1 text-semibold border-2 rounded-md text-sm font-medium whitespace-nowrap shrink-0 ${
                   activeFilter === filter.id
-                    ? "bg-gray-900 text-white border-gray-900"
+                    ? "bg-gradient-to-br from-[#B80B3D] to-[#66001D] text-white border-gray-900"
                     : "bg-white border-gray-200 text-gray-900"
                 }`}
               >
@@ -1152,7 +1152,7 @@ export default function HubMenu() {
             ))}
             <button
               onClick={() => setIsFilterOpen(true)}
-              className="z-10 shrink-0 bg-black text-white border-2 border-black flex items-center gap-2 px-3 py-1.5 rounded-md text-sm font-medium whitespace-nowrap"
+              className="z-10 shrink-0 bg-gradient-to-br from-[#B80B3D] to-[#66001D] text-white border-2 border-black flex items-center gap-2 px-3 py-1.5 rounded-md text-sm font-medium whitespace-nowrap"
             >
               <SlidersHorizontal className="w-4 h-4" />
               <span>Filter</span>
@@ -1241,7 +1241,7 @@ export default function HubMenu() {
                         )}
                         <p className="text-base font-bold text-gray-900">₹{addon.price}</p>
                         {isRejectedApproval(addon.approvalStatus) && addon.rejectionReason && (
-                          <p className="text-xs text-red-600 mt-1">Reason: {addon.rejectionReason}</p>
+                          <p className="text-xs text-[#B80B3D] mt-1">Reason: {addon.rejectionReason}</p>
                         )}
                         {isPendingApproval(addon.approvalStatus) && addon.published && (
                           <p className="text-xs text-gray-500 mt-1">
@@ -1263,7 +1263,7 @@ export default function HubMenu() {
                         <div className="flex flex-col gap-2">
                           <button
                             onClick={() => handleEditAddon(addon)}
-                            className="p-2 bg-blue-100 text-blue-600 rounded-lg hover:bg-blue-200 transition-colors"
+                            className="p-2 bg-blue-100 text-[#B80B3D] rounded-lg hover:bg-blue-200 transition-colors"
                             title="Edit add-on"
                           >
                             <Edit className="h-4 w-4" />
@@ -1282,7 +1282,7 @@ export default function HubMenu() {
                             className={`px-3 py-2 rounded-lg text-xs font-semibold transition-colors ${
                               addon.isAvailable === false
                                 ? "bg-green-600 text-white hover:bg-green-700"
-                                : "bg-gray-900 text-white hover:bg-gray-800"
+                                : "bg-gradient-to-br from-[#B80B3D] to-[#66001D] text-white hover:bg-gray-800"
                             }`}
                             title="Toggle availability"
                           >
@@ -1290,7 +1290,7 @@ export default function HubMenu() {
                           </button>
                           <button
                             onClick={() => handleDeleteAddon(addon)}
-                            className="p-2 bg-red-100 text-red-600 rounded-lg hover:bg-red-200 transition-colors"
+                            className="p-2 bg-red-100 text-[#B80B3D] rounded-lg hover:bg-red-200 transition-colors"
                             title="Delete add-on"
                           >
                             <Trash2 className="h-4 w-4" />
@@ -1319,7 +1319,7 @@ export default function HubMenu() {
               {/* Group Header */}
               <div className="py-3 flex items-center justify-between px-4">
                 <div className="flex items-center gap-3 flex-1">
-                  <div className="w-1 h-6 bg-red-500 rounded-r-full" />
+                  <div className="w-1 h-6 bg-gradient-to-br from-[#B80B3D] to-[#66001D] rounded-r-full" />
                   <h3 className="text-base font-bold text-gray-900">
                     {group.name} ({enabledItems})
                   </h3>
@@ -1376,7 +1376,7 @@ export default function HubMenu() {
                                 <div className={`w-2 h-2 rounded-full ${
                                   item.foodType === "Veg"
                                     ? "bg-green-600"
-                                    : "bg-red-600"
+                                    : "bg-gradient-to-br from-[#B80B3D] to-[#66001D]"
                                 }`} />
                               </div>
                             </div>
@@ -1403,7 +1403,7 @@ export default function HubMenu() {
                             </div>
                             <p className="text-sm font-medium text-gray-700 mb-3">₹{item.price}</p>
                             {isRejectedApproval(item.approvalStatus) && item.rejectionReason && (
-                              <p className="text-xs text-red-600 -mt-2 mb-3">Reason: {item.rejectionReason}</p>
+                              <p className="text-xs text-[#B80B3D] -mt-2 mb-3">Reason: {item.rejectionReason}</p>
                             )}
                           </div>
 
@@ -1514,7 +1514,7 @@ export default function HubMenu() {
                 )}
                 <button
                   onClick={() => setIsFilterOpen(false)}
-                  className="w-full py-3 rounded-lg font-semibold text-sm bg-gray-900 text-white hover:bg-gray-800 transition-colors"
+                  className="w-full py-3 rounded-lg font-semibold text-sm bg-gradient-to-br from-[#B80B3D] to-[#66001D] text-white hover:bg-gray-800 transition-colors"
                 >
                   Confirm
                 </button>
@@ -1665,7 +1665,7 @@ export default function HubMenu() {
                   disabled={!availabilityReason || isScheduling || (availabilityReason === 'custom' && !customDateTime)}
                   className={`w-full py-3 rounded-lg font-semibold text-sm transition-colors ${
                     availabilityReason && !isScheduling && (availabilityReason !== 'custom' || customDateTime)
-                      ? "bg-gray-900 text-white hover:bg-gray-800"
+                      ? "bg-gradient-to-br from-[#B80B3D] to-[#66001D] text-white hover:bg-gray-800"
                       : "bg-gray-300 text-gray-500 cursor-not-allowed"
                   }`}
                 >
@@ -1685,7 +1685,7 @@ export default function HubMenu() {
           <motion.button
           whileTap={{ scale: 0.96 }}
           onClick={() => setIsAddPopupOpen(true)}
-          className="px-4 py-2 border bg-black text-white border-gray-800 rounded-lg text-sm font-bold"
+          className="px-4 py-2 border bg-gradient-to-br from-[#B80B3D] to-[#66001D] text-white border-gray-800 rounded-lg text-sm font-bold"
         >
           + ADD
         </motion.button>)}
@@ -1713,7 +1713,7 @@ export default function HubMenu() {
               {isMenuOpen && (
                 <>
                   <motion.div
-                    className="fixed inset-0 bg-black/40 z-30"
+                    className="fixed inset-0 bg-black/50/40 z-30"
                     initial={{ opacity: 0 }}
                     animate={{ opacity: 1 }}
                     exit={{ opacity: 0 }}
@@ -1809,9 +1809,9 @@ export default function HubMenu() {
                   </button>
                   <button
                     onClick={handleDeleteCategory}
-                    className="w-full flex items-center gap-3 px-4 py-3 rounded-lg text-left text-sm font-medium text-red-600 bg-gray-50 hover:bg-red-50 transition-colors"
+                    className="w-full flex items-center gap-3 px-4 py-3 rounded-lg text-left text-sm font-medium text-[#B80B3D] bg-gray-50 hover:bg-red-50 transition-colors"
                   >
-                    <Trash2 className="w-5 h-5 text-red-600" />
+                    <Trash2 className="w-5 h-5 text-[#B80B3D]" />
                     <span>Delete category</span>
                   </button>
                 </div>
@@ -1888,7 +1888,7 @@ export default function HubMenu() {
                       disabled={!editCategoryName.trim()}
                       className={`flex-1 py-3 px-4 rounded-lg text-sm font-semibold transition-colors ${
                         editCategoryName.trim()
-                          ? "bg-black text-white hover:bg-gray-800"
+                          ? "bg-gradient-to-br from-[#B80B3D] to-[#66001D] text-white hover:bg-gray-800"
                           : "bg-gray-300 text-gray-500 cursor-not-allowed"
                       }`}
                     >
@@ -1968,7 +1968,7 @@ export default function HubMenu() {
                     disabled={!subCategoryName.trim()}
                     className={`w-full py-3 px-4 rounded-lg text-sm font-semibold transition-colors ${
                       subCategoryName.trim()
-                        ? "bg-black text-white hover:bg-gray-800"
+                        ? "bg-gradient-to-br from-[#B80B3D] to-[#66001D] text-white hover:bg-gray-800"
                         : "bg-gray-300 text-gray-500 cursor-not-allowed"
                     }`}
                   >
@@ -2040,7 +2040,7 @@ export default function HubMenu() {
                     disabled={!newCategoryName.trim()}
                     className={`w-full py-3 px-4 rounded-lg text-sm font-semibold transition-colors ${
                       newCategoryName.trim()
-                        ? "bg-black text-white hover:bg-gray-800"
+                        ? "bg-gradient-to-br from-[#B80B3D] to-[#66001D] text-white hover:bg-gray-800"
                         : "bg-gray-300 text-gray-500 cursor-not-allowed"
                     }`}
                   >
@@ -2154,7 +2154,7 @@ export default function HubMenu() {
                                       <div className={`w-2 h-2 rounded-full ${
                                         item.foodType === "Veg"
                                           ? "bg-green-600"
-                                          : "bg-red-600"
+                                          : "bg-gradient-to-br from-[#B80B3D] to-[#66001D]"
                                       }`} />
                                     </div>
                                     <h4 className="text-sm font-bold text-gray-900 truncate">
@@ -2163,10 +2163,10 @@ export default function HubMenu() {
                                   </div>
                                   <p className="text-sm font-medium text-gray-700">₹{item.price}</p>
                                   {isRejectedApproval(item.approvalStatus) && item.rejectionReason && (
-                                    <p className="text-xs text-red-600 mt-1">Reason: {item.rejectionReason}</p>
+                                    <p className="text-xs text-[#B80B3D] mt-1">Reason: {item.rejectionReason}</p>
                                   )}
                                   {!item.isAvailable && (
-                                    <span className="text-xs text-red-600 font-medium">Out of stock</span>
+                                    <span className="text-xs text-[#B80B3D] font-medium">Out of stock</span>
                                   )}
                                 </div>
                               </div>
@@ -2201,7 +2201,7 @@ export default function HubMenu() {
                 <div className="px-4 py-3 border-t border-gray-200">
                   <button
                     onClick={() => setIsSearchOpen(false)}
-                    className="w-full py-3 rounded-lg font-semibold text-sm bg-gray-900 text-white hover:bg-gray-800 transition-colors"
+                    className="w-full py-3 rounded-lg font-semibold text-sm bg-gradient-to-br from-[#B80B3D] to-[#66001D] text-white hover:bg-gray-800 transition-colors"
                   >
                     View Results ({filteredMenuGroups.reduce((acc, group) => acc + group.items.length, 0)} items)
                   </button>
@@ -2247,7 +2247,7 @@ export default function HubMenu() {
                 {/* Name Field */}
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Add-on Name <span className="text-red-500">*</span>
+                    Add-on Name <span className="text-[#B80B3D]">*</span>
                   </label>
                   <input
                     type="text"
@@ -2275,7 +2275,7 @@ export default function HubMenu() {
                 {/* Price Field */}
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Price (₹) <span className="text-red-500">*</span>
+                    Price (₹) <span className="text-[#B80B3D]">*</span>
                   </label>
                   <input
                     type="number"
@@ -2311,7 +2311,7 @@ export default function HubMenu() {
                           )}
                           <button
                             onClick={() => handleAddonImageDelete(index)}
-                            className="absolute top-1 right-1 p-1 bg-red-500 text-white rounded-full opacity-0 group-hover:opacity-100 transition-opacity"
+                            className="absolute top-1 right-1 p-1 bg-gradient-to-br from-[#B80B3D] to-[#66001D] text-white rounded-full opacity-0 group-hover:opacity-100 transition-opacity"
                           >
                             <X className="h-4 w-4" />
                           </button>
@@ -2373,4 +2373,11 @@ export default function HubMenu() {
     </div>
   )
 }
+
+
+
+
+
+
+
 

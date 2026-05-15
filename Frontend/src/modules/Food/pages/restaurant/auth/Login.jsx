@@ -63,14 +63,14 @@ export default function RestaurantLogin() {
     }
   }
 
-  const primaryColor = "#DC2626"
+  const primaryColor = "#B80B3D"
 
   return (
     <div className="min-h-screen bg-white dark:bg-[#0a0a0a] flex flex-col relative overflow-hidden font-['Poppins']">
       {/* Decorative Background Elements */}
-      <div className="absolute top-0 left-0 w-full h-[600px] bg-gradient-to-b from-[#DC2626]/10 via-[#DC2626]/5 to-transparent pointer-events-none" />
-      <div className="absolute top-[-100px] right-[-100px] w-[500px] h-[500px] bg-[#DC2626]/5 rounded-full blur-[120px] pointer-events-none animate-pulse" />
-      <div className="absolute bottom-[-100px] left-[-100px] w-[400px] h-[400px] bg-[#DC2626]/5 rounded-full blur-[120px] pointer-events-none" />
+      <div className="absolute top-0 left-0 w-full h-[600px] bg-gradient-to-b from-[#B80B3D]/10 via-[#B80B3D]/5 to-transparent pointer-events-none" />
+      <div className="absolute top-[-100px] right-[-100px] w-[500px] h-[500px] bg-gradient-to-br from-[#B80B3D] to-[#66001D]/5 rounded-full blur-[120px] pointer-events-none animate-pulse" />
+      <div className="absolute bottom-[-100px] left-[-100px] w-[400px] h-[400px] bg-gradient-to-br from-[#B80B3D] to-[#66001D]/5 rounded-full blur-[120px] pointer-events-none" />
 
       {/* Main Content */}
       <div className="flex-1 flex flex-col items-center justify-center px-6 py-12 relative z-10">
@@ -106,14 +106,14 @@ export default function RestaurantLogin() {
           </div>
 
           {/* Login Card */}
-          <div className="bg-white/80 dark:bg-[#1a1a1a]/80 backdrop-blur-2xl rounded-[3rem] p-8 sm:p-12 shadow-[0_40px_80px_-20px_rgba(126,56,102,0.2)] dark:shadow-none border border-white/20 dark:border-gray-800 relative overflow-hidden">
-            <div className="absolute top-0 left-0 w-full h-2 bg-gradient-to-r from-transparent via-[#DC2626]/20 to-transparent" />
+          <div className="bg-white/80 dark:bg-gradient-to-br from-[#B80B3D] to-[#66001D]/80 backdrop-blur-2xl rounded-[3rem] p-8 sm:p-12 shadow-[0_40px_80px_-20px_rgba(126,56,102,0.2)] dark:shadow-none border border-white/20 dark:border-gray-800 relative overflow-hidden">
+            <div className="absolute top-0 left-0 w-full h-2 bg-gradient-to-r from-transparent via-[#B80B3D]/20 to-transparent" />
 
             <div className="mb-10 text-center sm:text-left">
-              <h2 className="text-3xl font-black text-gray-900 dark:text-white mb-2 font-['Outfit'] tracking-tight">
+              <h2 className="text-[#B80B3D]xl font-black text-gray-900 dark:text-white mb-2 font-['Outfit'] tracking-tight">
                 Partner Login
               </h2>
-              <div className="h-1 w-10 bg-[#DC2626] rounded-full mb-3 hidden sm:block" />
+              <div className="h-1 w-10 bg-gradient-to-br from-[#B80B3D] to-[#66001D] rounded-full mb-3 hidden sm:block" />
               <p className="text-base text-gray-500 dark:text-gray-400 font-medium">
                 Enter your registered mobile number to manage your restaurant
               </p>
@@ -121,10 +121,10 @@ export default function RestaurantLogin() {
 
             <form onSubmit={handleSendOTP} className="space-y-8">
               <div className="space-y-2">
-                <label className="text-[10px] font-black text-[#DC2626] uppercase tracking-[0.2em] ml-1">Mobile Number</label>
+                <label className="text-[10px] font-black text-[#B80B3D] uppercase tracking-[0.2em] ml-1">Mobile Number</label>
                 <div className="relative group">
                   <div className="absolute inset-y-0 left-5 flex items-center pointer-events-none">
-                    <span className="text-sm font-bold text-[#DC2626] border-r border-gray-200 dark:border-gray-800 pr-3">+91</span>
+                    <span className="text-sm font-bold text-[#B80B3D] border-r border-gray-200 dark:border-gray-800 pr-3">+91</span>
                   </div>
                   <input
                     ref={phoneInputRef}
@@ -134,7 +134,7 @@ export default function RestaurantLogin() {
                     value={phone}
                     onChange={(e) => setPhone(e.target.value.replace(/\D/g, "").slice(0, 10))}
                     maxLength={10}
-                    className="block w-full pl-16 pr-6 py-4 bg-gray-50 dark:bg-gray-900/50 text-gray-900 dark:text-white border-2 border-transparent focus:border-[#DC2626]/50 rounded-2xl outline-none transition-all placeholder:text-gray-300 font-bold text-lg shadow-sm"
+                    className="block w-full pl-16 pr-6 py-4 bg-gray-50 dark:bg-black/50 text-gray-900 dark:text-white border-2 border-transparent focus:border-[#B80B3D]/50 rounded-2xl outline-none transition-all placeholder:text-gray-300 font-bold text-lg shadow-sm"
                     placeholder="00000 00000"
                   />
                 </div>
@@ -143,7 +143,7 @@ export default function RestaurantLogin() {
               <button
                 type="submit"
                 disabled={loading || phone.length < 10}
-                className="w-full py-4.5 bg-[#DC2626] hover:bg-[#6a2f56] disabled:bg-gray-200 dark:disabled:bg-gray-800 disabled:text-gray-400 text-white rounded-2xl font-bold text-lg shadow-xl shadow-[#DC2626]/20 transition-all active:scale-[0.98] flex items-center justify-center gap-2 group overflow-hidden relative"
+                className="w-full py-4.5 bg-gradient-to-br from-[#B80B3D] to-[#66001D] hover:bg-[#6a2f56] disabled:bg-gray-200 dark:disabled:bg-gray-800 disabled:text-gray-400 text-white rounded-2xl font-bold text-lg shadow-xl shadow-[#B80B3D]/20 transition-all active:scale-[0.98] flex items-center justify-center gap-2 group overflow-hidden relative"
               >
                 {loading ? (
                   <Loader2 className="w-6 h-6 animate-spin" />
@@ -166,11 +166,11 @@ export default function RestaurantLogin() {
           <div className="mt-8 text-center">
             <p className="text-[11px] text-gray-400 font-medium leading-relaxed max-w-[320px] mx-auto">
               By continuing, you agree to RedGo's <br />
-              <Link to="/food/restaurant/terms" className="text-gray-900 dark:text-white hover:text-[#DC2626] transition-colors uppercase tracking-wider font-semibold">TERMS</Link>
+              <Link to="/food/restaurant/terms" className="text-gray-900 dark:text-white hover:text-[#B80B3D] transition-colors uppercase tracking-wider font-semibold">TERMS</Link>
               <span className="mx-2 text-gray-400 font-bold">•</span>
-              <Link to="/food/restaurant/privacy" className="text-gray-900 dark:text-white hover:text-[#DC2626] transition-colors uppercase tracking-wider font-semibold">PRIVACY</Link>
+              <Link to="/food/restaurant/privacy" className="text-gray-900 dark:text-white hover:text-[#B80B3D] transition-colors uppercase tracking-wider font-semibold">PRIVACY</Link>
               <span className="mx-2 text-gray-400 font-bold">•</span>
-              <Link to="/food/restaurant/help-content" className="text-gray-900 dark:text-white hover:text-[#DC2626] transition-colors uppercase tracking-wider font-semibold">SUPPORT</Link>
+              <Link to="/food/restaurant/help-content" className="text-gray-900 dark:text-white hover:text-[#B80B3D] transition-colors uppercase tracking-wider font-semibold">SUPPORT</Link>
             </p>
           </div>
 
@@ -179,3 +179,10 @@ export default function RestaurantLogin() {
     </div>
   )
 }
+
+
+
+
+
+
+

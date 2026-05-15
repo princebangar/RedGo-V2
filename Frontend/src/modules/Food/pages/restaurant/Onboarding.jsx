@@ -1651,7 +1651,7 @@ export default function RestaurantOnboarding() {
                 onClick={() => isEditing && setStep1({ ...step1, pureVegRestaurant: false })}
                 className={`px-3 py-1.5 text-xs rounded-full border ${
                   step1.pureVegRestaurant === false
-                    ? "bg-gray-900 text-white border-gray-900"
+                    ? "bg-gradient-to-br from-[#B80B3D] to-[#66001D] text-white border-gray-900"
                     : "bg-white text-gray-700 border-gray-200"
                 } ${!isEditing ? "opacity-70 cursor-not-allowed" : ""}`}
               >
@@ -2267,7 +2267,7 @@ export default function RestaurantOnboarding() {
                           e.stopPropagation();
                           await handleRemoveMenuImage(idx)
                         }}
-                        className="bg-red-500 text-white rounded-full p-1 shadow-md hover:bg-red-600 transition-colors"
+                        className="bg-gradient-to-br from-[#B80B3D] to-[#66001D] text-white rounded-full p-1 shadow-md hover:bg-gradient-to-br from-[#B80B3D] to-[#66001D] transition-colors"
                       >
                         <X className="w-3 h-3" />
                       </button>
@@ -2328,7 +2328,7 @@ export default function RestaurantOnboarding() {
                     e.stopPropagation();
                     await handleRemoveProfileImage()
                   }}
-                  className="absolute -top-1 -right-1 bg-red-500 text-white rounded-full p-1 shadow-md hover:bg-red-600 transition-colors z-10"
+                  className="absolute -top-1 -right-1 bg-gradient-to-br from-[#B80B3D] to-[#66001D] text-white rounded-full p-1 shadow-md hover:bg-gradient-to-br from-[#B80B3D] to-[#66001D] transition-colors z-10"
                 >
                   <X className="w-3 h-3" />
                 </button>
@@ -2457,7 +2457,7 @@ export default function RestaurantOnboarding() {
                   key={day}
                   type="button"
                   onClick={() => toggleDay(day)}
-                  className={`aspect-square flex items-center justify-center rounded-md text-[11px] font-medium ${active ? "bg-black text-white" : "bg-gray-100 text-gray-800"
+                  className={`aspect-square flex items-center justify-center rounded-md text-[11px] font-medium ${active ? "bg-gradient-to-br from-[#B80B3D] to-[#66001D] text-white" : "bg-gray-100 text-gray-800"
                     }`}
                 >
                   {day.charAt(0)}
@@ -2585,7 +2585,7 @@ export default function RestaurantOnboarding() {
                   e.stopPropagation()
                   setStep3((prev) => ({ ...prev, panImage: null }))
                 }}
-                className="absolute top-2 right-2 bg-red-500 text-white rounded-full p-1 shadow-md hover:bg-red-600 transition-colors"
+                className="absolute top-2 right-2 bg-gradient-to-br from-[#B80B3D] to-[#66001D] text-white rounded-full p-1 shadow-md hover:bg-gradient-to-br from-[#B80B3D] to-[#66001D] transition-colors"
               >
                 <X className="w-3 h-3" />
               </button>
@@ -2601,7 +2601,7 @@ export default function RestaurantOnboarding() {
           <button
             type="button"
             onClick={() => setStep3({ ...step3, gstRegistered: true })}
-            className={`px-3 py-1.5 text-xs rounded-full ${step3.gstRegistered ? "bg-black text-white" : "bg-gray-100 text-gray-800"
+            className={`px-3 py-1.5 text-xs rounded-full ${step3.gstRegistered ? "bg-gradient-to-br from-[#B80B3D] to-[#66001D] text-white" : "bg-gray-100 text-gray-800"
               }`}
           >
             Yes
@@ -2609,7 +2609,7 @@ export default function RestaurantOnboarding() {
           <button
             type="button"
             onClick={() => setStep3({ ...step3, gstRegistered: false })}
-            className={`px-3 py-1.5 text-xs rounded-full ${!step3.gstRegistered ? "bg-black text-white" : "bg-gray-100 text-gray-800"
+            className={`px-3 py-1.5 text-xs rounded-full ${!step3.gstRegistered ? "bg-gradient-to-br from-[#B80B3D] to-[#66001D] text-white" : "bg-gray-100 text-gray-800"
               }`}
           >
             No
@@ -2686,7 +2686,7 @@ export default function RestaurantOnboarding() {
                     e.stopPropagation()
                     setStep3((prev) => ({ ...prev, gstImage: null }))
                   }}
-                  className="absolute top-2 right-2 bg-red-500 text-white rounded-full p-1 shadow-md hover:bg-red-600 transition-colors"
+                  className="absolute top-2 right-2 bg-gradient-to-br from-[#B80B3D] to-[#66001D] text-white rounded-full p-1 shadow-md hover:bg-gradient-to-br from-[#B80B3D] to-[#66001D] transition-colors"
                 >
                   <X className="w-3 h-3" />
                 </button>
@@ -2797,7 +2797,7 @@ export default function RestaurantOnboarding() {
                 e.stopPropagation()
                 setStep3((prev) => ({ ...prev, fssaiImage: null }))
               }}
-              className="absolute top-2 right-2 bg-red-500 text-white rounded-full p-1 shadow-md hover:bg-red-600 transition-colors"
+              className="absolute top-2 right-2 bg-gradient-to-br from-[#B80B3D] to-[#66001D] text-white rounded-full p-1 shadow-md hover:bg-gradient-to-br from-[#B80B3D] to-[#66001D] transition-colors"
             >
               <X className="w-3 h-3" />
             </button>
@@ -2898,7 +2898,7 @@ export default function RestaurantOnboarding() {
                 disabled={isLoggingOut}
                 variant="ghost"
                 size="icon"
-                className="h-9 w-9 text-red-600 hover:text-red-700 hover:bg-red-50"
+                className="h-9 w-9 text-[#B80B3D] hover:text-red-700 hover:bg-red-50"
                 title="Logout"
               >
                 <LogOut className="w-4 h-4" />
@@ -2939,7 +2939,7 @@ export default function RestaurantOnboarding() {
         />
 
         {error && (
-          <div className="px-4 sm:px-6 pb-2 text-xs text-red-600">
+          <div className="px-4 sm:px-6 pb-2 text-xs text-[#B80B3D]">
             {error}
           </div>
         )}
@@ -2957,7 +2957,7 @@ export default function RestaurantOnboarding() {
             <Button
               onClick={handleNext}
               disabled={saving || (step === 3 && !isEditing)}
-              className={`text-sm bg-black text-white px-6 ${(step === 3 && !isEditing) ? "opacity-50 cursor-not-allowed" : ""}`}
+              className={`text-sm bg-gradient-to-br from-[#B80B3D] to-[#66001D] text-white px-6 ${(step === 3 && !isEditing) ? "opacity-50 cursor-not-allowed" : ""}`}
             >
               {step === 3 ? (saving ? "Saving..." : "Finish") : saving ? "Saving..." : "Continue"}
             </Button>
@@ -2967,6 +2967,13 @@ export default function RestaurantOnboarding() {
     </LocalizationProvider>
   )
 }
+
+
+
+
+
+
+
 
 
 

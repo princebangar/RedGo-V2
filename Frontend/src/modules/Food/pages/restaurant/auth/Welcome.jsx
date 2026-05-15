@@ -180,7 +180,7 @@ export default function RestaurantWelcome() {
   }, [carouselData.length])
 
   return (
-    <div className="h-screen w-full flex flex-col bg-black overflow-hidden">
+    <div className="h-screen w-full flex flex-col bg-gradient-to-br from-[#B80B3D] to-[#66001D] overflow-hidden">
       {/* Carousel Section - 70% height */}
       <div
         ref={carouselRef}
@@ -231,7 +231,7 @@ export default function RestaurantWelcome() {
                       className="mb-3"
                     >
                       <h1
-                        className="text-3xl italic md:text-4xl tracking-wide font-extrabold text-white"
+                        className="text-[#B80B3D]xl italic md:text-4xl tracking-wide font-extrabold text-white"
                         style={{
                           WebkitTextStroke: "0.5px white",
                           textStroke: "0.5px white"
@@ -283,13 +283,13 @@ export default function RestaurantWelcome() {
 
       {/* Bottom Section - 30% height */}
       <div
-        className="bg-black px-6 py-6 md:py-8 flex flex-col justify-center gap-4"
+        className="bg-gradient-to-br from-[#B80B3D] to-[#66001D] px-6 py-6 md:py-8 flex flex-col justify-center gap-4"
         style={{ height: "30vh", minHeight: "240px" }}
       >
         {/* Login Button */}
         <Button
           onClick={handleLogin}
-          className="w-full bg-[#DC2626] hover:bg-[#6a2f56] text-white font-bold py-6 md:py-7 text-base md:text-lg rounded-lg transition-colors shadow-lg"
+          className="w-full bg-gradient-to-br from-[#B80B3D] to-[#66001D] hover:bg-[#6a2f56] text-white font-bold py-6 md:py-7 text-base md:text-lg rounded-lg transition-colors shadow-lg"
         >
           Login
         </Button>
@@ -298,7 +298,7 @@ export default function RestaurantWelcome() {
         {/* <Button
           onClick={handlePartner}
           variant="outline"
-          className="w-full border-2 border-[#DC2626] text-[#DC2626] hover:bg-[#DC2626] hover:text-white font-bold py-6 md:py-7 text-base md:text-lg rounded-lg transition-all shadow-lg bg-transparent"
+          className="w-full border-2 border-[#B80B3D] text-[#B80B3D] hover:bg-gradient-to-br from-[#B80B3D] to-[#66001D] hover:text-white font-bold py-6 md:py-7 text-base md:text-lg rounded-lg transition-all shadow-lg bg-transparent"
         >
           Partner with RedGo
         </Button> */}
@@ -316,3 +316,10 @@ export default function RestaurantWelcome() {
     </div>
   )
 }
+
+
+
+
+
+
+
