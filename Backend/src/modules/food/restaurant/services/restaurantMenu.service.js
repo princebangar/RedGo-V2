@@ -116,6 +116,7 @@ export async function getRestaurantMenu(restaurantId) {
     const foods = await FoodItem.find({ restaurantId })
         .sort({ createdAt: -1 })
         .limit(5000)
+        .select('-oldData -newData')
         .lean();
     return buildMenuFromFoods(foods);
 }
@@ -148,6 +149,7 @@ export async function getPublicApprovedRestaurantMenu(restaurantIdOrSlug) {
     const foods = await FoodItem.find({ restaurantId: restaurant._id, approvalStatus: 'approved' })
         .sort({ createdAt: -1 })
         .limit(2000)
+        .select('-oldData -newData')
         .lean();
     return buildMenuFromFoods(foods);
 }

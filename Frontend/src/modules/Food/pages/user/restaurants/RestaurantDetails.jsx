@@ -685,81 +685,7 @@ function RestaurantDetailsContent() {
 
           setLoadingMenuItems(true)
           if (normalizedLookupIds.length > 0) {
-            let hasPreviousOrderForRestaurant = false
-            if (isModuleAuthenticated('user')) {
-              try {
-                const normalize = (value) => (value ? String(value).trim().toLowerCase() : "")
-                const targetRestaurantName = normalize(transformedRestaurant.name)
-                const targetRestaurantIds = new Set(
-                  [
-                    ...normalizedLookupIds,
-                    transformedRestaurant.id,
-                    transformedRestaurant.restaurantId,
-                    apiRestaurant?.restaurantId,
-                    apiRestaurant?._id,
-                    actualRestaurant?.restaurantId,
-                    actualRestaurant?._id,
-                  ].map(normalize).filter(Boolean)
-                )
-
-                const FETCH_LIMIT = 100
-                const firstResponse = await orderAPI.getOrders({ limit: FETCH_LIMIT, page: 1 })
-                let allOrders = []
-                let totalPages = 1
-
-                if (firstResponse?.data?.success && firstResponse?.data?.data?.orders) {
-                  allOrders = firstResponse.data.data.orders || []
-                  totalPages = firstResponse.data.data?.pagination?.pages || 1
-                } else if (firstResponse?.data?.orders) {
-                  allOrders = firstResponse.data.orders || []
-                  totalPages = firstResponse.data?.pagination?.pages || 1
-                } else if (Array.isArray(firstResponse?.data?.data)) {
-                  allOrders = firstResponse.data.data || []
-                }
-
-                if (totalPages > 1) {
-                  const pagePromises = []
-                  for (let p = 2; p <= totalPages; p += 1) {
-                    pagePromises.push(orderAPI.getOrders({ limit: FETCH_LIMIT, page: p }))
-                  }
-
-                  const pageResponses = await Promise.all(pagePromises)
-                  const remainingOrders = pageResponses.flatMap((resp) => {
-                    if (resp?.data?.success && resp?.data?.data?.orders) return resp.data.data.orders || []
-                    if (resp?.data?.orders) return resp.data.orders || []
-                    if (Array.isArray(resp?.data?.data)) return resp.data.data || []
-                    return []
-                  })
-                  allOrders = [...allOrders, ...remainingOrders]
-                }
-
-                hasPreviousOrderForRestaurant = allOrders.some((order) => {
-                  const orderRestaurantField = order?.restaurantId
-                  const candidateIds = [
-                    order?.restaurantId,
-                    orderRestaurantField?._id,
-                    orderRestaurantField?.id,
-                    orderRestaurantField?.restaurantId,
-                    order?.restaurant,
-                    order?.restaurant_id,
-                  ].map(normalize).filter(Boolean)
-
-                  if (candidateIds.some((id) => targetRestaurantIds.has(id))) {
-                    return true
-                  }
-
-                  const candidateNames = [
-                    order?.restaurantName,
-                    orderRestaurantField?.name,
-                    order?.restaurant?.name,
-                  ].map(normalize).filter(Boolean)
-
-                  return !!targetRestaurantName && candidateNames.includes(targetRestaurantName)
-                })
-              } catch (orderCheckError) {
-                debugWarn("Could not verify previous orders for recommendation section:", orderCheckError)
-              }
-            }
+            const hasPreviousOrderForRestaurant = !!actualRestaurant?.hasOrderedBefore || !!apiRestaurant?.hasOrderedBefore;
 
             try {
               debugLog('? Fetching menu for restaurant ID:', restaurantIdForMenu)
@@ -1079,75 +1005,7 @@ function RestaurantDetailsContent() {
       ? restaurant.locationObject.coordinates[0]
       : null)
 
-  // Recalculate distance when user location updates
-  useEffect(() => {
-    if (!restaurant || !userLocation?.latitude || !userLocation?.longitude) return
-    if (!restaurantLat || !restaurantLng) return
 
-    const userLat = userLocation.latitude
-    const userLng = userLocation.longitude
-
-    // Check if coordinates have actually changed (with small threshold to avoid floating point issues)
-    const coordsChanged =
-      Math.abs(prevCoordsRef.current.userLat - userLat) > 0.0001 ||
-      Math.abs(prevCoordsRef.current.userLng - userLng) > 0.0001 ||
-      Math.abs(prevCoordsRef.current.restaurantLat - restaurantLat) > 0.0001 ||
-      Math.abs(prevCoordsRef.current.restaurantLng - restaurantLng) > 0.0001
-
-    // Skip recalculation if coordinates haven't changed
-    if (!coordsChanged && prevDistanceRef.current !== null) {
-      return
-    }
-
-    // Update refs with current coordinates
-    prevCoordsRef.current = { userLat, userLng, restaurantLat, restaurantLng }
-
-    if (userLat && userLng && restaurantLat && restaurantLng &&
-      !isNaN(userLat) && !isNaN(userLng) && !isNaN(restaurantLat) && !isNaN(restaurantLng)) {
-
-      // Calculate distance
-      const calculateDistance = (lat1, lng1, lat2, lng2) => {
-        const R = 6371 // Earth's radius in kilometers
-        const dLat = (lat2 - lat1) * Math.PI / 180
-        const dLng = (lng2 - lng1) * Math.PI / 180
-        const a =
-          Math.sin(dLat / 2) * Math.sin(dLat / 2) +
-          Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
-          Math.sin(dLng / 2) * Math.sin(dLng / 2)
-        const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a))
-        return R * c // Distance in kilometers
-      }
-
-      const distanceInKm = calculateDistance(userLat, userLng, restaurantLat, restaurantLng)
-      let calculatedDistance = null
-
-      // Format distance: show 1 decimal place if >= 1km, otherwise show in meters
-      if (distanceInKm >= 1) {
-        calculatedDistance = `${distanceInKm.toFixed(1)} km`
-      } else {
-        const distanceInMeters = Math.round(distanceInKm * 1000)
-        calculatedDistance = `${distanceInMeters} m`
-      }
-
-      // Only update if distance actually changed
-      if (calculatedDistance !== prevDistanceRef.current) {
-        debugLog('? Recalculated distance from user to restaurant:', calculatedDistance, 'km:', distanceInKm)
-        prevDistanceRef.current = calculatedDistance
-
-        // Update restaurant distance
-        setRestaurant(prev => {
-          // Only update if distance actually changed to prevent infinite loop
-          if (prev?.distance === calculatedDistance) {
-            return prev
-          }
-          return {
-            ...prev,
-            distance: calculatedDistance
-          }
-        })
-      }
-    }
-  }, [userLocation?.latitude, userLocation?.longitude, restaurantLat, restaurantLng])
 
   // Sync quantities from cart on mount and when restaurant changes
   useEffect(() => {

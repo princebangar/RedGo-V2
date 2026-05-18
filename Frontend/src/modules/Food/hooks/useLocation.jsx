@@ -928,60 +928,59 @@ export function useLocation() {
 
               // Validate coordinates are in India range BEFORE attempting geocoding
               // India: Latitude 6.5� to 37.1� N, Longitude 68.7� to 97.4� E
+              let finalLat = latitude
+              let finalLng = longitude
               const isInIndiaRange = latitude >= 6.5 && latitude <= 37.1 && longitude >= 68.7 && longitude <= 97.4 && longitude > 0
 
-              // Reverse geocode (BigDataCloud via reverseGeocodeWithGoogleMaps wrapper)
-              let addr
               if (!isInIndiaRange || longitude < 0) {
-                // Coordinates are outside India - skip geocoding and use placeholder
-                debugWarn("?? Coordinates outside India range, skipping geocoding:", { latitude, longitude })
-                addr = {
-                  city: "Current Location",
-                  state: "",
-                  country: "",
-                  area: "",
-                  address: "Select location",
-                  formattedAddress: "Select location",
-                }
-              } else {
-                debugLog("?? Calling reverse geocode with coordinates:", { latitude, longitude })
-                try {
-                  addr = await reverseGeocodeWithGoogleMaps(latitude, longitude, {
-                    includePlaceDetails: Boolean(forceFresh && showLoading)
-                  })
-                  debugLog("? Reverse geocoding successful:", addr)
-                } catch (geocodeErr) {
-                  debugWarn("?? Primary geocoding failed, trying fallback:", geocodeErr.message)
-                  try {
-                    // Fallback to direct reverse geocode (BigDataCloud)
-                    addr = await reverseGeocodeDirect(latitude, longitude)
-                    debugLog("? Fallback geocoding successful:", addr)
+                // Coordinates are outside India (Mocking or VPN) - route coordinates to Indore (Vijay Nagar) to reverse geocode a real Indian address
+                debugWarn("?? Coordinates outside India range (Mocking to Indore Vijay Nagar):", { latitude, longitude })
+                finalLat = 22.7533
+                finalLng = 75.8937
+              }
 
-                    // Validate fallback result - if it still has placeholder values, don't use it
-                    if (addr.city === "Current Location" || addr.address.includes(latitude.toFixed(4))) {
-                      debugWarn("?? Fallback geocoding returned placeholder, will not save")
-                      addr = {
-                        city: "Current Location",
-                        state: "",
-                        country: "",
-                        area: "",
-                        address: "Select location",
-                        formattedAddress: "Select location",
-                      }
-                    }
-                  } catch (fallbackErr) {
-                    debugError("? All geocoding methods failed:", fallbackErr.message)
+              debugLog("?? Calling reverse geocode with coordinates:", { latitude: finalLat, longitude: finalLng })
+              let addr
+              try {
+                addr = await reverseGeocodeWithGoogleMaps(finalLat, finalLng, {
+                  includePlaceDetails: Boolean(forceFresh && showLoading)
+                })
+                debugLog("? Reverse geocoding successful:", addr)
+              } catch (geocodeErr) {
+                debugWarn("?? Primary geocoding failed, trying fallback:", geocodeErr.message)
+                try {
+                  // Fallback to direct reverse geocode (BigDataCloud)
+                  addr = await reverseGeocodeDirect(finalLat, finalLng)
+                  debugLog("? Fallback geocoding successful:", addr)
+
+                  // Validate fallback result - if it still has placeholder values, don't use it
+                  if (addr.city === "Current Location" || addr.address.includes(finalLat.toFixed(4))) {
+                    debugWarn("?? Fallback geocoding returned placeholder, will use Vijay Nagar default")
                     addr = {
-                      city: "Current Location",
-                      state: "",
-                      country: "",
-                      area: "",
-                      address: "Select location",
-                      formattedAddress: "Select location",
+                      city: "Indore",
+                      state: "Madhya Pradesh",
+                      country: "India",
+                      area: "Vijay Nagar",
+                      address: "Vijay Nagar, Indore, Madhya Pradesh",
+                      formattedAddress: "Vijay Nagar, Indore, Madhya Pradesh",
                     }
+                  }
+                } catch (fallbackErr) {
+                  debugError("? All geocoding methods failed:", fallbackErr.message)
+                  addr = {
+                    city: "Indore",
+                    state: "Madhya Pradesh",
+                    country: "India",
+                    area: "Vijay Nagar",
+                    address: "Vijay Nagar, Indore, Madhya Pradesh",
+                    formattedAddress: "Vijay Nagar, Indore, Madhya Pradesh",
                   }
                 }
               }
+
+              // Update coordinates in original variables for consistency
+              let finalLocLatitude = finalLat
+              let finalLocLongitude = finalLng
               debugLog("Reverse geocode result:", addr)
               if (addr?.formattedAddress && addr.formattedAddress !== "Select location") {
                 lastResolvedAddressRef.current = addr
@@ -1006,8 +1005,8 @@ export function useLocation() {
               // Build location object with ALL fields from reverse geocoding
               const finalLoc = {
                 ...addr, // This includes: city, state, area, street, streetNumber, postalCode, formattedAddress
-                latitude,
-                longitude,
+                latitude: finalLocLatitude,
+                longitude: finalLocLongitude,
                 accuracy: accuracy || null,
                 address: displayAddress, // Locality parts for navbar display
                 formattedAddress: completeFormattedAddress || addr.formattedAddress || displayAddress // Complete detailed address
@@ -1117,7 +1116,7 @@ export function useLocation() {
               // Retry with lower accuracy - faster response (uses network-based location)
               getPositionWithRetry({
                 enableHighAccuracy: false,
-                timeout: 5000,  // 5 seconds for lower accuracy (network-based is faster)
+                timeout: 3000,  // 3 seconds for lower accuracy (network-based is faster)
                 maximumAge: 300000 // Allow 5 minute old cached location for instant response
               }, 1).then(resolve).catch(reject)
               return
@@ -1193,8 +1192,8 @@ export function useLocation() {
     // Otherwise, allow cached location for faster response
     return getPositionWithRetry({
       enableHighAccuracy: true,  // Use GPS for exact location (highest accuracy)
-      timeout: 5000,             // Reduced from 15s to 5s for faster fallback to network location
-      maximumAge: forceFresh ? 10000 : 60000  // Allow 10s cache even for fresh requests to speed up response
+      timeout: 4000,             // Robust 4s timeout for hardware GPS cold starts
+      maximumAge: forceFresh ? 300000 : 600000  // Allow up to 5 mins cached coordinates to deliver instant locks
     })
   }
 
@@ -1769,6 +1768,13 @@ export function useLocation() {
       } else {
         debugLog("??? SUCCESS: Complete detailed address received!")
         debugLog("? Full address:", location.formattedAddress)
+      }
+
+      // Dispatch custom event to notify all other mounted hook instances (Navbar, Home, etc.)
+      try {
+        window.dispatchEvent(new CustomEvent("userLocationUpdated"))
+      } catch (evtErr) {
+        debugWarn("Failed to dispatch custom event:", evtErr)
       }
 
       return location

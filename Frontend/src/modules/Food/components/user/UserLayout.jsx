@@ -19,6 +19,7 @@ import { useLocation as useGeoLocation } from "../../hooks/useLocation"
 import { useZone } from "../../hooks/useZone"
 import OutOfZoneScreen from "./OutOfZoneScreen"
 import { isModuleAuthenticated } from "../../utils/auth"
+import { AppShellSkeleton } from "@food/components/ui/loading-skeletons"
 
 // Sync orderType with route
 function RouteSyncHandler() {
@@ -188,10 +189,16 @@ function UserLayoutContent() {
 
   // Debounced loading state to prevent flickering and ensure smooth navigation transitions
   const { showGlobalLoader, setShowGlobalLoader } = useLocationSelector()
+
+  // isInitialChecking: only block render if we have ZERO cached location AND zone data.
+  // On refresh, cached data exists -> render immediately, fetch in background.
   const [isInitialChecking, setIsInitialChecking] = useState(() => {
-    // If it's a policy or auth page, or if the user is not authenticated, we don't need the initial location check delay
     const isAuthenticated = isModuleAuthenticated('user');
-    return !(isAuthPage || isPolicyPage || !isAuthenticated);
+    if (!isAuthenticated || isAuthPage || isPolicyPage) return false;
+    // If we already have cached location + zone -> never block
+    const hasCachedLocation = !!localStorage.getItem('userLocation');
+    const hasCachedZone = !!localStorage.getItem('userZoneId');
+    return !(hasCachedLocation && hasCachedZone);
   })
 
   useEffect(() => {
@@ -204,23 +211,26 @@ function UserLayoutContent() {
     }
 
     if (isZoneLoading || isGeoLoading) {
-      // Logic from user: show loader ONLY if we don't have location data yet OR if it's a manual update
       const hasLocationData = geoLocation?.latitude && geoLocation?.longitude;
       const hasZoneData = zoneStatus && zoneStatus !== "loading";
+      // ONLY show global overlay for truly manual location updates (user explicitly changed location)
+      // Never block the page for silent background GPS refreshes
       const isManualUpdate = sessionStorage.getItem("manual_location_update") === "true";
 
-      if (!hasLocationData || !hasZoneData || isManualUpdate) {
+      // Show overlay if it is a manual update
+      if (isManualUpdate) {
         setShowGlobalLoader(true)
       }
+      // If we have location+zone cached, never show overlay even during background refresh
     } else {
       const timer = setTimeout(() => {
         setShowGlobalLoader(false)
         setIsInitialChecking(false) // First load completed
         sessionStorage.removeItem("manual_location_update"); // Clear manual flag
-      }, 400)
+      }, 300)
       return () => clearTimeout(timer)
     }
-  }, [isZoneLoading, isGeoLoading, isAuthPage, isPolicyPage])
+  }, [isZoneLoading, isGeoLoading, isAuthPage, isPolicyPage, geoLocation?.latitude, geoLocation?.longitude, zoneStatus])
 
   // Global Refresh Handler - Scroll to top ONLY on browser refresh
   useEffect(() => {
@@ -316,26 +326,18 @@ function UserLayoutContent() {
             <div className="w-10 h-10 border-[3px] border-gray-100/30 rounded-full"></div>
             <div className="absolute top-0 left-0 w-10 h-10 border-[3px] border-[#DC2626] border-t-transparent rounded-full animate-spin"></div>
           </div>
-          <p className="mt-4 text-[13px] font-bold text-gray-800 tracking-tight">Updating location...</p>
+          <p className="mt-4 text-[13px] font-bold text-gray-800 tracking-tight">Fetching Location...</p>
         </div>
       )}
 
       {/* Desktop Navbar - Hidden on mobile, visible on medium+ screens */}
-      {!isInitialChecking && (
-        <div className="hidden md:block">
-          {showBottomNav && !isOutOfZone && <DesktopNavbar showLogo={!isUnder250} />}
-        </div>
-      )}
-      {!isInitialChecking && <LocationPrompt />}
+      <div className="hidden md:block">
+        {showBottomNav && !isOutOfZone && <DesktopNavbar showLogo={!isUnder250} />}
+      </div>
+      <LocationPrompt />
       
       {isInitialChecking ? (
-        <div className="flex-1 min-h-screen bg-white dark:bg-[#0a0a0a] flex flex-col items-center justify-center">
-          <div className="relative">
-            <div className="w-10 h-10 border-[3px] border-gray-100/50 rounded-full"></div>
-            <div className="absolute top-0 left-0 w-10 h-10 border-[3px] border-[#DC2626] border-t-transparent rounded-full animate-spin"></div>
-          </div>
-          <p className="mt-4 text-[11px] font-bold text-gray-400 uppercase tracking-[0.2em] animate-pulse">Loading...</p>
-        </div>
+        <AppShellSkeleton />
       ) : (zoneStatus === "OUT_OF_SERVICE") && isMainPage ? (
         <OutOfZoneScreen 
           location={geoLocation} 

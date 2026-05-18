@@ -94,9 +94,11 @@ const Wallet = lazy(() => import("@food/pages/user/Wallet"))
 // Complaints
 const SubmitComplaint = lazy(() => import("@food/pages/user/complaints/SubmitComplaint"))
 
+import { AppShellSkeleton } from "@food/components/ui/loading-skeletons"
+
 export default function UserRouter() {
   return (
-    <Suspense fallback={<div className="flex-1 min-h-screen bg-white dark:bg-[#0a0a0a]" />}>
+    <Suspense fallback={<AppShellSkeleton />}>
       <Routes>
         <Route element={<UserLayout />}>
           {/* ========================================== */}

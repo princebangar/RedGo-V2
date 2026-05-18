@@ -51,9 +51,6 @@ const RestaurantImageCarousel = React.memo(({ restaurant, priority = false, back
   }, [restaurant.images, restaurant.image, withCacheBuster]);
 
   const [currentIndex, setCurrentIndex] = useState(0);
-  const [loadedBySrc, setLoadedBySrc] = useState({});
-  const [, setAttemptedSrcs] = useState({});
-  const [showShimmer, setShowShimmer] = useState(true);
   const [lastGoodSrc, setLastGoodSrc] = useState("");
   const touchStartX = useRef(0);
   const isSwiping = useRef(false);
@@ -63,36 +60,11 @@ const RestaurantImageCarousel = React.memo(({ restaurant, priority = false, back
 
   useEffect(() => {
     setCurrentIndex(0);
-    setLoadedBySrc({});
-    setAttemptedSrcs({});
-    setShowShimmer(images.length > 0);
   }, [restaurant?.id, restaurant?.slug, restaurant?.updatedAt, images]);
 
   useEffect(() => {
     setLastGoodSrc("");
   }, [restaurant?.id, restaurant?.slug]);
-
-  useEffect(() => {
-    if (!renderSrc) return;
-    const imgEl = imageElementRef.current;
-    if (!imgEl) return;
-
-    setShowShimmer(true);
-    const shimmerTimeout = setTimeout(() => {
-      setShowShimmer(false);
-    }, 2500);
-
-    if (imgEl.complete) {
-      if (imgEl.naturalWidth > 0) {
-        setLoadedBySrc((prev) => (prev[renderSrc] ? prev : { ...prev, [renderSrc]: true }));
-        setLastGoodSrc(renderSrc);
-        setShowShimmer(false);
-      } else {
-        setAttemptedSrcs((prev) => ({ ...prev, [renderSrc]: true }));
-      }
-    }
-    return () => clearTimeout(shimmerTimeout);
-  }, [renderSrc]);
 
   const handleTouchStart = (e) => {
     touchStartX.current = e.touches[0].clientX;
@@ -133,19 +105,11 @@ const RestaurantImageCarousel = React.memo(({ restaurant, priority = false, back
         src={renderSrc}
         alt={restaurant.name}
         priority={priority}
-        className={`w-full h-full object-cover transform scale-100 group-hover:scale-110 transition-transform duration-700 ${
-          loadedBySrc[renderSrc] ? 'opacity-100' : 'opacity-0'
-        }`}
+        className="w-full h-full object-cover transform scale-100 group-hover:scale-110 transition-transform duration-700"
         onLoad={() => {
-          setLoadedBySrc((prev) => ({ ...prev, [renderSrc]: true }));
           setLastGoodSrc(renderSrc);
-          setShowShimmer(false);
         }}
       />
-      
-      {showShimmer && !loadedBySrc[renderSrc] && (
-        <div className="absolute inset-0 bg-gradient-to-r from-gray-100 via-gray-200 to-gray-100 dark:from-gray-800 dark:via-gray-700 dark:to-gray-800 animate-shimmer" />
-      )}
 
       {/* Navigation Indicators */}
       {images.length > 1 && (

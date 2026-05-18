@@ -277,6 +277,7 @@ export default function RestaurantStatus() {
   }
 
   // Handle dialog close and navigate to outlet timings
+  const handleGoToOutletTimings = () => {
     setShowOutletClosedDialog(false)
     navigate("/food/restaurant/outlet-timings", { state: { from: location.pathname } })
   }

@@ -8,6 +8,7 @@ import PushSoundEnableButton from "@food/components/PushSoundEnableButton"
 import { registerWebPushForCurrentModule } from "@food/utils/firebaseMessaging"
 import { isModuleAuthenticated } from "@food/utils/auth"
 import { useRestaurantNotifications } from "@food/hooks/useRestaurantNotifications"
+import { AppShellSkeleton } from "./components/ui/loading-skeletons"
 
 // Lazy Loading Components
 const UserRouter = lazy(() => import("@food/components/user/UserRouter"))
@@ -90,34 +91,63 @@ export default function App() {
         <ScrollToTop />
         <RestaurantGlobalNotificationListener />
         <PushSoundEnableButton />
-        <Suspense fallback={null}>
-          <Routes>
-            {/* Restaurant Module - Already mapped to /restaurant */}
-            <Route
-              path="restaurant/*"
-              element={
+        <Routes>
+          {/* Restaurant Module - Already mapped to /restaurant */}
+          <Route
+            path="restaurant/*"
+            element={
+              <Suspense fallback={
+                <div className="min-h-screen bg-white dark:bg-[#0a0a0a] flex items-center justify-center">
+                  <div className="relative">
+                    <div className="w-10 h-10 border-[3px] border-gray-100/30 rounded-full"></div>
+                    <div className="absolute top-0 left-0 w-10 h-10 border-[3px] border-[#B80B3D] border-t-transparent rounded-full animate-spin"></div>
+                  </div>
+                </div>
+              }>
                 <RestaurantRouter />
-              }
-            />
+              </Suspense>
+            }
+          />
 
-            {/* Delivery Module - Already mapped to /delivery */}
-            <Route
-              path="delivery/*"
-              element={<DeliveryRouter />}
-            />
+          {/* Delivery Module - Already mapped to /delivery */}
+          <Route
+            path="delivery/*"
+            element={
+              <Suspense fallback={
+                <div className="min-h-screen bg-white dark:bg-[#0a0a0a] flex items-center justify-center">
+                  <div className="relative">
+                    <div className="w-10 h-10 border-[3px] border-gray-100/30 rounded-full"></div>
+                    <div className="absolute top-0 left-0 w-10 h-10 border-[3px] border-[#059669] border-t-transparent rounded-full animate-spin"></div>
+                  </div>
+                </div>
+              }>
+                <DeliveryRouter />
+              </Suspense>
+            }
+          />
 
-            {/* User Module - Explicitly mapped to /user and the catch-all for /food/ and / */}
-            {/* NOTE: /user/food is a common mis-navigation - redirect to correct /food/user home */}
-            <Route path="user/food" element={<Navigate to="/food/user" replace />} />
-            <Route
-              path="user/*"
-              element={<UserRouter />}
-            />
+          {/* User Module - Explicitly mapped to /user and the catch-all for /food/ and / */}
+          {/* NOTE: /user/food is a common mis-navigation - redirect to correct /food/user home */}
+          <Route path="user/food" element={<Navigate to="/food/user" replace />} />
+          <Route
+            path="user/*"
+            element={
+              <Suspense fallback={<AppShellSkeleton />}>
+                <UserRouter />
+              </Suspense>
+            }
+          />
 
-            {/* Make UserRouter the default for all other paths to handle / and /food/ as user home */}
-            <Route path="/*" element={<UserRouter />} />
-          </Routes>
-        </Suspense>
+          {/* Make UserRouter the default for all other paths to handle / and /food/ as user home */}
+          <Route
+            path="/*"
+            element={
+              <Suspense fallback={<AppShellSkeleton />}>
+                <UserRouter />
+              </Suspense>
+            }
+          />
+        </Routes>
       </>
     </AuthInitializer>
   )

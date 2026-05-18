@@ -26,9 +26,11 @@ const PageLoader = () => (
  * path nikalne ke baad FoodApp render karte hain. FoodApp internally BrowserRouter
  * nahi use karta (sirf Routes use karta hai), isliye ye directly kaam karta hai.
  */
+import { AppShellSkeleton } from '../modules/Food/components/ui/loading-skeletons'
+
 const FoodAppWrapper = () => {
   return (
-    <Suspense fallback={null}>
+    <Suspense fallback={<AppShellSkeleton />}>
       <FoodApp />
     </Suspense>
   )
@@ -69,19 +71,43 @@ const AppRoutes = () => {
   }, [location.pathname, location.search])
 
   return (
-    <Routes>
-      {/* Auth Module */}
-      <Route path="/user/auth/*" element={<AuthApp />} />
+    <Suspense fallback={<AppShellSkeleton />}>
+      <Routes>
+        {/* Auth Module */}
+        <Route path="/user/auth/*" element={
+          <Suspense fallback={
+            <div className="min-h-screen bg-white dark:bg-[#0a0a0a] flex items-center justify-center">
+              <div className="relative">
+                <div className="w-10 h-10 border-[3px] border-gray-100/30 rounded-full"></div>
+                <div className="absolute top-0 left-0 w-10 h-10 border-[3px] border-[#DC2626] border-t-transparent rounded-full animate-spin"></div>
+              </div>
+            </div>
+          }>
+            <AuthApp />
+          </Suspense>
+        } />
 
-      {/* Food Module - Handle both /food and root / for the user app */}
-      <Route path="/food/*" element={<FoodAppWrapper />} />
+        {/* Food Module - Handle both /food and root / for the user app */}
+        <Route path="/food/*" element={<FoodAppWrapper />} />
 
-      {/* Global Admin Portal - AdminRouter handles its own protection for sub-routes */}
-      <Route path="/admin/*" element={<AdminRouter />} />
+        {/* Global Admin Portal - AdminRouter handles its own protection for sub-routes */}
+        <Route path="/admin/*" element={
+          <Suspense fallback={
+            <div className="min-h-screen bg-[#f5f5f5] flex items-center justify-center">
+              <div className="relative">
+                <div className="w-10 h-10 border-[3px] border-gray-100/30 rounded-full"></div>
+                <div className="absolute top-0 left-0 w-10 h-10 border-[3px] border-[#CB202D] border-t-transparent rounded-full animate-spin"></div>
+              </div>
+            </div>
+          }>
+            <AdminRouter />
+          </Suspense>
+        } />
 
-      {/* Handle root and other paths via FoodAppWrapper */}
-      <Route path="/*" element={<FoodAppWrapper />} />
-    </Routes>
+        {/* Handle root and other paths via FoodAppWrapper */}
+        <Route path="/*" element={<FoodAppWrapper />} />
+      </Routes>
+    </Suspense>
   )
 }
 

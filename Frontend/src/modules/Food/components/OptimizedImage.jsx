@@ -5,12 +5,13 @@ import { motion } from 'framer-motion'
  * OptimizedImage Component
  * 
  * Features:
- * - Lazy loading with Intersection Observer
+ * - High-speed native lazy loading (loading="lazy")
  * - Responsive srcset for different screen sizes
  * - WebP/AVIF format support with fallback
  * - Blur placeholder (LQIP) for smooth loading
- * - Preloading for critical images
+ * - Preloading for critical images (priority=true)
  * - Proper decoding and fetchpriority
+ * - Instant cached image rendering (zero delay/flash for cached assets)
  * - Error handling with fallback
  */
 const OptimizedImage = React.memo(({
@@ -26,11 +27,9 @@ const OptimizedImage = React.memo(({
   onError,
   ...props
 }) => {
-  const [isLoaded, setIsLoaded] = useState(false)
+  const [isLoaded, setIsLoaded] = useState(priority)
   const [hasError, setHasError] = useState(false)
-  const [isInView, setIsInView] = useState(priority) // Start visible if priority
   const imgRef = useRef(null)
-  const observerRef = useRef(null)
 
   // Check if image URL supports optimization (external URLs)
   const supportsOptimization = (imageSrc) => {
@@ -70,37 +69,15 @@ const OptimizedImage = React.memo(({
       .join(', ')
   }, [src])
 
-  // Intersection Observer for lazy loading
+  // Instant Cache Detection: Check if image is already cached/complete in browser cache on mount and source change
   useEffect(() => {
-    if (priority || isInView) return
-
-    if (!imgRef.current) return
-
-    observerRef.current = new IntersectionObserver(
-      (entries) => {
-        entries.forEach((entry) => {
-          if (entry.isIntersecting) {
-            setIsInView(true)
-            if (observerRef.current && imgRef.current) {
-              observerRef.current.unobserve(imgRef.current)
-            }
-          }
-        })
-      },
-      {
-        rootMargin: '50px', // Start loading 50px before entering viewport
-        threshold: 0.01
-      }
-    )
-
-    observerRef.current.observe(imgRef.current)
-
-    return () => {
-      if (observerRef.current && imgRef.current) {
-        observerRef.current.unobserve(imgRef.current)
+    if (imgRef.current) {
+      const img = imgRef.current.querySelector('img')
+      if (img && img.complete) {
+        setIsLoaded(true)
       }
     }
-  }, [priority, isInView])
+  }, [src])
 
   const handleLoad = (e) => {
     setIsLoaded(true)
@@ -152,34 +129,32 @@ const OptimizedImage = React.memo(({
         <div className="absolute inset-0 bg-gradient-to-r from-gray-200 via-gray-300 to-gray-200 dark:from-gray-700 dark:via-gray-600 dark:to-gray-700 animate-pulse" />
       )}
 
-      {/* Actual Image */}
-      {isInView && (
-        <picture className="absolute inset-0 w-full h-full">
-          {/* WebP source for modern browsers */}
-          {webPSrcSet && (
-            <source
-              srcSet={webPSrcSet}
-              sizes={sizes}
-              type="image/webp"
-            />
-          )}
-
-          {/* Fallback to original format */}
-          <motion.img
-            src={imageSrc}
-            srcSet={srcSet}
-            sizes={supportsOptimization(imageSrc) ? sizes : undefined}
-            alt={alt}
-            className={`w-full h-full ${objectFit === 'cover' ? 'object-cover' : objectFit === 'contain' ? 'object-contain' : ''} ${priority || isLoaded ? 'opacity-100' : 'opacity-0'} ${!priority && 'transition-opacity duration-300'}`}
-            loading={priority ? 'eager' : 'lazy'}
-            decoding="async"
-            fetchPriority={priority ? 'high' : 'auto'}
-            onLoad={handleLoad}
-            onError={handleError}
-            {...props}
+      {/* Actual Image - Rendered immediately so browser HTML pre-parser starts pre-fetching, and lazy loads natively */}
+      <picture className="absolute inset-0 w-full h-full">
+        {/* WebP source for modern browsers */}
+        {webPSrcSet && (
+          <source
+            srcSet={webPSrcSet}
+            sizes={sizes}
+            type="image/webp"
           />
-        </picture>
-      )}
+        )}
+
+        {/* Fallback to original format */}
+        <motion.img
+          src={imageSrc}
+          srcSet={srcSet}
+          sizes={supportsOptimization(imageSrc) ? sizes : undefined}
+          alt={alt}
+          className={`w-full h-full ${objectFit === 'cover' ? 'object-cover' : objectFit === 'contain' ? 'object-contain' : ''} ${priority || isLoaded ? 'opacity-100' : 'opacity-0'} ${!priority && 'transition-opacity duration-300'}`}
+          loading={priority ? 'eager' : 'lazy'}
+          decoding="async"
+          fetchPriority={priority ? 'high' : 'auto'}
+          onLoad={handleLoad}
+          onError={handleError}
+          {...props}
+        />
+      </picture>
 
       {/* Error State */}
       {hasError && (

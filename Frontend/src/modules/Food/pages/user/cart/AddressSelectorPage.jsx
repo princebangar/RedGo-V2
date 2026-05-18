@@ -61,6 +61,7 @@ export default function AddressSelectorPage() {
     label: "Home",
     phone: "",
   })
+  const [isFetchingLocationState, setIsFetchingLocationState] = useState(false)
   const [loadingAddress, setLoadingAddress] = useState(false)
   const [mapLoading, setMapLoading] = useState(false)
   const mapContainerRef = useRef(null)
@@ -211,46 +212,42 @@ export default function AddressSelectorPage() {
 
   const handleUseCurrentLocation = async () => {
     try {
-      // toast.loading("Getting location...", { id: "geo" })
-      const loc = await requestLocation(true, true)
-      if (loc?.latitude) {
-        const newPos = [loc.latitude, loc.longitude]
-        setMapPosition(newPos)
-        
-        // Explicitly pan the map to center the user location
-        if (googleMapRef.current) {
-          googleMapRef.current.panTo({ lat: loc.latitude, lng: loc.longitude })
-          googleMapRef.current.setZoom(17)
-        }
-        
-        try { 
-          sessionStorage.setItem("manual_location_update", "true");
-          localStorage.setItem("deliveryAddressMode", "current")
-          window.dispatchEvent(new CustomEvent("userLocationUpdated"))
-          
-          // Redirect to home page immediately after location is confirmed
-          handleBack()
-        } catch {}
-        // toast.success("Location updated", { id: "geo" })
-        // Removed handleBack() to prevent unwanted redirection
+      setIsFetchingLocationState(true)
+      
+      // Fetch fresh location via requestLocation (which now dispatches userLocationUpdated on success)
+      const loc = await requestLocation()
+      
+      if (loc) {
+        sessionStorage.setItem("manual_location_update", "true")
+        localStorage.setItem("deliveryAddressMode", "current")
+        window.dispatchEvent(new CustomEvent("userLocationUpdated"))
+        // Go back instantly after successful location lock!
+        handleBack()
+      } else {
+        setIsFetchingLocationState(false)
       }
     } catch (e) {
-      toast.error("Failed to get location", { id: "geo" })
+      setIsFetchingLocationState(false)
+      toast.error("Failed to get current location", { id: "geo" })
     }
   }
 
   const handleSelectSavedAddress = async (address) => {
     const id = getAddressId(address)
     if (id) {
-      await setDefaultAddress(id)
+      sessionStorage.setItem("manual_location_update", "true")
+      
+      // Perform optimistic default address set instantly
+      setDefaultAddress(id)
+      
       try { 
-        sessionStorage.setItem("manual_location_update", "true");
         localStorage.setItem("deliveryAddressMode", "saved")
         window.dispatchEvent(new CustomEvent("userLocationUpdated"))
-        // Move navigation here to trigger immediately with the event
+        // Go back immediately!
         handleBack()
-      } catch {}
-      // toast.success("Address selected")
+      } catch (e) {
+        console.error("Failed to select saved address:", e)
+      }
     }
   }
 
@@ -681,7 +678,7 @@ export default function AddressSelectorPage() {
           </div>
 
           <div className="space-y-4">
-            {profileLoading ? (
+            {profileLoading && addresses.length === 0 ? (
               // Skeleton loading state
               [1, 2].map((i) => (
                 <div key={i} className="w-full flex items-start gap-4 p-4 bg-slate-50 dark:bg-[#1a1a1a] rounded-xl animate-pulse">
@@ -734,6 +731,16 @@ export default function AddressSelectorPage() {
           animation: bounce-short 1s infinite ease-in-out;
         }
       `}</style>
+      
+      {isFetchingLocationState && (
+        <div className="fixed inset-0 z-[10000] bg-white/60 dark:bg-[#0a0a0a]/60 backdrop-blur-sm flex flex-col items-center justify-center animate-in fade-in duration-300 pointer-events-auto">
+          <div className="relative">
+            <div className="w-10 h-10 border-[3px] border-gray-100/30 rounded-full"></div>
+            <div className="absolute top-0 left-0 w-10 h-10 border-[3px] border-[#DC2626] border-t-transparent rounded-full animate-spin"></div>
+          </div>
+          <p className="mt-4 text-[13px] font-bold text-gray-800 dark:text-gray-200 tracking-tight animate-pulse">Fetching Location...</p>
+        </div>
+      )}
     </AnimatedPage>
   )
 }

@@ -136,53 +136,8 @@ export default function CategoryPage() {
     }
   }
 
-  const fetchApprovedFoods = async () => {
-    if (Array.isArray(approvedFoodsCacheRef.current)) {
-      return approvedFoodsCacheRef.current
-    }
 
-    if (approvedFoodsInFlightRef.current) {
-      return approvedFoodsInFlightRef.current
-    }
 
-    approvedFoodsInFlightRef.current = (async () => {
-      try {
-        const response = await adminAPI.getFoods({ limit: 1000 })
-        const list = response?.data?.data?.foods || []
-        const approvedFoods = Array.isArray(list)
-          ? list.filter((food) =>
-              String(food?.approvalStatus || "").toLowerCase() === "approved" &&
-              food?.isAvailable !== false
-            )
-          : []
-
-        approvedFoodsCacheRef.current = approvedFoods
-        return approvedFoods
-      } catch {
-        approvedFoodsCacheRef.current = []
-        return []
-      } finally {
-        approvedFoodsInFlightRef.current = null
-      }
-    })()
-
-    return approvedFoodsInFlightRef.current
-  }
-
-  useEffect(() => {
-    let cancelled = false
-
-    void (async () => {
-      const foods = await fetchApprovedFoods()
-      if (!cancelled) {
-        setApprovedFoodsData(Array.isArray(foods) ? foods : [])
-      }
-    })()
-
-    return () => {
-      cancelled = true
-    }
-  }, [])
 
   const buildFallbackMenuFromFoods = (foods, restaurant) => {
     const restaurantIds = new Set(
@@ -804,9 +759,20 @@ export default function CategoryPage() {
     const fetchRestaurants = async () => {
       try {
         setLoadingRestaurants(true)
-        // IMPORTANT: Do NOT pass zoneId as a hard filter.
-        // UX is "show all restaurants", and we only style out-of-service state.
-        const params = {}
+        // Pass coordinates and category to backend for server-side optimization
+        const params = {
+          limit: 100,
+        }
+
+        if (location?.latitude && location?.longitude) {
+          params.lat = parseFloat(location.latitude.toFixed(4));
+          params.lng = parseFloat(location.longitude.toFixed(4));
+        }
+
+        if (selectedCategory && selectedCategory !== 'all') {
+          params.cuisine = selectedCategory;
+        }
+
         const response = await restaurantAPI.getRestaurants(params)
 
         if (response.data && response.data.success && response.data.data && response.data.data.restaurants) {
