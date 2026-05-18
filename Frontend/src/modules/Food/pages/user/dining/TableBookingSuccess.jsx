@@ -118,7 +118,7 @@ export default function TableBookingSuccess() {
                                 <span className="truncate">
                                     {typeof booking.restaurant?.location === 'string'
                                         ? booking.restaurant.location
-                                        : (booking.restaurant?.location?.formattedAddress || booking.restaurant?.location?.address || `${booking.restaurant?.location?.city || ''}${booking.restaurant?.location?.area ? ', ' + booking.restaurant.location.area : ''}`)}
+                                        : (booking.restaurant?.location?.addressLine1 || booking.restaurant?.location?.formattedAddress || booking.restaurant?.location?.address || `${booking.restaurant?.location?.city || ''}${booking.restaurant?.location?.area ? ', ' + booking.restaurant.location.area : ''}`)}
                                 </span>
                             </p>
                         </div>

@@ -1382,9 +1382,9 @@ export default function ExploreMore() {
                 <button
                   onClick={handleLogout}
                   disabled={isLoggingOut}
-                  className="w-full bg-gradient-to-br from-[#B80B3D] to-[#66001D]/10 text-[#B80B3D] border border-[#B80B3D]/20 hover:bg-gradient-to-br from-[#B80B3D] to-[#66001D]/20 active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed font-bold py-4 px-4 rounded-2xl transition-all flex items-center justify-center gap-2"
+                  className="w-full bg-gradient-to-br from-[#B80B3D] to-[#66001D] text-white hover:opacity-95 active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed font-bold py-4 px-4 rounded-2xl transition-all flex items-center justify-center gap-2 shadow-md"
                 >
-                  <LogOut className="w-5 h-5 text-[#B80B3D]" />
+                  <LogOut className="w-5 h-5 text-white" />
                   {isLoggingOut ? "Logging out..." : "Logout"}
                 </button>
 

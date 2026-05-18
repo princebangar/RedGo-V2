@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from "react"
-import { useNavigate } from "react-router-dom"
+import { useNavigate, Link } from "react-router-dom"
 import { motion, AnimatePresence } from "framer-motion"
-import { ArrowLeft, ShieldCheck, Timer, RefreshCw, Store, CheckCircle2, AlertCircle, Loader2 } from "lucide-react"
+import { ArrowLeft, Timer, RefreshCw, Loader2, Pencil, X, ShieldCheck } from "lucide-react"
 import { toast } from "sonner"
 import { restaurantAPI } from "@food/api"
 import {
@@ -17,14 +17,11 @@ export default function RestaurantOTP() {
   const [resendTimer, setResendTimer] = useState(0)
   const [authData, setAuthData] = useState(null)
   const [contactInfo, setContactInfo] = useState("")
-  const [focusedIndex, setFocusedIndex] = useState(null)
   const [showRestorePopup, setShowRestorePopup] = useState(false)
   const [deletedAccountData, setDeletedAccountData] = useState(null)
   const inputRefs = useRef([])
   const hasSubmittedRef = useRef(false)
   const isSuccessRef = useRef(false)
-
-  const primaryColor = "#B80B3D"
 
   useEffect(() => {
     const stored = sessionStorage.getItem("restaurantAuthData")
@@ -120,7 +117,6 @@ export default function RestaurantOTP() {
       const response = await restaurantAPI.verifyOTP(phone, code, purpose, null, email, null, "web", confirmAction)
       const data = response?.data?.data || response?.data
 
-      // Handle deleted account found
       if (data?.deletedAccountFound) {
         setDeletedAccountData(data)
         setShowRestorePopup(true)
@@ -167,8 +163,6 @@ export default function RestaurantOTP() {
         const pendingPhone = authData?.phone || authData?.email || contactInfo
         setRestaurantPendingPhone(pendingPhone)
         
-        // If it's a rejection, we might want a different screen, 
-        // but for now, we'll show the pending/rejection info on the same status page.
         navigate("/food/restaurant/pending-verification", {
           replace: true,
           state: { 
@@ -195,8 +189,8 @@ export default function RestaurantOTP() {
     try {
       const purpose = authData.isSignUp ? "register" : "login"
       await restaurantAPI.sendOTP(authData.phone, purpose, authData.email)
-      // toast.success("New code sent!")
       setResendTimer(60)
+      toast.success("OTP resent successfully.")
     } catch (err) {
       toast.error(err?.response?.data?.message || "Failed to resend code")
     } finally {
@@ -209,144 +203,209 @@ export default function RestaurantOTP() {
     await handleVerify(code, action)
   }
 
+  const formatResendTimer = (seconds) => {
+    const mins = Math.floor(seconds / 60)
+    const secs = seconds % 60
+    return `${String(mins).padStart(2, "0")}:${String(secs).padStart(2, "0")}`
+  }
+
   const isOtpComplete = otp.every((digit) => digit !== "")
 
   if (!authData) return null
 
   return (
     <div className="min-h-screen bg-white dark:bg-[#0a0a0a] flex flex-col relative overflow-hidden font-['Poppins']">
-      {/* Decorative Background Elements */}
-      <div className="absolute top-0 left-0 w-full h-[600px] bg-gradient-to-b from-[#B80B3D]/10 via-[#B80B3D]/5 to-transparent pointer-events-none" />
-      <div className="absolute top-[-100px] right-[-100px] w-[500px] h-[500px] bg-gradient-to-br from-[#B80B3D] to-[#66001D]/5 rounded-full blur-[120px] pointer-events-none" />
-      <div className="absolute bottom-[-100px] left-[-100px] w-[400px] h-[400px] bg-gradient-to-br from-[#B80B3D] to-[#66001D]/5 rounded-full blur-[120px] pointer-events-none" />
-      
-      {/* Header / Back */}
-      <div className="relative z-20 px-6 py-8 flex items-center">
-        <motion.button
-          whileHover={{ x: -4 }}
-          whileTap={{ scale: 0.9 }}
-          onClick={() => navigate("/food/restaurant/login")}
-          className="p-3 bg-white dark:bg-gradient-to-br from-[#B80B3D] to-[#66001D] shadow-xl shadow-[#B80B3D]/10 rounded-2xl text-[#B80B3D] border border-[#B80B3D]/5 outline-none"
-        >
-          <ArrowLeft className="w-5 h-5" />
-        </motion.button>
+      <style>
+        {`
+          @keyframes floatDish1 {
+            0%, 100% { transform: translateX(0vw) translateY(0px) rotate(0deg); }
+            50% { transform: translateX(25vw) translateY(-15px) rotate(8deg); }
+          }
+          @keyframes floatDish2 {
+            0%, 100% { transform: translateX(0vw) translateY(0px) rotate(0deg); }
+            50% { transform: translateX(-25vw) translateY(-15px) rotate(-8deg); }
+          }
+          .animate-float-dish-1 {
+            animation: floatDish1 12s ease-in-out infinite;
+          }
+          .animate-float-dish-2 {
+            animation: floatDish2 12s ease-in-out infinite;
+          }
+        `}
+      </style>
+
+
+      {/* Top Wave (Log In style) */}
+      <div className="absolute top-0 left-0 w-full h-[40vh] pointer-events-none z-0 transform scale-[1.05] origin-center">
+        <svg viewBox="0 0 1440 320" className="w-full h-full block" preserveAspectRatio="none" overflow="visible">
+          <defs>
+            <linearGradient id="topRedGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+              <stop offset="0%" stopColor="#B80B3D" />
+              <stop offset="100%" stopColor="#66001D" />
+            </linearGradient>
+          </defs>
+          <path fill="url(#topRedGrad)" d="M -50,-50 L -50,280 C 200,100 800,100 1490,100 L 1490,-50 Z" filter="drop-shadow(0px 5px 15px rgba(0,0,0,0.15))" />
+        </svg>
+        <img
+          src="/food_dish.png"
+          alt="Delicious food"
+          className="absolute top-[8%] left-[5%] w-[14vh] h-[14vh] md:w-[120px] md:h-[120px] object-contain animate-float-dish-1 drop-shadow-xl"
+        />
       </div>
 
-      <div className="flex-1 flex flex-col items-center justify-center px-6 pb-20 relative z-10">
-        <motion.div
-          initial={{ opacity: 0, y: 30 }}
-          animate={{ opacity: 1, y: 0 }}
-          className="w-full max-w-[440px]"
-        >
-          {/* Icon & Title */}
-          <div className="text-center mb-12">
-            <motion.div
-              initial={{ scale: 0 }}
-              animate={{ scale: 1 }}
-              transition={{ type: "spring", stiffness: 200, damping: 15 }}
-              className="w-20 h-20 bg-gradient-to-br from-[#B80B3D] to-[#66001D] rounded-[2rem] flex items-center justify-center mx-auto mb-6 shadow-2xl shadow-[#B80B3D]/30 relative"
-            >
-              <ShieldCheck className="text-white w-10 h-10" />
-            </motion.div>
-            
-            <h1 className="text-4xl font-black text-[#B80B3D] font-['Outfit'] tracking-tight mb-3">
-              Verify Account
-            </h1>
-            <p className="text-gray-500 dark:text-gray-400 font-medium">
-              We've sent a 4-digit code to <br />
-              <span className="text-[#B80B3D] font-bold">{contactInfo}</span>
+      {/* Bottom Wave (Log In style) */}
+      <div className="absolute bottom-0 left-0 w-full h-[50vh] pointer-events-none z-0 transform scale-[1.05] origin-center">
+        <svg viewBox="0 0 1440 320" className="w-full h-full block" preserveAspectRatio="none" overflow="visible">
+          <defs>
+            <linearGradient id="botRedGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+              <stop offset="0%" stopColor="#B80B3D" />
+              <stop offset="100%" stopColor="#66001D" />
+            </linearGradient>
+          </defs>
+          <path fill="url(#botRedGrad)" d="M -50,370 L -50,220 C 640,220 1240,220 1490,40 L 1490,370 Z" filter="drop-shadow(0px -5px 15px rgba(0,0,0,0.15))" />
+        </svg>
+        <img
+          src="/food_dish_2.png"
+          alt="Delicious food"
+          className="absolute bottom-[8%] right-[5%] w-[18vh] h-[18vh] md:w-[150px] md:h-[150px] object-contain animate-float-dish-2 drop-shadow-2xl"
+        />
+      </div>
+
+      {/* Main Content */}
+      <div className="flex-1 flex flex-col items-center justify-center px-6 py-12 pb-24 relative z-10">
+        <div className="w-full max-w-sm flex flex-col relative -top-10">
+          {/* Main Title */}
+          <div className="mb-5 text-center flex flex-col items-center">
+            <img 
+              src="/redgo_logo_transparent.png" 
+              alt="RedGo Logo" 
+              className="h-28 -mb-3.5 object-contain drop-shadow-md" 
+            />
+            <h2 className="text-[25px] font-extrabold text-[#B80B3D] dark:text-red-400 tracking-tight font-['Outfit']">
+              Restaurant Partner
+            </h2>
+            <div className="text-[13px] text-slate-500/90 dark:text-slate-400/90 font-['Outfit'] font-semibold tracking-[0.015em] leading-relaxed max-w-[300px] text-center px-4 mt-5 flex items-center justify-center gap-1.5">
+              <span>We've sent a code to {contactInfo}</span>
+              <button 
+                onClick={() => navigate("/food/restaurant/login")}
+                className="p-1.5 ml-1 bg-gradient-to-r from-[#B80B3D] to-[#66001D] hover:from-[#90082E] hover:to-[#4A0014] rounded-[10px] text-white shadow-md shadow-[#B80B3D]/20 transition-all hover:scale-105 active:scale-95"
+                aria-label="Edit phone number"
+              >
+                <Pencil className="w-3.5 h-3.5" strokeWidth={2.5} />
+              </button>
+            </div>
+          </div>
+
+          <div className="relative">
+            <form onSubmit={(e) => { e.preventDefault(); handleVerify(); }} className="space-y-6">
+              <div className="flex justify-between gap-3">
+                {[0, 1, 2, 3].map((index) => (
+                  <input
+                    key={index}
+                    ref={(el) => (inputRefs.current[index] = el)}
+                    type="tel"
+                    inputMode="numeric"
+                    required
+                    autoFocus={index === 0}
+                    value={otp[index]}
+                    onChange={(e) => handleChange(index, e.target.value)}
+                    onKeyDown={(e) => handleKeyDown(index, e)}
+                    className="w-14 h-14 sm:w-16 sm:h-16 text-center text-2xl font-bold bg-gray-50 dark:bg-gray-800 border-2 border-gray-300 dark:border-gray-600 shadow-sm rounded-[20px] outline-none transition-all duration-300 text-gray-900 dark:text-white focus:bg-white dark:focus:bg-gray-900 focus:border-[#B80B3D] focus:ring-4 focus:ring-[#B80B3D]/10 hover:border-gray-400"
+                    placeholder="•"
+                  />
+                ))}
+              </div>
+
+              <div className="flex flex-col items-center gap-4">
+                <div className="flex items-center gap-2 text-xs font-semibold">
+                  {resendTimer > 0 ? (
+                    <span className="text-gray-400">Resend code in <span className="text-[#B80B3D]">{formatResendTimer(resendTimer)}</span></span>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={handleResend}
+                      className="text-[#B80B3D] hover:underline"
+                    >
+                      Didn't receive code? Resend
+                    </button>
+                  )}
+                </div>
+              </div>
+
+              <button
+                type="submit"
+                disabled={isLoading || !isOtpComplete}
+                className="w-full py-3.5 bg-gradient-to-r from-[#B80B3D] to-[#66001D] hover:from-[#A10935] hover:to-[#4F0016] disabled:opacity-50 text-white rounded-full font-medium text-base shadow-[0_8px_20px_rgba(184,11,61,0.3)] disabled:shadow-none transition-all active:scale-[0.98] flex items-center justify-center gap-2 mt-4"
+              >
+                {isLoading ? <Loader2 className="w-5 h-5 animate-spin" /> : "Verify & Continue"}
+              </button>
+            </form>
+          </div>
+
+          {/* Footer Info */}
+          <div className="mt-8 text-center">
+            <p className="text-[11px] text-gray-400/80 font-medium leading-relaxed max-w-[320px] mx-auto">
+              By continuing, you agree to our <br />
+              <Link to="/food/restaurant/terms" className="text-gray-400 hover:text-[#B80B3D] transition-colors uppercase tracking-wider font-semibold">TERMS</Link>
+              <span className="mx-2 text-gray-400/80 font-bold">•</span>
+              <Link to="/food/restaurant/privacy" className="text-gray-400 hover:text-[#B80B3D] transition-colors uppercase tracking-wider font-semibold">PRIVACY</Link>
+              <span className="mx-2 text-gray-400/80 font-bold">•</span>
+              <Link to="/food/restaurant/help-content" className="text-gray-400 hover:text-[#B80B3D] transition-colors uppercase tracking-wider font-semibold">SUPPORT</Link>
             </p>
           </div>
 
-          {/* OTP Input Card */}
-          <div className="bg-white/80 dark:bg-gradient-to-br from-[#B80B3D] to-[#66001D]/80 backdrop-blur-2xl rounded-[3rem] p-10 shadow-[0_40px_80px_-20px_rgba(126,56,102,0.2)] border border-white/20 dark:border-gray-800">
-            <div className="grid grid-cols-4 gap-4 mb-10">
-              {otp.map((digit, index) => (
-                <div key={index} className="relative group">
-                  <input
-                    ref={(el) => (inputRefs.current[index] = el)}
-                    type="tel"
-                    maxLength={1}
-                    value={digit}
-                    onChange={(e) => handleChange(index, e.target.value)}
-                    onKeyDown={(e) => handleKeyDown(index, e)}
-                    onFocus={() => setFocusedIndex(index)}
-                    onBlur={() => setFocusedIndex(null)}
-                    className={`w-full aspect-square bg-gray-50 dark:bg-black/50 text-center text-[#B80B3D]xl font-black text-[#B80B3D] border-2 border-transparent rounded-2xl outline-none transition-all ${
-                      focusedIndex === index 
-                        ? "border-[#B80B3D] bg-white scale-105 shadow-[0_10px_30px_rgba(126,56,102,0.1)]" 
-                        : "group-hover:border-gray-200 dark:group-hover:border-gray-700"
-                    }`}
-                  />
-                  <div className={`absolute -bottom-1 left-1/2 -translate-x-1/2 w-8 h-1 rounded-full transition-all duration-300 ${focusedIndex === index ? "bg-gradient-to-br from-[#B80B3D] to-[#66001D] opacity-100" : "bg-gray-200 opacity-0"}`} />
-                </div>
-              ))}
-            </div>
-
-            <button
-              onClick={() => handleVerify()}
-              disabled={isLoading || !isOtpComplete}
-              className="w-full py-4.5 bg-gradient-to-br from-[#B80B3D] to-[#66001D] hover:bg-[#6a2f56] disabled:bg-gray-200 dark:disabled:bg-gray-800 disabled:text-gray-400 text-white rounded-2xl font-bold text-lg shadow-xl shadow-[#B80B3D]/20 transition-all active:scale-[0.98] flex items-center justify-center gap-2 mb-8"
-            >
-              {isLoading ? <Loader2 className="w-6 h-6 animate-spin" /> : "Verify & Continue"}
-            </button>
-
-            {/* Resend Logic */}
-            <div className="text-center">
-              {resendTimer > 0 ? (
-                <p className="text-sm text-gray-400 font-medium flex items-center justify-center gap-2 tracking-wide uppercase text-[10px] font-black">
-                  <Timer className="w-3.5 h-3.5 text-[#B80B3D]" />
-                  Resend code in <span className="text-[#B80B3D] font-bold">{resendTimer}s</span>
-                </p>
-              ) : (
-                <button
-                  onClick={handleResend}
-                  className="text-xs text-[#B80B3D] font-black uppercase tracking-widest hover:underline underline-offset-4 flex items-center justify-center gap-2 mx-auto"
-                >
-                  <RefreshCw className="w-3.5 h-3.5" />
-                  Resend OTP Code
-                </button>
-              )}
-            </div>
-          </div>
-
-          <p className="mt-12 text-[10px] font-black text-gray-300 dark:text-gray-600 text-center uppercase tracking-[0.3em]">
-            Secure Verification &bull; RedGo Partner
-          </p>
-        </motion.div>
+        </div>
       </div>
 
       {/* Restore/New Account Popup */}
       <AnimatePresence>
         {showRestorePopup && (
-          <div className="fixed inset-0 z-[1000] flex items-center justify-center bg-black/60 backdrop-blur-sm px-4 overflow-y-auto py-10">
-            <motion.div 
-              initial={{ scale: 0.9, opacity: 0 }}
-              animate={{ scale: 1, opacity: 1 }}
-              exit={{ scale: 0.9, opacity: 0 }}
-              className="w-full max-w-sm bg-white dark:bg-gradient-to-br from-[#B80B3D] to-[#66001D] rounded-[3rem] shadow-2xl overflow-hidden p-10 text-center border border-white/20 dark:border-gray-800"
+          <div className="fixed inset-0 z-[200] flex items-center justify-center p-4">
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              className="absolute inset-0 bg-black/60 backdrop-blur-sm"
+            />
+            <motion.div
+              initial={{ opacity: 0, scale: 0.9, y: 20 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.9, y: 20 }}
+              transition={{ type: "spring", damping: 25, stiffness: 300 }}
+              className="w-full max-w-sm bg-white dark:bg-[#1a1a1a] rounded-3xl shadow-2xl overflow-hidden p-8 text-center border border-gray-100 dark:border-gray-800 relative z-10"
               onClick={(e) => e.stopPropagation()}
             >
-              <div className="w-20 h-20 bg-gradient-to-br from-[#B80B3D] to-[#66001D]/10 rounded-[2rem] flex items-center justify-center mx-auto mb-6">
-                <Store className="h-10 w-10 text-[#B80B3D]" />
+              <button
+                onClick={() => {
+                  setShowRestorePopup(false);
+                  navigate("/food/restaurant/login");
+                }}
+                className="absolute top-4 right-4 p-2 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-xl text-gray-400 hover:text-gray-600 transition-all active:scale-95"
+                aria-label="Close and return to login"
+              >
+                <X className="w-5 h-5" />
+              </button>
+
+              <div className="w-20 h-20 bg-[#B80B3D]/10 rounded-full flex items-center justify-center mx-auto mb-6">
+                <ShieldCheck className="h-10 w-10 text-[#B80B3D]" />
               </div>
-              
-              <h3 className="text-2xl font-black text-[#B80B3D] font-['Outfit'] tracking-tight mb-3">Restaurant Found!</h3>
-              <p className="text-gray-500 dark:text-gray-400 font-medium mb-8">
-                An existing deleted restaurant for <span className="text-[#B80B3D] font-bold">{contactInfo}</span> was found. 
+
+              <h3 className="text-2xl font-bold text-gray-900 dark:text-white mb-3">Restaurant Found!</h3>
+              <p className="text-gray-500 dark:text-gray-400 mb-8 leading-relaxed">
+                An existing deleted restaurant for <span className="font-bold text-gray-900 dark:text-white">{contactInfo}</span> was found.
                 Do you want to restore your old data or start fresh with a new account?
               </p>
 
               <div className="space-y-4">
                 <button
                   onClick={() => handleRestoreAction("restore")}
-                  className="w-full py-4.5 bg-gradient-to-br from-[#B80B3D] to-[#66001D] hover:bg-[#6a2f56] text-white rounded-2xl font-bold text-lg shadow-xl shadow-[#B80B3D]/20 transition-all active:scale-[0.98]"
+                  className="w-full h-14 bg-gradient-to-r from-[#B80B3D] to-[#66001D] text-white font-bold rounded-2xl shadow-xl shadow-[#B80B3D]/20 transition-all active:scale-[0.98]"
                 >
                   Restore My Account
                 </button>
                 <button
                   onClick={() => handleRestoreAction("new")}
-                  className="w-full py-4.5 border-2 border-gray-200 dark:border-gray-700 text-gray-700 dark:text-gray-300 rounded-2xl font-bold text-lg transition-all active:scale-[0.98]"
+                  className="w-full h-14 border-2 border-gray-200 dark:border-gray-800 text-gray-700 dark:text-gray-300 font-bold rounded-2xl hover:bg-gray-50 dark:hover:bg-gray-800 transition-all active:scale-[0.98]"
                 >
                   Create New Account
                 </button>
@@ -358,11 +417,3 @@ export default function RestaurantOTP() {
     </div>
   )
 }
-
-
-
-
-
-
-
-

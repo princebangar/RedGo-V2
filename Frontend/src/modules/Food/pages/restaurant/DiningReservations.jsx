@@ -974,12 +974,12 @@ export default function DiningReservations() {
                                                         <div className="flex items-center gap-2">
                                                             <Badge className={`rounded-full px-3 py-1 text-[10px] font-bold uppercase tracking-wider ${
                                                                 String(booking.status || '').toLowerCase() === 'pending' ? 'bg-amber-50 text-amber-600 border-amber-100 ring-1 ring-amber-100' :
-                                                                ['accepted', 'confirmed'].includes(String(booking.status || '').toLowerCase()) ? 'bg-emerald-100 text-emerald-700' :
+                                                                ['accepted', 'confirmed'].includes(String(booking.status || '').toLowerCase()) ? 'bg-[#DCFCE7] text-[#15803D] border border-[#BBF7D0]' :
                                                                 String(booking.status || '').toLowerCase() === 'checked-in' ? 'bg-orange-100 text-orange-700' :
                                                                 String(booking.status || '').toLowerCase() === 'completed' ? 'bg-blue-100 text-blue-700' :
-                                                                'bg-rose-100 text-rose-700'
+                                                                'bg-[#FEE2E2] text-[#B91C1C] border border-[#FCA5A5]'
                                                             } shadow-sm`}>
-                                                                {String(booking.status || '').toLowerCase() === 'pending' ? 'APPROVAL REQD' : 
+                                                                {String(booking.status || '').toLowerCase() === 'pending' ? 'APPROVAL REQ' : 
                                                                  ['accepted', 'confirmed'].includes(String(booking.status || '').toLowerCase()) ? 'CONFIRMED' : 
                                                                  booking.status}
                                                             </Badge>
@@ -990,7 +990,7 @@ export default function DiningReservations() {
                                                             {String(booking.status || '').toLowerCase() === 'pending' && (
                                                                 <button
                                                                     onClick={() => handleStatusUpdate(booking._id, 'accepted')}
-                                                                    className="px-3 py-1.5 bg-emerald-600 text-white text-xs font-bold rounded-lg hover:bg-emerald-700 transition-colors shadow-sm"
+                                                                    className="px-3 py-1.5 bg-gradient-to-br from-[#B80B3D] to-[#66001D] text-white text-xs font-bold rounded-lg hover:opacity-95 transition-opacity shadow-sm"
                                                                 >
                                                                     Accept
                                                                 </button>
@@ -1060,10 +1060,10 @@ export default function DiningReservations() {
                                                 </div>
                                                 <Badge className={`rounded-full px-2.5 py-0.5 text-[9px] font-black uppercase tracking-wider ${
                                                     String(booking.status || '').toLowerCase() === 'pending' ? 'bg-amber-50 text-amber-600 border-amber-200' :
-                                                    ['accepted', 'confirmed'].includes(String(booking.status || '').toLowerCase()) ? 'bg-emerald-100 text-emerald-700' :
+                                                    ['accepted', 'confirmed'].includes(String(booking.status || '').toLowerCase()) ? 'bg-[#DCFCE7] text-[#15803D] border border-[#BBF7D0]' :
                                                     String(booking.status || '').toLowerCase() === 'checked-in' ? 'bg-orange-100 text-orange-700' :
                                                     String(booking.status || '').toLowerCase() === 'completed' ? 'bg-blue-100 text-blue-700' :
-                                                    'bg-rose-100 text-rose-700'
+                                                    'bg-[#FEE2E2] text-[#B91C1C] border border-[#FCA5A5]'
                                                 }`}>
                                                     {String(booking.status || '').toLowerCase() === 'pending' ? 'WAITING' : 
                                                      ['accepted', 'confirmed'].includes(String(booking.status || '').toLowerCase()) ? 'CONFIRMED' : 
@@ -1103,7 +1103,7 @@ export default function DiningReservations() {
                                                 {String(booking.status || '').toLowerCase() === 'pending' && (
                                                     <button
                                                         onClick={() => handleStatusUpdate(booking._id, 'accepted')}
-                                                        className="flex-1 py-2.5 bg-emerald-600 text-white text-xs font-black rounded-xl hover:bg-emerald-700 transition-colors uppercase tracking-widest"
+                                                        className="flex-1 py-2.5 bg-gradient-to-br from-[#B80B3D] to-[#66001D] text-white text-xs font-black rounded-xl hover:opacity-95 transition-opacity uppercase tracking-widest"
                                                     >
                                                         Accept
                                                     </button>

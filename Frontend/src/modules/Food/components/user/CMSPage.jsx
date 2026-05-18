@@ -101,14 +101,13 @@ export default function CMSPage({
       {/* Premium Sticky Header */}
       <div className="sticky top-0 z-50 bg-white/80 dark:bg-[#0a0a0a]/80 backdrop-blur-xl border-b border-gray-100 dark:border-gray-900">
         <div className="max-w-4xl mx-auto px-4 h-16 md:h-20 flex items-center gap-4">
-          <Button
-            variant="ghost"
-            size="icon"
+          <button
             onClick={handleBack}
-            className="h-10 w-10 rounded-full hover:bg-gray-100 dark:hover:bg-gray-900 transition-all active:scale-95"
+            className="h-10 w-10 rounded-full flex items-center justify-center bg-transparent hover:bg-gray-100 dark:hover:bg-gray-800 transition-all active:scale-95 border-0 outline-none cursor-pointer"
+            aria-label="Back"
           >
-            <ArrowLeft className="h-6 w-6 text-gray-900 dark:text-white" />
-          </Button>
+            <ArrowLeft className="h-6 w-6 text-gray-800 dark:text-gray-200" />
+          </button>
           <div className="flex-1">
             <h1 className="text-xl md:text-2xl font-black text-gray-900 dark:text-white tracking-tight leading-none">
               {pageData.title || defaultTitle}

@@ -200,7 +200,7 @@ export default function TableBooking() {
 
     return currentBookings
         .filter(b => {
-            const isApproved = b.status === "approved"
+            const isApproved = b.status === "approved" || b.status === "accepted" || b.status === "confirmed"
             const isPending = b.status === "pending"
             
             if (isApproved) return true

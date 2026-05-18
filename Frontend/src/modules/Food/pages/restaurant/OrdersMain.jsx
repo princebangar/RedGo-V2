@@ -637,36 +637,60 @@ function TableBookings() {
         </div>
       ) : (
         <div className="space-y-3">
-          {bookings.map((booking) => (
-            <div
-              key={booking._id}
-              className="bg-white rounded-2xl p-4 border border-gray-200 shadow-sm transition-all hover:border-gray-300">
-              <div className="flex justify-between items-start mb-3">
-                <div className="flex-1">
-                  <h3 className="text-sm font-bold text-gray-900">
-                    {booking.user?.name}
-                  </h3>
-                  <p className="text-[11px] text-gray-500">
-                    {booking.user?.phone || "No phone"}
-                  </p>
+          {bookings.map((booking) => {
+            const statusConfig = (() => {
+              const s = String(booking.status || '').toLowerCase();
+              if (s === 'pending') {
+                return {
+                  style: { color: '#B80B3D', backgroundColor: '#FDF2F4', borderColor: '#FBCFE8' },
+                  text: 'APPROVAL REQ'
+                };
+              }
+              if (['accepted', 'confirmed'].includes(s)) {
+                return {
+                  style: { color: '#15803D', backgroundColor: '#DCFCE7', borderColor: '#BBF7D0' },
+                  text: 'CONFIRMED'
+                };
+              }
+              if (s === 'checked-in') {
+                return {
+                  style: { color: '#F97316', backgroundColor: '#FFF7ED', borderColor: '#FFEDD5' },
+                  text: 'CHECKED-IN'
+                };
+              }
+              if (s === 'completed') {
+                return {
+                  style: { color: '#3B82F6', backgroundColor: '#EFF6FF', borderColor: '#DBEAFE' },
+                  text: 'COMPLETED'
+                };
+              }
+              // cancelled/rejected/declined
+              return {
+                style: { color: '#B91C1C', backgroundColor: '#FEE2E2', borderColor: '#FCA5A5' },
+                text: 'CANCELLED'
+              };
+            })();
+
+            return (
+              <div
+                key={booking._id}
+                className="bg-white rounded-2xl p-4 border border-gray-200 shadow-sm transition-all hover:border-gray-300">
+                <div className="flex justify-between items-start mb-3">
+                  <div className="flex-1">
+                    <h3 className="text-sm font-bold text-gray-900">
+                      {booking.user?.name}
+                    </h3>
+                    <p className="text-[11px] text-gray-500">
+                      {booking.user?.phone || "No phone"}
+                    </p>
+                  </div>
+                  <span
+                    style={statusConfig.style}
+                    className="px-2.5 py-1 rounded-full text-[10px] font-bold uppercase border shadow-sm"
+                  >
+                    {statusConfig.text}
+                  </span>
                 </div>
-                <span
-                  className={`px-2.5 py-1 rounded-full text-[10px] font-bold uppercase shadow-sm ${
-                    String(booking.status || '').toLowerCase() === "pending"
-                      ? "bg-amber-50 text-amber-600 border border-amber-100"
-                      : ["accepted", "confirmed"].includes(String(booking.status || '').toLowerCase())
-                        ? "bg-emerald-50 text-emerald-700 border border-emerald-100"
-                        : String(booking.status || '').toLowerCase() === "checked-in"
-                          ? "bg-orange-100 text-orange-700"
-                          : String(booking.status || '').toLowerCase() === "completed"
-                            ? "bg-blue-100 text-blue-700"
-                            : "bg-rose-100 text-rose-700"
-                  }`}>
-                  {String(booking.status || '').toLowerCase() === "pending" ? "APPROVAL REQD" : 
-                   ["accepted", "confirmed"].includes(String(booking.status || '').toLowerCase()) ? "CONFIRMED" : 
-                   booking.status}
-                </span>
-              </div>
 
               <div className="flex items-center gap-4 text-[11px] text-gray-600 bg-gray-50 p-2.5 rounded-xl border border-gray-100">
                 <div className="flex items-center gap-1">
@@ -703,7 +727,7 @@ function TableBookings() {
                 <div className="mt-4 flex gap-2">
                   <button
                     onClick={() => handleStatusUpdate(booking._id, 'accepted')}
-                    className="flex-1 py-2 bg-emerald-600 text-white text-[11px] font-black rounded-xl hover:bg-emerald-700 transition-colors uppercase tracking-widest shadow-sm"
+                    className="flex-1 py-2 bg-gradient-to-br from-[#B80B3D] to-[#66001D] text-white text-[11px] font-black rounded-xl hover:opacity-95 transition-opacity uppercase tracking-widest shadow-sm"
                   >
                     Accept
                   </button>
@@ -716,7 +740,8 @@ function TableBookings() {
                 </div>
               )}
             </div>
-          ))}
+          );
+        })}
         </div>
       )}
     </div>

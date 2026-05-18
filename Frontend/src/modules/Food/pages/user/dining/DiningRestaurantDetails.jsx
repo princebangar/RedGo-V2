@@ -22,8 +22,8 @@ import { Button } from "@food/components/ui/button"
 import { toast } from "sonner"
 
 const formatAddress = (restaurant) =>
-  restaurant?.location?.formattedAddress ||
   restaurant?.location?.addressLine1 ||
+  restaurant?.location?.formattedAddress ||
   restaurant?.location?.address ||
   [restaurant?.location?.area || restaurant?.area, restaurant?.location?.city || restaurant?.city]
     .filter(Boolean)

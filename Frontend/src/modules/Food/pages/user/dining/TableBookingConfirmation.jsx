@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react"
 import { useLocation, useNavigate } from "react-router-dom"
-import { ArrowLeft, Calendar, Users, MapPin, Ticket, ChevronRight, Edit2, ShieldCheck, Info, X } from "lucide-react"
+import { ArrowLeft, Calendar, Users, MapPin, Ticket, ChevronRight, Edit2, Info, X } from "lucide-react"
 import { Button } from "@food/components/ui/button"
 import AnimatedPage from "@food/components/user/AnimatedPage"
 import { diningAPI, authAPI } from "@food/api"
@@ -151,11 +151,11 @@ export default function TableBookingConfirmation() {
                             </div>
                              <div>
                                 <p className="font-bold text-gray-900 dark:text-slate-100">{restaurant.name}</p>
-                                <p className="text-gray-500 dark:text-slate-400 text-xs mt-0.5 line-clamp-1">
-                                    {typeof restaurant.location === 'string'
-                                        ? restaurant.location
-                                        : (restaurant.location?.formattedAddress || restaurant.location?.address || `${restaurant.location?.city || ''}${restaurant.location?.area ? ', ' + restaurant.location.area : ''}`)}
-                                </p>
+                                 <p className="text-gray-500 dark:text-slate-400 text-xs mt-0.5 line-clamp-1">
+                                     {typeof restaurant.location === 'string'
+                                         ? restaurant.location
+                                         : (restaurant.location?.addressLine1 || restaurant.location?.formattedAddress || restaurant.location?.address || `${restaurant.location?.city || ''}${restaurant.location?.area ? ', ' + restaurant.location.area : ''}`)}
+                                 </p>
                             </div>
                         </div>
 
@@ -213,7 +213,11 @@ export default function TableBookingConfirmation() {
                                         date, 
                                         timeSlot, 
                                         discount,
-                                        isModifying: true 
+                                        guestCount: guests,
+                                        selectedDate: date,
+                                        selectedTime: timeSlot,
+                                        isModifying: true,
+                                        backTo: "/food/user/dining/book-confirmation"
                                     } 
                                 });
                             }}
@@ -225,31 +229,6 @@ export default function TableBookingConfirmation() {
                                 </div>
                                 <div className="text-left">
                                     <p className="font-bold text-gray-800 dark:text-slate-100 text-sm">Modification available</p>
-                                    <p className="text-xs text-slate-400 dark:text-slate-500">Valid till {timeSlot}, today</p>
-                                </div>
-                            </div>
-                            <ChevronRight className="w-4 h-4 text-slate-300" />
-                        </button>
-
-                        <button 
-                            type="button"
-                            onClick={(e) => {
-                                e.preventDefault();
-                                navigate("/food/user/profile/cancellation", { 
-                                    state: { 
-                                        returnTo: "/food/user/dining/book-confirmation",
-                                        originalState: { restaurant, guests, date, timeSlot, discount, specialRequest, user }
-                                    } 
-                                });
-                            }}
-                             className="w-full bg-white dark:bg-slate-900 rounded-2xl p-4 shadow-sm border border-slate-100 dark:border-slate-800 flex items-center justify-between active:scale-[0.98] transition-all"
-                        >
-                            <div className="flex items-start gap-3">
-                                <div className="text-red-400 mt-1">
-                                    <ShieldCheck className="w-5 h-5" />
-                                </div>
-                                <div className="text-left">
-                                    <p className="font-bold text-gray-800 dark:text-slate-100 text-sm">Cancellation available</p>
                                     <p className="text-xs text-slate-400 dark:text-slate-500">Valid till {timeSlot}, today</p>
                                 </div>
                             </div>
@@ -300,7 +279,6 @@ export default function TableBookingConfirmation() {
                                 "Cover charges upon entry are subject to the discretion of the restaurant",
                                 "House rules are to be observed at all times",
                                 "Special requests will be accommodated at the restaurant's discretion",
-                                "Cover charges cannot be refunded if slot is cancelled within 30 minutes of slot start time",
                                 "Additional service charges on the bill are at the restaurant's discretion"
                             ].map((term, i) => (
                                  <li key={i} className="flex gap-3">
