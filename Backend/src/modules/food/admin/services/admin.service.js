@@ -729,11 +729,121 @@ export async function getDashboardStats(query = {}) {
     liveSignals.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
     const finalLiveSignals = liveSignals.slice(0, 15);
 
-    const totals = orderTotalsAgg?.[0] || {};
+    let totals = orderTotalsAgg?.[0] || {};
+
+    // Use the ledger (FoodTransaction) as the absolute authority for financial metrics
+    // and merge with FoodOrder's active counts for high reliability
+    const txMatch = {};
+    if (periodRange) {
+        txMatch.createdAt = { $gte: periodRange.start, $lte: periodRange.end };
+    }
+    if (zoneId) {
+        txMatch.restaurantId = { $in: zoneRestaurantIds || [] };
+    }
+
+    const txAgg = await FoodTransaction.aggregate([
+        { $match: txMatch },
+        {
+            $group: {
+                _id: null,
+                totalOrders: { $sum: 1 },
+                delivered: { $sum: { $cond: [{ $in: ['$status', ['captured', 'settled']] }, 1, 0] } },
+                cancelled: { $sum: { $cond: [{ $eq: ['$status', 'failed'] }, 1, 0] } },
+                pending: { $sum: { $cond: [{ $eq: ['$status', 'pending'] }, 1, 0] } },
+                
+                revenueTotal: {
+                    $sum: {
+                        $cond: [{ $in: ['$status', ['captured', 'settled']] }, { $ifNull: ['$amounts.totalCustomerPaid', 0] }, 0]
+                    }
+                },
+                commissionTotal: {
+                    $sum: {
+                        $cond: [{ $in: ['$status', ['captured', 'settled']] }, { $ifNull: ['$amounts.restaurantCommission', 0] }, 0]
+                    }
+                },
+                platformFeeTotal: {
+                    $sum: {
+                        $cond: [{ $in: ['$status', ['captured', 'settled']] }, { $ifNull: ['$amounts.platformNetProfit', 0] }, 0]
+                    }
+                },
+                deliveryFeeTotal: {
+                    $sum: {
+                        $cond: [{ $in: ['$status', ['captured', 'settled']] }, { $ifNull: ['$amounts.riderShare', 0] }, 0]
+                    }
+                },
+                gstTotal: {
+                    $sum: {
+                        $cond: [{ $in: ['$status', ['captured', 'settled']] }, { $ifNull: ['$amounts.taxAmount', 0] }, 0]
+                    }
+                },
+                adminNetProfit: {
+                    $sum: {
+                        $cond: [{ $in: ['$status', ['captured', 'settled']] }, { $ifNull: ['$amounts.platformNetProfit', 0] }, 0]
+                    }
+                }
+            }
+        }
+    ]);
+
+    if (txAgg && txAgg.length > 0) {
+        totals = {
+            ...totals,
+            // Keep order status counts strictly from the actual food_orders collection
+            totalOrders: totals.totalOrders || 0,
+            delivered: totals.delivered || 0,
+            cancelled: totals.cancelled || 0,
+            pending: totals.pending || 0,
+            dashboardPending: totals.dashboardPending || 0,
+            
+            revenueTotal: txAgg[0].revenueTotal || totals.revenueTotal || 0,
+            commissionTotal: txAgg[0].commissionTotal || totals.commissionTotal || 0,
+            platformFeeTotal: txAgg[0].platformFeeTotal || totals.platformFeeTotal || 0,
+            deliveryFeeTotal: txAgg[0].deliveryFeeTotal || totals.deliveryFeeTotal || 0,
+            gstTotal: txAgg[0].gstTotal || totals.gstTotal || 0,
+            adminNetProfit: txAgg[0].adminNetProfit || totals.adminNetProfit || 0
+        };
+    }
+
+    // Robust Monthly Trajectory Chart (strictly driven by ledger)
+    const txMonthlyMatch = {
+        createdAt: {
+            $gte: new Date(new Date().getFullYear(), new Date().getMonth() - 11, 1),
+            $lte: new Date()
+        }
+    };
+    if (zoneId) {
+        txMonthlyMatch.restaurantId = { $in: zoneRestaurantIds || [] };
+    }
+    
+    const txMonthly = await FoodTransaction.aggregate([
+        { $match: txMonthlyMatch },
+        {
+            $group: {
+                _id: {
+                    year: { $year: '$createdAt' },
+                    month: { $month: '$createdAt' }
+                },
+                orders: { $sum: 1 },
+                revenue: {
+                    $sum: {
+                        $cond: [{ $in: ['$status', ['captured', 'settled']] }, { $ifNull: ['$amounts.totalCustomerPaid', 0] }, 0]
+                    }
+                },
+                commission: {
+                    $sum: {
+                        $cond: [{ $in: ['$status', ['captured', 'settled']] }, { $ifNull: ['$amounts.platformNetProfit', 0] }, 0]
+                    }
+                }
+            }
+        },
+        { $sort: { '_id.year': 1, '_id.month': 1 } }
+    ]);
+
+    const finalMonthlyAgg = txMonthly && txMonthly.length > 0 ? txMonthly : (monthlyAgg || []);
 
     const now = new Date();
     const monthlyMap = new Map(
-        (monthlyAgg || []).map((row) => {
+        (finalMonthlyAgg || []).map((row) => {
             const key = `${row._id?.year}-${row._id?.month}`;
             return [key, row];
         })
@@ -782,7 +892,7 @@ export async function getDashboardStats(query = {}) {
         addons: { total: Number(addonsTotal || 0) },
         customers: { total: Number(customersTotal || 0) },
         orderStats: {
-            pending: Number(totals.dashboardPending || 0),
+            pending: Number(totals.pending || 0),
             processing: Number(totals.dashboardProcessing || 0),
             completed: Number(totals.delivered || 0)
         },
@@ -831,17 +941,46 @@ export async function getTransactionReport(query = {}) {
     let restaurantIds = null;
     if (zone || restaurant) {
         const restFilter = {};
-        if (zone) restFilter.zoneId = zone; // Assuming zone is an ID or we need to lookup
+        
+        // Robust Zone Handling (supports both Name string and ObjectId)
+        if (zone && zone !== 'All Zones') {
+            if (mongoose.Types.ObjectId.isValid(zone)) {
+                restFilter.zoneId = new mongoose.Types.ObjectId(zone);
+            } else {
+                const matchedZone = await FoodZone.findOne({
+                    $or: [{ name: zone }, { zoneName: zone }]
+                })
+                    .select('_id')
+                    .lean();
+                if (matchedZone?._id) {
+                    restFilter.zoneId = matchedZone._id;
+                } else {
+                    // Force empty result if zone name is not found
+                    restFilter.zoneId = new mongoose.Types.ObjectId();
+                }
+            }
+        }
+
+        // Robust Restaurant Handling (supports both Name string and ObjectId)
         if (restaurant && restaurant !== 'All restaurants') {
-            const restDoc = await mongoose.model('FoodRestaurant').findOne({ restaurantName: restaurant }).lean();
-            if (restDoc) restFilter._id = restDoc._id;
+            if (mongoose.Types.ObjectId.isValid(restaurant)) {
+                restFilter._id = new mongoose.Types.ObjectId(restaurant);
+            } else {
+                const restDoc = await FoodRestaurant.findOne({ restaurantName: restaurant })
+                    .select('_id')
+                    .lean();
+                if (restDoc) {
+                    restFilter._id = restDoc._id;
+                } else {
+                    // Force empty result if restaurant name is not found
+                    restFilter._id = new mongoose.Types.ObjectId();
+                }
+            }
         }
         
-        if (Object.keys(restFilter).length > 0) {
-            const restaurantsList = await mongoose.model('FoodRestaurant').find(restFilter).select('_id').lean();
-            restaurantIds = restaurantsList.map(r => r._id);
-            match.restaurantId = { $in: restaurantIds };
-        }
+        const restaurantsList = await FoodRestaurant.find(restFilter).select('_id').lean();
+        restaurantIds = restaurantsList.map(r => r._id);
+        match.restaurantId = { $in: restaurantIds };
     }
 
     // Include only resolved transactions for reports (or all to match orders)
@@ -3040,6 +3179,7 @@ export async function getFoods(query) {
 
     const [list, total] = await Promise.all([
         FoodItem.find(filter)
+            .select('-oldData -newData')
             .sort({ createdAt: -1 })
             .skip(skip)
             .limit(limit)
@@ -3047,9 +3187,11 @@ export async function getFoods(query) {
         FoodItem.countDocuments(filter)
     ]);
 
-    const restaurantIds = Array.from(new Set(list.map((f) => String(f.restaurantId)).filter(Boolean)));
-    const restaurants = restaurantIds.length
-        ? await FoodRestaurant.find({ _id: { $in: restaurantIds } }).select('restaurantName').lean()
+    const validRestaurantIds = Array.from(new Set(
+        list.map((f) => String(f.restaurantId)).filter(id => id && mongoose.Types.ObjectId.isValid(id))
+    ));
+    const restaurants = validRestaurantIds.length
+        ? await FoodRestaurant.find({ _id: { $in: validRestaurantIds } }).select('restaurantName').lean()
         : [];
     const restaurantMap = new Map(restaurants.map((r) => [String(r._id), r.restaurantName]));
 

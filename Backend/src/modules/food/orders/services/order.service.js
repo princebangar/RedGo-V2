@@ -1375,12 +1375,8 @@ export async function getPaymentStatus(orderId, deliveryPartnerId) {
 // ----- Admin -----
 export async function listOrdersAdmin(query) {
   const { page, limit, skip } = buildPaginationOptions(query);
-  const filter = {
-    $or: [
-      { "payment.method": { $in: ["cash", "wallet"] } },
-      { "payment.status": { $in: ["paid", "authorized", "captured", "settled", "refunded"] } },
-    ],
-  };
+  // Admin sees ALL orders — no payment method/status restriction
+  const filter = {};
 
   const rawStatus =
     typeof query.status === "string" ? query.status.trim().toLowerCase() : "";
@@ -1398,7 +1394,8 @@ export async function listOrdersAdmin(query) {
   if (rawStatus && rawStatus !== "all") {
     switch (rawStatus) {
       case "pending":
-        filter.orderStatus = { $in: ["created", "confirmed"] };
+        // All active/in-progress orders — matches dashboard "pending" count
+        filter.orderStatus = { $in: ["created", "confirmed", "preparing", "ready_for_pickup", "picked_up"] };
         break;
       case "accepted":
         filter.orderStatus = "confirmed";
