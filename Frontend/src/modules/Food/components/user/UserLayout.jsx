@@ -184,8 +184,7 @@ function UserLayoutContent() {
   const isAuthPage = normalizedPath.includes('auth/');
   const isPolicyPage = normalizedPath.includes('terms') || 
                        normalizedPath.includes('privacy') || 
-                       normalizedPath.includes('support-info') ||
-                       normalizedPath.includes('help');
+                       normalizedPath.includes('support');
 
   // Debounced loading state to prevent flickering and ensure smooth navigation transitions
   const { showGlobalLoader, setShowGlobalLoader } = useLocationSelector()
@@ -334,7 +333,7 @@ function UserLayoutContent() {
       <div className="hidden md:block">
         {showBottomNav && !isOutOfZone && <DesktopNavbar showLogo={!isUnder250} />}
       </div>
-      <LocationPrompt />
+      {!isPolicyPage && !isAuthPage && isModuleAuthenticated('user') && <LocationPrompt />}
       
       {isInitialChecking ? (
         <AppShellSkeleton />

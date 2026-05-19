@@ -275,6 +275,17 @@ export function useLocationSimple() {
 
   // Initialize: Load cached location; only fetch if missing.
   useEffect(() => {
+    // Check if location prompt should be suppressed
+    const pathname = window.location.pathname.toLowerCase();
+    const isSuppressedPath = 
+      pathname.includes('terms') ||
+      pathname.includes('privacy') ||
+      pathname.includes('support') ||
+      pathname.includes('login') ||
+      pathname.includes('otp');
+
+    const isAuthenticated = !!(localStorage.getItem('user_accessToken') || localStorage.getItem('accessToken'));
+
     // Load cached location immediately (no loading state)
     const cached = localStorage.getItem("userLocation")
     if (cached) {
@@ -287,6 +298,10 @@ export function useLocationSimple() {
       }
     } else {
       setLoading(false)
+    }
+
+    if (isSuppressedPath || !isAuthenticated) {
+      return;
     }
 
     // IMPORTANT: Do NOT fetch on every reload.

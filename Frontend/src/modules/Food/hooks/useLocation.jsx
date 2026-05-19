@@ -1492,6 +1492,17 @@ export function useLocation() {
 
   /* ===================== INIT ===================== */
   useEffect(() => {
+    // Check if location should be suppressed on the current path/auth state
+    const pathname = window.location.pathname.toLowerCase();
+    const isSuppressedPath = 
+      pathname.includes('terms') ||
+      pathname.includes('privacy') ||
+      pathname.includes('support') ||
+      pathname.includes('login') ||
+      pathname.includes('otp');
+
+    const isAuthenticated = !!(localStorage.getItem('user_accessToken') || localStorage.getItem('accessToken'));
+
     // Load stored location first for IMMEDIATE display (no loading state)
     const stored = localStorage.getItem("userLocation")
     let shouldForceRefresh = false
@@ -1525,8 +1536,8 @@ export function useLocation() {
       }
     }
 
-    // If no cached location, try DB
-    if (!hasInitialLocation) {
+    // If no cached location, try DB (only if authenticated and path is not suppressed)
+    if (!hasInitialLocation && !isSuppressedPath && isAuthenticated) {
       fetchLocationFromDB()
         .then((dbLoc) => {
           if (dbLoc && Number.isFinite(Number(dbLoc.latitude)) && Number.isFinite(Number(dbLoc.longitude))) {
@@ -1545,6 +1556,8 @@ export function useLocation() {
           setGlobalLocationLoading(false)
           shouldForceRefresh = true
         })
+    } else if (!isAuthenticated || isSuppressedPath) {
+      setGlobalLocationLoading(false)
     }
 
     // Always ensure loading is false after initial check
@@ -1656,9 +1669,12 @@ export function useLocation() {
       }
     };
 
-    // Always check permission state on startup.
-    // This does NOT trigger browser prompt by itself; it only auto-fetches when permission is already granted.
-    checkPermissionAndStart();
+    // Always check permission state on startup if authenticated and not on a suppressed path
+    if (!isSuppressedPath && isAuthenticated) {
+      checkPermissionAndStart();
+    } else {
+      setLoading(false);
+    }
 
     // Listen for storage changes to keep location in sync across components/tabs
     const handleStorageChange = (e) => {
