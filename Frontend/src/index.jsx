@@ -74,6 +74,17 @@ function bootstrapNativeHashRoute() {
 
 bootstrapNativeHashRoute()
 
+// Standard web browser redirect for raw paths to prevent React Router unmounting crashes
+if (typeof window !== 'undefined') {
+  const rawPath = window.location.pathname
+  const isRestaurant = rawPath === '/restaurant' || rawPath.startsWith('/restaurant/')
+  const isDelivery = rawPath === '/delivery' || rawPath.startsWith('/delivery/')
+
+  if ((isRestaurant || isDelivery) && !isNativeLikeShell()) {
+    window.location.replace(`/food${rawPath}${window.location.search}`)
+  }
+}
+
 // ─── Suppress known non-critical errors ──────────────────────────────────────
 
 const originalError = console.error
