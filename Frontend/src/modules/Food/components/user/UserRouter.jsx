@@ -96,11 +96,24 @@ const SubmitComplaint = lazy(() => import("@food/pages/user/complaints/SubmitCom
 
 import { AppShellSkeleton } from "@food/components/ui/loading-skeletons"
 
+const RequireInitialAuth = ({ children }) => {
+  const authStatus = localStorage.getItem("user_authenticated");
+  const token = localStorage.getItem("user_accessToken");
+
+  // If user has NO explicit auth status and NO token, it means they are a first time visitor
+  // or a user who has completely logged out. Force them to the login screen first.
+  if (authStatus === null && !token) {
+    return <Navigate to="/user/auth/login" replace />;
+  }
+
+  return children;
+}
+
 export default function UserRouter() {
   return (
     <Suspense fallback={<AppShellSkeleton />}>
       <Routes>
-        <Route element={<UserLayout />}>
+        <Route element={<RequireInitialAuth><UserLayout /></RequireInitialAuth>}>
           {/* ========================================== */}
           {/* PUBLIC ROUTES (No login required)          */}
           {/* ========================================== */}
