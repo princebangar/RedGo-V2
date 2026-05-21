@@ -375,7 +375,7 @@ export default function UnifiedOTPFastLogin() {
       </div>
 
       {/* Main Content */}
-      <div className="flex-1 flex flex-col items-center justify-center px-6 py-12 pb-24 relative z-10 -mt-16 md:-mt-24">
+      <div className="flex-1 flex flex-col items-center justify-center px-6 py-12 pb-40 relative z-10">
         <div className="w-full max-w-sm flex flex-col">
           {/* Skip Now Button (Responsive, placed above Logo in normal flow) */}
           <div className="flex justify-end w-full mb-4">
