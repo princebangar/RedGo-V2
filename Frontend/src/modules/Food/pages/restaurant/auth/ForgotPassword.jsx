@@ -178,7 +178,7 @@ export default function RestaurantForgotPassword() {
         throw new Error(data.message || "Failed to reset password")
       }
 
-      navigate("/restaurant/login", {
+      navigate("/food/restaurant/login", {
         state: { message: "Password reset successfully. Please login with your new password." },
       })
     } catch (err) {
@@ -409,7 +409,7 @@ export default function RestaurantForgotPassword() {
 
             <div className="pt-4 border-t">
               <button
-                onClick={() => navigate("/restaurant/login")}
+                onClick={() => navigate("/food/restaurant/login")}
                 className="flex items-center gap-2 text-sm text-primary-orange hover:text-primary-orange/80 transition-colors"
               >
                 <ArrowLeft className="h-4 w-4" />

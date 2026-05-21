@@ -73,7 +73,7 @@ export default function FssaiDetails() {
         <button
           type="button"
           className="w-full py-3 rounded-full bg-gradient-to-br from-[#B80B3D] to-[#66001D] text-white text-sm font-medium mb-2"
-          onClick={() => navigate("/restaurant/fssai/update")}
+          onClick={() => navigate("/food/restaurant/fssai/update")}
         >
           Update FSSAI license
         </button>
@@ -82,7 +82,7 @@ export default function FssaiDetails() {
           <button
             type="button"
             className="text-[#B80B3D] underline underline-offset-2"
-            onClick={() => navigate("/restaurant/fssai/update")}
+            onClick={() => navigate("/food/restaurant/fssai/update")}
           >
             Apply Now
           </button>

@@ -73,15 +73,15 @@ export default function Home() {
                 <span className="font-semibold">User</span>
               </Button>
             </Link>
-            <Link to="/restaurant" className="block">
+            <Link to="/food/restaurant" className="block">
               <Button variant="outline" className="w-full h-24 flex flex-col items-center justify-center">
-                <span className="text-2xl mb-2">???</span>
+                <span className="text-2xl mb-2">🧑‍🍳</span>
                 <span className="font-semibold">Restaurant</span>
               </Button>
             </Link>
-            <Link to="/restaurant/auth/sign-in" className="block">
+            <Link to="/food/restaurant/login" className="block">
               <Button variant="outline" className="w-full h-24 flex flex-col items-center justify-center border-2 border-[#ff8100] hover:bg-[#ff8100]/10">
-                <span className="text-2xl mb-2">??</span>
+                <span className="text-2xl mb-2">🔑</span>
                 <span className="font-semibold">Restaurant Login</span>
               </Button>
             </Link>

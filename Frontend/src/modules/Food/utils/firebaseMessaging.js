@@ -60,8 +60,18 @@ function getPushSoundSources(moduleName = normalizeModuleFromPath()) {
 }
 
 function isSupportedBrowser() {
+  if (typeof window === "undefined") return false;
+
+  // iOS check (Web Push is only supported on iOS Safari/Chrome if added to the Home Screen)
+  const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) && !window.MSStream;
+  if (isIOS) {
+    const isStandalone = window.navigator.standalone || window.matchMedia('(display-mode: standalone)').matches;
+    if (!isStandalone) {
+      return false;
+    }
+  }
+
   return (
-    typeof window !== "undefined" &&
     "Notification" in window &&
     "serviceWorker" in navigator &&
     "PushManager" in window

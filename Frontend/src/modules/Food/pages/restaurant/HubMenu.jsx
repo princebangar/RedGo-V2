@@ -962,7 +962,7 @@ export default function HubMenu() {
     if (!subCategoryName.trim() || !selectedGroupForSubCategory) return
     
     // Navigate to new item page with sub-category info
-    navigate('/restaurant/hub-menu/item/new', {
+    navigate('/food/restaurant/hub-menu/item/new', {
       state: {
         groupId: selectedGroupForSubCategory.id,
         category: selectedGroupForSubCategory.name,
@@ -990,7 +990,7 @@ export default function HubMenu() {
     }
     
     toast.message('Finish category setup on Menu Categories so you can choose veg, non-veg, or both before admin approval.')
-    navigate('/restaurant/menu-categories', {
+    navigate('/food/restaurant/menu-categories', {
       state: {
         draftCategoryName: newCategoryName.trim(),
       }
@@ -1011,7 +1011,7 @@ export default function HubMenu() {
       // Menu editing is disabled on the backend. The menu is generated from food_items.
       // Category deletion must be done via the Menu Categories page and can only happen when it has no items.
       toast.error('Delete categories from Menu Categories (and only when empty).')
-      navigate('/restaurant/menu-categories')
+      navigate('/food/restaurant/menu-categories')
     } catch (error) {
       debugError('Error deleting category:', error)
       toast.error('Failed to delete category')
@@ -1091,7 +1091,7 @@ export default function HubMenu() {
               </button>
               <button
               className="p-2 ml-1 hover:bg-gray-100 rounded-full transition-colors"
-              onClick={() => navigate("/restaurant/explore")}
+              onClick={() => navigate("/food/restaurant/explore")}
             >
               <Menu className="w-5 h-5 text-gray-700" />
             </button>
@@ -1427,7 +1427,7 @@ export default function HubMenu() {
                         {isPendingApproval(item.approvalStatus) && (
                           <div className="flex items-center justify-center gap-3 mt-4">
                             <button
-                              onClick={() => navigate(`/restaurant/hub-menu/item/${item.id}`, { state: { item, groupId: group.id } })}
+                              onClick={() => navigate(`/food/restaurant/hub-menu/item/${item.id}`, { state: { item, groupId: group.id } })}
                               className="flex items-center gap-1.5 bg-transparent text-gray-700 text-sm font-medium"
                             >
                               <Edit className="w-3.5 h-3.5" />

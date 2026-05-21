@@ -869,7 +869,7 @@ export default function HubFinance() {
                     {withdrawalRequests.length > 8 ? (
                       <button
                         type="button"
-                        onClick={() => navigate("/restaurant/withdrawal-history")}
+                        onClick={() => navigate("/food/restaurant/withdrawal-history")}
                         className="w-full text-sm font-medium text-black hover:underline pt-1"
                       >
                         View all requests

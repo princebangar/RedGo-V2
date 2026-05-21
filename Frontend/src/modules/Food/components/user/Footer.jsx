@@ -64,7 +64,7 @@ export default function Footer() {
     ],
     restaurants: [
       { name: "Partner With Us", href: "/user/help" },
-      { name: "Restaurant Login", href: "/restaurant" },
+      { name: "Restaurant Login", href: "/food/restaurant" },
       { name: "Delivery", href: "/delivery" },
     ],
   }
