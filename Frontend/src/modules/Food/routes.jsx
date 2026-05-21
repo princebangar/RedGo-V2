@@ -10,6 +10,17 @@ import { isModuleAuthenticated } from "@food/utils/auth"
 import { useRestaurantNotifications } from "@food/hooks/useRestaurantNotifications"
 import { AppShellSkeleton } from "./components/ui/loading-skeletons"
 
+// Eagerly preload the red banner image so Home page renders instantly
+import homeBannerRed from "@food/assets/home-banner-red-clean.png"
+if (typeof window !== 'undefined') {
+  const link = document.createElement('link');
+  link.rel = 'preload';
+  link.as = 'image';
+  link.href = homeBannerRed;
+  link.fetchPriority = 'high';
+  document.head.appendChild(link);
+}
+
 // Lazy Loading Components
 const UserRouter = lazy(() => import("@food/components/user/UserRouter"))
 

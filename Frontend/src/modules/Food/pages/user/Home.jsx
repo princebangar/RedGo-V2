@@ -2467,6 +2467,9 @@ export default function Home() {
                 src={homeBannerRed}
                 alt="Banner Background"
                 className="w-full h-full object-cover"
+                loading="eager"
+                fetchPriority="high"
+                decoding="sync"
               />
               {/* Optional overlay to ensure text readability if needed */}
               <div className="absolute inset-0 bg-black/10" />

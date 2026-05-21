@@ -30,6 +30,20 @@ import { AppShellSkeleton } from '../modules/Food/components/ui/loading-skeleton
 
 const FoodAppWrapper = () => {
   const location = useLocation();
+  
+  // Synchronous initial auth check to prevent AppShellSkeleton flash before redirect
+  const authStatus = localStorage.getItem("user_authenticated");
+  const token = localStorage.getItem("user_accessToken");
+  
+  const isUserPath = location.pathname === '/' || 
+                     location.pathname === '/food' || 
+                     location.pathname === '/food/' ||
+                     location.pathname.startsWith('/food/user');
+
+  if (isUserPath && authStatus === null && !token) {
+    return <Navigate to="/user/auth/login" replace />;
+  }
+
   const isPolicyPage = location.pathname.includes('terms') || 
                        location.pathname.includes('privacy') || 
                        location.pathname.includes('support') ||
