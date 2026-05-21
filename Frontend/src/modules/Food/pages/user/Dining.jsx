@@ -538,6 +538,12 @@ export default function Dining() {
             <Link
               to="/food/user/address-selector"
               state={{ from: window.location.pathname }}
+              onClick={(e) => {
+                if (!isModuleAuthenticated('user')) {
+                  e.preventDefault();
+                  window.dispatchEvent(new CustomEvent('show-login-required'));
+                }
+              }}
               className="flex flex-col min-w-0"
             >
               <div className="flex items-center gap-1">
