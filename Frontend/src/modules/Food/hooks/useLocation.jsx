@@ -155,13 +155,28 @@ const reverseGeocodeDirect = async (latitude, longitude) => {
   return run
 }
 
+// TEMPORARY DEFAULT: Indore (Vijay Nagar) - for App Store submission
+// Remove this constant and revert useLocation initial state when reverting
+const TEMPORARY_DEFAULT_INDORE_LOCATION = {
+  latitude: 22.7533,
+  longitude: 75.8937,
+  city: "Indore",
+  state: "Madhya Pradesh",
+  country: "India",
+  area: "Vijay Nagar",
+  address: "Vijay Nagar, Indore, Madhya Pradesh",
+  formattedAddress: "Vijay Nagar, Indore, Madhya Pradesh",
+}
+
 export function useLocation() {
   const [location, setLocation] = useState(() => {
     try {
       const cached = localStorage.getItem("userLocation")
-      return cached ? JSON.parse(cached) : null
+      // return cached ? JSON.parse(cached) : null // ORIGINAL - commented out for TEMPORARY App Store default
+      return cached ? JSON.parse(cached) : TEMPORARY_DEFAULT_INDORE_LOCATION // TEMPORARY: default Indore
     } catch {
-      return null
+      // return null // ORIGINAL - commented out for TEMPORARY App Store default
+      return TEMPORARY_DEFAULT_INDORE_LOCATION // TEMPORARY: default Indore
     }
   })
   const [loading, setLoading] = useState(globalLocationLoading)
@@ -1534,6 +1549,19 @@ export function useLocation() {
         debugError("Failed to parse stored location:", err)
         shouldForceRefresh = true
       }
+    } else {
+      // TEMPORARY: No stored location found - set default Indore in localStorage
+      // This ensures PageNavbar and other components see the default immediately.
+      // Remove this else block when reverting temporary changes.
+      try {
+        localStorage.setItem("userLocation", JSON.stringify(TEMPORARY_DEFAULT_INDORE_LOCATION))
+        setLocation(TEMPORARY_DEFAULT_INDORE_LOCATION)
+        setLoading(false)
+        hasInitialLocation = true
+        debugLog("?? TEMPORARY: Set default Indore location in localStorage")
+      } catch (e) {
+        debugError("Failed to set default Indore location:", e)
+      }
     }
 
     // If no cached location, try DB (only if authenticated and path is not suppressed)
@@ -1566,16 +1594,19 @@ export function useLocation() {
       setLoading((currentLoading) => {
         if (currentLoading) {
           debugWarn("?? Loading timeout - setting loading to false")
-          // Only set fallback if we still don't have a location
+          // TEMPORARY: Use Indore default instead of "Select location" placeholder
+          // Only set fallback if we still don't have a location // ORIGINAL COMMENT
           setLocation((currentLocation) => {
             if (!currentLocation ||
               (currentLocation.formattedAddress === "Select location" &&
                 !currentLocation.latitude && !currentLocation.city)) {
-              return {
-                city: "Select location",
-                address: "Select location",
-                formattedAddress: "Select location"
-              }
+              // ORIGINAL - commented out for TEMPORARY App Store default:
+              // return {
+              //   city: "Select location",
+              //   address: "Select location",
+              //   formattedAddress: "Select location"
+              // }
+              return TEMPORARY_DEFAULT_INDORE_LOCATION // TEMPORARY: default Indore
             }
             return currentLocation
           })
@@ -1588,93 +1619,83 @@ export function useLocation() {
     // The background fetch will set the location, or we'll use the cached/DB location
     // Only set fallback if we have no location after all attempts
 
-    // Request fresh location in BACKGROUND (non-blocking)
-    // CRITICAL FIX: Only auto-request if permission is ALREADY granted
-    // This prevents "Requests geolocation permission on page load" warning
-    const checkPermissionAndStart = async () => {
-      try {
-        let permissionGranted = false;
+    // ====================================================================
+    // TEMPORARY: COMMENTED OUT for App Store submission
+    // This section auto-requests geolocation permission on app open.
+    // Uncomment this entire block when reverting temporary changes.
+    // ====================================================================
+    // // Request fresh location in BACKGROUND (non-blocking)
+    // // CRITICAL FIX: Only auto-request if permission is ALREADY granted
+    // // This prevents "Requests geolocation permission on page load" warning
+    // const checkPermissionAndStart = async () => {
+    //   try {
+    //     let permissionGranted = false;
+    //
+    //     if (navigator.permissions && navigator.permissions.query) {
+    //       try {
+    //         const result = await navigator.permissions.query({ name: 'geolocation' });
+    //         if (result.state === 'granted') {
+    //           permissionGranted = true;
+    //         } else {
+    //           debugLog(`?? Geolocation permission is '${result.state}' - Waiting for user action (avoiding prompt on load)`);
+    //         }
+    //       } catch (permErr) {
+    //         debugWarn("?? Permission query failed:", permErr);
+    //       }
+    //     } else {
+    //       // Fallback for browsers without permissions API - assume not granted to be safe
+    //       debugLog("?? Permissions API not available - Skipping auto-start");
+    //     }
+    //
+    //     if (!permissionGranted) {
+    //       debugLog("?? Permissions API says not granted, but proceeding to try native fetch for Safari support");
+    //     }
+    //
+    //     const hasFetchedInSession = sessionStorage.getItem('hasAutoFetchedLocation_v2');
+    //     const shouldFetch = !hasFetchedInSession;
+    //
+    //     if (shouldFetch) {
+    //       sessionStorage.setItem('hasAutoFetchedLocation_v2', 'true');
+    //       debugLog("?? Fetching fresh location on app open - permission granted")
+    //       
+    //       getLocation(true, true)
+    //         .then((location) => {
+    //           if (location &&
+    //             location.formattedAddress !== "Select location" &&
+    //             location.city !== "Current Location") {
+    //             debugLog("? Fresh location fetched:", location)
+    //             setLocation(location)
+    //             setPermissionGranted(true)
+    //             if (AUTO_START_LIVE_WATCH) startWatchingLocation()
+    //           } else {
+    //             debugWarn("?? Location fetch returned placeholder; not retrying automatically")
+    //           }
+    //         })
+    //         .catch((err) => {
+    //           debugWarn("?? Background location fetch failed (using cached):", err.message)
+    //           if (AUTO_START_LIVE_WATCH) startWatchingLocation()
+    //         })
+    //     } else {
+    //       if (AUTO_START_LIVE_WATCH) startWatchingLocation()
+    //     }
+    //   } catch (err) {
+    //     debugError("Error in checkPermissionAndStart:", err);
+    //     setLoading(false);
+    //   }
+    // };
+    //
+    // // Always check permission state on startup if authenticated and not on a suppressed path
+    // if (!isSuppressedPath && isAuthenticated) {
+    //   checkPermissionAndStart();
+    // } else {
+    //   setLoading(false);
+    // }
+    // ====================================================================
+    // END TEMPORARY COMMENT-OUT
+    // ====================================================================
 
-        if (navigator.permissions && navigator.permissions.query) {
-          try {
-            const result = await navigator.permissions.query({ name: 'geolocation' });
-            if (result.state === 'granted') {
-              permissionGranted = true;
-            } else {
-              debugLog(`?? Geolocation permission is '${result.state}' - Waiting for user action (avoiding prompt on load)`);
-            }
-          } catch (permErr) {
-            debugWarn("?? Permission query failed:", permErr);
-          }
-        } else {
-          // Fallback for browsers without permissions API - assume not granted to be safe
-          debugLog("?? Permissions API not available - Skipping auto-start");
-        }
-
-        // If permission NOT granted, and we don't have a specific user request (this is page load),
-        // we should SKIP automatic fetching/watching to allow the user to choose when to enable it.
-        // UNLESS we already have a valid initial location from localStorage/DB, in which case we might want to refresh?
-        // Actually, even then, we shouldn't prompt.
-        // If permission NOT granted via API, we still proceed on iOS/Safari because the Permissions API
-        // is notoriously buggy on Apple devices and often returns 'prompt' even if already granted.
-        // We rely on the browser's native behavior to either silently fetch (if granted) or show prompt.
-        if (!permissionGranted) {
-          debugLog("?? Permissions API says not granted, but proceeding to try native fetch for Safari support");
-        }
-
-        // ALWAYS fetch fresh location on app open if permission is granted to ensure live tracking
-        // We use sessionStorage to ensure we only fetch ONCE per tab/app session, and NOT on every page refresh.
-        const hasFetchedInSession = sessionStorage.getItem('hasAutoFetchedLocation_v2');
-        const shouldFetch = !hasFetchedInSession;
-
-        if (shouldFetch) {
-          sessionStorage.setItem('hasAutoFetchedLocation_v2', 'true');
-          debugLog("?? Fetching fresh location on app open - permission granted")
-          
-          // CRITICAL: We call getLocation which will use navigator.geolocation.getCurrentPosition
-          // On Safari, this is the ONLY reliable way to check/use location.
-          getLocation(true, true) // forceFresh = true to bypass cache and get exact live location
-            .then((location) => {
-              if (location &&
-                location.formattedAddress !== "Select location" &&
-                location.city !== "Current Location") {
-                debugLog("? Fresh location fetched:", location)
-                debugLog("? Location details:", {
-                  formattedAddress: location?.formattedAddress,
-                  address: location?.address,
-                  city: location?.city,
-                  state: location?.state,
-                  area: location?.area
-                })
-                // CRITICAL: Update state with fresh location so PageNavbar displays it
-                setLocation(location)
-                setPermissionGranted(true)
-                if (AUTO_START_LIVE_WATCH) startWatchingLocation()
-              } else {
-                debugWarn("?? Location fetch returned placeholder; not retrying automatically")
-              }
-            })
-            .catch((err) => {
-              debugWarn("?? Background location fetch failed (using cached):", err.message)
-              // Don't auto-start live watching; keep cached/localStorage behavior.
-              if (AUTO_START_LIVE_WATCH) startWatchingLocation()
-            })
-        } else {
-          // We have a valid location; no need to start live watching.
-          if (AUTO_START_LIVE_WATCH) startWatchingLocation()
-        }
-      } catch (err) {
-        debugError("Error in checkPermissionAndStart:", err);
-        setLoading(false);
-      }
-    };
-
-    // Always check permission state on startup if authenticated and not on a suppressed path
-    if (!isSuppressedPath && isAuthenticated) {
-      checkPermissionAndStart();
-    } else {
-      setLoading(false);
-    }
+    // TEMPORARY: Always set loading to false immediately (no auto-geolocation)
+    setLoading(false);
 
     // Listen for storage changes to keep location in sync across components/tabs
     const handleStorageChange = (e) => {
@@ -1704,23 +1725,31 @@ export function useLocation() {
     window.addEventListener('storage', handleStorageChange)
     window.addEventListener('userLocationUpdated', handleCustomUpdate)
     
-    // Auto-fetch location ONLY when user successfully LOGS IN
-    // This avoids triggering it during profile updates
-    const handleLoginSuccess = () => {
-      // Check if we already fetched for this specific login session to be safe
-      const hasFetchedThisLogin = sessionStorage.getItem('lastLoginLocationFetch');
-      if (hasFetchedThisLogin) return;
-
-      debugLog("?? Login success, triggering one-time automatic location fetch...")
-      setTimeout(() => {
-        requestLocation().then(() => {
-          sessionStorage.setItem('lastLoginLocationFetch', 'true');
-        }).catch(err => {
-          debugError("Failed to auto-fetch location after login:", err)
-        })
-      }, 1000)
-    }
-    window.addEventListener('userLoginSuccess', handleLoginSuccess)
+    // ====================================================================
+    // TEMPORARY: COMMENTED OUT for App Store submission
+    // This auto-fetches location after successful login.
+    // Uncomment when reverting temporary changes.
+    // ====================================================================
+    // // Auto-fetch location ONLY when user successfully LOGS IN
+    // // This avoids triggering it during profile updates
+    // const handleLoginSuccess = () => {
+    //   // Check if we already fetched for this specific login session to be safe
+    //   const hasFetchedThisLogin = sessionStorage.getItem('lastLoginLocationFetch');
+    //   if (hasFetchedThisLogin) return;
+    //
+    //   debugLog("?? Login success, triggering one-time automatic location fetch...")
+    //   setTimeout(() => {
+    //     requestLocation().then(() => {
+    //       sessionStorage.setItem('lastLoginLocationFetch', 'true');
+    //     }).catch(err => {
+    //       debugError("Failed to auto-fetch location after login:", err)
+    //     })
+    //   }, 1000)
+    // }
+    // window.addEventListener('userLoginSuccess', handleLoginSuccess)
+    // ====================================================================
+    // END TEMPORARY COMMENT-OUT
+    // ====================================================================
 
     // Cleanup timeout and watcher
     return () => {
@@ -1729,7 +1758,8 @@ export function useLocation() {
       stopWatchingLocation()
       window.removeEventListener('storage', handleStorageChange)
       window.removeEventListener('userLocationUpdated', handleCustomUpdate)
-      window.removeEventListener('userLoginSuccess', handleLoginSuccess)
+      // TEMPORARY: Commented out - matches the commented-out handleLoginSuccess above
+      // window.removeEventListener('userLoginSuccess', handleLoginSuccess)
     }
   }, [])
 
