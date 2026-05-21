@@ -10,6 +10,7 @@ import { getCachedSettings, loadBusinessSettings } from "@food/utils/businessSet
 import quickSpicyLogo from "@food/assets/quicky-spicy-logo.png"
 import { Avatar, AvatarFallback, AvatarImage } from "@food/components/ui/avatar"
 import { useProfile } from "@food/context/ProfileContext"
+import { isModuleAuthenticated } from "@food/utils/auth"
 
 export default function PageNavbar({
   textColor = "white",
@@ -1090,7 +1091,16 @@ export default function PageNavbar({
         {/* Right: Actions (Wallet & Cart) */}
         <div className="flex items-center gap-2 sm:gap-3 flex-shrink-0 ml-auto">
           {showWallet && (
-            <Link to="/food/user/wallet" state={{ from: routerLocation.pathname }}>
+            <Link 
+              to="/food/user/wallet" 
+              state={{ from: routerLocation.pathname }}
+              onClick={(e) => {
+                if (!isModuleAuthenticated('user')) {
+                  e.preventDefault();
+                  window.dispatchEvent(new CustomEvent('show-login-required'));
+                }
+              }}
+            >
               <Button
                 variant="ghost"
                 size="icon"
@@ -1125,7 +1135,16 @@ export default function PageNavbar({
           )}
 
           {showProfile && (
-            <Link to="/food/user/profile" state={{ from: routerLocation.pathname }}>
+            <Link 
+              to="/food/user/profile" 
+              state={{ from: routerLocation.pathname }}
+              onClick={(e) => {
+                if (!isModuleAuthenticated('user')) {
+                  e.preventDefault();
+                  window.dispatchEvent(new CustomEvent('show-login-required'));
+                }
+              }}
+            >
               <Avatar className="h-9 w-9 rounded-full border border-white transition-all active:scale-95 shadow-none overflow-hidden cursor-pointer transform-gpu translate-z-0">
                 <AvatarImage 
                   src={userProfile?.profileImage?.url || userProfile?.profileImage} 

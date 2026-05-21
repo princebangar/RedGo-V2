@@ -106,13 +106,13 @@ export default function UserRouter() {
           {/* ========================================== */}
           
           {/* Public Legal Policies & Support */}
-          <Route path="profile/terms" element={<Terms />} />
-          <Route path="profile/privacy" element={<Privacy />} />
-          <Route path="profile/refund" element={<Refund />} />
-          <Route path="profile/shipping" element={<Shipping />} />
-          <Route path="profile/cancellation" element={<Cancellation />} />
-          <Route path="profile/support" element={<Support />} />
-          <Route path="profile/support-info" element={<UserCMSHelpSupportPage />} />
+          <Route path="profile/terms" element={<Suspense fallback={<Loader />}><Terms /></Suspense>} />
+          <Route path="profile/privacy" element={<Suspense fallback={<Loader />}><Privacy /></Suspense>} />
+          <Route path="profile/refund" element={<Suspense fallback={<Loader />}><Refund /></Suspense>} />
+          <Route path="profile/shipping" element={<Suspense fallback={<Loader />}><Shipping /></Suspense>} />
+          <Route path="profile/cancellation" element={<Suspense fallback={<Loader />}><Cancellation /></Suspense>} />
+          <Route path="profile/support" element={<Suspense fallback={<Loader />}><Support /></Suspense>} />
+          <Route path="profile/support-info" element={<Suspense fallback={<Loader />}><UserCMSHelpSupportPage /></Suspense>} />
           
           {/* Help Center */}
           <Route path="help" element={<Help />} />
@@ -138,18 +138,30 @@ export default function UserRouter() {
 
 
           {/* ========================================== */}
+          {/* PUBLIC DISCOVERY ROUTES (Guest mode allowed) */}
+          {/* ========================================== */}
+          {/* Home & Discovery */}
+          <Route path="" element={<Home />} />
+          <Route path="takeaway" element={<Home />} />
+          <Route path="dining" element={<Dining />} />
+          <Route path="dining/:category" element={<DiningCategory />} />
+          <Route path="dining/explore/upto50" element={<DiningExplore50 />} />
+          <Route path="dining/explore/near-rated" element={<DiningExploreNear />} />
+          <Route path="dining/coffee" element={<Coffee />} />
+          <Route path="dining/:diningType/:slug" element={<DiningRestaurantDetails />} />
+          <Route path="under-250" element={<Under250 />} />
+          <Route path="categories" element={<Categories />} />
+          <Route path="category/:category" element={<CategoryPage />} />
+          <Route path="restaurants" element={<Restaurants />} />
+          <Route path="restaurants/:slug" element={<RestaurantDetails />} />
+          <Route path="search" element={<SearchResults />} />
+          <Route path="product/:id" element={<ProductDetail />} />
+
+          {/* ========================================== */}
           {/* PROTECTED ROUTES (Login required)          */}
           {/* ========================================== */}
           <Route element={<ProtectedRoute requiredRole="user" loginPath="/user/auth/login"><Outlet /></ProtectedRoute>}>
-            {/* Home & Discovery */}
-            <Route path="" element={<Home />} />
-            <Route path="takeaway" element={<Home />} />
-            <Route path="dining" element={<Dining />} />
-            <Route path="dining/:category" element={<DiningCategory />} />
-            <Route path="dining/explore/upto50" element={<DiningExplore50 />} />
-            <Route path="dining/explore/near-rated" element={<DiningExploreNear />} />
-            <Route path="dining/coffee" element={<Coffee />} />
-            <Route path="dining/:diningType/:slug" element={<DiningRestaurantDetails />} />
+            {/* Dining Table Bookings */}
             <Route path="dining/book/:slug" element={<TableBooking />} />
             <Route path="dining/book-confirmation" element={<TableBookingConfirmation />} />
             <Route path="dining/book-success" element={<TableBookingSuccess />} />
@@ -157,13 +169,6 @@ export default function UserRouter() {
             <Route path="dining/cancellation-policy" element={<TableCancellationPolicy />} />
             <Route path="dining/edit-user" element={<TableEditUserPage />} />
             <Route path="bookings" element={<MyBookings />} />
-            <Route path="under-250" element={<Under250 />} />
-            <Route path="categories" element={<Categories />} />
-            <Route path="category/:category" element={<CategoryPage />} />
-            <Route path="restaurants" element={<Restaurants />} />
-            <Route path="restaurants/:slug" element={<RestaurantDetails />} />
-            <Route path="search" element={<SearchResults />} />
-            <Route path="product/:id" element={<ProductDetail />} />
 
             {/* Cart */}
             <Route path="cart" element={<Cart />} />

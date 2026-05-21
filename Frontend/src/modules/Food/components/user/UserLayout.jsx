@@ -20,6 +20,7 @@ import { useZone } from "../../hooks/useZone"
 import OutOfZoneScreen from "./OutOfZoneScreen"
 import { isModuleAuthenticated } from "../../utils/auth"
 import { AppShellSkeleton } from "@food/components/ui/loading-skeletons"
+import LoginRequiredModal from "./LoginRequiredModal"
 
 // Sync orderType with route
 function RouteSyncHandler() {
@@ -54,7 +55,7 @@ function RouteSyncHandler() {
     } else if (normalizedPath === "/dining" || normalizedPath.startsWith("/dining/") || normalizedPath.startsWith("/user/dining")) {
       newMode = "dining"
     } else if (normalizedPath === "/" || normalizedPath === "/user" || normalizedPath === "/user/") {
-      newMode = "delivery"
+      newMode = orderType === "takeaway" ? "takeaway" : "delivery"
     }
 
     if (newMode && orderType !== newMode) {
@@ -164,6 +165,17 @@ function UserLayoutContent() {
   const { isOutOfService: isOutOfZone, loading: isZoneLoading, zoneStatus } = useZone(geoLocation)
   const { openLocationSelector } = useLocationSelector()
   const navigationType = useNavigationType()
+  const [isLoginModalOpen, setIsLoginModalOpen] = useState(false)
+
+  useEffect(() => {
+    const handleShowLoginModal = () => {
+      setIsLoginModalOpen(true)
+    }
+    window.addEventListener('show-login-required', handleShowLoginModal)
+    return () => {
+      window.removeEventListener('show-login-required', handleShowLoginModal)
+    }
+  }, [])
 
   const path = location.pathname.startsWith("/food")
     ? location.pathname.substring(5) || "/"
@@ -264,7 +276,7 @@ function UserLayoutContent() {
     normalizedPath === "/under-250" ||
     normalizedPath === "/user/under-250" ||
     isProfileRoot ||
-    normalizedPath === "") && isModuleAuthenticated('user')
+    normalizedPath === "")
 
   const isUnder250 = normalizedPath === "/under-250" || normalizedPath === "/user/under-250"
   const lastOutOfZoneRef = useRef(isOutOfZone)
@@ -333,7 +345,7 @@ function UserLayoutContent() {
       <div className="hidden md:block">
         {showBottomNav && !isOutOfZone && <DesktopNavbar showLogo={!isUnder250} />}
       </div>
-      {!isPolicyPage && !isAuthPage && isModuleAuthenticated('user') && <LocationPrompt />}
+      {!isPolicyPage && !isAuthPage && <LocationPrompt />}
       
       {isInitialChecking ? (
         <AppShellSkeleton />
@@ -350,6 +362,9 @@ function UserLayoutContent() {
 
       {(normalizedPath === "/" || normalizedPath === "" || normalizedPath === "/user") && !isOutOfZone && <BackToTop />}
       {showBottomNav && !isOutOfZone && <BottomNavigation />}
+      
+      {/* Central Login Required Modal */}
+      <LoginRequiredModal isOpen={isLoginModalOpen} onClose={() => setIsLoginModalOpen(false)} />
     </>
   )
 }

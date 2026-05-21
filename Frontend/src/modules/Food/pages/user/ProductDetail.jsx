@@ -16,6 +16,7 @@ import { Button } from "@food/components/ui/button"
 import { Badge } from "@food/components/ui/badge"
 import { Textarea } from "@food/components/ui/textarea"
 import { Label } from "@food/components/ui/label"
+import { isModuleAuthenticated } from "@food/utils/auth"
 
 // Sample product data - in a real app, this would come from an API
 const productsData = {
@@ -132,6 +133,10 @@ export default function ProductDetail() {
   }, [reviews, product])
 
   const handleAddToCart = () => {
+    if (!isModuleAuthenticated('user')) {
+      window.dispatchEvent(new CustomEvent('show-login-required'))
+      return
+    }
     if (product) {
       for (let i = 0; i < quantity; i++) {
         const result = addToCart(product)

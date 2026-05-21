@@ -886,8 +886,8 @@ export default function Inventory() {
                   approvalStatus: String(item.approvalStatus || "approved").toLowerCase(),
                   rejectionReason: item.rejectionReason || "",
                   // Backend menu is generated from food_items and currently doesn't persist "recommended".
-                  // Keep as a local UI preference keyed by food item id.
-                  isRecommended: Boolean(recommendedMap?.[String(item.id)]),
+                  // Keep as a local UI preference keyed by food item id, but respect backend if it provides it.
+                  isRecommended: Boolean(item.recommended === true || item.isRecommended === true || item.is_recommended === true || recommendedMap?.[String(item.id)]),
                   stockQuantity: item.stock || "Unlimited",
                   unit: item.itemSizeUnit || "piece",
                   expiryDate: null,
@@ -917,7 +917,7 @@ export default function Inventory() {
                   foodType: item.foodType || "Non-Veg",
                   approvalStatus: String(item.approvalStatus || "approved").toLowerCase(),
                   rejectionReason: item.rejectionReason || "",
-                  isRecommended: Boolean(recommendedMap?.[String(item.id)]),
+                  isRecommended: Boolean(item.recommended === true || item.isRecommended === true || item.is_recommended === true || recommendedMap?.[String(item.id)]),
                   stockQuantity: item.stock || "Unlimited",
                   unit: item.itemSizeUnit || "piece",
                   expiryDate: null,
@@ -2363,11 +2363,6 @@ export default function Inventory() {
                                     <span className={`rounded-full px-2 py-0.5 sm:px-2.5 sm:py-1 text-[9px] sm:text-[10px] font-black uppercase tracking-wider border shadow-sm ${approvalMeta.className.replace('text-', 'text-').replace('bg-', 'bg-white border-')}`}>
                                       {approvalMeta.label}
                                     </span>
-                                    {item.isRecommended && (
-                                      <span className="rounded-full px-2 py-0.5 sm:px-2.5 sm:py-1 text-[9px] sm:text-[10px] font-black uppercase tracking-wider bg-blue-50 text-[#B80B3D] border border-blue-100 shadow-sm">
-                                        Recommended
-                                      </span>
-                                    )}
                                   </div>
                                   
                                   <div className="flex items-center gap-3 sm:gap-4 mt-1">
@@ -2389,6 +2384,14 @@ export default function Inventory() {
                                       {isRejectedItem ? "Fix" : "Edit"}
                                     </button>
                                   </div>
+
+                                  {item.isRecommended && (
+                                    <div className="mt-2.5">
+                                      <span className="inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-[9px] sm:text-[10px] font-black uppercase tracking-wider bg-blue-50 text-blue-600 border border-blue-100 shadow-sm">
+                                        ★ Recommended
+                                      </span>
+                                    </div>
+                                  )}
 
                                   {item.approvalStatus === "rejected" && item.rejectionReason && (
                                     <p className="mt-2 text-[9px] sm:text-[10px] font-bold text-[#B80B3D] bg-red-50/50 border border-red-100/50 px-2.5 py-1 rounded-lg italic">

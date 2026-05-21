@@ -358,16 +358,16 @@ export default function FoodApproval() {
                           <td className="px-3 py-3 whitespace-nowrap text-sm text-gray-700 font-semibold !text-center">
                             {index + 1}
                           </td>
-                          <td className="px-3 py-3 whitespace-nowrap !text-center">
-                            <div className="text-sm">
-                              <div className="font-semibold text-gray-900">{request.restaurantName || '-'}</div>
-                              <div className="text-gray-500 text-xs">{request.restaurantId || '-'}</div>
+                          <td className="px-3 py-3 !text-center max-w-[200px]">
+                            <div className="text-sm truncate" title={request.restaurantName}>
+                              <div className="font-semibold text-gray-900 truncate">{request.restaurantName || '-'}</div>
+                              <div className="text-gray-500 text-xs truncate" title={request.restaurantId}>{request.restaurantId || '-'}</div>
                             </div>
                           </td>
-                          <td className="px-3 py-3 whitespace-nowrap text-sm text-gray-700 !text-center">
+                          <td className="px-3 py-3 text-sm text-gray-700 !text-center max-w-[150px] truncate" title={request.category}>
                             {request.category || '-'}
                           </td>
-                          <td className="px-3 py-3 whitespace-nowrap text-sm text-gray-700 font-semibold !text-center">
+                          <td className="px-3 py-3 text-sm text-gray-700 font-semibold !text-center max-w-[200px] truncate" title={request.itemName}>
                             {request.itemName || '-'}
                           </td>
                           <td className="px-3 py-3 whitespace-nowrap text-sm text-gray-700 capitalize !text-center">

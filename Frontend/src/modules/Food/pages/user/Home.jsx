@@ -52,6 +52,7 @@ import {
   RestaurantGridSkeleton,
 } from "@food/components/ui/loading-skeletons";
 import { useProfile } from "@food/context/ProfileContext";
+import { isModuleAuthenticated } from "@food/utils/auth";
 import { useCart } from "@food/context/CartContext";
 import { HorizontalCarousel } from "@food/components/ui/horizontal-carousel";
 import { DotPattern } from "@food/components/ui/dot-pattern";
@@ -457,7 +458,7 @@ export default function Home() {
         routerLocation.pathname === "/user/" ||
         routerLocation.pathname === "/food" ||
         routerLocation.pathname === "/food/";
-      if (isHome && orderType !== "delivery") {
+      if (isHome && orderType === "dining") {
         setOrderType("delivery");
       }
     }
@@ -2519,6 +2520,12 @@ export default function Home() {
                       </button>
                       <Link 
                         to="/food/user/profile" 
+                        onClick={(e) => {
+                          if (!isModuleAuthenticated('user')) {
+                            e.preventDefault();
+                            window.dispatchEvent(new CustomEvent('show-login-required'));
+                          }
+                        }}
                         className="h-10 w-10 relative flex items-center justify-center rounded-full border-[1.5px] border-white shadow-none cursor-pointer active:scale-95 transition-all overflow-hidden ring-1 ring-red-500/80"
                       >
                         <Avatar className="h-full w-full bg-[#FFF5E6]">

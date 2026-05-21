@@ -29,8 +29,16 @@ const PageLoader = () => (
 import { AppShellSkeleton } from '../modules/Food/components/ui/loading-skeletons'
 
 const FoodAppWrapper = () => {
+  const location = useLocation();
+  const isPolicyPage = location.pathname.includes('terms') || 
+                       location.pathname.includes('privacy') || 
+                       location.pathname.includes('support') ||
+                       location.pathname.includes('refund') ||
+                       location.pathname.includes('shipping') ||
+                       location.pathname.includes('cancellation');
+
   return (
-    <Suspense fallback={<AppShellSkeleton />}>
+    <Suspense fallback={isPolicyPage ? <PageLoader /> : <AppShellSkeleton />}>
       <FoodApp />
     </Suspense>
   )

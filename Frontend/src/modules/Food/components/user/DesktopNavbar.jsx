@@ -13,6 +13,7 @@ import { AnimatePresence, motion } from "framer-motion"
 import quickSpicyLogo from "@food/assets/quicky-spicy-logo.png"
 import { getCachedSettings, loadBusinessSettings } from "@food/utils/businessSettings"
 import api from "@food/api"
+import { isModuleAuthenticated } from "@food/utils/auth"
 const debugLog = (...args) => {}
 const debugWarn = (...args) => {}
 const debugError = (...args) => {}
@@ -305,7 +306,15 @@ export default function DesktopNavbar({ showLogo = true }) {
                         {/* Right: Wallet and Cart Icons */}
                         <div className="flex items-center gap-2 lg:gap-3 flex-shrink-0">
                             {/* Wallet Icon */}
-                            <Link to="/food/user/wallet">
+                            <Link 
+                                to="/food/user/wallet"
+                                onClick={(e) => {
+                                    if (!isModuleAuthenticated('user')) {
+                                        e.preventDefault();
+                                        window.dispatchEvent(new CustomEvent('show-login-required'));
+                                    }
+                                }}
+                            >
                                 <Button
                                     variant="ghost"
                                     className="h-12 w-12 lg:h-14 lg:w-14 rounded-full p-0 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
@@ -404,6 +413,12 @@ export default function DesktopNavbar({ showLogo = true }) {
                             {/* Profile Tab */}
                             <Link
                                 to="/food/user/profile"
+                                onClick={(e) => {
+                                    if (!isModuleAuthenticated('user')) {
+                                        e.preventDefault();
+                                        window.dispatchEvent(new CustomEvent('show-login-required'));
+                                    }
+                                }}
                                 className={`flex flex-col items-center gap-1 px-2 py-1 transition-colors relative group ${isProfile
                                     ? "text-[#DC2626]"
                                     : "text-gray-600 dark:text-gray-400 hover:text-[#DC2626]"

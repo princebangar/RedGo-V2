@@ -3,6 +3,7 @@ import { ShoppingBag, Tag, Truck, UtensilsCrossed } from "lucide-react"
 import { useState, useEffect, useRef } from "react"
 import { motion, AnimatePresence } from "framer-motion"
 import api from "@food/api"
+import { useProfile } from "@food/context/ProfileContext"
 
 export default function BottomNavigation() {
   const location = useLocation()
@@ -90,21 +91,26 @@ export default function BottomNavigation() {
   const normalizedPath = pathname.replace(/\/$/, "") || "/";
   
   // Check active routes
+  const { orderType, setOrderType } = useProfile();
+  
   const isDining = normalizedPath === "/food/dining" || normalizedPath.startsWith("/food/user/dining");
   const isUnder250 = normalizedPath === "/food/under-250" || normalizedPath.startsWith("/food/user/under-250");
   const isProfile = normalizedPath.startsWith("/food/profile") || normalizedPath.startsWith("/food/user/profile");
-  const isTakeaway = normalizedPath === "/food/user/takeaway" || normalizedPath.startsWith("/food/user/takeaway");
   
-  // Delivery is the default active state for the food module if nothing else is active
-  const isDelivery = !isDining && !isUnder250 && !isProfile && !isTakeaway && (
-    normalizedPath === "/food" || 
+  const isHomePaths = normalizedPath === "/food" || 
     normalizedPath === "/food/user" || 
     normalizedPath === "/user" ||
     normalizedPath === "/" ||
-    normalizedPath.startsWith("/food/user") ||
+    normalizedPath.startsWith("/food/user") && !isProfile && !isDining && !isUnder250 && !normalizedPath.startsWith("/food/user/takeaway") ||
     normalizedPath.startsWith("/food/restaurants") ||
-    normalizedPath.startsWith("/food/user/restaurants")
-  );
+    normalizedPath.startsWith("/food/user/restaurants");
+
+  const isTakeaway = normalizedPath === "/food/user/takeaway" || 
+    normalizedPath.startsWith("/food/user/takeaway") ||
+    (isHomePaths && orderType === "takeaway");
+  
+  // Delivery is the default active state for the food module if nothing else is active
+  const isDelivery = !isDining && !isUnder250 && !isProfile && !isTakeaway && isHomePaths;
 
   const navItems = [
     {
@@ -112,14 +118,20 @@ export default function BottomNavigation() {
       label: 'Delivery',
       icon: Truck,
       to: '/food/user',
-      active: isDelivery
+      active: isDelivery,
+      onClick: () => {
+        if (setOrderType) setOrderType('delivery');
+      }
     },
     {
       id: 'takeaway',
       label: 'Takeaway',
       icon: ShoppingBag,
       to: '/food/user/takeaway',
-      active: isTakeaway
+      active: isTakeaway,
+      onClick: () => {
+        if (setOrderType) setOrderType('takeaway');
+      }
     },
     {
       id: 'under250',
@@ -158,6 +170,7 @@ export default function BottomNavigation() {
               <Link
                 key={item.id}
                 to={item.to}
+                onClick={item.onClick}
                 className={`flex flex-col items-center justify-center gap-1 h-14 w-full relative transition-all duration-300 ${
                   item.active ? "text-[#DC2626]" : "text-gray-600 dark:text-gray-400"
                 }`}

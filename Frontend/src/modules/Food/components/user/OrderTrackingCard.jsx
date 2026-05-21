@@ -34,6 +34,7 @@ const CookingAnimation = memo(() => (
 
 import { useOrders } from "@food/context/OrdersContext";
 import { orderAPI } from "@food/api";
+import { isModuleAuthenticated } from "@food/utils/auth";
 
 const getOrderKey = (order) => order?.id || order?._id || order?.orderId || null;
 
@@ -142,6 +143,10 @@ function OrderTrackingCardInner({ hasBottomNav = true }) {
   const [invalidOrderIds, setInvalidOrderIds] = useState(new Set());
 
   const fetchOrders = useCallback(async () => {
+    if (!isModuleAuthenticated("user")) {
+      setHasFetchedApi(true);
+      return;
+    }
     try {
       const response = await orderAPI.getOrders({ limit: 10, page: 1 });
       let nextOrders = [];

@@ -319,6 +319,18 @@ export default function UnifiedOTPFastLogin() {
 
   return (
     <div className="min-h-screen bg-white dark:bg-[#0a0a0a] flex flex-col relative overflow-hidden font-['Poppins']">
+      {/* Skip Now Button */}
+      <button
+        type="button"
+        onClick={() => {
+          localStorage.setItem("user_authenticated", "false");
+          navigate('/food/user');
+        }}
+        className="absolute top-37 right-4 z-50 flex items-center gap-1.5 px-4 py-[7px] bg-gradient-to-r from-[#B80B3D] to-[#66001D] hover:from-[#A10935] hover:to-[#4F0016] text-white rounded-full shadow-[0_4px_14px_rgba(184,11,61,0.3)] hover:shadow-[0_6px_20px_rgba(184,11,61,0.45)] transition-all duration-200 active:scale-95 cursor-pointer group"
+      >
+        <span className="text-[13px] font-semibold tracking-[-0.01em]" style={{ fontFamily: "'Poppins', sans-serif" }}>Skip Now</span>
+        <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="opacity-75 group-hover:translate-x-0.5 transition-transform duration-150 mt-px"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg>
+      </button>
       <style>
         {`
           @keyframes floatDish1 {
@@ -379,10 +391,10 @@ export default function UnifiedOTPFastLogin() {
         <div className="w-full max-w-sm flex flex-col">
           {/* Main Title (Design Reference: Log In text) */}
           <div className="mb-10 text-center flex flex-col items-center">
-            <img 
-              src="/redgo_logo_transparent.png" 
-              alt="RedGo Logo" 
-              className="h-28 mb-4 object-contain drop-shadow-md" 
+            <img
+              src="/redgo_logo_transparent.png"
+              alt="RedGo Logo"
+              className="h-28 mb-4 object-contain drop-shadow-md"
             />
             <div className="text-sm text-gray-500 dark:text-gray-400 mt-2 font-medium flex items-center justify-center gap-1.5">
               {step === 1 ? (
@@ -390,7 +402,7 @@ export default function UnifiedOTPFastLogin() {
               ) : (
                 <>
                   <span>We've sent a code to +91 {phoneNumber}</span>
-                  <button 
+                  <button
                     onClick={handleEditNumber}
                     className="p-1.5 ml-1 bg-gradient-to-r from-[#B80B3D] to-[#66001D] hover:from-[#90082E] hover:to-[#4A0014] rounded-[10px] text-white shadow-md shadow-[#B80B3D]/20 transition-all hover:scale-105 active:scale-95"
                     aria-label="Edit phone number"

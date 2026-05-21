@@ -1034,8 +1034,7 @@ function RestaurantDetailsContent() {
   const updateItemQuantity = (item, newQuantity, event = null, preferredVariant = null) => {
     // Check authentication
     if (!isModuleAuthenticated('user')) {
-      toast.error("Please login to add items to cart")
-      navigate('/user/auth/login', { state: { from: location.pathname } })
+      window.dispatchEvent(new CustomEvent('show-login-required'))
       return
     }
 
@@ -2725,7 +2724,7 @@ function RestaurantDetailsContent() {
       )}
 
       {/* Floating Menu Button - Rendered via Portal for perfect fixed positioning and instant drag response */}
-      {typeof window !== "undefined" && !showFilterSheet && !showMenuSheet && !showMenuOptionsSheet && restaurant && filteredSections.length > 0 && 
+      {typeof window !== "undefined" && !showFilterSheet && !showMenuSheet && !showMenuOptionsSheet && restaurant && filteredSections.length > 0 &&
         createPortal(
           <motion.div
             drag
@@ -2741,7 +2740,7 @@ function RestaurantDetailsContent() {
               x: windowSize.width - menuButtonWidth - 16,
               y: 0 
             }}
-            whileDrag={{ scale: 1.02, zIndex: 10000 }}
+            whileDrag={{ scale: 1.02, zIndex: 9998 }}
             whileHover={{ scale: 1.05 }}
             style={{
               position: 'fixed',
@@ -2749,7 +2748,7 @@ function RestaurantDetailsContent() {
               bottom: 140,
               backfaceVisibility: 'hidden',
               WebkitFontSmoothing: 'antialiased',
-              zIndex: 10000,
+              zIndex: 9998,
               touchAction: 'none'
             }}
             className="pointer-events-auto cursor-grab active:cursor-grabbing"
@@ -3262,39 +3261,30 @@ function RestaurantDetailsContent() {
         createPortal(
           <AnimatePresence>
             {showItemDetail && selectedItem && (
-              <>
-                {/* Backdrop */}
-                <motion.div
-                  className="fixed inset-0 bg-black/40 z-[9999]"
+              <motion.div
+                  className="fixed inset-0 bg-black/50 z-[9999] flex items-center justify-center p-4 sm:p-6"
                   initial={{ opacity: 0 }}
                   animate={{ opacity: 1 }}
                   exit={{ opacity: 0 }}
                   transition={{ duration: 0.2 }}
                   onClick={() => setShowItemDetail(false)}
-                />
-
-                {/* Item Detail Bottom Sheet */}
-                <motion.div
-                  className="fixed left-0 right-0 bottom-0 md:left-1/2 md:right-auto md:-translate-x-1/2 md:bottom-auto md:top-1/2 md:-translate-y-1/2 z-[10000] bg-white dark:bg-[#1a1a1a] rounded-t-3xl md:rounded-3xl shadow-2xl max-h-[90vh] md:max-w-2xl lg:max-w-3xl w-full md:w-auto flex flex-col"
-                  initial={{ y: "100%" }}
-                  animate={{ y: 0 }}
-                  exit={{ y: "100%" }}
-                  transition={{ duration: 0.15, type: "spring", damping: 30, stiffness: 400 }}
-                  onClick={(e) => e.stopPropagation()}
                 >
-                  {/* Close Button - Top Center Above Popup with 4px gap */}
-                  <div className="absolute -top-[44px] left-1/2 -translate-x-1/2 z-[10001]">
-                    <motion.button
+                  {/* Item Detail Modal */}
+                  <motion.div
+                    className="relative bg-white dark:bg-[#1a1a1a] rounded-3xl shadow-2xl max-h-[90vh] w-full max-w-[450px] md:max-w-2xl flex flex-col overflow-hidden"
+                    initial={{ opacity: 0, scale: 0.95, y: 20 }}
+                    animate={{ opacity: 1, scale: 1, y: 0 }}
+                    exit={{ opacity: 0, scale: 0.95, y: 20 }}
+                    transition={{ duration: 0.2, type: "spring", damping: 25, stiffness: 300 }}
+                    onClick={(e) => e.stopPropagation()}
+                  >
+                    {/* Close Button - Inside Top Right */}
+                    <button
                       onClick={() => setShowItemDetail(false)}
-                      className="h-10 w-10 rounded-full bg-gray-800 flex items-center justify-center hover:bg-gray-900 transition-colors shadow-lg"
-                      initial={{ opacity: 0, y: -10 }}
-                      animate={{ opacity: 1, y: 0 }}
-                      exit={{ opacity: 0, y: -10 }}
-                      transition={{ duration: 0.2 }}
+                      className="absolute top-4 right-4 z-[10001] h-8 w-8 rounded-full bg-gray-900/90 shadow-md flex items-center justify-center hover:bg-black transition-colors"
                     >
                       <X className="h-5 w-5 text-white" />
-                    </motion.button>
-                  </div>
+                    </button>
 
                   {/* Image Section */}
                   <div className="relative w-full h-64 overflow-hidden rounded-t-3xl">
@@ -3384,10 +3374,10 @@ function RestaurantDetailsContent() {
                   </div>
 
                   {/* Bottom Action Bar */}
-                  <div className="border-t border-gray-200 dark:border-gray-800 px-4 py-4 bg-white dark:bg-[#1a1a1a]">
-                    <div className="flex items-center gap-4">
+                  <div className="border-t border-gray-200 dark:border-gray-800 px-3 sm:px-4 py-4 bg-white dark:bg-[#1a1a1a]">
+                    <div className="flex items-center gap-2 sm:gap-4">
                       {/* Quantity Selector */}
-                      <div className={`flex items-center gap-3 border-2 rounded-lg px-3 h-[44px] bg-white dark:bg-[#2a2a2a] ${shouldShowGrayscale
+                      <div className={`flex items-center gap-1 sm:gap-3 border-2 rounded-lg px-2 sm:px-3 h-[44px] bg-white dark:bg-[#2a2a2a] ${shouldShowGrayscale
                         ? 'border-gray-300 dark:border-gray-700 opacity-50'
                         : 'border-gray-300 dark:border-gray-700'
                         }`}>
@@ -3396,7 +3386,7 @@ function RestaurantDetailsContent() {
                             if (!shouldShowGrayscale) {
                               updateItemQuantity(
                                 selectedItem,
-                                Math.max(0, getDishQuantity(selectedItem, selectedVariantId) - 1),
+                                Math.max(1, getDishQuantity(selectedItem, selectedVariantId)) - 1,
                                 e,
                                 getVariantForDish(selectedItem, selectedVariantId),
                               )
@@ -3410,18 +3400,18 @@ function RestaurantDetailsContent() {
                         >
                           <Minus className="h-5 w-5" />
                         </button>
-                        <span className={`text-lg font-semibold min-w-[2rem] text-center ${shouldShowGrayscale
+                        <span className={`text-lg font-semibold min-w-[1.5rem] sm:min-w-[2rem] text-center ${shouldShowGrayscale
                           ? 'text-gray-400 dark:text-gray-600'
                           : 'text-gray-900 dark:text-white'
                           }`}>
-                          {getDishQuantity(selectedItem, selectedVariantId)}
+                          {Math.max(1, getDishQuantity(selectedItem, selectedVariantId))}
                         </span>
                         <button
                           onClick={(e) => {
                             if (!shouldShowGrayscale) {
                               updateItemQuantity(
                                 selectedItem,
-                                getDishQuantity(selectedItem, selectedVariantId) + 1,
+                                Math.max(1, getDishQuantity(selectedItem, selectedVariantId)) + 1,
                                 e,
                                 getVariantForDish(selectedItem, selectedVariantId),
                               )
@@ -3439,7 +3429,7 @@ function RestaurantDetailsContent() {
 
                       {/* Add Item Button */}
                       <Button
-                        className={`flex-1 h-[44px] rounded-lg font-semibold flex items-center justify-center gap-2 ${shouldShowGrayscale
+                        className={`flex-1 h-[44px] rounded-lg font-semibold flex items-center justify-center gap-1 sm:gap-2 px-1 sm:px-4 ${shouldShowGrayscale
                           ? 'bg-gray-300 dark:bg-gray-700 text-gray-500 dark:text-gray-600 cursor-not-allowed opacity-50'
                           : 'bg-red-500 hover:bg-red-600 text-white'
                           }`}
@@ -3447,7 +3437,7 @@ function RestaurantDetailsContent() {
                           if (!shouldShowGrayscale) {
                             updateItemQuantity(
                               selectedItem,
-                              getDishQuantity(selectedItem, selectedVariantId) + 1,
+                              Math.max(1, getDishQuantity(selectedItem, selectedVariantId)),
                               e,
                               getVariantForDish(selectedItem, selectedVariantId),
                             )
@@ -3456,14 +3446,16 @@ function RestaurantDetailsContent() {
                         }}
                         disabled={shouldShowGrayscale}
                       >
-                        <span>Add item</span>
-                        <div className="flex items-center gap-1">
+                        <span className="truncate">
+                          {getDishQuantity(selectedItem, selectedVariantId) > 0 ? "Update cart" : "Add item"}
+                        </span>
+                        <div className="flex flex-wrap items-center justify-center gap-1 overflow-hidden">
                           {selectedItem.originalPrice && selectedItem.originalPrice > selectedItem.price && (
-                            <span className="text-sm line-through text-red-200">
+                            <span className="text-xs sm:text-sm line-through text-red-200">
                               {RUPEE_SYMBOL}{Math.round(selectedItem.originalPrice)}
                             </span>
                           )}
-                          <span className="text-base font-bold">
+                          <span className="text-sm sm:text-base font-bold whitespace-nowrap">
                             {hasFoodVariants(selectedItem)
                               ? `${getVariantForDish(selectedItem, selectedVariantId)?.name || "Default"} · ${RUPEE_SYMBOL}${Math.round(getVariantForDish(selectedItem, selectedVariantId)?.price || selectedItem.price)}`
                               : `${RUPEE_SYMBOL}${Math.round(selectedItem.price)}`}
@@ -3473,12 +3465,11 @@ function RestaurantDetailsContent() {
                     </div>
                   </div>
                 </motion.div>
-              </>
+              </motion.div>
             )}
           </AnimatePresence>,
           document.body
         )}
-
       {/* Schedule Delivery Time Modal */}
       {typeof window !== "undefined" &&
         createPortal(

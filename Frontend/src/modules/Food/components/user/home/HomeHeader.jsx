@@ -7,6 +7,7 @@ import { useProfile } from "@food/context/ProfileContext";
 import useNotificationInbox from "@food/hooks/useNotificationInbox";
 import VoiceSearchOverlay from "@food/components/user/VoiceSearchOverlay";
 import { useNavigate } from 'react-router-dom';
+import { isModuleAuthenticated } from "@food/utils/auth";
 
 // Images for banner - exactly as in FestBanner.jsx
 const bannerImages = {
@@ -158,6 +159,12 @@ export default function HomeHeader({
               <Link
                 to="/food/user/wallet"
                 state={{ from: '/food/user' }}
+                onClick={(e) => {
+                  if (!isModuleAuthenticated('user')) {
+                    e.preventDefault();
+                    window.dispatchEvent(new CustomEvent('show-login-required'));
+                  }
+                }}
                 className="flex items-center justify-center p-1.5 active:scale-90 transition-all transform-gpu translate-z-0"
               >
                 <Wallet className="h-[26px] w-[26px] text-white antialiased" strokeWidth={2.2} />
@@ -166,6 +173,12 @@ export default function HomeHeader({
               {/* Profile Photo - Increased size for better clarity */}
               <Link
                 to="/food/user/profile"
+                onClick={(e) => {
+                  if (!isModuleAuthenticated('user')) {
+                    e.preventDefault();
+                    window.dispatchEvent(new CustomEvent('show-login-required'));
+                  }
+                }}
                 className="h-9 w-9 relative flex items-center justify-center rounded-full border-[1.5px] border-white shadow-none cursor-pointer active:scale-95 transition-all overflow-hidden transform-gpu translate-z-0"
               >
                 <Avatar className="h-full w-full bg-[#FFF5E6]">

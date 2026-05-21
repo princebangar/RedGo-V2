@@ -14,6 +14,7 @@ import { useCart } from "@food/context/CartContext"
 import { useLocationSelector } from "./UserLayout"
 import { useProfile } from "@food/context/ProfileContext"
 import { getCachedSettings, loadBusinessSettings } from "@food/utils/businessSettings"
+import { isModuleAuthenticated } from "@food/utils/auth"
 const debugLog = (...args) => {}
 const debugWarn = (...args) => {}
 const debugError = (...args) => {}
@@ -172,7 +173,18 @@ export default function Navbar() {
             {/* Profile */}
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
-                <Button variant="ghost" size="icon" className="rounded-full h-11 w-11 sm:h-12 sm:w-12 hover:bg-gray-100">
+                <Button 
+                  variant="ghost" 
+                  size="icon" 
+                  className="rounded-full h-11 w-11 sm:h-12 sm:w-12 hover:bg-gray-100"
+                  onClick={(e) => {
+                    if (!isModuleAuthenticated('user')) {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      window.dispatchEvent(new CustomEvent('show-login-required'));
+                    }
+                  }}
+                >
                   <Avatar className="h-10 w-10">
                     {userProfile?.profileImage && (
                       <AvatarImage 

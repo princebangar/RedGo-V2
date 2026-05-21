@@ -17,8 +17,7 @@ export default function AddToCartButton({ item, className = "" }) {
     e.stopPropagation()
 
     if (!isModuleAuthenticated('user')) {
-      toast.error("Please login to add items to cart")
-      navigate('/user/auth/login', { state: { from: location.pathname } })
+      window.dispatchEvent(new CustomEvent('show-login-required'))
       return
     }
 

@@ -14,6 +14,7 @@ import { useZone } from "@food/hooks/useZone"
 import { useProfile } from "@food/context/ProfileContext"
 import { diningAPI } from "@food/api"
 import OptimizedImage from "@food/components/OptimizedImage"
+import { isModuleAuthenticated } from "@food/utils/auth"
 const debugLog = (...args) => {}
 const debugWarn = (...args) => {}
 const debugError = (...args) => {}
@@ -582,6 +583,12 @@ export default function Dining() {
               <Link
                 to="/food/user/wallet"
                 state={{ from: '/food/user' }}
+                onClick={(e) => {
+                  if (!isModuleAuthenticated('user')) {
+                    e.preventDefault();
+                    window.dispatchEvent(new CustomEvent('show-login-required'));
+                  }
+                }}
                 className="h-8 w-8 flex items-center justify-center rounded-full bg-white/10 border border-white shadow-none active:scale-90 transition-all transform-gpu translate-z-0"
               >
                 <Wallet className="h-4.5 w-4.5 text-white antialiased" strokeWidth={2} />
@@ -589,6 +596,12 @@ export default function Dining() {
               
               <Link 
                 to="/food/user/profile" 
+                onClick={(e) => {
+                  if (!isModuleAuthenticated('user')) {
+                    e.preventDefault();
+                    window.dispatchEvent(new CustomEvent('show-login-required'));
+                  }
+                }}
                 className="h-9 w-9 relative flex items-center justify-center rounded-full border border-white shadow-none cursor-pointer active:scale-95 transition-all overflow-hidden transform-gpu translate-z-0"
               >
                 <Avatar className="h-full w-full bg-[#FFF5E6]">

@@ -4,6 +4,7 @@ import { restaurantAPI, diningAPI } from "@food/api"
 import { useProfile } from "@food/context/ProfileContext"
 import { getMenuFromResponse } from "@food/utils/menuItems"
 import useAppBackNavigation from "@food/hooks/useAppBackNavigation"
+import { isModuleAuthenticated } from "@food/utils/auth"
 import {
     ArrowLeft,
     Bookmark,
@@ -119,17 +120,73 @@ export default function DiningRestaurantDetails() {
         routeRestaurant?.id ||
         slug
 
-      const restaurantResponse = await restaurantAPI.getRestaurantById(preferredRestaurantLookup)
-      if (!restaurantResponse?.data?.success) {
-        setError("Restaurant not found")
-        setRestaurant(null)
-        return
+      let restaurantResponse = null;
+      let resolvedRestaurant = null;
+      
+      try {
+        // Since we are in Dining, try diningAPI FIRST!
+        const diningRes = await diningAPI.getRestaurantBySlug(slug);
+        if (diningRes?.data?.success && diningRes?.data?.data) {
+           resolvedRestaurant = diningRes.data.data?.restaurant || diningRes.data.data;
+           restaurantResponse = diningRes;
+        }
+      } catch (e) {
+        // ignored
       }
 
-      const resolvedRestaurant =
-        restaurantResponse?.data?.data?.restaurant ||
-        restaurantResponse?.data?.data ||
-        null
+      // If diningAPI failed, try restaurantAPI with ID
+      if (!resolvedRestaurant) {
+        try {
+          restaurantResponse = await restaurantAPI.getRestaurantById(preferredRestaurantLookup)
+          if (restaurantResponse?.data?.success) {
+             resolvedRestaurant = restaurantResponse.data.data?.restaurant || restaurantResponse.data.data;
+          }
+        } catch (err) {
+          // Ignored
+        }
+      }
+
+      // If ID lookup failed, try restaurantAPI with slug
+      if (!resolvedRestaurant && preferredRestaurantLookup !== slug) {
+        try {
+          restaurantResponse = await restaurantAPI.getRestaurantById(slug)
+          if (restaurantResponse?.data?.success) {
+             resolvedRestaurant = restaurantResponse.data.data?.restaurant || restaurantResponse.data.data;
+          }
+        } catch (err) {
+          // Ignored
+        }
+      }
+
+      // Last resort fallback using search
+      if (!resolvedRestaurant) {
+        try {
+          // Change: Use diningAPI instead of restaurantAPI for search
+          const searchResponse = await diningAPI.getRestaurants({ limit: 100 })
+          const restaurants = searchResponse?.data?.data?.restaurants || searchResponse?.data?.data || []
+          const restaurantNameStr = slug.replace(/-/g, ' ').replace(/\b\w/g, l => l.toUpperCase())
+          const matchingRestaurant = restaurants.find(r => {
+            const nameToUse = r.restaurantName || r.name;
+            if (!nameToUse) return false;
+            
+            return r.slug === slug ||
+              nameToUse.toLowerCase().replace(/\s+/g, '-') === slug.toLowerCase().replace(/\s+/g, '-') ||
+              nameToUse.toLowerCase() === restaurantNameStr.toLowerCase() ||
+              nameToUse.toLowerCase() === slug.toLowerCase()
+          })
+          
+          if (matchingRestaurant) {
+             const fullResponse = await restaurantAPI.getRestaurantById(matchingRestaurant._id || matchingRestaurant.restaurantId || matchingRestaurant.slug)
+             if (fullResponse?.data?.success) {
+                restaurantResponse = fullResponse
+                resolvedRestaurant = fullResponse.data.data?.restaurant || fullResponse.data.data;
+             } else {
+                // If getRestaurantById fails for this matching restaurant, just use the matching one directly!
+                resolvedRestaurant = matchingRestaurant;
+             }
+          }
+        } catch (err) {}
+      }
 
       if (!resolvedRestaurant) {
         setError("Restaurant not found")
@@ -142,16 +199,22 @@ export default function DiningRestaurantDetails() {
       const restaurantId = resolvedRestaurant?._id || resolvedRestaurant?.id || slug
       
       // Fetch Bookings for Availability Check
-      setIsFetchingBookings(true)
-      try {
-          const bookingsRes = await diningAPI.getRestaurantBookings(resolvedRestaurant)
-          if (bookingsRes.data.success) {
-              setCurrentBookings(Array.isArray(bookingsRes.data.data) ? bookingsRes.data.data : [])
-          }
-      } catch (err) {
-          debugError("Error fetching bookings:", err)
-      } finally {
-          setIsFetchingBookings(false)
+      if (isModuleAuthenticated('user')) {
+        setIsFetchingBookings(true)
+        try {
+            const bookingsRes = await diningAPI.getRestaurantBookings(resolvedRestaurant)
+            if (bookingsRes.data.success) {
+                setCurrentBookings(Array.isArray(bookingsRes.data.data) ? bookingsRes.data.data : [])
+            }
+        } catch (err) {
+            debugError("Error fetching bookings:", err)
+        } finally {
+            setIsFetchingBookings(false)
+        }
+      } else {
+        // Guest users cannot fetch bookings
+        setCurrentBookings([])
+        setIsFetchingBookings(false)
       }
 
       const menuResponse = await restaurantAPI.getMenuByRestaurantId(restaurantId).catch(() => null)
@@ -308,6 +371,15 @@ export default function DiningRestaurantDetails() {
     })
   }
 
+  const handleOpenBookingSheet = () => {
+    if (!isDiningEnabled) return
+    if (!isModuleAuthenticated('user')) {
+      window.dispatchEvent(new CustomEvent('show-login-required'))
+      return
+    }
+    setIsBookingSheetOpen(true)
+  }
+
   return (
     <div className="min-h-screen bg-[#f6f7fb] dark:bg-slate-950 pb-28 transition-colors">
       <section className="mx-auto max-w-md bg-[#f6f7fb] dark:bg-slate-950 uppercase-fix">
@@ -367,7 +439,7 @@ export default function DiningRestaurantDetails() {
           <div className="px-3 pb-1 pt-3">
             <div className="w-full">
               <button
-                onClick={() => isDiningEnabled && setIsBookingSheetOpen(true)}
+                onClick={handleOpenBookingSheet}
                 disabled={!isDiningEnabled}
                 className={`flex h-[52px] w-full items-center justify-center gap-2 rounded-full border px-3 text-[15px] font-medium shadow-[0_10px_24px_rgba(15,23,42,0.05)] transition-all ${
                   isDiningEnabled
@@ -425,7 +497,9 @@ export default function DiningRestaurantDetails() {
                 <p className="text-[28px] font-black leading-none">Flat 50% OFF</p>
                 <p className="mt-2 text-[14px] text-white/80">Dining Carnival offer</p>
               </div>
-              <button className="rounded-full bg-black/45 px-4 py-2 text-[13px] font-semibold text-white backdrop-blur-sm">
+              <button 
+                onClick={handleOpenBookingSheet}
+                className="rounded-full bg-black/45 px-4 py-2 text-[13px] font-semibold text-white backdrop-blur-sm">
                 Book now
               </button>
             </div>
@@ -546,7 +620,7 @@ export default function DiningRestaurantDetails() {
       <div className="fixed bottom-0 left-0 right-0 z-30 border-t border-[#ebe5da] dark:border-slate-800 bg-white/95 dark:bg-slate-950/95 p-4 backdrop-blur-xl transition-colors">
         <div className="mx-auto max-w-md">
           <Button
-            onClick={() => isDiningEnabled && setIsBookingSheetOpen(true)}
+            onClick={handleOpenBookingSheet}
             disabled={!isDiningEnabled}
             className={`h-12 w-full rounded-2xl border text-[17px] font-medium transition-all ${
               isDiningEnabled

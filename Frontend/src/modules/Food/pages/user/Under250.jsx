@@ -616,8 +616,7 @@ export default function Under250() {
   const updateItemQuantity = (item, newQuantity, event = null, restaurantName = null) => {
     // Check authentication
     if (!isModuleAuthenticated('user')) {
-      toast.error("Please login to add items to cart")
-      navigate('/user/auth/login', { state: { from: location.pathname } })
+      window.dispatchEvent(new CustomEvent('show-login-required'))
       return
     }
 

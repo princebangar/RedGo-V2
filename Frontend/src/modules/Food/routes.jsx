@@ -25,6 +25,22 @@ const AdminForgotPassword = lazy(() => import("@food/pages/admin/auth/AdminForgo
 // Delivery Module
 const DeliveryRouter = lazy(() => import("../DeliveryV2"))
 
+const UserRouterWrapper = () => {
+  const location = useLocation();
+  const isPolicyPage = location.pathname.includes('terms') || 
+                       location.pathname.includes('privacy') || 
+                       location.pathname.includes('support') ||
+                       location.pathname.includes('refund') ||
+                       location.pathname.includes('shipping') ||
+                       location.pathname.includes('cancellation');
+
+  return (
+    <Suspense fallback={isPolicyPage ? <div className="flex h-screen items-center justify-center"><Loader /></div> : <AppShellSkeleton />}>
+      <UserRouter />
+    </Suspense>
+  )
+}
+
 function UserPathRedirect() {
   const location = useLocation()
   // Correctly handle the /food/user -> /food redirect regardless of where it starts
@@ -131,21 +147,13 @@ export default function App() {
           <Route path="user/food" element={<Navigate to="/food/user" replace />} />
           <Route
             path="user/*"
-            element={
-              <Suspense fallback={<AppShellSkeleton />}>
-                <UserRouter />
-              </Suspense>
-            }
+            element={<UserRouterWrapper />}
           />
 
           {/* Make UserRouter the default for all other paths to handle / and /food/ as user home */}
           <Route
             path="/*"
-            element={
-              <Suspense fallback={<AppShellSkeleton />}>
-                <UserRouter />
-              </Suspense>
-            }
+            element={<UserRouterWrapper />}
           />
         </Routes>
       </>
