@@ -52,7 +52,7 @@ export default function RestaurantLogin() {
       sessionStorage.setItem("restaurantLoginPhone", phone)
       navigate("/food/restaurant/otp")
     } catch (apiErr) {
-      const msg = apiErr?.response?.data?.message || apiErr?.message || "Failed to send OTP."
+      const msg = apiErr?.response?.data?.error || apiErr?.response?.data?.message || apiErr?.message || "Failed to send OTP."
       toast.error(msg)
     } finally {
       setLoading(false)
