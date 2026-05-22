@@ -1,5 +1,5 @@
 import React, { Suspense, lazy } from "react"
-import { Routes, Route, Navigate, Outlet } from "react-router-dom"
+import { Routes, Route, Navigate, Outlet, useLocation } from "react-router-dom"
 import UserLayout from "./UserLayout"
 import Loader from "@food/components/Loader"
 import ProtectedRoute from "@food/components/ProtectedRoute"
@@ -97,8 +97,21 @@ const SubmitComplaint = lazy(() => import("@food/pages/user/complaints/SubmitCom
 import { AppShellSkeleton } from "@food/components/ui/loading-skeletons"
 
 const RequireInitialAuth = ({ children }) => {
+  const location = useLocation();
   const authStatus = localStorage.getItem("user_authenticated");
   const token = localStorage.getItem("user_accessToken");
+
+  // Only enforce initial auth gate for actual user paths, not restaurant/delivery/admin
+  const currentPath = location.pathname;
+  const isNonUserModulePath = 
+    currentPath.startsWith("/food/restaurant") ||
+    currentPath.startsWith("/food/delivery") ||
+    currentPath.startsWith("/food/admin");
+
+  // If this is a restaurant/delivery/admin path that fell through to catch-all, skip the gate
+  if (isNonUserModulePath) {
+    return children;
+  }
 
   // If user has NO explicit auth status and NO token, it means they are a first time visitor
   // or a user who has completely logged out. Force them to the login screen first.

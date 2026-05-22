@@ -35,10 +35,17 @@ const FoodAppWrapper = () => {
   const authStatus = localStorage.getItem("user_authenticated");
   const token = localStorage.getItem("user_accessToken");
   
-  const isUserPath = location.pathname === '/' || 
+  // Never redirect restaurant/delivery/admin paths to user login
+  const isNonUserModulePath = 
+    location.pathname.startsWith('/food/restaurant') ||
+    location.pathname.startsWith('/food/delivery') ||
+    location.pathname.startsWith('/food/admin');
+
+  const isUserPath = !isNonUserModulePath && (
+                     location.pathname === '/' || 
                      location.pathname === '/food' || 
                      location.pathname === '/food/' ||
-                     location.pathname.startsWith('/food/user');
+                     location.pathname.startsWith('/food/user'));
 
   if (isUserPath && authStatus === null && !token) {
     return <Navigate to="/user/auth/login" replace />;
