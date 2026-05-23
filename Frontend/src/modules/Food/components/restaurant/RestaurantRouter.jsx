@@ -55,7 +55,14 @@ const CMSHelpSupportPage = lazy(() => import("@food/pages/restaurant/CMSHelpSupp
 export default function RestaurantRouter() {
   return (
     <div className="restaurant-theme">
-      <Suspense fallback={null}>
+      <Suspense fallback={
+        <div className="min-h-screen bg-white dark:bg-[#0a0a0a] flex items-center justify-center">
+          <div className="relative">
+            <div className="w-10 h-10 border-[3px] border-gray-100/30 rounded-full"></div>
+            <div className="absolute top-0 left-0 w-10 h-10 border-[3px] border-[#B80B3D] border-t-transparent rounded-full animate-spin"></div>
+          </div>
+        </div>
+      }>
         <Routes>
         {/* Auth Routes */}
         <Route path="welcome" element={<AuthRedirect module="restaurant"><Welcome /></AuthRedirect>} />

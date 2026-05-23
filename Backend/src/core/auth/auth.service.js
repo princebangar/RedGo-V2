@@ -131,22 +131,26 @@ export const verifyUserOtpAndLogin = async (
   
   // Decide if we should preserve the OTP record for a subsequent Restore/New action
   const isDeletedAccount = existingUser && existingUser.isActive === false;
-  const preserveOtp = isDeletedAccount && !confirmAction;
-
-  // For first-time signup or fresh start after deletion, require name before OTP verification 
-  // so OTP is not consumed prematurely.
+  
+  // For first-time signup or fresh start after deletion, require name before logging in
   const isFreshRegistration = !existingUser || confirmAction === "new";
-  if (isFreshRegistration && !trimmedName) {
-    // Return a success response with a flag instead of throwing an error 
-    // to avoid noisy 400 errors in the console.
-    return { needsName: true };
-  }
+  
+  // Preserve OTP if:
+  // 1. It is a deleted account and the user hasn't chosen restore/new yet.
+  // 2. It is a fresh registration and they haven't provided a name yet (needs name prompt).
+  const preserveOtp = (isDeletedAccount && !confirmAction) || (isFreshRegistration && !trimmedName);
 
   const result = await verifyOtp(phone, otp, preserveOtp);
   console.log(`[DEBUG] OTP Verification for ${phone}: valid=${result.valid}, reason=${result.reason}, preserve=${preserveOtp}, confirmAction=${confirmAction}`);
 
   if (!result.valid) {
     throw new AuthError(result.reason || "OTP verification failed");
+  }
+
+  if (isFreshRegistration && !trimmedName) {
+    // Return a success response with a flag instead of throwing an error 
+    // to avoid noisy 400 errors in the console.
+    return { needsName: true };
   }
 
   let userDoc = existingUser;

@@ -75,10 +75,21 @@ const normalizePhoneForOtp = (phone) => {
 
 export const createOrUpdateOtp = async (phone) => {
     const normalizedPhone = normalizePhoneForOtp(phone);
+    if (!normalizedPhone) throw new ValidationError("Valid phone number is required");
+
     const existing = await FoodOtp.findOne({ phone: normalizedPhone });
     const now = new Date();
 
-    // Rate Limiting Logic
+    // 1. Blocked User Check (Professional back-off)
+    if (existing && existing.blockedUntil && existing.blockedUntil > now) {
+        const remainingMs = existing.blockedUntil - now;
+        logger.warn(`[OTP REQUEST] Blocked phone: ${normalizedPhone}, Failures: ${existing.totalFailures}`);
+        const mins = Math.floor(remainingMs / 60000);
+        const secs = Math.ceil((remainingMs % 60000) / 1000);
+        throw new ValidationError(`Security Alert: Too many failed attempts. Try again after ${mins}:${String(secs).padStart(2, '0')} minutes.`);
+    }
+
+    // 2. Rate Limiting Logic (OTP Requests)
     if (existing) {
         const windowMs = (config.otpRateWindow || 600) * 1000;
         const isInWindow = now - existing.lastRequestAt < windowMs;
@@ -90,7 +101,6 @@ export const createOrUpdateOtp = async (phone) => {
             }
             existing.requestCount += 1;
         } else {
-            // Reset count if window has passed
             existing.requestCount = 1;
         }
     }
@@ -103,7 +113,7 @@ export const createOrUpdateOtp = async (phone) => {
         otp = generateOtpCode();
     }
 
-    // Expiry calculation: prioritize seconds, then minutes, then fallback to MS string
+    // 3. Expiry calculation (Code expiry vs Record expiry)
     let ttlMs;
     if (config.otpExpirySeconds) {
         ttlMs = config.otpExpirySeconds * 1000;
@@ -112,18 +122,24 @@ export const createOrUpdateOtp = async (phone) => {
     } else {
         ttlMs = ms(config.otpExpiry || '5m');
     }
-    const expiresAt = new Date(now.getTime() + ttlMs);
+    
+    const otpExpiresAt = new Date(now.getTime() + ttlMs);
+    // Record expiry (expiresAt) is used by TTL index to delete from DB
+    // We keep it for at least 1 hour to maintain penalty counts, or longer if blocked
+    const expiresAt = new Date(now.getTime() + Math.max(3600000, ttlMs));
 
     if (existing) {
         existing.otp = otp;
+        existing.otpExpiresAt = otpExpiresAt;
         existing.expiresAt = expiresAt;
         existing.attempts = 0;
         existing.lastRequestAt = now;
         await existing.save();
     } else {
-        await FoodOtp.create({
-            phone: normalizedPhone,
-            otp,
+        await FoodOtp.create({ 
+            phone: normalizedPhone, 
+            otp, 
+            otpExpiresAt,
             expiresAt,
             requestCount: 1,
             lastRequestAt: now
@@ -148,29 +164,52 @@ export const verifyOtp = async (phone, otp, preserveOtp = false) => {
 
     const normalizedPhone = normalizePhoneForOtp(phone);
     const record = await FoodOtp.findOne({ phone: normalizedPhone });
-    
+    const now = new Date();
+
     if (!record) {
         console.warn(`❌ [OTP-Verify] No OTP record found for ${normalizedPhone}`);
         return { valid: false, reason: 'OTP not found. Please request a new OTP.' };
     }
 
-    const now = new Date();
-    if (record.expiresAt < now) {
-        console.warn(`❌ [OTP-Verify] OTP expired for ${normalizedPhone}. Expired at: ${record.expiresAt}, Now: ${now}`);
-        return { valid: false, reason: 'OTP expired. Please request a new one.' };
+    // 1. Check if user is currently blocked
+    if (record.blockedUntil && record.blockedUntil > now) {
+        const rem = record.blockedUntil - now;
+        const mins = Math.floor(rem / 60000);
+        const secs = Math.ceil((rem % 60000) / 1000);
+        return { valid: false, reason: `Too many attempts. Blocked for ${mins}:${String(secs).padStart(2, '0')} more minutes.` };
     }
 
-    if (record.attempts >= config.otpMaxAttempts) {
-        console.warn(`❌ [OTP-Verify] Max attempts (${config.otpMaxAttempts}) reached for ${normalizedPhone}`);
-        return { valid: false, reason: 'Too many incorrect attempts. Please request a new OTP.' };
-    }
-
+    // 2. Increment and Check attempts (Always count attempts even if expired/wrong)
     record.attempts += 1;
 
-    if (record.otp !== otp) {
-        console.warn(`❌ [OTP-Verify] OTP mismatch for ${normalizedPhone}. Expected: ${record.otp}, Got: ${otp}`);
+    // Trigger Penalty if max attempts reached (e.g. 4th failure)
+    if (record.attempts >= config.otpMaxAttempts) {
+        record.totalFailures += 1;
+        console.info(`[OTP BLOCK] Phone: ${normalizedPhone}, Failure Count: ${record.totalFailures}`);
+        // 1st block: 1 min, subsequent blocks: 10 min
+        const penaltyMinutes = record.totalFailures === 1 ? 1 : 10;
+        record.blockedUntil = new Date(now.getTime() + penaltyMinutes * 60000);
+        // Reset attempts so they get fresh tries after the block expires
+        record.attempts = 0;
+        // Extend record expiry to keep the block active in DB
+        record.expiresAt = new Date(record.blockedUntil.getTime() + 3600000); 
         await record.save();
-        return { valid: false, reason: 'Invalid OTP. Please try again.' };
+
+        return { 
+            valid: false, 
+            reason: `Max attempts exceeded. Blocked for ${penaltyMinutes} minutes.` 
+        };
+    }
+
+    // 3. Check if OTP itself has expired
+    if (record.otpExpiresAt < now) {
+        await record.save(); // Save the incremented attempt
+        return { valid: false, reason: 'OTP expired' };
+    }
+
+    if (record.otp !== otp) {
+        await record.save();
+        return { valid: false, reason: 'Invalid OTP' };
     }
 
     if (!preserveOtp) {

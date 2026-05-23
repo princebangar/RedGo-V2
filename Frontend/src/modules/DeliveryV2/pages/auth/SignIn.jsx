@@ -56,7 +56,32 @@ export default function DeliverySignIn() {
       // toast.success("Verification code sent to your phone!")
       navigate("/food/delivery/otp")
     } catch (err) {
-      const msg = err?.response?.data?.message || err?.message || "Failed to send OTP."
+      const msg = err?.response?.data?.error || err?.response?.data?.message || err?.message || "Failed to send OTP."
+      const lowerMsg = msg.toLowerCase();
+      const isBlocked = lowerMsg.includes("blocked") || 
+                        lowerMsg.includes("too many attempts") || 
+                        lowerMsg.includes("try again after");
+
+      if (isBlocked) {
+        let totalMins = 3;
+        const timeMatch = msg.match(/(\d+)(?::(\d+))?/);
+        if (timeMatch) {
+          const mins = parseInt(timeMatch[1]);
+          const secs = timeMatch[2] ? parseInt(timeMatch[2]) / 60 : 0;
+          totalMins = mins + secs;
+        }
+
+        const authData = {
+          method: "phone",
+          phone: fullPhone,
+          isSignUp: false,
+          purpose: "login",
+          module: "delivery",
+        }
+        sessionStorage.setItem("deliveryAuthData", JSON.stringify(authData))
+        navigate("/food/delivery/otp", { state: { initialBlockMins: totalMins } })
+        return;
+      }
       toast.error(msg)
     } finally {
       setLoading(false)

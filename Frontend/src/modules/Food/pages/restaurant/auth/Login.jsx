@@ -53,6 +53,31 @@ export default function RestaurantLogin() {
       navigate("/food/restaurant/otp")
     } catch (apiErr) {
       const msg = apiErr?.response?.data?.error || apiErr?.response?.data?.message || apiErr?.message || "Failed to send OTP."
+      const lowerMsg = msg.toLowerCase();
+      const isBlocked = lowerMsg.includes("blocked") || 
+                        lowerMsg.includes("too many attempts") || 
+                        lowerMsg.includes("try again after");
+
+      if (isBlocked) {
+        let totalMins = 3;
+        const timeMatch = msg.match(/(\d+)(?::(\d+))?/);
+        if (timeMatch) {
+          const mins = parseInt(timeMatch[1]);
+          const secs = timeMatch[2] ? parseInt(timeMatch[2]) / 60 : 0;
+          totalMins = mins + secs;
+        }
+
+        const authData = {
+          method: "phone",
+          phone: fullPhone,
+          isSignUp: false,
+          module: "restaurant",
+        }
+        sessionStorage.setItem("restaurantAuthData", JSON.stringify(authData))
+        sessionStorage.setItem("restaurantLoginPhone", phone)
+        navigate("/food/restaurant/otp", { state: { initialBlockMins: totalMins } })
+        return;
+      }
       toast.error(msg)
     } finally {
       setLoading(false)

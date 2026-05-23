@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from "react"
-import { useNavigate, Link } from "react-router-dom"
+import { useNavigate, Link, useLocation } from "react-router-dom"
 import { motion, AnimatePresence } from "framer-motion"
 import { ArrowLeft, Timer, RefreshCw, Loader2, Pencil, X, ShieldCheck } from "lucide-react"
 import { toast } from "sonner"
@@ -12,9 +12,12 @@ import { checkOnboardingStatus, isRestaurantOnboardingComplete } from "@food/uti
 
 export default function RestaurantOTP() {
   const navigate = useNavigate()
+  const location = useLocation()
   const [otp, setOtp] = useState(["", "", "", ""])
+  const [otpError, setOtpError] = useState("")
   const [isLoading, setIsLoading] = useState(false)
   const [resendTimer, setResendTimer] = useState(0)
+  const [blockTimer, setBlockTimer] = useState(0)
   const [authData, setAuthData] = useState(null)
   const [contactInfo, setContactInfo] = useState("")
   const [showRestorePopup, setShowRestorePopup] = useState(false)
@@ -23,49 +26,125 @@ export default function RestaurantOTP() {
   const hasSubmittedRef = useRef(false)
   const isSuccessRef = useRef(false)
 
+  const getBlockKey = () => {
+    const phone = authData?.phone || contactInfo || ""
+    const clean = phone.replace(/\D/g, "")
+    return clean ? `restaurant_block_expires_at_${clean}` : "restaurant_block_expires_at"
+  }
+
+  const getResendKey = () => {
+    const phone = authData?.phone || contactInfo || ""
+    const clean = phone.replace(/\D/g, "")
+    return clean ? `restaurant_resend_expires_at_${clean}` : "restaurant_resend_expires_at"
+  }
+
   useEffect(() => {
     const stored = sessionStorage.getItem("restaurantAuthData")
+    let currentPhone = ""
     if (stored) {
       const data = JSON.parse(stored)
       setAuthData(data)
 
       if (data.method === "email" && data.email) {
         setContactInfo(data.email)
+        currentPhone = data.email
       } else if (data.phone) {
         const phoneMatch = data.phone?.match(/(\+\d+)\s*(.+)/)
+        let formatted = ""
         if (phoneMatch) {
-          const formattedPhone = `${phoneMatch[1]} ${phoneMatch[2].replace(/\D/g, "")}`
-          setContactInfo(formattedPhone)
+          formatted = `${phoneMatch[1]} ${phoneMatch[2].replace(/\D/g, "")}`
         } else {
-          setContactInfo(data.phone || "")
+          formatted = data.phone || ""
         }
+        setContactInfo(formatted)
+        currentPhone = formatted
       }
     } else {
       navigate("/food/restaurant/login")
       return
     }
 
-    setResendTimer(60)
-    const timer = setInterval(() => {
-      setResendTimer((prev) => {
-        if (prev <= 1) {
-          clearInterval(timer)
-          return 0
-        }
-        return prev - 1
-      })
-    }, 1000)
+    const clean = currentPhone.replace(/\D/g, "")
+    const blockKey = clean ? `restaurant_block_expires_at_${clean}` : "restaurant_block_expires_at"
+    const resendKey = clean ? `restaurant_resend_expires_at_${clean}` : "restaurant_resend_expires_at"
 
-    return () => clearInterval(timer)
-  }, [navigate])
+    // Resume block timer
+    const savedBlockExpiry = sessionStorage.getItem(blockKey)
+    if (savedBlockExpiry) {
+      const remaining = Math.max(0, Math.floor((parseInt(savedBlockExpiry) - Date.now()) / 1000))
+      if (remaining > 0) {
+        setBlockTimer(remaining)
+      } else {
+        sessionStorage.removeItem(blockKey)
+      }
+    } else if (location.state?.initialBlockMins) {
+      const seconds = Math.ceil(location.state.initialBlockMins * 60)
+      setBlockTimer(seconds)
+      sessionStorage.setItem(blockKey, (Date.now() + (seconds * 1000)).toString())
+    }
+
+    // Resume resend timer
+    const savedResendExpiry = sessionStorage.getItem(resendKey)
+    if (savedResendExpiry) {
+      const remaining = Math.max(0, Math.floor((parseInt(savedResendExpiry) - Date.now()) / 1000))
+      if (remaining > 0) {
+        setResendTimer(remaining)
+      } else {
+        sessionStorage.removeItem(resendKey)
+      }
+    } else {
+      setResendTimer(59)
+      sessionStorage.setItem(resendKey, (Date.now() + (59 * 1000)).toString())
+    }
+  }, [navigate, location.state])
 
   useEffect(() => {
-    if (inputRefs.current[0]) {
-      inputRefs.current[0].focus()
+    if (resendTimer <= 0) return
+    const timer = setInterval(() => {
+      setResendTimer((prev) => (prev > 0 ? prev - 1 : 0))
+    }, 1000)
+    return () => clearInterval(timer)
+  }, [resendTimer])
+
+  useEffect(() => {
+    if (blockTimer <= 0) return
+    const timer = setInterval(() => {
+      setBlockTimer((prev) => (prev > 0 ? prev - 1 : 0))
+    }, 1000)
+    return () => clearInterval(timer)
+  }, [blockTimer])
+
+  // Intercept hardware back button to return to login instead of leaving the page
+  useEffect(() => {
+    const handlePopState = () => {
+      if (blockTimer > 0) {
+        window.history.pushState({ otpStep: true }, "")
+        return
+      }
+      navigate("/food/restaurant/login")
     }
+
+    window.history.pushState({ otpStep: true }, "")
+    window.addEventListener("popstate", handlePopState)
+
+    return () => {
+      window.removeEventListener("popstate", handlePopState)
+    }
+  }, [blockTimer > 0])
+
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      if (inputRefs.current[0]) {
+        inputRefs.current[0].focus()
+      }
+    }, 100)
+    return () => clearTimeout(timer)
   }, [])
 
   const handleChange = (index, value) => {
+    if (index === 0 && value) {
+      setOtpError("")
+    }
     if (value && !/^\d$/.test(value)) return
 
     const newOtp = [...otp]
@@ -74,10 +153,6 @@ export default function RestaurantOTP() {
 
     if (value && index < 3) {
       inputRefs.current[index + 1]?.focus()
-    }
-
-    if (newOtp.every((digit) => digit !== "")) {
-      handleVerify(newOtp.join(""))
     }
   }
 
@@ -101,7 +176,7 @@ export default function RestaurantOTP() {
       return
     }
 
-    if (isSuccessRef.current || isLoading) return
+    if (isSuccessRef.current || isLoading || blockTimer > 0) return
     if (!confirmAction && hasSubmittedRef.current) return
 
     setIsLoading(true)
@@ -110,86 +185,106 @@ export default function RestaurantOTP() {
     try {
       if (!authData) throw new Error("Session expired. Please login again.")
 
-      const phone = authData.method === "phone" ? authData.phone : null
-      const email = authData.method === "email" ? authData.email : null
+      const phone = authData.phone
       const purpose = authData.isSignUp ? "register" : "login"
-
-      const response = await restaurantAPI.verifyOTP(phone, code, purpose, null, email, null, "web", confirmAction)
+      const response = await restaurantAPI.verifyOTP(phone, code, purpose, authData.email, confirmAction)
       const data = response?.data?.data || response?.data
 
-      if (data?.deletedAccountFound) {
+      if (data.deletedAccountFound) {
         setDeletedAccountData(data)
         setShowRestorePopup(true)
-        setIsLoading(false)
-        hasSubmittedRef.current = false
-        return
-      }
-
-      if (data?.needsRegistration) {
-        setRestaurantPendingPhone(data.phone || phone)
-        sessionStorage.removeItem("restaurantAuthData")
-        navigate("/food/restaurant/onboarding", { replace: true })
-        return
-      }
-
-      const accessToken = data?.accessToken
-      const restaurant = data?.user ?? data?.restaurant
-
-      if (accessToken && restaurant) {
+      } else if (data.needsRegistration === true) {
         isSuccessRef.current = true
+        setRestaurantPendingPhone(phone)
+        sessionStorage.removeItem("restaurantAuthData")
+        sessionStorage.removeItem(getBlockKey())
+        sessionStorage.removeItem(getResendKey())
+        setShowRestorePopup(false)
+        window.location.replace("/food/restaurant/onboarding")
+      } else {
+        isSuccessRef.current = true
+        const accessToken = data.accessToken
+        const restaurant = data.restaurant
+
         setRestaurantAuthData("restaurant", accessToken, restaurant, data?.refreshToken)
         window.dispatchEvent(new Event("restaurantAuthChanged"))
         sessionStorage.removeItem("restaurantAuthData")
+        sessionStorage.removeItem(getBlockKey())
+        sessionStorage.removeItem(getResendKey())
         setShowRestorePopup(false)
 
         if (authData?.isSignUp) {
-          navigate("/food/restaurant/onboarding", { replace: true })
+          window.location.replace("/food/restaurant/onboarding")
         } else {
           const onboardingComplete = isRestaurantOnboardingComplete(restaurant)
           if (!onboardingComplete) {
             const incompleteStep = await checkOnboardingStatus()
             if (incompleteStep) {
-              navigate(`/food/restaurant/onboarding?step=${incompleteStep}`, { replace: true })
+              window.location.replace(`/food/restaurant/onboarding?step=${incompleteStep}`)
               return
             }
           }
-          navigate("/food/restaurant", { replace: true })
+          window.location.replace("/food/restaurant")
         }
       }
     } catch (err) {
       const message = err?.response?.data?.error || err?.response?.data?.message || "Invalid OTP. Please try again."
       
-      if (/pending approval|rejected/i.test(message)) {
-        const pendingPhone = authData?.phone || authData?.email || contactInfo
-        setRestaurantPendingPhone(pendingPhone)
-        
-        navigate("/food/restaurant/pending-verification", {
-          replace: true,
-          state: { 
-            phone: pendingPhone || "",
-            isRejected: /rejected/i.test(message),
-            message: message 
-          },
-        })
-        return
-      }
-
-      toast.error(message)
       setOtp(["", "", "", ""])
+
+      const isBlocked = message.toLowerCase().includes("blocked") || 
+                        message.toLowerCase().includes("too many attempts") || 
+                        message.toLowerCase().includes("try again after");
+
+      if (isBlocked) {
+        let totalSeconds = 180;
+        const timeMatch = message.match(/(\d+)(?::(\d+))?/);
+        if (timeMatch) {
+          const mins = parseInt(timeMatch[1]);
+          const secs = timeMatch[2] ? parseInt(timeMatch[2]) : 0;
+          totalSeconds = (mins * 60) + secs;
+        }
+        setBlockTimer(totalSeconds);
+        sessionStorage.setItem(getBlockKey(), (Date.now() + (totalSeconds * 1000)).toString());
+      } else {
+        if (/pending approval|rejected/i.test(message)) {
+          const pendingPhone = authData?.phone || authData?.email || contactInfo
+          setRestaurantPendingPhone(pendingPhone)
+          
+          navigate("/food/restaurant/pending-verification", {
+            replace: true,
+            state: { 
+              phone: pendingPhone || "",
+              isRejected: /rejected/i.test(message),
+              message: message 
+            },
+          })
+          return
+        }
+
+        if (/invalid/i.test(message)) {
+          setOtpError("Invalid OTP")
+        } else {
+          toast.error(message)
+        }
+      }
       hasSubmittedRef.current = false
-      inputRefs.current[0]?.focus()
+      setTimeout(() => {
+        inputRefs.current[0]?.focus()
+      }, 50)
     } finally {
       setIsLoading(false)
     }
   }
 
   const handleResend = async () => {
-    if (resendTimer > 0) return
+    if (resendTimer > 0 || blockTimer > 0) return
     setIsLoading(true)
     try {
       const purpose = authData.isSignUp ? "register" : "login"
       await restaurantAPI.sendOTP(authData.phone, purpose, authData.email)
-      setResendTimer(60)
+      setResendTimer(59)
+      sessionStorage.setItem(getResendKey(), (Date.now() + (59 * 1000)).toString())
       toast.success("OTP resent successfully.")
     } catch (err) {
       toast.error(err?.response?.data?.message || "Failed to resend code")
@@ -298,6 +393,16 @@ export default function RestaurantOTP() {
 
           <div className="relative">
             <form onSubmit={(e) => { e.preventDefault(); handleVerify(); }} className="space-y-6">
+              {otpError && (
+                <motion.div
+                  initial={{ opacity: 0, y: -6 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  className="text-red-600 dark:text-red-500 text-[15px] font-bold text-center tracking-wide mb-4 mt-2"
+                >
+                  {otpError}
+                </motion.div>
+              )}
+
               <div className="flex justify-between gap-3">
                 {[0, 1, 2, 3].map((index) => (
                   <input
@@ -306,11 +411,12 @@ export default function RestaurantOTP() {
                     type="tel"
                     inputMode="numeric"
                     required
+                    disabled={isLoading || blockTimer > 0}
                     autoFocus={index === 0}
                     value={otp[index]}
                     onChange={(e) => handleChange(index, e.target.value)}
                     onKeyDown={(e) => handleKeyDown(index, e)}
-                    className="w-14 h-14 sm:w-16 sm:h-16 text-center text-2xl font-bold bg-gray-50 dark:bg-gray-800 border-2 border-gray-300 dark:border-gray-600 shadow-sm rounded-[20px] outline-none transition-all duration-300 text-gray-900 dark:text-white focus:bg-white dark:focus:bg-gray-900 focus:border-[#B80B3D] focus:ring-4 focus:ring-[#B80B3D]/10 hover:border-gray-400"
+                    className={`w-14 h-14 sm:w-16 sm:h-16 text-center text-2xl font-bold bg-gray-50 dark:bg-gray-800 border-2 border-gray-300 dark:border-gray-600 shadow-sm rounded-[20px] outline-none transition-all duration-300 text-gray-900 dark:text-white focus:bg-white dark:focus:bg-gray-900 focus:border-[#B80B3D] focus:ring-4 focus:ring-[#B80B3D]/10 hover:border-gray-400 ${blockTimer > 0 ? "opacity-50 cursor-not-allowed border-red-400 bg-red-50 text-red-800" : ""}`}
                     placeholder="•"
                   />
                 ))}
@@ -318,15 +424,17 @@ export default function RestaurantOTP() {
 
               <div className="flex flex-col items-center gap-4">
                 <div className="flex items-center gap-2 text-xs font-semibold">
-                  {resendTimer > 0 ? (
-                    <span className="text-gray-400">Resend code in <span className="text-[#B80B3D]">{formatResendTimer(resendTimer)}</span></span>
+                  {blockTimer > 0 ? (
+                    <span className="text-gray-400 uppercase tracking-wider">Resend SMS</span>
+                  ) : resendTimer > 0 ? (
+                    <span className="text-gray-400">Resend SMS in <span className="text-[#B80B3D]">{formatResendTimer(resendTimer)}</span></span>
                   ) : (
                     <button
                       type="button"
                       onClick={handleResend}
                       className="text-[#B80B3D] hover:underline"
                     >
-                      Didn't receive code? Resend
+                      Didn't receive SMS? Resend SMS
                     </button>
                   )}
                 </div>
@@ -334,11 +442,29 @@ export default function RestaurantOTP() {
 
               <button
                 type="submit"
-                disabled={isLoading || !isOtpComplete}
+                disabled={isLoading || !isOtpComplete || blockTimer > 0}
                 className="w-full py-3.5 bg-gradient-to-r from-[#B80B3D] to-[#66001D] hover:from-[#A10935] hover:to-[#4F0016] disabled:opacity-50 text-white rounded-full font-medium text-base shadow-[0_8px_20px_rgba(184,11,61,0.3)] disabled:shadow-none transition-all active:scale-[0.98] flex items-center justify-center gap-2 mt-4"
               >
-                {isLoading ? <Loader2 className="w-5 h-5 animate-spin" /> : "Verify & Continue"}
+                {isLoading ? (
+                  <span className="flex items-center gap-2">
+                    <Loader2 className="w-5 h-5 animate-spin" />
+                    Verifying...
+                  </span>
+                ) : (
+                  "Verify & Continue"
+                )}
               </button>
+
+              {blockTimer > 0 && (
+                <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="text-center w-fit mx-auto px-6 py-2.5 bg-red-50 dark:bg-red-950/20 rounded-xl border border-red-100 dark:border-red-900/50 mt-4">
+                  <p className="text-[11px] font-bold text-[#B80B3D] uppercase tracking-wider">
+                    Too many failed attempts
+                  </p>
+                  <p className="text-sm font-bold text-[#B80B3D]">
+                    Try again after {Math.floor((blockTimer - 1) / 60)}:{String((blockTimer - 1) % 60).padStart(2, '0')}
+                  </p>
+                </motion.div>
+              )}
             </form>
           </div>
 

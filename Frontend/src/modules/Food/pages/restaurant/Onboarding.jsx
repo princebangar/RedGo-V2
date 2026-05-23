@@ -1,9 +1,10 @@
 import { useEffect, useRef, useState } from "react"
+import { motion, AnimatePresence } from "framer-motion"
 import { useNavigate, useSearchParams } from "react-router-dom"
 import { Input } from "@food/components/ui/input"
 import { Button } from "@food/components/ui/button"
 import { Label } from "@food/components/ui/label"
-import { Image as ImageIcon, Upload, Clock, Calendar as CalendarIcon, Sparkles, X, LogOut, FileText, ShoppingBag } from "lucide-react"
+import { Image as ImageIcon, Upload, Clock, Calendar as CalendarIcon, Sparkles, X, LogOut, FileText, ShoppingBag, ArrowLeft } from "lucide-react"
 import { Popover, PopoverContent, PopoverTrigger } from "@food/components/ui/popover"
 import { Calendar } from "@food/components/ui/calendar"
 import {
@@ -514,6 +515,55 @@ export default function RestaurantOnboarding() {
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState("")
   const [isLoggingOut, setIsLoggingOut] = useState(false)
+  const [showExitModal, setShowExitModal] = useState(false)
+  const [exitTrigger, setExitTrigger] = useState("back") // "cross" or "back"
+
+  const handleExitAnyway = async () => {
+    try {
+      clearOnboardingFromLocalStorage()
+      clearOnboardingFileCache()
+      await clearAllFilesFromDB()
+    } catch (e) {
+      debugError("Error clearing onboarding data on exit:", e)
+    }
+    setShowExitModal(false)
+    navigate("/food/restaurant/explore", { replace: true })
+  }
+
+  useEffect(() => {
+    if (showExitModal) {
+      document.body.style.overflow = "hidden"
+    } else {
+      document.body.style.overflow = "unset"
+    }
+    return () => {
+      document.body.style.overflow = "unset"
+    }
+  }, [showExitModal])
+
+  useEffect(() => {
+    window.history.pushState(null, null, window.location.href);
+
+    const handlePopState = () => {
+      window.history.pushState(null, null, window.location.href);
+
+      if (step === 3) {
+        setStep(2);
+        window.scrollTo({ top: 0, behavior: "instant" });
+      } else if (step === 2) {
+        setStep(1);
+        window.scrollTo({ top: 0, behavior: "instant" });
+      } else if (step === 1) {
+        setExitTrigger("back");
+        setShowExitModal(true);
+      }
+    };
+
+    window.addEventListener("popstate", handlePopState);
+    return () => {
+      window.removeEventListener("popstate", handlePopState);
+    };
+  }, [step]);
 
   const handleLogout = async () => {
     if (isLoggingOut) return
@@ -2867,13 +2917,26 @@ export default function RestaurantOnboarding() {
       <div className="min-h-screen bg-gray-100 flex flex-col">
         <header className="px-4 py-4 sm:px-6 sm:py-5 bg-white flex items-center justify-between border-b">
           <div className="flex items-center gap-3">
-            <button
-              onClick={() => navigate("/food/restaurant/explore")}
-              className="p-1 hover:bg-gray-100 rounded-full transition-colors"
-              aria-label="Close onboarding"
-            >
-              <X className="w-5 h-5 text-gray-600" />
-            </button>
+            {step === 1 ? (
+              <button
+                onClick={() => { setExitTrigger("cross"); setShowExitModal(true) }}
+                className="w-9 h-9 flex items-center justify-center bg-gray-50 hover:bg-gray-100 border border-gray-200/80 rounded-full shadow-sm transition-all duration-200 active:scale-90 hover:shadow"
+                aria-label="Close onboarding"
+              >
+                <X className="w-[18px] h-[18px] text-gray-700 stroke-[2.5]" />
+              </button>
+            ) : (
+              <button
+                onClick={() => {
+                  setStep((s) => Math.max(1, s - 1))
+                  window.scrollTo({ top: 0, behavior: "instant" })
+                }}
+                className="w-9 h-9 flex items-center justify-center bg-gray-50 hover:bg-gray-100 border border-gray-200/80 rounded-full shadow-sm transition-all duration-200 active:scale-90 hover:shadow"
+                aria-label="Go back"
+              >
+                <ArrowLeft className="w-[18px] h-[18px] text-gray-700 stroke-[2.5]" />
+              </button>
+            )}
             <div className="text-sm font-semibold text-black">Restaurant onboarding</div>
           </div>
           <div className="flex items-center gap-3">
@@ -2938,6 +3001,76 @@ export default function RestaurantOnboarding() {
           galleryInputRef={sourcePicker.fallbackInputRef}
         />
 
+        <AnimatePresence>
+          {showExitModal && (
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0, transition: { duration: 0 } }}
+              transition={{ duration: 0.2 }}
+              className="fixed inset-0 z-[9999] flex items-center justify-center p-4"
+            >
+              <motion.div
+                initial={{ opacity: 0, backdropFilter: "blur(0px)" }}
+                animate={{ opacity: 1, backdropFilter: "blur(4px)" }}
+                exit={{ opacity: 0, backdropFilter: "blur(0px)", transition: { duration: 0 } }}
+                transition={{ duration: 0.15, ease: "easeOut" }}
+                onClick={() => setShowExitModal(false)}
+                className="absolute inset-0 bg-black/50"
+              />
+              <motion.div
+                custom={exitTrigger}
+                variants={{
+                  initial: (trigger) => trigger === "cross"
+                    ? { opacity: 0, scale: 0.05, x: "-40vw", y: "-45vh" }
+                    : { opacity: 0, scale: 0.94, y: 16 },
+                  animate: { opacity: 1, scale: 1, x: 0, y: 0 },
+                  exit: { opacity: 0, transition: { duration: 0 } },
+                }}
+                initial="initial"
+                animate="animate"
+                exit="exit"
+                transition={
+                  exitTrigger === "cross"
+                    ? { duration: 0.16, ease: [0.16, 1, 0.3, 1] }
+                    : { duration: 0.14, ease: [0.16, 1, 0.3, 1] }
+                }
+                className="w-full max-w-[320px] bg-white dark:bg-[#1a1a1a] rounded-3xl shadow-2xl overflow-hidden border border-gray-100 dark:border-gray-800 relative z-10"
+                onClick={(e) => e.stopPropagation()}
+              >
+                {/* Top Half: brand gradient */}
+                <div className="bg-gradient-to-br from-[#B80B3D] to-[#66001D] p-6 text-center relative">
+                  <div className="absolute top-[-20%] right-[-10%] w-28 h-28 bg-white/10 rounded-full blur-2xl pointer-events-none" />
+                  
+                  <div className="w-16 h-16 bg-white/20 backdrop-blur-md rounded-full flex items-center justify-center mx-auto mb-3 border border-white/30">
+                    <LogOut className="w-8 h-8 text-white" />
+                  </div>
+                  <h3 className="text-xl font-bold text-white mb-1.5">Exit Onboarding?</h3>
+                  <p className="text-white/80 text-[13px] leading-relaxed">
+                    Are you sure? All filled restaurant details will be removed if you leave this page.
+                  </p>
+                </div>
+
+                {/* Bottom Half: white bg with green/red buttons */}
+                <div className="p-6 pt-5 space-y-3 bg-white dark:bg-[#1a1a1a]">
+                  <button
+                    onClick={() => setShowExitModal(false)}
+                    className="w-full h-12 bg-green-700 hover:bg-green-800 text-white font-semibold text-[15px] tracking-wide rounded-2xl shadow-lg shadow-green-700/20 transition-all hover:scale-[1.02] active:scale-[0.98]"
+                  >
+                    Stay Here
+                  </button>
+                  <button
+                    onClick={handleExitAnyway}
+                    className="w-full h-12 bg-red-600 hover:bg-red-700 text-white font-semibold text-[15px] tracking-wide rounded-2xl shadow-lg shadow-red-600/20 transition-all hover:scale-[1.02] active:scale-[0.98]"
+                  >
+                    Exit Anyway
+                  </button>
+                </div>
+              </motion.div>
+            </motion.div>
+          )}
+        </AnimatePresence>
+
         {error && (
           <div className="px-4 sm:px-6 pb-2 text-xs text-[#B80B3D]">
             {error}
@@ -2945,15 +3078,7 @@ export default function RestaurantOnboarding() {
         )}
 
         <footer className={`px-4 sm:px-6 py-3 bg-white ${keyboardInset ? "hidden" : ""}`}>
-          <div className="flex justify-between items-center">
-            <Button
-              variant="ghost"
-              disabled={step === 1 || saving}
-              onClick={() => { setStep((s) => Math.max(1, s - 1)); window.scrollTo({ top: 0, behavior: "instant" }) }}
-              className="text-sm text-gray-700 bg-transparent"
-            >
-              Back
-            </Button>
+          <div className="flex justify-end items-center">
             <Button
               onClick={handleNext}
               disabled={saving || (step === 3 && !isEditing)}

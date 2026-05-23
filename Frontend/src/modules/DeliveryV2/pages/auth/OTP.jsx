@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from "react"
-import { useNavigate } from "react-router-dom"
+import { useNavigate, useLocation } from "react-router-dom"
+import { motion } from "framer-motion"
 import { ArrowLeft, Loader2, Smartphone } from "lucide-react"
 import AnimatedPage from "@food/components/user/AnimatedPage"
 import { Input } from "@food/components/ui/input"
@@ -13,11 +14,13 @@ const debugError = (...args) => {}
 
 export default function DeliveryOTP() {
   const navigate = useNavigate()
+  const location = useLocation()
   const [otp, setOtp] = useState(["", "", "", ""])
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState("")
   const [success, setSuccess] = useState(false)
   const [resendTimer, setResendTimer] = useState(0)
+  const [blockTimer, setBlockTimer] = useState(0)
   const [authData, setAuthData] = useState(null)
   const [showNameInput, setShowNameInput] = useState(false)
   const [name, setName] = useState("")
@@ -32,12 +35,26 @@ export default function DeliveryOTP() {
   const [deletedAccountData, setDeletedAccountData] = useState(null)
   const inputRefs = useRef([])
 
+  const getBlockKey = () => {
+    const phone = authData?.phone || ""
+    const clean = phone.replace(/\D/g, "")
+    return clean ? `delivery_block_expires_at_${clean}` : "delivery_block_expires_at"
+  }
+
+  const getResendKey = () => {
+    const phone = authData?.phone || ""
+    const clean = phone.replace(/\D/g, "")
+    return clean ? `delivery_resend_expires_at_${clean}` : "delivery_resend_expires_at"
+  }
+
   useEffect(() => {
     // Get auth data from sessionStorage (delivery module key)
     const stored = sessionStorage.getItem("deliveryAuthData")
+    let currentPhone = ""
     if (stored) {
       const data = JSON.parse(stored)
       setAuthData(data)
+      currentPhone = data.phone || ""
     } else {
       // No active OTP flow: if already authenticated, go to delivery home
       const token = localStorage.getItem("delivery_accessToken")
@@ -63,34 +80,82 @@ export default function DeliveryOTP() {
       return
     }
 
-    // OTP field should be empty - delivery boy needs to enter it manually
-    // No auto-fill for delivery OTP
+    const clean = currentPhone.replace(/\D/g, "")
+    const blockKey = clean ? `delivery_block_expires_at_${clean}` : "delivery_block_expires_at"
+    const resendKey = clean ? `delivery_resend_expires_at_${clean}` : "delivery_resend_expires_at"
 
-    // Start resend timer (60 seconds)
-    setResendTimer(60)
-    const timer = setInterval(() => {
-      setResendTimer((prev) => {
-        if (prev <= 1) {
-          clearInterval(timer)
-          return 0
-        }
-        return prev - 1
-      })
-    }, 1000)
+    // Resume block timer
+    const savedBlockExpiry = sessionStorage.getItem(blockKey)
+    if (savedBlockExpiry) {
+      const remaining = Math.max(0, Math.floor((parseInt(savedBlockExpiry) - Date.now()) / 1000))
+      if (remaining > 0) {
+        setBlockTimer(remaining)
+      } else {
+        sessionStorage.removeItem(blockKey)
+      }
+    } else if (location.state?.initialBlockMins) {
+      const seconds = Math.ceil(location.state.initialBlockMins * 60)
+      setBlockTimer(seconds)
+      sessionStorage.setItem(blockKey, (Date.now() + (seconds * 1000)).toString())
+    }
 
-    return () => clearInterval(timer)
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])
+    // Resume resend timer
+    const savedResendExpiry = sessionStorage.getItem(resendKey)
+    if (savedResendExpiry) {
+      const remaining = Math.max(0, Math.floor((parseInt(savedResendExpiry) - Date.now()) / 1000))
+      if (remaining > 0) {
+        setResendTimer(remaining)
+      } else {
+        sessionStorage.removeItem(resendKey)
+      }
+    } else {
+      setResendTimer(59)
+      sessionStorage.setItem(resendKey, (Date.now() + (59 * 1000)).toString())
+    }
+  }, [navigate, location.state])
 
   useEffect(() => {
-    // Don't auto-focus - let user manually enter OTP
-    // Focus first input only if all fields are empty (small delay to ensure inputs are rendered)
-    if (inputRefs.current[0] && otp.every(digit => digit === "")) {
-      setTimeout(() => {
-        inputRefs.current[0]?.focus()
-      }, 100)
+    if (resendTimer <= 0) return
+    const timer = setInterval(() => {
+      setResendTimer((prev) => (prev > 0 ? prev - 1 : 0))
+    }, 1000)
+    return () => clearInterval(timer)
+  }, [resendTimer])
+
+  useEffect(() => {
+    if (blockTimer <= 0) return
+    const timer = setInterval(() => {
+      setBlockTimer((prev) => (prev > 0 ? prev - 1 : 0))
+    }, 1000)
+    return () => clearInterval(timer)
+  }, [blockTimer])
+
+  // Intercept hardware back button to return to login instead of leaving the page
+  useEffect(() => {
+    const handlePopState = () => {
+      if (blockTimer > 0) {
+        window.history.pushState({ otpStep: true }, "")
+        return
+      }
+      navigate("/food/delivery/login")
     }
-  }, [otp])
+
+    window.history.pushState({ otpStep: true }, "")
+    window.addEventListener("popstate", handlePopState)
+
+    return () => {
+      window.removeEventListener("popstate", handlePopState)
+    }
+  }, [blockTimer > 0])
+
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      if (inputRefs.current[0]) {
+        inputRefs.current[0].focus()
+      }
+    }, 100)
+    return () => clearTimeout(timer)
+  }, [])
 
   const handleChange = (index, value) => {
     // Only allow digits
@@ -101,17 +166,15 @@ export default function DeliveryOTP() {
     const newOtp = [...otp]
     newOtp[index] = value
     setOtp(newOtp)
-    setError("")
+    if (index === 0 && value) {
+      setError("")
+    }
 
     // Auto-focus next input
     if (value && index < 3) {
       inputRefs.current[index + 1]?.focus()
     }
 
-    // Auto-submit when all 4 digits are entered and we are in OTP step
-    if (!showNameInput && newOtp.every((digit) => digit !== "") && newOtp.length === 4) {
-      handleVerify(newOtp.join(""))
-    }
   }
 
   const handleKeyDown = (index, e) => {
@@ -142,11 +205,8 @@ export default function DeliveryOTP() {
           }
         })
         setOtp(newOtp)
-        if (digits.length === 4) {
-          handleVerify(newOtp.join(""))
-        } else {
-          inputRefs.current[digits.length]?.focus()
-        }
+        const targetIndex = Math.min(digits.length, 3)
+        inputRefs.current[targetIndex]?.focus()
       })
     }
   }
@@ -162,11 +222,8 @@ export default function DeliveryOTP() {
       }
     })
     setOtp(newOtp)
-    if (!showNameInput && digits.length === 4) {
-      handleVerify(newOtp.join(""))
-      return
-    }
-    inputRefs.current[digits.length]?.focus()
+    const targetIndex = Math.min(digits.length, 3)
+    inputRefs.current[targetIndex]?.focus()
   }
 
   const handleVerify = async (otpValue = null, confirmAction = null) => {
@@ -180,6 +237,8 @@ export default function DeliveryOTP() {
     if (code.length !== 4) {
       return
     }
+
+    if (isLoading || blockTimer > 0) return
 
     setIsLoading(true)
     setError("")
@@ -238,6 +297,8 @@ export default function DeliveryOTP() {
 
       if (data.pendingApproval === true) {
         sessionStorage.removeItem("deliveryAuthData")
+        sessionStorage.removeItem(getBlockKey())
+        sessionStorage.removeItem(getResendKey())
         setIsLoading(false)
         setError("")
         setPendingMessage(data.message || "Your account is pending admin verification. You will be notified once approved.")
@@ -251,6 +312,8 @@ export default function DeliveryOTP() {
       if (needsRegistration) {
         // No DB record yet; redirect to registration details page WITHOUT creating anything in DB.
         sessionStorage.removeItem("deliveryAuthData")
+        sessionStorage.removeItem(getBlockKey())
+        sessionStorage.removeItem(getResendKey())
         sessionStorage.setItem("deliveryNeedsRegistration", "true")
         const digits = String(phone || "").replace(/\D/g, "")
         const details = {
@@ -273,6 +336,8 @@ export default function DeliveryOTP() {
       }
 
       sessionStorage.removeItem("deliveryAuthData")
+      sessionStorage.removeItem(getBlockKey())
+      sessionStorage.removeItem(getResendKey())
 
       try {
         debugLog("Storing auth data for delivery:", { hasToken: !!accessToken, hasUser: !!user })
@@ -310,11 +375,38 @@ export default function DeliveryOTP() {
     } catch (err) {
       debugError("OTP Verification Error:", err)
       const message =
-        err?.response?.data?.message ||
         err?.response?.data?.error ||
+        err?.response?.data?.message ||
         err?.message ||
         "Failed to verify OTP. Please try again."
-      setError(message)
+
+      setOtp(["", "", "", ""])
+      setTimeout(() => {
+        inputRefs.current[0]?.focus()
+      }, 50)
+
+      const isBlocked = message.toLowerCase().includes("blocked") || 
+                        message.toLowerCase().includes("too many attempts") || 
+                        message.toLowerCase().includes("try again after");
+
+      if (isBlocked) {
+        let totalSeconds = 180;
+        const timeMatch = message.match(/(\d+)(?::(\d+))?/);
+        if (timeMatch) {
+          const mins = parseInt(timeMatch[1]);
+          const secs = timeMatch[2] ? parseInt(timeMatch[2]) : 0;
+          totalSeconds = (mins * 60) + secs;
+        }
+        setBlockTimer(totalSeconds)
+        sessionStorage.setItem(getBlockKey(), (Date.now() + (totalSeconds * 1000)).toString())
+        setError("")
+      } else {
+        if (/invalid/i.test(message)) {
+          setError("Invalid OTP")
+        } else {
+          setError(message)
+        }
+      }
       setIsLoading(false)
     }
   }
@@ -424,7 +516,7 @@ export default function DeliveryOTP() {
   }
 
   const handleResend = async () => {
-    if (resendTimer > 0) return
+    if (resendTimer > 0 || blockTimer > 0) return
 
     setIsLoading(true)
     setError("")
@@ -434,40 +526,48 @@ export default function DeliveryOTP() {
       const purpose = authData?.purpose || "login"
       if (!phone) {
         setError("Phone number not found. Please go back and try again.")
+        setIsLoading(false)
         return
       }
 
       // Call backend to resend OTP
       await deliveryAPI.sendOTP(phone, purpose)
+      setResendTimer(59)
+      sessionStorage.setItem(getResendKey(), (Date.now() + (59 * 1000)).toString())
+      setOtp(["", "", "", ""])
+      setShowNameInput(false)
+      setName("")
+      setNameError("")
+      setVerifiedOtp("")
+      inputRefs.current[0]?.focus()
     } catch (err) {
       const message =
-        err?.response?.data?.message ||
         err?.response?.data?.error ||
+        err?.response?.data?.message ||
         err?.message ||
         "Failed to resend OTP. Please try again."
-      setError(message)
+
+      const isBlocked = message.toLowerCase().includes("blocked") || 
+                        message.toLowerCase().includes("too many attempts") || 
+                        message.toLowerCase().includes("try again after");
+
+      if (isBlocked) {
+        let totalSeconds = 180;
+        const timeMatch = message.match(/(\d+)(?::(\d+))?/);
+        if (timeMatch) {
+          const mins = parseInt(timeMatch[1]);
+          const secs = timeMatch[2] ? parseInt(timeMatch[2]) : 0;
+          totalSeconds = (mins * 60) + secs;
+        }
+        setBlockTimer(totalSeconds)
+        sessionStorage.setItem(getBlockKey(), (Date.now() + (totalSeconds * 1000)).toString())
+        setError("")
+      } else {
+        setError(message)
+      }
     } finally {
       setIsLoading(false)
     }
-
-    // Reset timer to 60 seconds
-    setResendTimer(60)
-    const timer = setInterval(() => {
-      setResendTimer((prev) => {
-        if (prev <= 1) {
-          clearInterval(timer)
-          return 0
-        }
-        return prev - 1
-      })
-    }, 1000)
-
-    setOtp(["", "", "", ""])
-    setShowNameInput(false)
-    setName("")
-    setNameError("")
-    setVerifiedOtp("")
-    inputRefs.current[0]?.focus()
   }
 
   const getPhoneNumber = () => {
@@ -573,16 +673,19 @@ export default function DeliveryOTP() {
             </div>
           )}
 
-          {/* Error message */}
-          {error && (
-            <p className="text-sm text-red-500 text-center">
-              {error}
-            </p>
-          )}
-
           {/* OTP Input Fields */}
           {!showNameInput && !pendingMessage && (
             <>
+              {error && (
+                <motion.div
+                  initial={{ opacity: 0, y: -6 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  className="text-red-600 dark:text-red-500 text-[15px] font-bold text-center tracking-wide mb-4 mt-2"
+                >
+                  {error}
+                </motion.div>
+              )}
+
               <div className="flex justify-center gap-2">
                 {otp.map((digit, index) => (
                   <Input
@@ -595,10 +698,12 @@ export default function DeliveryOTP() {
                     onChange={(e) => handleChange(index, e.target.value)}
                     onKeyDown={(e) => handleKeyDown(index, e)}
                     onPaste={index === 0 ? handlePaste : undefined}
-                    disabled={isLoading}
+                    disabled={isLoading || blockTimer > 0}
                     autoComplete="off"
                     autoFocus={false}
-                    className="w-12 h-12 text-center text-lg font-semibold p-0 border border-black rounded-md focus-visible:ring-0 focus-visible:border-black bg-white"
+                    className={`w-12 h-12 text-center text-lg font-semibold p-0 border border-black rounded-md focus-visible:ring-0 focus-visible:border-black bg-white ${
+                      blockTimer > 0 ? "opacity-50 cursor-not-allowed border-red-400 bg-red-50 text-red-800" : ""
+                    }`}
                   />
                 ))}
               </div>
@@ -608,9 +713,13 @@ export default function DeliveryOTP() {
                 <p className="text-sm text-black">
                   Didn't get the OTP?
                 </p>
-                {resendTimer > 0 ? (
+                {blockTimer > 0 ? (
+                  <p className="text-sm text-gray-400 uppercase tracking-wider font-semibold">
+                    Resend SMS
+                  </p>
+                ) : resendTimer > 0 ? (
                   <p className="text-sm text-gray-500">
-                    Resend SMS in {resendTimer}s
+                    Resend SMS in 00:{String(resendTimer).padStart(2, '0')}
                   </p>
                 ) : (
                   <button
@@ -623,6 +732,32 @@ export default function DeliveryOTP() {
                   </button>
                 )}
               </div>
+
+              <button
+                onClick={() => handleVerify()}
+                disabled={isLoading || otp.every(digit => digit === "") || blockTimer > 0}
+                className="w-full h-11 bg-[#00B761] hover:opacity-90 disabled:opacity-50 text-white font-semibold rounded-md flex items-center justify-center gap-2 mt-4 transition-all"
+              >
+                {isLoading ? (
+                  <span className="flex items-center justify-center gap-2">
+                    <Loader2 className="h-5 w-5 animate-spin" />
+                    Verifying...
+                  </span>
+                ) : (
+                  "Verify & Continue"
+                )}
+              </button>
+
+              {blockTimer > 0 && (
+                <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="text-center w-fit mx-auto px-6 py-2.5 bg-red-50 rounded-xl border border-red-100 mt-4">
+                  <p className="text-[11px] font-bold text-red-600 uppercase tracking-wider">
+                    Too many failed attempts
+                  </p>
+                  <p className="text-sm font-bold text-red-600">
+                    Try again after {Math.floor((blockTimer - 1) / 60)}:{String((blockTimer - 1) % 60).padStart(2, '0')}
+                  </p>
+                </motion.div>
+              )}
             </>
           )}
 
@@ -652,20 +787,13 @@ export default function DeliveryOTP() {
                 )}
               </div>
 
-              <Button
+              <button
                 onClick={handleSubmitName}
                 disabled={isLoading}
-                className="w-full h-11 bg-[#00B761] hover:bg-[#00A055] text-white font-semibold"
+                className="w-full h-11 bg-[#00B761] hover:opacity-90 disabled:opacity-50 text-white font-semibold rounded-md flex items-center justify-center transition-all"
               >
                 {isLoading ? "Continuing..." : "Continue"}
-              </Button>
-            </div>
-          )}
-
-          {/* Loading Spinner */}
-          {isLoading && !showNameInput && (
-            <div className="flex justify-center pt-4">
-              <Loader2 className="h-6 w-6 text-green-500 animate-spin" />
+              </button>
             </div>
           )}
         </div>

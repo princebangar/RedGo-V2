@@ -10,6 +10,10 @@ const otpSchema = new mongoose.Schema(
             type: String,
             required: true
         },
+        otpExpiresAt: {
+            type: Date,
+            required: true
+        },
         expiresAt: {
             type: Date,
             required: true
@@ -25,6 +29,13 @@ const otpSchema = new mongoose.Schema(
         lastRequestAt: {
             type: Date,
             default: Date.now
+        },
+        totalFailures: {
+            type: Number,
+            default: 0
+        },
+        blockedUntil: {
+            type: Date
         }
     },
     {

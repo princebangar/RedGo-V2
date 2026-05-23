@@ -19,9 +19,10 @@ import { Label } from "@food/components/ui/label"
 
 
 export default function UnifiedOTPFastLogin() {
-  const RESEND_COOLDOWN_SECONDS = 60
+  const RESEND_COOLDOWN_SECONDS = 59
   const [phoneNumber, setPhoneNumber] = useState("")
   const [otp, setOtp] = useState("")
+  const [otpError, setOtpError] = useState("")
   const [step, setStep] = useState(1)
   const [loading, setLoading] = useState(false)
   const [resendTimer, setResendTimer] = useState(0)
@@ -32,8 +33,76 @@ export default function UnifiedOTPFastLogin() {
   const [pendingVerify, setPendingVerify] = useState(null)
   const [showRestorePopup, setShowRestorePopup] = useState(false)
   const [deletedAccountData, setDeletedAccountData] = useState(null)
+  const [blockTimer, setBlockTimer] = useState(0)
   const navigate = useNavigate()
   const submitting = useRef(false)
+
+  // --- PERSISTENCE LOGIC START ---
+  const SESSION_KEY = "user_auth_session_data";
+
+  // Rehydrate state on mount
+  useEffect(() => {
+    const savedState = sessionStorage.getItem(SESSION_KEY);
+    if (savedState) {
+      try {
+        const parsed = JSON.parse(savedState);
+        if (parsed.phoneNumber) setPhoneNumber(parsed.phoneNumber);
+        if (parsed.step) setStep(parsed.step);
+        if (parsed.showNameModal !== undefined) setShowNameModal(parsed.showNameModal);
+        if (parsed.newName) setNewName(parsed.newName);
+        if (parsed.tempAuth) setTempAuth(parsed.tempAuth);
+        if (parsed.pendingVerify) setPendingVerify(parsed.pendingVerify);
+        if (parsed.showRestorePopup !== undefined) setShowRestorePopup(parsed.showRestorePopup);
+        if (parsed.deletedAccountData) setDeletedAccountData(parsed.deletedAccountData);
+
+        // Resume Resend Timer
+        if (parsed.resendExpiresAt) {
+          const remaining = Math.max(0, Math.floor((parsed.resendExpiresAt - Date.now()) / 1000));
+          if (remaining > 0) setResendTimer(remaining);
+        }
+
+        // Resume Block Timer
+        if (parsed.blockExpiresAt) {
+          const remaining = Math.max(0, Math.floor((parsed.blockExpiresAt - Date.now()) / 1000));
+          if (remaining > 0) {
+            setBlockTimer(remaining);
+            if (parsed.step === 1) setStep(2); // Ensure we show step 2 if blocked
+          }
+        }
+      } catch (e) {
+        console.error("Failed to rehydrate login state", e);
+      }
+    }
+  }, []);
+
+  // Persist state on change
+  useEffect(() => {
+    if (step === 1 && !phoneNumber && !blockTimer && !showNameModal && !showRestorePopup) {
+      // Don't save empty initial state
+      return;
+    }
+
+    const stateToSave = {
+      phoneNumber,
+      step,
+      showNameModal,
+      newName,
+      tempAuth,
+      pendingVerify,
+      showRestorePopup,
+      deletedAccountData,
+      // Save expiration timestamps instead of seconds
+      resendExpiresAt: resendTimer > 0 ? Date.now() + (resendTimer * 1000) : null,
+      blockExpiresAt: blockTimer > 0 ? Date.now() + (blockTimer * 1000) : null,
+    };
+    sessionStorage.setItem(SESSION_KEY, JSON.stringify(stateToSave));
+  }, [phoneNumber, step, showNameModal, newName, tempAuth, pendingVerify, showRestorePopup, deletedAccountData, resendTimer === 0, blockTimer === 0]);
+
+  // Combined cleanup helper
+  const clearSessionData = () => {
+    sessionStorage.removeItem(SESSION_KEY);
+  };
+  // --- PERSISTENCE LOGIC END ---
 
   const normalizedPhone = () => {
     const digits = String(phoneNumber).replace(/\D/g, "").slice(-15)
@@ -53,6 +122,8 @@ export default function UnifiedOTPFastLogin() {
     try {
       await authAPI.sendOTP(phoneNumber, "login", null)
       setOtp("")
+      setOtpError("")
+      setBlockTimer(0)
       setStep(2)
       setResendTimer(RESEND_COOLDOWN_SECONDS)
       toast.success("OTP sent successfully!")
@@ -62,6 +133,24 @@ export default function UnifiedOTPFastLogin() {
         err?.response?.data?.message ||
         err?.message ||
         "Failed to send OTP."
+      const lowerMsg = msg.toLowerCase();
+      const isBlocked = lowerMsg.includes("blocked") ||
+        lowerMsg.includes("too many attempts") ||
+        lowerMsg.includes("try again after");
+
+      if (isBlocked) {
+        let totalSeconds = 180; // default 3 mins
+        const timeMatch = msg.match(/(\d+)(?::(\d+))?/);
+        if (timeMatch) {
+          const mins = parseInt(timeMatch[1]);
+          const secs = timeMatch[2] ? parseInt(timeMatch[2]) : 0;
+          totalSeconds = (mins * 60) + secs;
+        }
+
+        setBlockTimer(totalSeconds);
+        setStep(2);
+        return;
+      }
       toast.error(msg)
     } finally {
       setLoading(false)
@@ -75,7 +164,7 @@ export default function UnifiedOTPFastLogin() {
       toast.error("Please enter a valid phone number")
       return
     }
-    if (resendTimer > 0 || submitting.current) return
+    if (resendTimer > 0 || blockTimer > 0 || submitting.current) return
     submitting.current = true
     setLoading(true)
     try {
@@ -89,6 +178,23 @@ export default function UnifiedOTPFastLogin() {
         err?.response?.data?.message ||
         err?.message ||
         "Failed to resend OTP."
+      const lowerMsg = msg.toLowerCase();
+      const isBlocked = lowerMsg.includes("blocked") ||
+        lowerMsg.includes("too many attempts") ||
+        lowerMsg.includes("try again after");
+
+      if (isBlocked) {
+        let totalSeconds = 180;
+        const timeMatch = msg.match(/(\d+)(?::(\d+))?/);
+        if (timeMatch) {
+          const mins = parseInt(timeMatch[1]);
+          const secs = timeMatch[2] ? parseInt(timeMatch[2]) : 0;
+          totalSeconds = (mins * 60) + secs;
+        }
+
+        setBlockTimer(totalSeconds);
+        return;
+      }
       toast.error(msg)
     } finally {
       setLoading(false)
@@ -101,6 +207,9 @@ export default function UnifiedOTPFastLogin() {
     setShowRestorePopup(false)
     setDeletedAccountData(null)
     setPendingVerify(null)
+    setBlockTimer(0) // Clear block timer when changing number
+    setOtpError("") // Clear error
+    setOtp("") // Clear inputs
     // Small delay for smooth transition so the background doesn't flicker while modal is closing
     setTimeout(() => {
       if (step === 2) {
@@ -114,9 +223,10 @@ export default function UnifiedOTPFastLogin() {
     }, 150)
   }
 
-  const handleVerifyOTP = async (e) => {
+  const handleVerifyOTP = async (e, customOtp = null) => {
     if (e && e.preventDefault) e.preventDefault()
-    const otpDigits = String(otp).replace(/\D/g, "").slice(0, 4)
+    const code = typeof customOtp === "string" ? customOtp : otp
+    const otpDigits = String(code).replace(/\D/g, "").slice(0, 4)
     if (otpDigits.length !== 4) {
       toast.error("Please enter the 4-digit OTP")
       return
@@ -191,11 +301,28 @@ export default function UnifiedOTPFastLogin() {
         setTempAuth({ accessToken, user, refreshToken })
         setShowNameModal(true)
       } else {
+        clearSessionData()
         navigate("/user/auth/portal", { replace: true })
       }
     } catch (err) {
       const status = err?.response?.status
       let msg = err?.response?.data?.message || err?.response?.data?.error || err?.message || "Invalid OTP. Please try again."
+
+      // Clear OTP inputs on failure
+      setOtp("")
+      setTimeout(() => {
+        document.getElementById("otp-0")?.focus()
+      }, 50)
+
+      if (msg.toLowerCase().includes("blocked") || msg.toLowerCase().includes("too many attempts")) {
+        const timeMatch = msg.match(/(\d+)(?::(\d+))?/);
+        if (timeMatch) {
+          const mins = parseInt(timeMatch[1]);
+          const secs = timeMatch[2] ? parseInt(timeMatch[2]) : 0;
+          setBlockTimer((mins * 60) + secs);
+          msg = ""; // Clear msg so only block UI displays
+        }
+      }
 
       // Legacy check for string-based name requirement (backward compatibility)
       const nameRequired = /name\s+is\s+required.*first[- ]?time|first[- ]?time.*name\s+is\s+required|first[- ]?time\s*sign\s*up/i.test(String(msg))
@@ -212,14 +339,16 @@ export default function UnifiedOTPFastLogin() {
         return
       }
 
-      if (status === 401) {
+      if (status === 401 && msg) {
         if (/deactivat(ed|e)/i.test(String(msg))) {
           msg = "Your account is deactivated. Please contact support."
+          toast.error(msg)
         } else {
-          msg = "Invalid or expired code, or account not active."
+          setOtpError("Invalid OTP")
         }
+      } else if (msg) {
+        toast.error(msg)
       }
-      toast.error(msg)
     } finally {
       setLoading(false)
       submitting.current = false
@@ -257,7 +386,7 @@ export default function UnifiedOTPFastLogin() {
 
         setAuthData("user", accessToken, user, refreshToken)
         setPendingVerify(null)
-        // toast.success(`Welcome, ${newName.trim()}!`)
+        clearSessionData()
         setShowNameModal(false)
         navigate("/user/auth/portal", { replace: true })
         return
@@ -270,7 +399,7 @@ export default function UnifiedOTPFastLogin() {
       const updatedUser = { ...tempAuth.user, name: newName.trim() }
       setAuthData("user", tempAuth.accessToken, updatedUser, tempAuth.refreshToken)
 
-      // toast.success(`Welcome, ${newName.trim()}!`)
+      clearSessionData()
       setShowNameModal(false)
       navigate("/user/auth/portal", { replace: true })
     } catch (err) {
@@ -289,10 +418,31 @@ export default function UnifiedOTPFastLogin() {
     return () => clearInterval(intervalId)
   }, [step, resendTimer])
 
+  useEffect(() => {
+    if (blockTimer <= 0) return
+    const intervalId = setInterval(() => {
+      setBlockTimer((prev) => (prev > 0 ? prev - 1 : 0))
+    }, 1000)
+    return () => clearInterval(intervalId)
+  }, [blockTimer])
+
+  useEffect(() => {
+    if (step === 2) {
+      setTimeout(() => {
+        document.getElementById("otp-0")?.focus();
+      }, 100);
+    }
+  }, [step]);
+
   // Intercept hardware back button to return to step 1 instead of leaving the page
   useEffect(() => {
     const handlePopState = () => {
       if (step === 2) {
+        if (blockTimer > 0) {
+          // Push state again to keep user locked on step 2
+          window.history.pushState({ otpStep: true }, "")
+          return
+        }
         setStep(1)
         setOtp("")
         setResendTimer(0)
@@ -307,7 +457,7 @@ export default function UnifiedOTPFastLogin() {
     return () => {
       window.removeEventListener("popstate", handlePopState)
     }
-  }, [step])
+  }, [step, blockTimer > 0])
 
   const formatResendTimer = (seconds) => {
     const mins = Math.floor(seconds / 60)
@@ -384,9 +534,9 @@ export default function UnifiedOTPFastLogin() {
             <img
               src="/redgo_logo_transparent.png"
               alt="RedGo Logo"
-              className="h-28 mt-6 mb-4 object-contain drop-shadow-md"
+              className="h-28 mt-6 mb-1 object-contain drop-shadow-md"
             />
-            <div className="text-sm text-gray-500 dark:text-gray-400 mt-2 font-medium flex items-center justify-center gap-1.5">
+            <div className="text-sm text-gray-500 dark:text-gray-400 mt-0 font-medium flex items-center justify-center gap-1.5">
               {step === 1 ? (
                 <span>Login or signup with your phone number</span>
               ) : (
@@ -452,6 +602,16 @@ export default function UnifiedOTPFastLogin() {
                   onSubmit={handleVerifyOTP}
                   className="space-y-6"
                 >
+                  {otpError && (
+                    <motion.div
+                      initial={{ opacity: 0, y: -6 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      className="text-red-600 dark:text-red-500 text-[15px] font-bold text-center tracking-wide -mt-7 mb-6"
+                    >
+                      {otpError}
+                    </motion.div>
+                  )}
+
                   <div className="flex justify-between gap-3">
                     {[0, 1, 2, 3].map((index) => (
                       <input
@@ -460,10 +620,14 @@ export default function UnifiedOTPFastLogin() {
                         type="tel"
                         inputMode="numeric"
                         required
+                        disabled={loading || blockTimer > 0}
                         autoFocus={index === 0}
                         value={otp[index] || ""}
                         onChange={(e) => {
                           const val = e.target.value.replace(/\D/g, "").slice(-1);
+                          if (index === 0 && val) {
+                            setOtpError("");
+                          }
                           if (!val) return;
                           const newOtp = otp.split("");
                           newOtp[index] = val;
@@ -484,7 +648,8 @@ export default function UnifiedOTPFastLogin() {
                             }
                           }
                         }}
-                        className="w-14 h-14 sm:w-16 sm:h-16 text-center text-2xl font-bold bg-gray-50 dark:bg-gray-800 border-2 border-gray-300 dark:border-gray-600 shadow-sm rounded-[20px] outline-none transition-all duration-300 text-gray-900 dark:text-white focus:bg-white dark:focus:bg-gray-900 focus:border-[#B80B3D] focus:ring-4 focus:ring-[#B80B3D]/10 hover:border-gray-400"
+                        className={`w-14 h-14 sm:w-16 sm:h-16 text-center text-2xl font-bold bg-gray-50 dark:bg-gray-800 border-2 border-gray-300 dark:border-gray-600 shadow-sm rounded-[20px] outline-none transition-all duration-300 text-gray-900 dark:text-white focus:bg-white dark:focus:bg-gray-900 focus:border-[#B80B3D] focus:ring-4 focus:ring-[#B80B3D]/10 hover:border-gray-400 ${blockTimer > 0 ? "opacity-50 cursor-not-allowed border-red-400 bg-red-50 text-red-800" : ""
+                          }`}
                         placeholder="•"
                       />
                     ))}
@@ -492,15 +657,17 @@ export default function UnifiedOTPFastLogin() {
 
                   <div className="flex flex-col items-center gap-4">
                     <div className="flex items-center gap-2 text-xs font-semibold">
-                      {resendTimer > 0 ? (
-                        <span className="text-gray-400">Resend code in <span className="text-[#B80B3D]">{formatResendTimer(resendTimer)}</span></span>
+                      {blockTimer > 0 ? (
+                        <span className="text-gray-400 uppercase tracking-wider">Resend SMS</span>
+                      ) : resendTimer > 0 ? (
+                        <span className="text-gray-400">Resend SMS in <span className="text-[#B80B3D]">{formatResendTimer(resendTimer)}</span></span>
                       ) : (
                         <button
                           type="button"
                           onClick={handleResendOTP}
                           className="text-[#B80B3D] hover:underline"
                         >
-                          Didn't receive code? Resend
+                          Didn't receive SMS? Resend SMS
                         </button>
                       )}
                     </div>
@@ -509,30 +676,51 @@ export default function UnifiedOTPFastLogin() {
 
                   <button
                     type="submit"
-                    disabled={loading || otp.length < 4}
+                    disabled={loading || otp.length < 4 || blockTimer > 0}
                     className="w-full py-3.5 bg-gradient-to-r from-[#B80B3D] to-[#66001D] hover:from-[#A10935] hover:to-[#4F0016] disabled:opacity-50 text-white rounded-full font-medium text-base shadow-[0_8px_20px_rgba(184,11,61,0.3)] disabled:shadow-none transition-all active:scale-[0.98] flex items-center justify-center gap-2 mt-4"
                   >
-                    {loading ? <Loader2 className="w-5 h-5 animate-spin" /> : "Verify & Continue"}
+                    {loading ? (
+                      <span className="flex items-center gap-2">
+                        <Loader2 className="w-5 h-5 animate-spin" />
+                        Verifying...
+                      </span>
+                    ) : (
+                      "Verify & Continue"
+                    )}
                   </button>
+
+                  {blockTimer > 0 && (
+                    <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="text-center w-fit mx-auto px-6 py-2.5 bg-red-50 dark:bg-red-950/20 rounded-xl border border-red-100 dark:border-red-900/50 mt-4">
+                      <p className="text-[11px] font-bold text-[#B80B3D] uppercase tracking-wider">
+                        Too many failed attempts
+                      </p>
+                      <p className="text-sm font-bold text-[#B80B3D]">
+                        Try again after {Math.floor((blockTimer - 1) / 60)}:{String((blockTimer - 1) % 60).padStart(2, '0')}
+                      </p>
+                    </motion.div>
+                  )}
                 </motion.form>
               )}
             </AnimatePresence>
           </div>
 
           {/* Skip Now Button */}
-          <div className="mt-5 flex justify-center w-full">
-            <button
-              type="button"
-              onClick={() => {
-                localStorage.setItem("user_authenticated", "false");
-                navigate('/food/user');
-              }}
-              className="flex items-center justify-center gap-1.5 px-8 py-[7.5px] bg-gradient-to-r from-[#B80B3D] to-[#66001D] hover:from-[#A10935] hover:to-[#4F0016] text-white rounded-full shadow-[0_4px_14px_rgba(184,11,61,0.3)] hover:shadow-[0_6px_20px_rgba(184,11,61,0.45)] transition-all duration-200 active:scale-95 cursor-pointer group"
-            >
-              <span className="text-[13px] font-semibold tracking-wide" style={{ fontFamily: "'Poppins', sans-serif" }}>Skip for now</span>
-              <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="opacity-75 group-hover:translate-x-0.5 transition-transform duration-150 mt-px"><path d="M5 12h14" /><path d="m12 5 7 7-7 7" /></svg>
-            </button>
-          </div>
+          {blockTimer <= 0 && (
+            <div className="mt-5 flex justify-center w-full">
+              <button
+                type="button"
+                onClick={() => {
+                  localStorage.setItem("user_authenticated", "false");
+                  clearSessionData();
+                  navigate('/food/user');
+                }}
+                className="flex items-center justify-center gap-1.5 px-8 py-[7.5px] bg-gradient-to-r from-[#B80B3D] to-[#66001D] hover:from-[#A10935] hover:to-[#4F0016] text-white rounded-full shadow-[0_4px_14px_rgba(184,11,61,0.3)] hover:shadow-[0_6px_20px_rgba(184,11,61,0.45)] transition-all duration-200 active:scale-95 cursor-pointer group"
+              >
+                <span className="text-[13px] font-semibold tracking-wide" style={{ fontFamily: "'Poppins', sans-serif" }}>Skip for now</span>
+                <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="opacity-75 group-hover:translate-x-0.5 transition-transform duration-150 mt-px"><path d="M5 12h14" /><path d="m12 5 7 7-7 7" /></svg>
+              </button>
+            </div>
+          )}
 
           {/* Footer Info */}
           <div className="mt-8 text-center">
