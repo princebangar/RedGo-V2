@@ -931,6 +931,13 @@ export const restaurantAPI = {
   getMe: () => authService.getMe("restaurant"),
   /** Restaurant dashboard: fetch current restaurant profile (deduped + short-cached). */
   getCurrentRestaurant: () => getRestaurantCurrentOnce(),
+  /** Force-refresh current restaurant profile bypassing the short-lived cache. */
+  refreshCurrentRestaurant: () => {
+    restaurantCurrentCached = null;
+    restaurantCurrentCacheTime = 0;
+    restaurantCurrentInFlight = null;
+    return getRestaurantCurrentOnce();
+  },
   /** Finance dashboard for `hub-finance`. */
   getFinance: (params = {}) =>
     apiClient.get("/food/restaurant/finance", {

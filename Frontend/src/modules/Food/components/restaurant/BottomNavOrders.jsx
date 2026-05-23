@@ -23,7 +23,7 @@ const findActiveTab = (tabs, pathname) =>
     .sort((a, b) => b.route.length - a.route.length)
     .find((tab) => pathname === tab.route || pathname.startsWith(tab.route + "/"))
 
-export default function BottomNavOrders() {
+export default function BottomNavOrders({ activeTabOverride }) {
   const navigate = useNavigate()
   const { pathname } = useLocation()
   const [isKeyboardVisible, setIsKeyboardVisible] = useState(false)
@@ -71,9 +71,10 @@ export default function BottomNavOrders() {
   }
 
   const activeTab = useMemo(() => {
+    if (activeTabOverride) return activeTabOverride;
     const match = findActiveTab(tabs, pathname)
     return match?.id || "orders"
-  }, [tabs, pathname])
+  }, [tabs, pathname, activeTabOverride])
 
   const handleTabClick = (tab) => {
     if (tab.route && tab.route !== pathname) {

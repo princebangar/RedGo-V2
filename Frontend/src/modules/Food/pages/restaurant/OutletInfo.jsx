@@ -32,6 +32,7 @@ import { restaurantAPI } from "@food/api"
 import { toast } from "sonner"
 import { ImageSourcePicker } from "@food/components/ImageSourcePicker"
 import { isFlutterBridgeAvailable, convertBase64ToFile } from "@food/utils/imageUploadUtils"
+import BottomNavOrders from "@food/components/restaurant/BottomNavOrders"
 
 const debugLog = (...args) => {}
 const debugWarn = (...args) => {}
@@ -359,8 +360,7 @@ export default function OutletInfo() {
 
   return (
     <>
-      <div className="min-h-screen bg-white overflow-x-hidden">
-        {/* Header */}
+      <div className="min-h-screen bg-white overflow-x-hidden pb-24">
         {/* Header */}
         <div className="bg-white/80 backdrop-blur-md border-b border-gray-100 px-4 py-3 sticky top-0 z-50 shadow-sm">
           <div className="flex items-center justify-between">
@@ -386,16 +386,7 @@ export default function OutletInfo() {
           <div className="relative w-full h-[180px] rounded-[2rem] overflow-hidden shadow-xl ring-1 ring-black/5">
             <img src={mainImage} alt="Restaurant banner" className="w-full h-full object-cover" />
             <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent" />
-            
-            <button
-              onClick={() => handleImageClick('cover', menuImageInputRef, "Add Cover Image", true)}
-              disabled={uploadingImage}
-              className="absolute bottom-4 right-4 bg-white/20 backdrop-blur-md hover:bg-white/30 px-4 py-2 rounded-2xl flex items-center gap-2 text-xs font-bold text-white transition-all shadow-lg border border-white/20 active:scale-95 disabled:opacity-50"
-            >
-              <Plus className="w-4 h-4" />
-              <span>{uploadingImage && imageType === 'menu' ? `Uploading...` : 'Add Photo'}</span>
-            </button>
-            <input
+                        <input
               ref={menuImageInputRef}
               type="file"
               accept="image/*"
@@ -408,25 +399,11 @@ export default function OutletInfo() {
           {/* Profile Overlap & Restaurant Name */}
           <div className="relative z-10 px-4">
             <div className="flex flex-col gap-4">
-              {/* Profile Image - Overlapping the banner */}
+              {/* Profile Image */}
               <div className="relative -mt-12 group inline-block w-fit">
-                <div className="w-24 h-24 rounded-[2rem] bg-white p-1.5 shadow-2xl ring-1 ring-black/5">
+                <div className="w-24 h-24 rounded-[2rem] bg-white p-1.5 shadow-2xl ring-1 ring-black/5 shrink-0">
                   <img src={thumbnailImage} alt="Restaurant thumbnail" className="w-full h-full rounded-[1.6rem] object-cover" />
-                  <button
-                    onClick={() => handleImageClick('profile', profileImageInputRef, "Update Profile Photo")}
-                    disabled={uploadingImage}
-                    className="absolute -bottom-1 -right-1 bg-gradient-to-br from-[#B80B3D] to-[#66001D] p-2 rounded-xl text-white shadow-lg shadow-[#B80B3D]/30 hover:scale-105 transition-all border-2 border-white active:scale-90"
-                  >
-                    <Pencil className="w-3.5 h-3.5" />
-                  </button>
                 </div>
-                <input
-                  ref={profileImageInputRef}
-                  type="file"
-                  accept="image/*"
-                  className="hidden"
-                  onChange={(e) => handleProfileImageReplace(e.target.files?.[0])}
-                />
               </div>
 
               {/* Restaurant Name & Rating - Below the overlap area for visibility */}
@@ -441,6 +418,14 @@ export default function OutletInfo() {
                   </div>
                   <span className="text-gray-400 text-xs font-bold uppercase tracking-widest">{restaurantData?.totalRatings || 0} Reviews</span>
                 </div>
+                
+                <button
+                  onClick={() => navigate("/food/restaurant/edit-owner", { state: { from: location.pathname } })}
+                  className="mt-4 bg-gradient-to-br from-[#B80B3D] to-[#66001D] text-white px-5 py-2.5 rounded-xl text-xs font-bold flex items-center gap-2 shadow-lg shadow-[#B80B3D]/20 active:scale-95 transition-all w-fit"
+                >
+                  <Pencil className="w-3.5 h-3.5" />
+                  Edit Outlet Info
+                </button>
               </div>
             </div>
           </div>
@@ -449,67 +434,32 @@ export default function OutletInfo() {
         {/* Info Content Section */}
         <div className="px-5 pt-8 pb-12 space-y-6">
           <div className="space-y-4">
-            <div className="flex items-center justify-between">
-              <h3 className="text-sm font-black text-gray-400 uppercase tracking-widest px-1">Vital Information</h3>
-              <div className="h-[1px] flex-1 bg-gray-100 ml-4"></div>
-            </div>
+
 
             {/* Restaurant Name Card */}
             <motion.div 
               initial={{ opacity: 0, y: 10 }}
               animate={{ opacity: 1, y: 0 }}
-              className="group bg-gradient-to-br from-blue-50/40 to-blue-50/80 rounded-[1.5rem] p-5 border border-blue-100/50 shadow-sm hover:shadow-md hover:border-blue-200 transition-all cursor-pointer overflow-hidden relative"
-              onClick={handleOpenEditDialog}
+              className="bg-gradient-to-br from-blue-50/40 to-blue-50/80 rounded-[1.5rem] p-5 border border-blue-100/50 shadow-sm relative"
             >
-              <div className="absolute top-0 right-0 p-2 opacity-20 group-hover:opacity-100 transition-opacity">
-                <div className="bg-gradient-to-br from-[#B80B3D] to-[#66001D] p-1.5 rounded-lg">
-                  <Edit className="w-3 h-3 text-white" />
-                </div>
-              </div>
               <p className="text-[10px] text-[#B80B3D] font-black uppercase tracking-widest mb-1.5 flex items-center gap-1.5">
                 <span className="w-1.5 h-1.5 bg-gradient-to-br from-[#B80B3D] to-[#66001D] rounded-full"></span>
-                Official Name
+                Restaurant Name
               </p>
               <p className="text-lg font-black text-gray-900 group-hover:text-[#B80B3D] transition-colors">
                 {loading ? "Loading..." : (restaurantName || "N/A")}
               </p>
             </motion.div>
 
-            {/* Cuisine Tags Card */}
-            <motion.div 
-              initial={{ opacity: 0, y: 10 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: 0.1 }}
-              className="group bg-gradient-to-br from-indigo-50/40 to-indigo-50/80 rounded-[1.5rem] p-5 border border-indigo-100/50 shadow-sm hover:shadow-md transition-all cursor-pointer overflow-hidden relative"
-              onClick={() => navigate("/food/restaurant/edit-cuisines", { state: { from: location.pathname } })}
-            >
-              <div className="absolute top-0 right-0 p-2 opacity-20 group-hover:opacity-100 transition-opacity">
-                <div className="bg-gradient-to-br from-[#B80B3D] to-[#66001D] p-1.5 rounded-lg">
-                  <Edit className="w-3 h-3 text-white" />
-                </div>
-              </div>
-              <p className="text-[10px] text-indigo-600 font-black uppercase tracking-widest mb-1.5 flex items-center gap-1.5">
-                <span className="w-1.5 h-1.5 bg-indigo-600 rounded-full"></span>
-                Cuisines Served
-              </p>
-              <p className="text-base font-black text-gray-900 leading-tight">
-                {loading ? "Loading..." : (cuisineTags || "Not specified")}
-              </p>
-            </motion.div>
+
 
             {/* Address Card */}
             <motion.div 
               initial={{ opacity: 0, y: 10 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ delay: 0.2 }}
-              className="group bg-gradient-to-br from-gray-50 to-gray-100/50 rounded-[1.5rem] p-5 border border-gray-200/50 shadow-sm hover:shadow-md transition-all cursor-pointer overflow-hidden relative"
-              onClick={() => navigate("/food/restaurant/edit-address", { state: { from: location.pathname } })}
+              className="bg-gradient-to-br from-gray-50 to-gray-100/50 rounded-[1.5rem] p-5 border border-gray-200/50 shadow-sm relative"
             >
-              <div className="absolute top-0 right-0 p-2 opacity-20 group-hover:opacity-100 transition-opacity">
-                <div className="bg-gradient-to-br from-[#B80B3D] to-[#66001D] p-1.5 rounded-lg">
-                  <MapPin className="w-3 h-3 text-white" />
-                </div>
-              </div>
               <p className="text-[10px] text-gray-500 font-black uppercase tracking-widest mb-2 flex items-center gap-1.5">
                 <span className="w-1.5 h-1.5 bg-gray-500 rounded-full"></span>
                 Location Address
@@ -525,30 +475,7 @@ export default function OutletInfo() {
             </motion.div>
           </div>
 
-          {/* Quick Actions Grid */}
-          <div className="space-y-4">
-             <h3 className="text-sm font-black text-gray-400 uppercase tracking-widest px-1">Outlet Settings</h3>
-             <div className="grid grid-cols-1 gap-3">
-                <ActionButton 
-                  icon={Clock} 
-                  label="Working Hours" 
-                  onClick={() => navigate("/food/restaurant/outlet-timings", { state: { from: location.pathname } })} 
-                  color="plum"
-                />
-                <ActionButton 
-                  icon={Phone} 
-                  label="Contact Info" 
-                  onClick={() => navigate("/food/restaurant/phone", { state: { from: location.pathname } })} 
-                  color="plum"
-                />
-                <ActionButton 
-                  icon={CreditCard} 
-                  label="Bank & Payments" 
-                  onClick={() => navigate("/food/restaurant/hub-finance", { state: { from: location.pathname } })} 
-                  color="plum"
-                />
-             </div>
-          </div>
+
         </div>
       </div>
 
@@ -593,6 +520,8 @@ export default function OutletInfo() {
         fileNamePrefix={`outlet-${activePicker?.type}`}
         galleryInputRef={activePicker?.ref}
       />
+      
+      <BottomNavOrders activeTabOverride="explore" />
     </>
   )
 }

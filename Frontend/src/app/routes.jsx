@@ -106,14 +106,7 @@ const AppRoutes = () => {
       <Routes>
         {/* Auth Module */}
         <Route path="/user/auth/*" element={
-          <Suspense fallback={
-            <div className="min-h-screen bg-white dark:bg-[#0a0a0a] flex items-center justify-center">
-              <div className="relative">
-                <div className="w-10 h-10 border-[3px] border-gray-100/30 rounded-full"></div>
-                <div className="absolute top-0 left-0 w-10 h-10 border-[3px] border-[#DC2626] border-t-transparent rounded-full animate-spin"></div>
-              </div>
-            </div>
-          }>
+          <Suspense fallback={<AppShellSkeleton />}>
             <AuthApp />
           </Suspense>
         } />
@@ -123,14 +116,7 @@ const AppRoutes = () => {
 
         {/* Global Admin Portal - AdminRouter handles its own protection for sub-routes */}
         <Route path="/admin/*" element={
-          <Suspense fallback={
-            <div className="min-h-screen bg-[#f5f5f5] flex items-center justify-center">
-              <div className="relative">
-                <div className="w-10 h-10 border-[3px] border-gray-100/30 rounded-full"></div>
-                <div className="absolute top-0 left-0 w-10 h-10 border-[3px] border-[#CB202D] border-t-transparent rounded-full animate-spin"></div>
-              </div>
-            </div>
-          }>
+          <Suspense fallback={<AppShellSkeleton />}>
             <AdminRouter />
           </Suspense>
         } />

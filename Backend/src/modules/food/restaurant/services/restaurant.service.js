@@ -422,6 +422,8 @@ export const getCurrentRestaurantProfile = async (restaurantId) => {
         .select(
             [
                 'restaurantName',
+                'restaurantId',
+                'zoneId',
                 'cuisines',
                 'location',
                 'addressLine1',
@@ -453,6 +455,19 @@ export const getCurrentRestaurantProfile = async (restaurantId) => {
                 'diningSettings',
                 'takeawaySettings',
                 'isAcceptingOrders',
+                'panNumber',
+                'nameOnPan',
+                'panImage',
+                'gstRegistered',
+                'gstNumber',
+                'gstLegalName',
+                'gstAddress',
+                'gstImage',
+                'fssaiNumber',
+                'fssaiExpiry',
+                'fssaiImage',
+                'rating',
+                'totalRatings',
                 'status',
                 'createdAt',
                 'updatedAt'

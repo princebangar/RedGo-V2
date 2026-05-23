@@ -5,6 +5,29 @@
   <meta charset="UTF-8" />
   <link rel="icon" type="image/png" href="/logo.png" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <style>
+    html, body {
+      margin: 0; padding: 0; background: #fffdf9;
+    }
+    .initial-loader {
+      display: flex; flex-direction: column; gap: 1.5rem; padding: 1.5rem;
+      min-height: 100vh; background: linear-gradient(180deg, #fffdf9 0%, #fff8f1 100%);
+    }
+    .skeleton-box {
+      background: rgba(0,0,0,0.05); border-radius: 9999px;
+      animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+    }
+    @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: .5; } }
+    .header-row { display: flex; justify-content: space-between; gap: 1rem; }
+    .header-left { height: 2.75rem; width: 10rem; }
+    .header-right { display: flex; gap: 0.75rem; }
+    .header-btn1 { height: 2.75rem; width: 6rem; }
+    .header-btn2 { height: 2.75rem; width: 2.75rem; }
+    .hero-banner { height: 12rem; border-radius: 1.5rem; width: 100%; margin-top: 0.5rem; }
+    .title-line { height: 1.75rem; width: 13rem; margin-top: 1rem; }
+    .chips-row { display: flex; gap: 0.75rem; margin-top: 0.5rem; }
+    .chip { height: 2rem; width: 4.5rem; }
+  </style>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link
@@ -19,7 +42,24 @@
 </head>
 
 <body>
-  <div id="root"></div>
+  <div id="root">
+    <div class="initial-loader">
+      <div class="header-row">
+        <div class="skeleton-box header-left"></div>
+        <div class="header-right">
+          <div class="skeleton-box header-btn1"></div>
+          <div class="skeleton-box header-btn2"></div>
+        </div>
+      </div>
+      <div class="skeleton-box hero-banner"></div>
+      <div class="skeleton-box title-line"></div>
+      <div class="chips-row">
+        <div class="skeleton-box chip"></div>
+        <div class="skeleton-box chip" style="width: 5.5rem;"></div>
+        <div class="skeleton-box chip"></div>
+      </div>
+    </div>
+  </div>
   <script type="module" src="/src/index.jsx"></script>
 </body>
 

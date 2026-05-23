@@ -123,14 +123,7 @@ export default function App() {
           <Route
             path="restaurant/*"
             element={
-              <Suspense fallback={
-                <div className="min-h-screen bg-white dark:bg-[#0a0a0a] flex items-center justify-center">
-                  <div className="relative">
-                    <div className="w-10 h-10 border-[3px] border-gray-100/30 rounded-full"></div>
-                    <div className="absolute top-0 left-0 w-10 h-10 border-[3px] border-[#B80B3D] border-t-transparent rounded-full animate-spin"></div>
-                  </div>
-                </div>
-              }>
+              <Suspense fallback={<AppShellSkeleton />}>
                 <RestaurantRouter />
               </Suspense>
             }
@@ -140,14 +133,7 @@ export default function App() {
           <Route
             path="delivery/*"
             element={
-              <Suspense fallback={
-                <div className="min-h-screen bg-white dark:bg-[#0a0a0a] flex items-center justify-center">
-                  <div className="relative">
-                    <div className="w-10 h-10 border-[3px] border-gray-100/30 rounded-full"></div>
-                    <div className="absolute top-0 left-0 w-10 h-10 border-[3px] border-[#059669] border-t-transparent rounded-full animate-spin"></div>
-                  </div>
-                </div>
-              }>
+              <Suspense fallback={<AppShellSkeleton />}>
                 <DeliveryRouter />
               </Suspense>
             }

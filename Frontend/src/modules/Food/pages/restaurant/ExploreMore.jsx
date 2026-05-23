@@ -1335,7 +1335,7 @@ export default function ExploreMore() {
                 <button 
                   onClick={() => {
                     setProfileOpen(false)
-                    navigate("/food/restaurant/onboarding?step=1")
+                    navigate("/food/restaurant/edit-owner")
                   }}
                   className="w-full flex items-start gap-4 text-left p-2 -m-2 hover:bg-gray-50 rounded-xl transition-colors group"
                 >
