@@ -1,8 +1,9 @@
 import React, { Suspense, lazy } from "react"
-import { Routes, Route, Navigate, Outlet } from "react-router-dom"
+import { Routes, Route, Navigate, Outlet, useLocation } from "react-router-dom"
 import ProtectedRoute from "@food/components/ProtectedRoute"
 import AuthRedirect from "@food/components/AuthRedirect"
 import Loader from "@food/components/Loader"
+import { OnboardingSkeleton } from "@food/components/ui/loading-skeletons"
 import "./restaurantTheme.css"
 
 // Lazy Loading Components
@@ -53,15 +54,22 @@ const VerificationPending = lazy(() => import("@food/pages/restaurant/auth/Verif
 const CMSHelpSupportPage = lazy(() => import("@food/pages/restaurant/CMSHelpSupportPage"))
 
 export default function RestaurantRouter() {
+  const location = useLocation()
+  const isOnboarding = location.pathname.includes("/onboarding")
+
   return (
     <div className="restaurant-theme">
       <Suspense fallback={
-        <div className="min-h-screen bg-white dark:bg-[#0a0a0a] flex items-center justify-center">
-          <div className="relative">
-            <div className="w-10 h-10 border-[3px] border-gray-100/30 rounded-full"></div>
-            <div className="absolute top-0 left-0 w-10 h-10 border-[3px] border-[#B80B3D] border-t-transparent rounded-full animate-spin"></div>
+        isOnboarding ? (
+          <OnboardingSkeleton />
+        ) : (
+          <div className="min-h-screen bg-white dark:bg-[#0a0a0a] flex items-center justify-center">
+            <div className="relative">
+              <div className="w-10 h-10 border-[3px] border-gray-100/30 rounded-full"></div>
+              <div className="absolute top-0 left-0 w-10 h-10 border-[3px] border-[#B80B3D] border-t-transparent rounded-full animate-spin"></div>
+            </div>
           </div>
-        </div>
+        )
       }>
         <Routes>
         {/* Auth Routes */}

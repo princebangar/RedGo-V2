@@ -26,7 +26,7 @@ const PageLoader = () => (
  * path nikalne ke baad FoodApp render karte hain. FoodApp internally BrowserRouter
  * nahi use karta (sirf Routes use karta hai), isliye ye directly kaam karta hai.
  */
-import { AppShellSkeleton } from '../modules/Food/components/ui/loading-skeletons'
+import { AppShellSkeleton, OnboardingSkeleton } from '../modules/Food/components/ui/loading-skeletons'
 
 const FoodAppWrapper = () => {
   const location = useLocation();
@@ -58,8 +58,10 @@ const FoodAppWrapper = () => {
                        location.pathname.includes('shipping') ||
                        location.pathname.includes('cancellation');
 
+  const isOnboarding = location.pathname.startsWith('/food/restaurant/onboarding');
+
   return (
-    <Suspense fallback={isPolicyPage ? <PageLoader /> : <AppShellSkeleton />}>
+    <Suspense fallback={isOnboarding ? <OnboardingSkeleton /> : (isPolicyPage ? <PageLoader /> : <AppShellSkeleton />)}>
       <FoodApp />
     </Suspense>
   )

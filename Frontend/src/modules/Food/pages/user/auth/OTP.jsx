@@ -287,7 +287,6 @@ export default function OTP() {
         }
       }
       setError(message)
-    } finally {
       setIsLoading(false)
       submittingRef.current = false
     }
@@ -364,7 +363,6 @@ export default function OTP() {
         err?.message ||
         "Failed to complete registration. Please try again."
       setError(message)
-    } finally {
       setIsLoading(false)
     }
   }

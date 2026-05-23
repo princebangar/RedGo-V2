@@ -348,6 +348,92 @@ function AppShellSkeleton({ className }) {
   )
 }
 
+function OnboardingSkeleton({ className }) {
+  return (
+    <LoadingSkeletonRegion label="Loading onboarding" className={cn("min-h-screen bg-gray-50 dark:bg-[#0a0a0a] flex flex-col", className)}>
+      {/* Header */}
+      <header className="px-4 py-4 sm:px-6 sm:py-5 bg-white dark:bg-[#121212] flex items-center justify-between border-b border-gray-100 dark:border-gray-800">
+        <div className="flex items-center gap-3">
+          {/* Back Button */}
+          <Skeleton className="w-9 h-9 rounded-full bg-slate-200/80 dark:bg-white/10" />
+          {/* Title */}
+          <Skeleton className="h-5 w-40 rounded-md bg-slate-200/80 dark:bg-white/10" />
+        </div>
+        <div className="flex items-center gap-3">
+          {/* Step Text */}
+          <Skeleton className="h-4 w-20 rounded-md bg-slate-200/80 dark:bg-white/10" />
+          {/* Logout Button */}
+          <Skeleton className="w-9 h-9 rounded-full bg-slate-200/80 dark:bg-white/10" />
+        </div>
+      </header>
+
+      {/* Form sections */}
+      <main className="flex-1 px-4 sm:px-6 py-4 space-y-6 max-w-3xl mx-auto w-full">
+        {/* Restaurant Information Card */}
+        <div className="bg-white dark:bg-[#121212] p-4 sm:p-6 rounded-md space-y-5 border border-gray-100 dark:border-gray-800">
+          <Skeleton className="h-6 w-48 rounded-md bg-slate-200/80 dark:bg-white/10" />
+          <div className="space-y-4">
+            <div>
+              <Skeleton className="h-3 w-28 rounded-md mb-2 bg-slate-200/80 dark:bg-white/10" />
+              <Skeleton className="h-10 w-full rounded-md bg-slate-200/80 dark:bg-white/10" />
+            </div>
+            <div>
+              <Skeleton className="h-3 w-36 rounded-md mb-2 bg-slate-200/80 dark:bg-white/10" />
+              <div className="flex gap-2">
+                <Skeleton className="h-8 w-24 rounded-full bg-slate-200/80 dark:bg-white/10" />
+                <Skeleton className="h-8 w-28 rounded-full bg-slate-200/80 dark:bg-white/10" />
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Owner Details Card */}
+        <div className="bg-white dark:bg-[#121212] p-4 sm:p-6 rounded-md space-y-5 border border-gray-100 dark:border-gray-800">
+          <Skeleton className="h-6 w-32 rounded-md bg-slate-200/80 dark:bg-white/10" />
+          <div className="space-y-4">
+            <div>
+              <Skeleton className="h-3 w-20 rounded-md mb-2 bg-slate-200/80 dark:bg-white/10" />
+              <Skeleton className="h-10 w-full rounded-md bg-slate-200/80 dark:bg-white/10" />
+            </div>
+            <div>
+              <Skeleton className="h-3 w-24 rounded-md mb-2 bg-slate-200/80 dark:bg-white/10" />
+              <Skeleton className="h-10 w-full rounded-md bg-slate-200/80 dark:bg-white/10" />
+            </div>
+            <div>
+              <Skeleton className="h-3 w-24 rounded-md mb-2 bg-slate-200/80 dark:bg-white/10" />
+              <Skeleton className="h-10 w-full rounded-md bg-slate-200/80 dark:bg-white/10" />
+            </div>
+          </div>
+        </div>
+
+        {/* Location Card */}
+        <div className="bg-white dark:bg-[#121212] p-4 sm:p-6 rounded-md space-y-5 border border-gray-100 dark:border-gray-800">
+          <Skeleton className="h-6 w-56 rounded-md bg-slate-200/80 dark:bg-white/10" />
+          <div className="space-y-4">
+            <div>
+              <Skeleton className="h-3 w-36 rounded-md mb-2 bg-slate-200/80 dark:bg-white/10" />
+              <Skeleton className="h-10 w-full rounded-md bg-slate-200/80 dark:bg-white/10" />
+            </div>
+            <div>
+              <Skeleton className="h-3 w-24 rounded-md mb-2 bg-slate-200/80 dark:bg-white/10" />
+              <Skeleton className="h-10 w-full rounded-md bg-slate-200/80 dark:bg-white/10" />
+            </div>
+            <div>
+              <Skeleton className="h-3 w-28 rounded-md mb-2 bg-slate-200/80 dark:bg-white/10" />
+              <Skeleton className="h-10 w-full rounded-md bg-slate-200/80 dark:bg-white/10" />
+            </div>
+          </div>
+        </div>
+      </main>
+
+      {/* Footer */}
+      <footer className="px-4 sm:px-6 py-3 bg-white dark:bg-[#121212] border-t border-gray-100 dark:border-gray-800 flex justify-end">
+        <Skeleton className="h-10 w-28 rounded-md bg-slate-200/80 dark:bg-white/10" />
+      </footer>
+    </LoadingSkeletonRegion>
+  )
+}
+
 export {
   AppShellSkeleton,
   CategoryChipRowSkeleton,
@@ -355,6 +441,7 @@ export {
   ExploreGridSkeleton,
   HeroBannerSkeleton,
   LoadingSkeletonRegion,
+  OnboardingSkeleton,
   OrdersDashboardSkeleton,
   RestaurantCardSkeleton,
   RestaurantDetailSkeleton,
@@ -362,4 +449,4 @@ export {
   SkeletonLines,
   TableSkeleton,
   WalletSkeleton,
-}
+  }

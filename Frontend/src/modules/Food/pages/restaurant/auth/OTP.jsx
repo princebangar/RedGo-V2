@@ -145,6 +145,23 @@ export default function RestaurantOTP() {
     if (index === 0 && value) {
       setOtpError("")
     }
+
+    // Handle multi-character inputs (e.g. autofill suggestions or pastes)
+    if (value.length > 1) {
+      const digits = value.replace(/\D/g, "").slice(0, 4 - index).split("")
+      if (digits.length > 0) {
+        const newOtp = [...otp]
+        digits.forEach((digit, i) => {
+          if (index + i < 4) {
+            newOtp[index + i] = digit
+          }
+        })
+        setOtp(newOtp)
+        inputRefs.current[Math.min(3, index + digits.length)]?.focus()
+      }
+      return
+    }
+
     if (value && !/^\d$/.test(value)) return
 
     const newOtp = [...otp]
@@ -165,6 +182,31 @@ export default function RestaurantOTP() {
         setOtp(newOtp)
       }
     }
+    // Handle paste keyboard shortcut (Ctrl+V / Cmd+V)
+    if (e.key === "v" && (e.ctrlKey || e.metaKey)) {
+      e.preventDefault()
+      navigator.clipboard.readText().then((text) => {
+        const digits = text.replace(/\D/g, "").slice(0, 4).split("")
+        const newOtp = [...otp]
+        digits.forEach((digit, i) => {
+          if (i < 4) newOtp[i] = digit
+        })
+        setOtp(newOtp)
+        inputRefs.current[Math.min(digits.length, 3)]?.focus()
+      })
+    }
+  }
+
+  const handlePaste = (e) => {
+    e.preventDefault()
+    const pastedData = e.clipboardData.getData("text")
+    const digits = pastedData.replace(/\D/g, "").slice(0, 4).split("")
+    const newOtp = [...otp]
+    digits.forEach((digit, i) => {
+      if (i < 4) newOtp[i] = digit
+    })
+    setOtp(newOtp)
+    inputRefs.current[Math.min(digits.length, 3)]?.focus()
   }
 
   const handleVerify = async (otpValue = null, confirmAction = null) => {
@@ -193,6 +235,7 @@ export default function RestaurantOTP() {
       if (data.deletedAccountFound) {
         setDeletedAccountData(data)
         setShowRestorePopup(true)
+        setIsLoading(false)
       } else if (data.needsRegistration === true) {
         isSuccessRef.current = true
         setRestaurantPendingPhone(phone)
@@ -269,11 +312,10 @@ export default function RestaurantOTP() {
         }
       }
       hasSubmittedRef.current = false
+      setIsLoading(false)
       setTimeout(() => {
         inputRefs.current[0]?.focus()
       }, 50)
-    } finally {
-      setIsLoading(false)
     }
   }
 
@@ -416,6 +458,7 @@ export default function RestaurantOTP() {
                     value={otp[index]}
                     onChange={(e) => handleChange(index, e.target.value)}
                     onKeyDown={(e) => handleKeyDown(index, e)}
+                    onPaste={index === 0 ? handlePaste : undefined}
                     className={`w-14 h-14 sm:w-16 sm:h-16 text-center text-2xl font-bold bg-gray-50 dark:bg-gray-800 border-2 border-gray-300 dark:border-gray-600 shadow-sm rounded-[20px] outline-none transition-all duration-300 text-gray-900 dark:text-white focus:bg-white dark:focus:bg-gray-900 focus:border-[#B80B3D] focus:ring-4 focus:ring-[#B80B3D]/10 hover:border-gray-400 ${blockTimer > 0 ? "opacity-50 cursor-not-allowed border-red-400 bg-red-50 text-red-800" : ""}`}
                     placeholder="•"
                   />

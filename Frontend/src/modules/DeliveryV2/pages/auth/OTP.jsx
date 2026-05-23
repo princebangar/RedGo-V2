@@ -322,7 +322,6 @@ export default function DeliveryOTP() {
           countryCode: "+91",
         }
         sessionStorage.setItem("deliverySignupDetails", JSON.stringify(details))
-        setIsLoading(false)
         navigate("/food/delivery/signup/details", { replace: true })
         return
       }
@@ -353,7 +352,6 @@ export default function DeliveryOTP() {
       window.dispatchEvent(new Event("deliveryAuthChanged"))
 
       setSuccess(true)
-      setIsLoading(false)
 
       let retryCount = 0
       const maxRetries = 10

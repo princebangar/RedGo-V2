@@ -25,6 +25,7 @@ import { getGoogleMapsApiKey } from "@food/utils/googleMapsApiKey"
 import { clearModuleAuth, clearAuthData, isModuleAuthenticated, getModuleToken } from "@food/utils/auth"
 import { ImageSourcePicker } from "@food/components/ImageSourcePicker"
 import { EMAIL_REGEX } from "@/shared/utils/emailValidation"
+import { OnboardingSkeleton } from "@food/components/ui/loading-skeletons"
 const debugLog = (...args) => {}
 const debugWarn = (...args) => {}
 const debugError = (...args) => {}
@@ -520,14 +521,21 @@ export default function RestaurantOnboarding() {
 
   const handleExitAnyway = async () => {
     try {
+      restaurantAPI.logout().catch(() => {})
+    } catch (e) {}
+
+    try {
       clearOnboardingFromLocalStorage()
       clearOnboardingFileCache()
       await clearAllFilesFromDB()
+      
+      clearModuleAuth("restaurant")
+      clearAuthData()
+      window.dispatchEvent(new Event("restaurantAuthChanged"))
     } catch (e) {
       debugError("Error clearing onboarding data on exit:", e)
     }
-    setShowExitModal(false)
-    navigate("/food/restaurant/explore", { replace: true })
+    navigate("/food/restaurant/login", { replace: true })
   }
 
   useEffect(() => {
@@ -2914,83 +2922,82 @@ export default function RestaurantOnboarding() {
 
   return (
     <LocalizationProvider dateAdapter={AdapterDateFns}>
-      <div className="min-h-screen bg-gray-100 flex flex-col">
-        <header className="px-4 py-4 sm:px-6 sm:py-5 bg-white flex items-center justify-between border-b">
-          <div className="flex items-center gap-3">
-            {step === 1 ? (
-              <button
-                onClick={() => { setExitTrigger("cross"); setShowExitModal(true) }}
-                className="w-9 h-9 flex items-center justify-center bg-gray-50 hover:bg-gray-100 border border-gray-200/80 rounded-full shadow-sm transition-all duration-200 active:scale-90 hover:shadow"
-                aria-label="Close onboarding"
-              >
-                <X className="w-[18px] h-[18px] text-gray-700 stroke-[2.5]" />
-              </button>
-            ) : (
-              <button
-                onClick={() => {
-                  setStep((s) => Math.max(1, s - 1))
-                  window.scrollTo({ top: 0, behavior: "instant" })
-                }}
-                className="w-9 h-9 flex items-center justify-center bg-gray-50 hover:bg-gray-100 border border-gray-200/80 rounded-full shadow-sm transition-all duration-200 active:scale-90 hover:shadow"
-                aria-label="Go back"
-              >
-                <ArrowLeft className="w-[18px] h-[18px] text-gray-700 stroke-[2.5]" />
-              </button>
-            )}
-            <div className="text-sm font-semibold text-black">Restaurant onboarding</div>
-          </div>
-          <div className="flex items-center gap-3">
-            {!loading && !isEditing && (
-              <Button
-                onClick={() => setIsEditing(true)}
-                variant="outline"
-                size="sm"
-                className="text-xs bg-blue-50 border-blue-300 text-blue-700 hover:bg-blue-100 flex items-center gap-1.5"
-                title="Edit Details"
-              >
-                <Sparkles className="w-3 h-3" />
-                Edit Details
-              </Button>
-            )}
+      {loading ? (
+        <OnboardingSkeleton />
+      ) : (
+        <div className="min-h-screen bg-gray-100 flex flex-col">
+          <header className="px-4 py-4 sm:px-6 sm:py-5 bg-white flex items-center justify-between border-b">
             <div className="flex items-center gap-3">
-              <div className="text-[10px] text-gray-500 font-bold uppercase tracking-wider text-right">
-                Step {step} of 3
-              </div>
-              <Button
-                onClick={handleLogout}
-                disabled={isLoggingOut}
-                variant="ghost"
-                size="icon"
-                className="h-9 w-9 text-[#B80B3D] hover:text-red-700 hover:bg-red-50"
-                title="Logout"
-              >
-                <LogOut className="w-4 h-4" />
-              </Button>
+              {step === 1 ? (
+                <button
+                  onClick={() => { setExitTrigger("cross"); setShowExitModal(true) }}
+                  className="w-9 h-9 flex items-center justify-center bg-gray-50 hover:bg-gray-100 border border-gray-200/80 rounded-full shadow-sm transition-all duration-200 active:scale-90 hover:shadow"
+                  aria-label="Close onboarding"
+                >
+                  <X className="w-[18px] h-[18px] text-gray-700 stroke-[2.5]" />
+                </button>
+              ) : (
+                <button
+                  onClick={() => {
+                    setStep((s) => Math.max(1, s - 1))
+                    window.scrollTo({ top: 0, behavior: "instant" })
+                  }}
+                  className="w-9 h-9 flex items-center justify-center bg-gray-50 hover:bg-gray-100 border border-gray-200/80 rounded-full shadow-sm transition-all duration-200 active:scale-90 hover:shadow"
+                  aria-label="Go back"
+                >
+                  <ArrowLeft className="w-[18px] h-[18px] text-gray-700 stroke-[2.5]" />
+                </button>
+              )}
+              <div className="text-sm font-semibold text-black">Restaurant onboarding</div>
             </div>
-          </div>
+            <div className="flex items-center gap-3">
+              {!isEditing && (
+                <Button
+                  onClick={() => setIsEditing(true)}
+                  variant="outline"
+                  size="sm"
+                  className="text-xs bg-blue-50 border-blue-300 text-blue-700 hover:bg-blue-100 flex items-center gap-1.5"
+                  title="Edit Details"
+                >
+                  <Sparkles className="w-3 h-3" />
+                  Edit Details
+                </Button>
+              )}
+              <div className="flex items-center gap-3">
+                <div className="text-[10px] text-gray-500 font-bold uppercase tracking-wider text-right">
+                  Step {step} of 3
+                </div>
+                <Button
+                  onClick={handleLogout}
+                  disabled={isLoggingOut}
+                  variant="ghost"
+                  size="icon"
+                  className="h-9 w-9 text-[#B80B3D] hover:text-red-700 hover:bg-red-50"
+                  title="Logout"
+                >
+                  <LogOut className="w-4 h-4" />
+                </Button>
+              </div>
+            </div>
 
-        </header>
+          </header>
 
-        <main
-          className="flex-1 px-4 sm:px-6 py-4 space-y-4"
-          style={{ paddingBottom: keyboardInset ? `${keyboardInset + 20}px` : undefined }}
-          onFocusCapture={(e) => {
-            const target = e.target
-            if (!(target instanceof HTMLElement)) return
-            if (!target.matches("input, textarea, select")) return
-            window.setTimeout(() => {
-              target.scrollIntoView({ behavior: "smooth", block: "center" })
-            }, 250)
-          }}
-        >
-          {loading ? (
-            <p className="text-sm text-gray-600">Loading...</p>
-          ) : (
+          <main
+            className="flex-1 px-4 sm:px-6 py-4 space-y-4"
+            style={{ paddingBottom: keyboardInset ? `${keyboardInset + 20}px` : undefined }}
+            onFocusCapture={(e) => {
+              const target = e.target
+              if (!(target instanceof HTMLElement)) return
+              if (!target.matches("input, textarea, select")) return
+              window.setTimeout(() => {
+                target.scrollIntoView({ behavior: "smooth", block: "center" })
+              }, 250)
+            }}
+          >
             <div className={!isEditing ? "pointer-events-none select-none" : ""}>
               {renderStep()}
             </div>
-          )}
-        </main>
+          </main>
 
         <ImageSourcePicker
           isOpen={sourcePicker.isOpen}
@@ -3089,6 +3096,7 @@ export default function RestaurantOnboarding() {
           </div>
         </footer>
       </div>
+      )}
     </LocalizationProvider>
   )
 }

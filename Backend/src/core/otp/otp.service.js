@@ -212,6 +212,11 @@ export const verifyOtp = async (phone, otp, preserveOtp = false) => {
         return { valid: false, reason: 'Invalid OTP' };
     }
 
+    // OTP is correct! Reset attempts and penalty counters
+    record.attempts = 0;
+    record.totalFailures = 0;
+    record.blockedUntil = null;
+
     if (!preserveOtp) {
         console.info(`✅ [OTP-Verify] OTP verified and deleted for ${normalizedPhone}`);
         await record.deleteOne();
