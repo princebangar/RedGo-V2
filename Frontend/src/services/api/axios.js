@@ -159,7 +159,7 @@ apiClient.interceptors.response.use(
     if (err?.response?.status === 429) {
       return Promise.reject(err);
     }
-    if (err?.response?.status !== 401 || !original || original._retry || !original.headers.Authorization) {
+    if (err?.response?.status !== 401 || !original || original._retry) {
       return Promise.reject(err);
     }
     const module = original.contextModule || getModuleFromUrl(original.url);

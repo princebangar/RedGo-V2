@@ -93,14 +93,24 @@ export const ProfileV2 = () => {
 
   const handleLogout = async () => {
     if (logoutSubmitting) return
-    setShowLogoutConfirm(false)
     try {
       setLogoutSubmitting(true)
       await deliveryAPI.logout()
     } catch (error) {}
     clearModuleAuth("delivery")
     localStorage.removeItem("app:isOnline")
-    // toast.success("Logged out successfully")
+    navigate("/food/delivery/login", { replace: true })
+    setLogoutSubmitting(false)
+  }
+
+  const handleLogoutAllDevices = async () => {
+    if (logoutSubmitting) return
+    try {
+      setLogoutSubmitting(true)
+      await authAPI.logoutFromAllDevices("delivery")
+    } catch (error) {}
+    clearModuleAuth("delivery")
+    localStorage.removeItem("app:isOnline")
     navigate("/food/delivery/login", { replace: true })
     setLogoutSubmitting(false)
   }
@@ -193,6 +203,25 @@ export const ProfileV2 = () => {
             </div>
           </div>
 
+          {/* Logout Section */}
+          <div className="pt-2">
+            <div 
+              onClick={() => setShowLogoutConfirm(true)}
+              className="bg-white rounded-[1.2rem] p-4 flex items-center justify-between cursor-pointer border border-red-100 hover:bg-red-50 active:bg-red-100 transition-all shadow-[0_4px_20px_-4px_rgba(220,38,38,0.05)]"
+            >
+              <div className="flex items-center gap-4 min-w-0">
+                <div className="flex h-[3.2rem] w-[3.2rem] items-center justify-center rounded-full bg-red-50 shrink-0">
+                  <LogOut className="w-5 h-5 text-[#FF3131] ml-0.5" />
+                </div>
+                <div className="min-w-0">
+                  <p className="text-[17px] font-bold text-[#FF3131] mb-0.5">Logout</p>
+                  <p className="text-[13px] text-gray-500 font-medium">Tap to logout from this device</p>
+                </div>
+              </div>
+              <ChevronRight className="w-[18px] h-[18px] text-gray-300 shrink-0" />
+            </div>
+          </div>
+
           {/* Delete Account */}
           <div className="pt-0">
             <div
@@ -200,33 +229,22 @@ export const ProfileV2 = () => {
                 setDeleteCaptcha(""); 
                 setDeleteAccountOpen(true);
               }}
-              className="bg-white rounded-xl p-4 flex items-center justify-between cursor-pointer border border-gray-100 shadow-sm hover:shadow-md transition-all active:scale-[0.99]"
+              className="bg-white rounded-[1.2rem] p-4 flex items-center justify-between cursor-pointer border border-red-50 hover:bg-red-50 active:bg-red-100 transition-all active:scale-[0.99]"
             >
-              <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-full bg-[#FFF1F2] flex items-center justify-center">
+              <div className="flex items-center gap-4 min-w-0">
+                <div className="flex h-[3.2rem] w-[3.2rem] items-center justify-center rounded-full bg-[#FFF1F2] shrink-0">
                   {isCheckingBalance ? (
                     <div className="w-5 h-5 border-2 border-[#FF3131]/30 border-t-[#FF3131] rounded-full animate-spin" />
                   ) : (
                     <Trash2 className="w-5 h-5 text-[#FF3131]" />
                   )}
                 </div>
-                <span className="text-sm font-black text-[#FF3131]">Delete Account</span>
+                <div className="min-w-0">
+                  <p className="text-[17px] font-bold text-[#FF3131] mb-0.5">Delete Account</p>
+                  <p className="text-[13px] text-gray-500 font-medium">Tap to delete your account</p>
+                </div>
               </div>
-              <ChevronRight className="w-5 h-5 text-[#FF3131]/30" />
-            </div>
-          </div>
-
-          {/* Logout Section */}
-          <div className="pt-2">
-            <div 
-              onClick={() => setShowLogoutConfirm(true)}
-              className="bg-white rounded-xl p-4 flex items-center justify-between cursor-pointer border border-gray-200 hover:bg-gray-50 active:bg-gray-100 transition-colors"
-            >
-              <div className="flex items-center gap-3">
-                <LogOut className="w-5 h-5 text-gray-900" />
-                <span className="text-sm font-bold text-gray-900">Log out</span>
-              </div>
-              <ChevronRight className="w-5 h-5 text-gray-300" />
+              <ChevronRight className="w-[18px] h-[18px] text-[#FF3131]/30 shrink-0" />
             </div>
           </div>
         </div>
@@ -235,30 +253,53 @@ export const ProfileV2 = () => {
       {/* Logout Confirm Popup */}
       {showLogoutConfirm && (
         <div 
-          className="fixed inset-0 bg-black/60 z-[1000] flex items-center justify-center px-4 backdrop-blur-sm overflow-y-auto py-10"
+          className="fixed inset-0 bg-black/50 z-[1000] flex items-center justify-center px-4 backdrop-blur-sm overflow-y-auto py-10"
           onClick={() => setShowLogoutConfirm(false)}
         >
           <div 
-            className="bg-white w-full max-w-sm rounded-2xl shadow-2xl p-5"
+            className="w-full max-w-[340px] rounded-[1.8rem] bg-white p-7 shadow-2xl flex flex-col items-center"
             onClick={(e) => e.stopPropagation()}
           >
-            <h3 className="text-base font-black text-gray-900 mb-2">Do you want to log out?</h3>
-            <p className="text-sm text-gray-500 mb-5">You will be signed out from your delivery account.</p>
-            <div className="flex items-center gap-3">
+            <div className="relative mb-3">
+              {profile?.profileImage?.url ? (
+                <img src={profile.profileImage.url} alt="Profile" className="w-[84px] h-[84px] rounded-full object-cover shadow-sm ring-4 ring-gray-50" />
+              ) : (
+                <div className="w-[84px] h-[84px] rounded-full bg-gray-100 flex items-center justify-center ring-4 ring-gray-50">
+                  <User className="w-10 h-10 text-gray-400" />
+                </div>
+              )}
+            </div>
+            
+            <h3 className="text-[19px] font-black text-[#1F2937] leading-tight mb-1">{profile?.name || "Delivery Partner"}</h3>
+            {profile?.deliveryId && <p className="text-[13px] font-medium text-gray-500 mb-6">{profile.deliveryId}</p>}
+
+            <div className="w-full space-y-3">
               <button
-                onClick={() => setShowLogoutConfirm(false)}
-                className="flex-1 h-11 rounded-xl border border-gray-200 text-gray-700 font-bold"
-              >
-                No
-              </button>
-              <button
+                type="button"
                 onClick={handleLogout}
                 disabled={logoutSubmitting}
-                className="flex-1 h-11 rounded-xl bg-red-600 text-white font-bold disabled:opacity-60"
+                className="w-full rounded-[14px] bg-[#DC2626] py-[14px] text-[15px] font-bold text-white transition-all active:scale-[0.98] disabled:opacity-50"
               >
-                {logoutSubmitting ? "Logging out..." : "Yes"}
+                {logoutSubmitting ? "Logging out..." : "Logout"}
+              </button>
+              <button
+                type="button"
+                onClick={handleLogoutAllDevices}
+                disabled={logoutSubmitting}
+                className="w-full rounded-[14px] border-[1.5px] border-[#DC2626] bg-white py-[14px] text-[15px] font-bold text-[#DC2626] transition-all active:scale-[0.98] disabled:opacity-50"
+              >
+                {logoutSubmitting ? "Logging out..." : "Logout from all devices"}
               </button>
             </div>
+            
+            <button
+              type="button"
+              onClick={() => setShowLogoutConfirm(false)}
+              disabled={logoutSubmitting}
+              className="mt-5 text-[15px] font-bold text-[#6B7280] hover:text-[#374151] transition-colors disabled:opacity-50"
+            >
+              Cancel
+            </button>
           </div>
         </div>
       )}

@@ -705,6 +705,36 @@ export const logout = async (refreshToken, fcmToken, platform) => {
   return { invalidated: deleted.deletedCount > 0 };
 };
 
+export const logoutAllDevices = async (userId) => {
+  if (!userId) {
+    throw new AuthError("User ID is required");
+  }
+
+  try {
+    const id = typeof userId === "string" ? new mongoose.Types.ObjectId(userId) : userId;
+
+    // 1. Remove all refresh tokens for this user
+    const deleted = await FoodRefreshToken.deleteMany({ userId: id });
+    console.log(`✅ [LogoutAllDevices] Deleted ${deleted.deletedCount} refresh tokens for user ${id}`);
+
+    // 2. Remove all FCM tokens for this user from all collections
+    const models = [FoodUser, FoodRestaurant, FoodDeliveryPartner, FoodAdmin];
+    await Promise.all(
+      models.map(model => 
+        model.updateOne(
+          { _id: id },
+          { $set: { fcmTokens: [], fcmTokenMobile: [] } }
+        )
+      )
+    );
+
+    return { invalidated: deleted.deletedCount > 0, count: deleted.deletedCount };
+  } catch (error) {
+    logger.error(`[Logout-All] Failed for ID=${userId}: ${error.message}`);
+    throw error;
+  }
+};
+
 export const getProfile = async (userId, role) => {
   if (!userId || !role) {
     throw new AuthError("Invalid token payload");

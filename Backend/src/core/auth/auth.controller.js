@@ -8,6 +8,7 @@ import {
   requestDeliveryOtp,
   verifyDeliveryOtpAndLogin,
   logout,
+  logoutAllDevices,
   getProfile,
   updateAdminProfile,
   changeAdminPassword,
@@ -138,6 +139,21 @@ export const logoutController = async (req, res, next) => {
       res,
       200,
       result.invalidated ? "Logged out successfully" : "Token already invalid",
+      result,
+    );
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const logoutAllDevicesController = async (req, res, next) => {
+  try {
+    const { userId } = req.user;
+    const result = await logoutAllDevices(userId);
+    return sendResponse(
+      res,
+      200,
+      "Logged out from all devices successfully",
       result,
     );
   } catch (error) {

@@ -617,7 +617,7 @@ export default function ExploreMore() {
       localStorage.removeItem("restaurant_user")
       sessionStorage.removeItem("restaurantAuthData")
       window.dispatchEvent(new Event("restaurantAuthChanged"))
-      navigate("/food/restaurant/welcome", { replace: true })
+      navigate("/food/restaurant/login", { replace: true })
     } finally {
       setIsLoggingOut(false)
     }
@@ -630,9 +630,9 @@ export default function ExploreMore() {
     setProfileOpen(false)
 
     try {
-      // Call backend logout API to invalidate refresh token
+      // Call backend logout-all API
       try {
-        await restaurantAPI.logout()
+        await authAPI.logoutFromAllDevices("restaurant")
       } catch (apiError) {
         // Continue with logout even if API call fails (network issues, etc.)
         debugWarn("Logout API call failed, continuing with local cleanup:", apiError)
@@ -684,7 +684,7 @@ export default function ExploreMore() {
       sessionStorage.removeItem("deliveryAuthData")
       sessionStorage.removeItem("userAuthData")
       window.dispatchEvent(new Event("restaurantAuthChanged"))
-      navigate("/food/restaurant/welcome", { replace: true })
+      navigate("/food/restaurant/login", { replace: true })
     } finally {
       setIsLoggingOut(false)
     }
@@ -1068,17 +1068,18 @@ export default function ExploreMore() {
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.5, duration: 0.25 }}
           onClick={() => setLogoutConfirmOpen(true)}
-          className="w-full flex items-center justify-between gap-3 rounded-2xl border border-gray-200 bg-gray-50 px-4 py-5 text-left hover:bg-gray-100 transition-all active:scale-[0.99] mb-4"
+          className="w-full flex items-center justify-between gap-3 rounded-[1.2rem] border border-red-100 bg-white px-4 py-4 text-left hover:bg-red-50 transition-all active:scale-[0.99] mb-4 shadow-[0_4px_20px_-4px_rgba(220,38,38,0.05)]"
         >
-          <div className="flex items-center gap-3 min-w-0">
-            <div className="flex h-11 w-11 items-center justify-center rounded-full bg-gray-200">
-              <LogOut className="w-5 h-5 text-gray-900" />
+          <div className="flex items-center gap-4 min-w-0">
+            <div className="flex h-[3.2rem] w-[3.2rem] items-center justify-center rounded-full bg-red-50 shrink-0">
+              <LogOut className="w-5 h-5 text-[#FF3131] ml-0.5" />
             </div>
             <div className="min-w-0">
-              <p className="text-base font-bold text-gray-900">Logout</p>
+              <p className="text-[17px] font-bold text-[#FF3131] mb-0.5">Logout</p>
+              <p className="text-[13px] text-gray-500 font-medium">Tap to logout from this device</p>
             </div>
           </div>
-          <ChevronRight className="w-5 h-5 text-gray-400 shrink-0" />
+          <ChevronRight className="w-[18px] h-[18px] text-gray-300 shrink-0" />
         </motion.button>
 
         <motion.button
@@ -1101,6 +1102,7 @@ export default function ExploreMore() {
             </div>
             <div className="min-w-0">
               <p className="text-base font-bold text-[#FF3131]">Delete Account</p>
+              <p className="text-[13px] text-gray-500 font-medium">Tap to delete your account</p>
             </div>
           </div>
           <ChevronRight className="w-5 h-5 text-[#FF3131]/30 shrink-0" />
@@ -1129,38 +1131,54 @@ export default function ExploreMore() {
               }}
             >
               <div 
-                className="w-full max-w-sm rounded-3xl bg-white p-6 shadow-2xl"
+                className="w-full max-w-[340px] rounded-[1.8rem] bg-white p-7 shadow-2xl flex flex-col items-center"
                 onClick={(e) => e.stopPropagation()}
               >
-              <div className="text-center">
-                <div className="mx-auto mb-3 flex h-12 w-12 items-center justify-center rounded-full bg-gradient-to-br from-[#B80B3D] to-[#66001D]/10">
-                  <LogOut className="w-5 h-5 text-[#B80B3D]" />
+                <div className="relative mb-3">
+                  {userData.profileImage ? (
+                    <img src={userData.profileImage.url || userData.profileImage} alt="Profile" className="w-[84px] h-[84px] rounded-full object-cover shadow-sm ring-4 ring-gray-50" />
+                  ) : (
+                    <div className="w-[84px] h-[84px] rounded-full bg-gray-100 flex items-center justify-center ring-4 ring-gray-50">
+                      <User className="w-10 h-10 text-gray-400" />
+                    </div>
+                  )}
                 </div>
-                <h3 className="text-lg font-bold text-gray-900">Logout?</h3>
-                <p className="mt-1 text-sm text-gray-500">Are you sure you want to logout?</p>
-              </div>
+                
+                <h3 className="text-[19px] font-black text-[#1F2937] leading-tight mb-1">{userData.name || "Restaurant"}</h3>
+                {userData.phone && <p className="text-[13px] font-medium text-gray-500 mb-0.5">{userData.phone}</p>}
+                {userData.email && userData.email !== "N/A" && <p className="text-[13px] font-medium text-gray-400 mb-6">{userData.email}</p>}
 
-              <div className="mt-5 grid grid-cols-2 gap-3">
+                <div className="w-full space-y-3">
+                  <button
+                    type="button"
+                    onClick={async () => {
+                      await handleLogout()
+                    }}
+                    disabled={isLoggingOut}
+                    className="w-full rounded-[14px] bg-[#DC2626] py-[14px] text-[15px] font-bold text-white transition-all active:scale-[0.98] disabled:opacity-50"
+                  >
+                    {isLoggingOut ? "Logging out..." : "Logout"}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={async () => {
+                      await handleLogoutAllDevices()
+                    }}
+                    disabled={isLoggingOut}
+                    className="w-full rounded-[14px] border-[1.5px] border-[#DC2626] bg-white py-[14px] text-[15px] font-bold text-[#DC2626] transition-all active:scale-[0.98] disabled:opacity-50"
+                  >
+                    {isLoggingOut ? "Logging out..." : "Logout from all devices"}
+                  </button>
+                </div>
+                
                 <button
                   type="button"
                   onClick={() => setLogoutConfirmOpen(false)}
                   disabled={isLoggingOut}
-                  className="rounded-2xl border border-gray-200 px-4 py-3 text-sm font-semibold text-gray-700 transition-colors hover:bg-gray-50 disabled:opacity-50"
+                  className="mt-5 text-[15px] font-bold text-[#6B7280] hover:text-[#374151] transition-colors disabled:opacity-50"
                 >
-                  No
+                  Cancel
                 </button>
-                <button
-                  type="button"
-                  onClick={async () => {
-                    await handleLogout()
-                    setLogoutConfirmOpen(false)
-                  }}
-                  disabled={isLoggingOut}
-                  className="rounded-2xl bg-gradient-to-br from-[#B80B3D] to-[#66001D] px-4 py-3 text-sm font-bold text-white transition-all hover:bg-[#6a2f56] active:scale-95 disabled:opacity-50"
-                >
-                  {isLoggingOut ? "Logging out..." : "Yes"}
-                </button>
-              </div>
               </div>
             </motion.div>
           </>
@@ -1332,62 +1350,87 @@ export default function ExploreMore() {
 
               {/* User Information Section */}
               <div className="px-6 py-6">
-                <button 
-                  onClick={() => {
-                    setProfileOpen(false)
-                    navigate("/food/restaurant/edit-owner")
-                  }}
-                  className="w-full flex items-start gap-4 text-left p-2 -m-2 hover:bg-gray-50 rounded-xl transition-colors group"
-                >
-                  {/* Avatar */}
-                  <div className="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center shrink-0 overflow-hidden ring-4 ring-[#B80B3D]/10 group-hover:ring-[#B80B3D]/20 transition-all">
-                    {userData.profileImage?.url ? (
-                      <img
-                        src={userData.profileImage.url}
-                        alt={userData.name}
-                        className="w-full h-full object-cover"
-                      />
-                    ) : (
-                      <div className="w-full h-full flex items-center justify-center bg-gradient-to-br from-[#B80B3D]/5 to-[#B80B3D]/20">
-                        <User className="w-8 h-8 text-[#B80B3D]" />
-                      </div>
-                    )}
-                  </div>
-
-                  {/* User Details */}
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center justify-between mb-1">
-                      <h3 className="text-base font-bold text-gray-900 truncate">
-                        {loadingRestaurant ? "Loading..." : userData.name}
-                      </h3>
-                      <Edit className="w-4 h-4 text-gray-400 opacity-0 group-hover:opacity-100 transition-opacity" />
+                <div className="w-full flex items-center justify-between">
+                  <div className="flex items-center gap-4 min-w-0">
+                    {/* Avatar */}
+                    <div className="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center shrink-0 overflow-hidden ring-4 ring-gray-50 transition-all">
+                      {userData.profileImage?.url ? (
+                        <img
+                          src={userData.profileImage.url}
+                          alt={userData.name}
+                          className="w-full h-full object-cover"
+                        />
+                      ) : (
+                        <div className="w-full h-full flex items-center justify-center bg-gray-100">
+                          <User className="w-8 h-8 text-gray-400" />
+                        </div>
+                      )}
                     </div>
-                    {userData.phone && (
-                      <p className="text-sm text-gray-600 mb-1">
-                        {userData.phone}
-                      </p>
-                    )}
-                    {userData.email && (
-                      <p className="text-sm text-gray-600 mb-1">
-                        {userData.email}
-                      </p>
-                    )}
+                    {/* User Details */}
+                    <div className="flex-1 min-w-0">
+                      <h3 className="text-[17px] font-black text-[#1F2937] leading-tight mb-1 truncate">
+                        {loadingRestaurant ? "Loading..." : userData.name || "Restaurant"}
+                      </h3>
+                      {userData.phone && (
+                        <p className="text-[13px] font-medium text-gray-500 mb-0.5">
+                          {userData.phone}
+                        </p>
+                      )}
+                      {userData.email && userData.email !== "N/A" && (
+                        <p className="text-[13px] font-medium text-gray-400 truncate">
+                          {userData.email}
+                        </p>
+                      )}
+                    </div>
                   </div>
-                </button>
+                  {/* Edit Button */}
+                  <button
+                    onClick={() => {
+                      setProfileOpen(false)
+                      navigate("/food/restaurant/edit-owner")
+                    }}
+                    className="p-2 ml-2 bg-gray-50 hover:bg-gray-100 text-gray-600 hover:text-gray-900 rounded-full transition-colors shrink-0"
+                    aria-label="Edit Profile"
+                  >
+                    <Edit className="w-4 h-4" />
+                  </button>
+                </div>
               </div>
 
               {/* Logout Buttons */}
-              <div className="px-6 pb-6 space-y-3">
-                {/* Logout Button */}
+              <div className="px-6 pb-6 flex flex-col items-center">
+                <div className="w-full space-y-3">
+                  <button
+                    type="button"
+                    onClick={async () => {
+                      await handleLogout()
+                    }}
+                    disabled={isLoggingOut}
+                    className="w-full rounded-[14px] bg-[#DC2626] hover:bg-[#B91C1C] py-[14px] text-[15px] font-bold text-white transition-all active:scale-[0.98] disabled:opacity-50"
+                  >
+                    {isLoggingOut ? "Logging out..." : "Logout"}
+                  </button>
+                  
+                  <button
+                    type="button"
+                    onClick={async () => {
+                      await handleLogoutAllDevices()
+                    }}
+                    disabled={isLoggingOut}
+                    className="w-full rounded-[14px] border-[1.5px] border-[#DC2626] bg-white hover:bg-red-50 py-[14px] text-[15px] font-bold text-[#DC2626] transition-all active:scale-[0.98] disabled:opacity-50"
+                  >
+                    {isLoggingOut ? "Logging out..." : "Logout from all devices"}
+                  </button>
+                </div>
+                
                 <button
-                  onClick={handleLogout}
+                  type="button"
+                  onClick={() => setProfileOpen(false)}
                   disabled={isLoggingOut}
-                  className="w-full bg-gradient-to-br from-[#B80B3D] to-[#66001D] text-white hover:opacity-95 active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed font-bold py-4 px-4 rounded-2xl transition-all flex items-center justify-center gap-2 shadow-md"
+                  className="mt-5 text-[15px] font-bold text-[#6B7280] hover:text-[#374151] transition-colors disabled:opacity-50"
                 >
-                  <LogOut className="w-5 h-5 text-white" />
-                  {isLoggingOut ? "Logging out..." : "Logout"}
+                  Cancel
                 </button>
-
               </div>
 
             </motion.div>

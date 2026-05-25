@@ -1,11 +1,11 @@
 import React, { Suspense, lazy } from 'react';
-import { Routes, Route, Navigate, Outlet } from 'react-router-dom';
+import { Routes, Route, Navigate, Outlet, useNavigate } from 'react-router-dom';
 import ProtectedRoute from './components/ProtectedRoute';
 import AuthRedirect from "@food/components/AuthRedirect"
 import Loader from "@food/components/Loader";
 
 // Auth Pages (Lazy loaded)
-const Welcome = lazy(() => import("./pages/auth/Welcome"))
+
 const SignIn = lazy(() => import("./pages/auth/SignIn"))
 const OTP = lazy(() => import("./pages/auth/OTP"))
 const SignupStep1 = lazy(() => import("./pages/auth/SignupStep1"))
@@ -35,11 +35,36 @@ import NotificationsV2 from './pages/NotificationsV2';
 
 
 const DeliveryV2Router = () => {
+  const navigate = useNavigate();
+
+  React.useEffect(() => {
+    const handleAuthFailure = (e) => {
+      if (e.detail?.module === "delivery") {
+        navigate("/food/delivery/login", { replace: true });
+      }
+    };
+    
+    // Listen for cross-tab logouts (e.g., if Incognito logs out, Chrome logs out instantly)
+    const handleStorageChange = (e) => {
+      if (e.key === "delivery_accessToken" && !e.newValue) {
+        navigate("/food/delivery/login", { replace: true });
+      }
+    };
+
+    window.addEventListener("authRefreshFailed", handleAuthFailure);
+    window.addEventListener("storage", handleStorageChange);
+    
+    return () => {
+      window.removeEventListener("authRefreshFailed", handleAuthFailure);
+      window.removeEventListener("storage", handleStorageChange);
+    };
+  }, [navigate]);
+
   return (
     <Suspense fallback={null}>
       <Routes>
         {/* Auth routes */}
-        <Route path="welcome" element={<AuthRedirect module="delivery"><Welcome /></AuthRedirect>} />
+
         <Route path="login" element={<AuthRedirect module="delivery"><SignIn /></AuthRedirect>} />
         <Route path="otp" element={<AuthRedirect module="delivery"><OTP /></AuthRedirect>} />
         <Route path="signup" element={<AuthRedirect module="delivery"><Navigate to="/food/delivery/login" replace /></AuthRedirect>} />

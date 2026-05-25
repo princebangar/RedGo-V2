@@ -802,6 +802,14 @@ function AllOrders({ onSelectOrder, onCancel }) {
 
     fetchOrders();
     intervalId = setInterval(fetchOrders, 10000);
+    
+    const handleVisibility = () => {
+      if (!document.hidden) {
+        fetchOrders();
+      }
+    };
+    document.addEventListener("visibilitychange", handleVisibility);
+
     countdownIntervalId = setInterval(() => {
       if (isMounted) {
         setCurrentTime(new Date());
@@ -812,6 +820,7 @@ function AllOrders({ onSelectOrder, onCancel }) {
       isMounted = false;
       if (intervalId) clearInterval(intervalId);
       if (countdownIntervalId) clearInterval(countdownIntervalId);
+      document.removeEventListener("visibilitychange", handleVisibility);
     };
   }, []);
 

@@ -16,6 +16,7 @@ const AUTH = {
   DELIVERY_VERIFY_OTP: "/food/auth/delivery/verify-otp",
   REFRESH_TOKEN: "/food/auth/refresh-token",
   LOGOUT: "/food/auth/logout",
+  LOGOUT_ALL: "/food/auth/logout-all",
   DELETE_ACCOUNT: "/food/auth/delete-account",
   CHECK_BALANCE: "/food/auth/delete-account/check-balance",
   ME: "/food/auth/me",
@@ -159,6 +160,16 @@ export function logout(refreshToken, fcmToken = null, platform = "web") {
 
   clearMeCache();
   return apiClient.post(AUTH.LOGOUT, payload);
+}
+
+/**
+ * Logout from all devices (invalidates all refresh tokens and FCM tokens for the user).
+ * @param {string} [module] - "user" | "admin" | "restaurant" | "delivery"
+ */
+export function logoutFromAllDevices(module = "user") {
+  const m = String(module || "user");
+  clearMeCache();
+  return apiClient.post(AUTH.LOGOUT_ALL, {}, { contextModule: m });
 }
 
 /**

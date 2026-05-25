@@ -1,5 +1,5 @@
 import React, { useEffect, Suspense, lazy } from "react"
-import { Routes, Route, Navigate, useLocation } from "react-router-dom"
+import { Routes, Route, Navigate, useLocation, useNavigate } from "react-router-dom"
 import ProtectedRoute from "@food/components/ProtectedRoute"
 import AuthRedirect from "@food/components/AuthRedirect"
 import Loader from "@food/components/Loader"
@@ -85,7 +85,6 @@ function RestaurantGlobalNotificationListener() {
     location.pathname === "/food/restaurant/signup-email" ||
     location.pathname === "/food/restaurant/forgot-password" ||
     location.pathname === "/food/restaurant/otp" ||
-    location.pathname === "/food/restaurant/welcome" ||
     location.pathname === "/food/restaurant/auth/google-callback"
   const isOrderManagedRoute =
     location.pathname === "/food/restaurant" ||
@@ -107,10 +106,94 @@ function RestaurantGlobalNotificationListener() {
 
 export default function App() {
   const location = useLocation()
+  const navigate = useNavigate()
 
   useEffect(() => {
     registerWebPushForCurrentModule(location.pathname)
   }, [location.pathname])
+
+  // Global Auth Failure Listener EXACTLY like Redgo
+  useEffect(() => {
+    const handleAuthFailure = (event) => {
+      const module = event.detail?.module || 'user'
+      
+      const loginPaths = {
+        admin: '/food/admin/login',
+        restaurant: '/food/restaurant/login',
+        delivery: '/food/delivery/login',
+        user: '/food/user/login'
+      }
+
+      // Only redirect if the current tab is actually on the module that failed
+      if (location.pathname.startsWith(`/food/${module}`)) {
+        const targetPath = loginPaths[module] || '/food/user/login'
+        navigate(targetPath, { replace: true, state: { from: location.pathname } })
+      }
+    }
+
+    const handleStorageChange = (e) => {
+      // Cross-tab instant logout (Redgo v2 upgrade)
+      if ((e.key === "restaurant_accessToken" || e.key === "delivery_accessToken") && !e.newValue) {
+        const module = e.key === "restaurant_accessToken" ? "restaurant" : "delivery"
+        const loginPaths = {
+          restaurant: '/food/restaurant/login',
+          delivery: '/food/delivery/login',
+        }
+        // ONLY redirect if we are currently inside the affected module!
+        if (location.pathname.startsWith(`/food/${module}`)) {
+          navigate(loginPaths[module], { replace: true })
+        }
+      }
+    }
+
+    window.addEventListener('authRefreshFailed', handleAuthFailure)
+    window.addEventListener('storage', handleStorageChange)
+    
+    // Safety Net: Aggressively check local storage every 2 seconds if active token gets deleted
+    const safetyInterval = setInterval(() => {
+      // Don't kick users out of auth pages!
+      const isRestaurantAuth = location.pathname.includes('/login') || location.pathname.includes('/otp') || location.pathname.includes('/signup') || location.pathname.includes('/auth') || location.pathname.includes('/forgot-password')
+      const isDeliveryAuth = location.pathname.includes('/login') || location.pathname.includes('/otp') || location.pathname.includes('/signup') || location.pathname.includes('/auth')
+      
+      if (location.pathname.startsWith('/food/restaurant') && !isRestaurantAuth) {
+        if (!localStorage.getItem('restaurant_accessToken')) {
+          navigate('/food/restaurant/login', { replace: true })
+        }
+      }
+      if (location.pathname.startsWith('/food/delivery') && !isDeliveryAuth) {
+        if (!localStorage.getItem('delivery_accessToken')) {
+          navigate('/food/delivery/login', { replace: true })
+        }
+      }
+    }, 2000)
+
+    // Verify session instantly when user switches back to this tab
+    // This is crucial for cross-device/incognito logouts on static pages that don't poll
+    const handleFocus = async () => {
+      try {
+        const hasRestaurantToken = !!localStorage.getItem('restaurant_accessToken');
+        const hasDeliveryToken = !!localStorage.getItem('delivery_accessToken');
+        
+        // Dynamically import authAPI to avoid circular dependencies
+        if (hasRestaurantToken || hasDeliveryToken) {
+          const { authAPI } = await import('@food/api');
+          if (hasRestaurantToken) authAPI.me('restaurant').catch(() => {});
+          if (hasDeliveryToken) authAPI.me('delivery').catch(() => {});
+        }
+      } catch (error) {
+        // Silently catch - if it fails authAPI will handle the 401
+      }
+    };
+    
+    window.addEventListener('focus', handleFocus);
+
+    return () => {
+      window.removeEventListener('authRefreshFailed', handleAuthFailure)
+      window.removeEventListener('storage', handleStorageChange)
+      window.removeEventListener('focus', handleFocus);
+      clearInterval(safetyInterval)
+    }
+  }, [navigate, location.pathname])
 
   return (
     <AuthInitializer>

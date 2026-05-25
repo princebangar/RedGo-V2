@@ -1,10 +1,11 @@
 import React, { Suspense, lazy } from "react"
-import { Routes, Route, Navigate, Outlet, useLocation } from "react-router-dom"
+import { Routes, Route, Navigate, Outlet, useLocation, useNavigate } from "react-router-dom"
 import ProtectedRoute from "@food/components/ProtectedRoute"
 import AuthRedirect from "@food/components/AuthRedirect"
 import Loader from "@food/components/Loader"
 import { OnboardingSkeleton } from "@food/components/ui/loading-skeletons"
 import "./restaurantTheme.css"
+import { toast } from "sonner"
 
 // Lazy Loading Components
 const RestaurantNotifications = lazy(() => import("@food/pages/restaurant/Notifications"))
@@ -45,7 +46,7 @@ const ManageOutlets = lazy(() => import("@food/pages/restaurant/ManageOutlets"))
 const UpdateBankDetails = lazy(() => import("@food/pages/restaurant/UpdateBankDetails"))
 const ZoneSetup = lazy(() => import("@food/pages/restaurant/ZoneSetup"))
 const DiningReservations = lazy(() => import("@food/pages/restaurant/DiningReservations"))
-const Welcome = lazy(() => import("@food/pages/restaurant/auth/Welcome"))
+
 const Login = lazy(() => import("@food/pages/restaurant/auth/Login"))
 const OTP = lazy(() => import("@food/pages/restaurant/auth/OTP"))
 const Signup = lazy(() => import("@food/pages/restaurant/auth/Signup"))
@@ -55,7 +56,32 @@ const CMSHelpSupportPage = lazy(() => import("@food/pages/restaurant/CMSHelpSupp
 
 export default function RestaurantRouter() {
   const location = useLocation()
+  const navigate = useNavigate()
   const isOnboarding = location.pathname.includes("/onboarding")
+
+  React.useEffect(() => {
+    const handleAuthFailure = (e) => {
+      if (e.detail?.module === "restaurant") {
+        toast.error("Session Expired", { description: "Please log in again." })
+        navigate("/food/restaurant/login", { replace: true })
+      }
+    }
+
+    const handleStorageChange = (e) => {
+      if (e.key === "restaurant_accessToken" && !e.newValue) {
+        toast.error("Session Expired", { description: "Please log in again." })
+        navigate("/food/restaurant/login", { replace: true })
+      }
+    }
+
+    window.addEventListener("authRefreshFailed", handleAuthFailure)
+    window.addEventListener("storage", handleStorageChange)
+    
+    return () => {
+      window.removeEventListener("authRefreshFailed", handleAuthFailure)
+      window.removeEventListener("storage", handleStorageChange)
+    }
+  }, [navigate])
 
   return (
     <div className="restaurant-theme">
@@ -73,7 +99,7 @@ export default function RestaurantRouter() {
       }>
         <Routes>
         {/* Auth Routes */}
-        <Route path="welcome" element={<AuthRedirect module="restaurant"><Welcome /></AuthRedirect>} />
+
         <Route path="login" element={<AuthRedirect module="restaurant"><Login /></AuthRedirect>} />
         <Route path="otp" element={<AuthRedirect module="restaurant"><OTP /></AuthRedirect>} />
         <Route path="signup" element={<AuthRedirect module="restaurant"><Signup /></AuthRedirect>} />

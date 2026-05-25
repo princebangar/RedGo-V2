@@ -123,6 +123,7 @@ export const authAPI = {
         : null);
     return authService.logout(token, fcmToken, platform);
   },
+  logoutFromAllDevices: (module = "user") => authService.logoutFromAllDevices(module),
   deleteAccount: (module = "user") => authService.deleteAccount(module),
   checkBalance: (module = "user") => authService.checkAccountBalance(module),
 };

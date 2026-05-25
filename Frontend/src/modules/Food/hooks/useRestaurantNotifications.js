@@ -327,9 +327,21 @@ export const useRestaurantNotifications = () => {
     pollOrders();
     const intervalId = setInterval(pollOrders, ALERT_POLL_MS);
 
+    const handleVisibility = () => {
+      if (typeof document !== 'undefined' && document.visibilityState === 'visible') {
+        pollOrders();
+      }
+    };
+    if (typeof document !== 'undefined') {
+      document.addEventListener('visibilitychange', handleVisibility);
+    }
+
     return () => {
       isCancelled = true;
       clearInterval(intervalId);
+      if (typeof document !== 'undefined') {
+        document.removeEventListener('visibilitychange', handleVisibility);
+      }
     };
   }, [restaurantId]);
 

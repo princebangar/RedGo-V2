@@ -651,9 +651,17 @@ export default function DeliveryHomeV2({ tab = 'feed' }) {
       }
     }, isSocketConnected ? 12000 : 5000);
 
+    const handleVisibility = () => {
+      if (!document.hidden) {
+        void hydrateAvailableOrder();
+      }
+    };
+    document.addEventListener("visibilitychange", handleVisibility);
+    
     return () => {
       cancelled = true;
       window.clearInterval(poller);
+      document.removeEventListener("visibilitychange", handleVisibility);
     };
   }, [activeOrder, currentTab, isOnline, isSocketConnected, setActiveOrder, tripStatus, updateTripStatus]);
 

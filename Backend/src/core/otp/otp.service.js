@@ -95,7 +95,8 @@ export const createOrUpdateOtp = async (phone) => {
         const isInWindow = now - existing.lastRequestAt < windowMs;
 
         if (isInWindow) {
-            if (existing.requestCount >= (config.otpRateLimit || 3)) {
+            // Bypass rate limit in dev mode completely
+            if (!config.useDefaultOtp && existing.requestCount >= (config.otpRateLimit || 3)) {
                 logger.warn(`Rate limit exceeded for phone ${normalizedPhone}`);
                 throw new ValidationError(`Too many OTP requests. Please try again after ${Math.ceil(windowMs / 60000)} minutes.`);
             }
@@ -155,16 +156,25 @@ export const createOrUpdateOtp = async (phone) => {
 };
 
 export const verifyOtp = async (phone, otp, preserveOtp = false) => {
+    const normalizedPhone = normalizePhoneForOtp(phone);
+    const record = await FoodOtp.findOne({ phone: normalizedPhone });
+    const now = new Date();
+
     // Static OTP Bypass: In dev/test mode with USE_DEFAULT_OTP=true, 
     // we allow '1234' unconditionally to avoid any formatting or database issues.
     if (config.useDefaultOtp && otp === '1234') {
         console.info(`✅ [OTP-Verify] Static OTP '1234' ABSOLUTE BYPASS for ${phone}`);
+        if (record && !preserveOtp) {
+            await record.deleteOne(); // Reset the request limit for successful logins
+        } else if (record && preserveOtp) {
+            record.attempts = 0;
+            record.totalFailures = 0;
+            record.blockedUntil = null;
+            record.requestCount = 1; // Reset request count for preserved OTPs
+            await record.save();
+        }
         return { valid: true };
     }
-
-    const normalizedPhone = normalizePhoneForOtp(phone);
-    const record = await FoodOtp.findOne({ phone: normalizedPhone });
-    const now = new Date();
 
     if (!record) {
         console.warn(`❌ [OTP-Verify] No OTP record found for ${normalizedPhone}`);
@@ -212,10 +222,11 @@ export const verifyOtp = async (phone, otp, preserveOtp = false) => {
         return { valid: false, reason: 'Invalid OTP' };
     }
 
-    // OTP is correct! Reset attempts and penalty counters
+    // OTP is correct! Reset attempts, penalty counters, and request count
     record.attempts = 0;
     record.totalFailures = 0;
     record.blockedUntil = null;
+    record.requestCount = 1; // Reset request count for live OTPs
 
     if (!preserveOtp) {
         console.info(`✅ [OTP-Verify] OTP verified and deleted for ${normalizedPhone}`);
