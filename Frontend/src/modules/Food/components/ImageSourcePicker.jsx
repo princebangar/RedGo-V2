@@ -1,3 +1,4 @@
+import { useRef } from "react"
 import { Camera, Upload } from "lucide-react"
 import {
   Dialog,
@@ -21,6 +22,7 @@ export const ImageSourcePicker = ({
   fileNamePrefix = "upload",
   galleryInputRef = null
 }) => {
+  const internalInputRef = useRef(null)
   
   const handleOpenCamera = async () => {
     try {
@@ -51,6 +53,8 @@ export const ImageSourcePicker = ({
       // 2. Try provided ref (Standard browser behavior)
       if (galleryInputRef && galleryInputRef.current) {
         galleryInputRef.current.click()
+      } else if (internalInputRef && internalInputRef.current) {
+        internalInputRef.current.click()
       } else {
         // 3. Last resort - generic browser input
         const input = document.createElement("input")
@@ -58,7 +62,7 @@ export const ImageSourcePicker = ({
         input.accept = "image/*"
         input.onchange = (e) => {
           const file = e.target.files?.[0]
-          if (file) onFileSelect(file)
+          if (file && onFileSelect) onFileSelect(file)
         }
         input.click()
       }
@@ -72,7 +76,21 @@ export const ImageSourcePicker = ({
   // But usually users might still want a camera option if their browser supports it.
 
   return (
-    <Dialog open={isOpen} onOpenChange={onClose}>
+    <>
+      <input 
+        type="file" 
+        ref={internalInputRef} 
+        style={{ display: 'none' }} 
+        accept="image/*" 
+        onChange={(e) => {
+          const file = e.target.files?.[0]
+          if (file && onFileSelect) {
+            onFileSelect(file)
+          }
+          e.target.value = ""
+        }} 
+      />
+      <Dialog open={isOpen} onOpenChange={onClose}>
       <DialogContent className="max-w-sm w-[calc(100%-2rem)] rounded-2xl p-0 overflow-hidden">
         <DialogHeader className="p-5 pb-3">
           <DialogTitle className="text-lg font-bold text-gray-900">{title}</DialogTitle>
@@ -104,5 +122,6 @@ export const ImageSourcePicker = ({
         </div>
       </DialogContent>
     </Dialog>
+    </>
   )
 }

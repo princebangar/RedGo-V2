@@ -144,11 +144,7 @@ export default function MenuCategoriesPage() {
   }
 
   const handleImageClick = () => {
-    if (isFlutterBridgeAvailable()) {
-      setIsPhotoPickerOpen(true)
-    } else {
-      fileInputRef.current?.click()
-    }
+    setIsPhotoPickerOpen(true)
   }
 
   const handleSaveCategory = async () => {
@@ -488,6 +484,7 @@ export default function MenuCategoriesPage() {
     </div>
   )
 }
+
 
 
 

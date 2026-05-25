@@ -25,11 +25,7 @@ export default function FssaiUpdate() {
   }
 
   const handleFileClick = () => {
-    if (isFlutterBridgeAvailable()) {
-      setIsPhotoPickerOpen(true)
-    } else {
-      fileInputRef.current?.click()
-    }
+    setIsPhotoPickerOpen(true)
   }
 
   const handleSubmit = (e) => {
@@ -146,6 +142,7 @@ export default function FssaiUpdate() {
     </div>
   )
 }
+
 
 
 

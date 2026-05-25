@@ -1228,7 +1228,6 @@ export default function RestaurantOnboarding() {
       }
     }
 
-
     if (!step2.openingTime?.trim()) {
       errors.push("Opening time is required")
     }

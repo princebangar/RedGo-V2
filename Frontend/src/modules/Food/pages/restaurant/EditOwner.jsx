@@ -226,12 +226,12 @@ export default function EditOwner() {
           const mappedData = {
             ownerName: apiData.ownerName || "",
             ownerEmail: apiData.ownerEmail || "",
-            ownerPhone: apiData.ownerPhone || "",
+            ownerPhone: (apiData.ownerPhone || "").replace(/\D/g, "").slice(-10),
             profileImage: toImgUrl(apiData.profileImage),
 
             restaurantName: apiData.restaurantName || apiData.name || "",
             pureVegRestaurant: Boolean(apiData.pureVegRestaurant),
-            primaryContactNumber: apiData.primaryContactNumber || "",
+            primaryContactNumber: (apiData.primaryContactNumber || "").replace(/\D/g, "").slice(-10),
             zoneId: apiData.zoneId ? String(apiData.zoneId) : "",
             location: {
               formattedAddress: loc.formattedAddress || loc.address || "",
@@ -245,10 +245,14 @@ export default function EditOwner() {
               latitude: loc.latitude ?? (Array.isArray(loc.coordinates) ? loc.coordinates[1] : ""),
               longitude: loc.longitude ?? (Array.isArray(loc.coordinates) ? loc.coordinates[0] : ""),
             },
-            cuisines: Array.isArray(apiData.cuisines) ? apiData.cuisines : [],
+            cuisines: Array.isArray(apiData.cuisines) 
+              ? apiData.cuisines.flatMap(c => typeof c === "string" ? c.split(",").map(s => s.trim()) : c).map(c => ALL_CUISINES.find(ac => ac.toLowerCase() === String(c).toLowerCase()) || c) 
+              : [],
             openingTime: apiData.openingTime || "",
             closingTime: apiData.closingTime || "",
-            openDays: Array.isArray(apiData.openDays) ? apiData.openDays : [],
+            openDays: Array.isArray(apiData.openDays) 
+              ? apiData.openDays.flatMap(d => typeof d === "string" ? d.split(",").map(s => s.trim()) : d).map(d => daysOfWeek.find(dw => dw.toLowerCase() === String(d).toLowerCase()) || d) 
+              : [],
             estimatedDeliveryTime: apiData.estimatedDeliveryTime || "",
 
             panNumber: apiData.panNumber || "",
@@ -349,11 +353,7 @@ export default function EditOwner() {
   // File picker handler
   const handlePhotoClick = (field) => {
     setActiveImageField(field)
-    if (isFlutterBridgeAvailable()) {
-      setIsPhotoPickerOpen(true)
-    } else {
-      fileInputRef.current?.click()
-    }
+    setIsPhotoPickerOpen(true)
   }
 
   const handlePhotoSelect = (file) => {
@@ -467,10 +467,6 @@ export default function EditOwner() {
       errors.push({ tab: "restaurant", field: "pincode", message: "Pincode is required" })
     } else if (!/^\d{6}$/.test(formData.location.pincode.replace(/\D/g, ""))) {
       errors.push({ tab: "restaurant", field: "pincode", message: "Pincode must be exactly 6 digits" })
-    }
-
-    if (!formData.cuisines || formData.cuisines.length === 0) {
-      errors.push({ tab: "restaurant", field: "cuisines", message: "Select at least one cuisine served" })
     }
 
     if (!formData.openingTime || !formData.closingTime) {
@@ -833,7 +829,8 @@ export default function EditOwner() {
                       }
                       placeholder="Enter 10-digit mobile number"
                       inputMode="numeric"
-                      className="w-full text-sm h-11 focus-visible:border-black focus-visible:ring-0"
+                      disabled={true}
+                      className="w-full text-sm h-11 focus-visible:border-black focus-visible:ring-0 bg-gray-50 text-gray-500"
                     />
                   </div>
                   <p className="text-[10px] text-gray-400 mt-1">Changing phone number requires re-verification via OTP for new logins</p>
@@ -1167,7 +1164,7 @@ export default function EditOwner() {
                 {/* PAN Image */}
                 <div className="border border-dashed border-gray-200 rounded-xl p-4 bg-gray-50/50 flex flex-col items-center gap-3">
                   <Label className="text-xs font-semibold text-gray-600 self-start">
-                    PAN Card Copy Upload
+                    PAN Card Upload
                   </Label>
                   {formData.panImage ? (
                     <div className="relative w-full max-w-[200px] aspect-[4/3] rounded-lg overflow-hidden border border-gray-200">
@@ -1196,7 +1193,7 @@ export default function EditOwner() {
                     className="w-full border-gray-300 text-gray-700 bg-white"
                   >
                     <Upload className="w-3.5 h-3.5 mr-1.5" />
-                    Upload PAN Copy
+                    Upload PAN
                   </Button>
                 </div>
               </div>
@@ -1548,3 +1545,4 @@ export default function EditOwner() {
     </>
   )
 }
+
