@@ -1,3 +1,8 @@
+import { API_BASE_URL } from "@food/api/config";
+
+// Derive the fallback backend origin from API_BASE_URL
+const defaultBackendOrigin = (API_BASE_URL || "").replace(/\/api\/v1\/?$/i, "").replace(/\/api\/?$/i, "");
+
 /**
  * Common utility functions for the Food module
  */
@@ -24,7 +29,8 @@ export const normalizeImageUrl = (imageUrl, backendOrigin = "") => {
     try {
       const parsed = new URL(normalized, window.location.origin);
       if (appHost && !/^(localhost|127\.0\.0\.1)$/i.test(appHost) && /^(localhost|127\.0\.0\.1)$/i.test(parsed.hostname)) {
-        const backendUrl = new URL(backendOrigin || window.location.origin);
+        const originToUse = backendOrigin || defaultBackendOrigin || window.location.origin;
+        const backendUrl = new URL(originToUse);
         parsed.protocol = backendUrl.protocol;
         parsed.hostname = backendUrl.hostname;
         parsed.port = backendUrl.port;
@@ -38,9 +44,10 @@ export const normalizeImageUrl = (imageUrl, backendOrigin = "") => {
     }
   }
 
+  const originToUse = backendOrigin || defaultBackendOrigin;
   const absolutePath = normalized.startsWith("/")
-    ? `${backendOrigin}${normalized}`
-    : `${backendOrigin}/${normalized.replace(/^\.?\/*/, "")}`;
+    ? `${originToUse}${normalized}`
+    : `${originToUse}/${normalized.replace(/^\.?\/*/, "")}`;
   return absolutePath;
 };
 

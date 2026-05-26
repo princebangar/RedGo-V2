@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { motion } from "framer-motion";
 import {
@@ -25,7 +25,23 @@ import {
   Share2,
   Utensils,
   Trash2,
+  Pencil,
+  Loader2,
+  Camera,
+  Upload,
+  LifeBuoy
 } from "lucide-react";
+
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@food/components/ui/dropdown-menu";
+import { ImageCropper } from "@food/components/ImageCropper";
+import { ImageSourcePicker } from "@food/components/ImageSourcePicker";
+import { getAvatarColor } from "@food/utils/avatarUtils";
+import { normalizeImageUrl } from "@food/utils/common";
 
 import AnimatedPage from "@food/components/user/AnimatedPage";
 import { Card, CardContent } from "@food/components/ui/card";
@@ -60,7 +76,7 @@ const USER_SESSION_PREFERENCE_KEYS = ["userVegMode", "food-under-250-filters"];
 
 
 export default function Profile() {
-  const { userProfile, vegMode, setVegMode, getDefaultAddress, addresses } =
+  const { userProfile, vegMode, setVegMode, getDefaultAddress, addresses, updateUserProfile } =
     useProfile();
   const { openLocationSelector } = useLocationSelector();
   const navigate = useNavigate();
@@ -91,6 +107,116 @@ export default function Profile() {
   const [showBalanceWarning, setShowBalanceWarning] = useState(false);
   const [balanceData, setBalanceData] = useState({ balance: 0, type: "Wallet" });
   const [isCheckingBalance, setIsCheckingBalance] = useState(false);
+
+  // Profile image upload states
+  const [isUploadingImage, setIsUploadingImage] = useState(false);
+  const [photoPickerOpen, setPhotoPickerOpen] = useState(false);
+  const [cropImageFile, setCropImageFile] = useState(null);
+  const [isCropModalOpen, setIsCropModalOpen] = useState(false);
+  const fileInputRef = useRef(null);
+
+  const handleProfileImageAction = () => {
+    if (!userProfile?.profileImage || !userProfile.profileImage.trim()) {
+      if (isFlutterBridgeAvailable()) {
+        setPhotoPickerOpen(true);
+      } else {
+        fileInputRef.current?.click();
+      }
+      return;
+    }
+    setPhotoPickerOpen(true);
+  };
+
+  const processProfileImageFile = async (file) => {
+    if (!file) return;
+    if (!file.type.startsWith('image/')) {
+      toast.error('Please select a valid image file');
+      return;
+    }
+    if (file.size > 5 * 1024 * 1024) {
+      toast.error('Image size should be less than 5MB');
+      return;
+    }
+    setCropImageFile(file);
+    setIsCropModalOpen(true);
+  };
+  const handleCropComplete = async (croppedFile) => {
+    setIsCropModalOpen(false);
+    setCropImageFile(null);
+
+    if (!croppedFile) return;
+
+    const reader = new FileReader();
+    reader.onloadend = async () => {
+      const base64Data = reader.result;
+
+      // Set preview locally first
+      const tempProfile = {
+        ...(userProfile || {}),
+        localImagePreview: base64Data,
+      };
+      updateUserProfile(tempProfile);
+      localStorage.setItem("user_user", JSON.stringify(tempProfile));
+      localStorage.setItem("userProfile", JSON.stringify(tempProfile));
+
+      try {
+        setIsUploadingImage(true);
+        const response = await userAPI.uploadProfileImage(croppedFile);
+        const imageUrl = response?.data?.data?.profileImage || response?.data?.profileImage;
+
+        if (imageUrl) {
+          // Also save to database
+          const updateRes = await userAPI.updateProfile({ profileImage: imageUrl });
+          const updatedUser = updateRes?.data?.data?.user || updateRes?.data?.user;
+
+          const mergedProfile = {
+            ...(userProfile || {}),
+            ...updatedUser,
+            profileImage: imageUrl,
+            localImagePreview: base64Data,
+          };
+          updateUserProfile(mergedProfile);
+          localStorage.setItem("user_user", JSON.stringify(mergedProfile));
+          localStorage.setItem("userProfile", JSON.stringify(mergedProfile));
+          
+          window.dispatchEvent(new Event("userAuthChanged"));
+        }
+      } catch (error) {
+        debugError('Error uploading image:', error);
+        toast.error(error?.response?.data?.message || 'Failed to upload image');
+      } finally {
+        setIsUploadingImage(false);
+      }
+    };
+    reader.readAsDataURL(croppedFile);
+  };
+
+  const handleDeletePhoto = async () => {
+    try {
+      setIsUploadingImage(true);
+      
+      // Optimistic UI update - instantly remove the photo
+      const mergedProfile = {
+        ...(userProfile || {}),
+        profileImage: "",
+        localImagePreview: undefined,
+      };
+      updateUserProfile(mergedProfile);
+      localStorage.setItem("user_user", JSON.stringify(mergedProfile));
+      localStorage.setItem("userProfile", JSON.stringify(mergedProfile));
+      
+      // Background API call
+      await userAPI.updateProfile({ profileImage: "" });
+      
+      window.dispatchEvent(new Event("userAuthChanged"));
+    } catch (error) {
+      debugError('Error deleting photo:', error);
+      toast.error('Failed to remove photo');
+      // If it fails, the next fetch will revert it, but we can also handle rollback here if needed
+    } finally {
+      setIsUploadingImage(false);
+    }
+  };
 
   // Lock scroll when any popup is open
   useEffect(() => {
@@ -459,62 +585,78 @@ export default function Profile() {
     <AnimatedPage className="min-h-screen bg-[#f5f5f5] dark:bg-[#0a0a0a]">
       <div className="max-w-md md:max-w-2xl lg:max-w-4xl xl:max-w-5xl mx-auto px-4 sm:px-6 md:px-8 lg:px-10 xl:px-12 py-4 sm:py-6 md:py-8 lg:py-10 pb-20 sm:pb-24">
         {/* Header: Back Arrow */}
-        <div className="flex items-center mb-4">
-          <Link to="/user">
-            <Button variant="ghost" size="icon" className="h-8 w-8 p-0">
-              <ArrowLeft className="h-5 w-5 text-black dark:text-white" />
-            </Button>
-          </Link>
+        <div className="flex items-center mb-5">
+          <button 
+            onClick={() => navigate(-1)} 
+            className="h-11 w-11 flex items-center justify-center bg-white/70 dark:bg-[#1a1a1a]/70 backdrop-blur-md rounded-full shadow-[0_2px_12px_rgba(0,0,0,0.08)] hover:bg-white/90 dark:hover:bg-[#222]/90 active:scale-95 transition-all outline-none border border-black/10 dark:border-white/10"
+          >
+            <ArrowLeft className="h-6 w-6 text-black dark:text-white" />
+          </button>
         </div>
 
         {/* Profile Info Card */}
-        <Card className="bg-white dark:bg-[#1a1a1a] rounded-2xl py-0 pt-1 shadow-sm mb-0 border-0 dark:border-gray-800 overflow-hidden">
-          <CardContent className="p-4 py-0 pt-2">
-            <div className="flex items-start gap-4 mb-4">
+        <Card className="bg-white dark:bg-[#1a1a1a] rounded-[20px] shadow-[0_4px_16px_rgba(0,0,0,0.02)] mb-0 border-0 dark:border-gray-800 overflow-hidden">
+          <CardContent className="p-4 py-3.5">
+            <div className="flex items-center gap-4">
               <motion.div
-                whileHover={{ scale: 1.1, rotate: 5 }}
-                transition={{ duration: 0.3, type: "spring", stiffness: 300 }}>
-                <Avatar className="h-16 w-16 bg-[#DC2626]/20 border-0">
-                  {userProfile?.profileImage && (
-                    <AvatarImage
-                      src={
-                        userProfile.profileImage &&
-                          userProfile.profileImage.trim()
-                          ? userProfile.profileImage
-                          : undefined
-                      }
+                className="relative cursor-pointer"
+                onClick={handleProfileImageAction}
+                whileHover={{ scale: 1.03 }}
+                transition={{ duration: 0.2 }}>
+                <Avatar className="h-16 w-16 border border-gray-100 dark:border-gray-800 shadow-sm bg-transparent">
+                  {(userProfile?.localImagePreview || (userProfile?.profileImage && typeof userProfile.profileImage === "string" && userProfile.profileImage.trim() !== "" && userProfile.profileImage !== "null" && userProfile.profileImage !== "undefined")) ? (
+                    <img
+                      src={userProfile?.localImagePreview || normalizeImageUrl(userProfile.profileImage)}
                       alt={displayName}
+                      className="w-full h-full object-cover rounded-full"
                     />
+                  ) : (
+                    <div 
+                      className="flex h-full w-full items-center justify-center rounded-full text-white text-2xl font-semibold"
+                      style={{ backgroundColor: getAvatarColor(displayName) }}
+                    >
+                      {avatarInitial}
+                    </div>
                   )}
-                  <AvatarFallback className="bg-[#DC2626] text-white text-2xl font-semibold">
-                    {avatarInitial}
-                  </AvatarFallback>
                 </Avatar>
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept="image/*"
+                  onChange={(e) => {
+                    const file = e.target.files?.[0];
+                    if (file) processProfileImageFile(file);
+                    e.target.value = "";
+                  }}
+                  className="hidden"
+                />
               </motion.div>
-              <div className="flex-1 pt-1">
-                <h2 className="text-xl font-bold text-black dark:text-white mb-1">
+              <div className="flex-1">
+                <h2 className="text-[19px] font-bold text-gray-900 dark:text-white leading-tight capitalize">
                   {displayName}
                 </h2>
                 {hasValidEmail && (
-                  <p className="text-sm text-black dark:text-gray-300 mb-1">
+                  <p className="text-[13px] text-gray-500 dark:text-gray-400 mt-0.5">
                     {userProfile.email}
                   </p>
                 )}
                 {userProfile?.phone && (
-                  <p
-                    className={`text-sm ${hasValidEmail ? "text-gray-600 dark:text-gray-400" : "text-black dark:text-white"} mb-3`}>
+                  <p className="text-[13px] text-gray-500 dark:text-gray-400 mt-0.5">
                     {userProfile.phone}
                   </p>
                 )}
                 {!hasValidEmail && !userProfile?.phone && (
-                  <p className="text-sm text-gray-500 dark:text-gray-400 mb-3">
+                  <p className="text-[13px] text-gray-400 mt-0.5">
                     Not available
                   </p>
                 )}
-                {/* <Link to="/user/profile/activity" className="flex items-center gap-1 text-green-600 text-sm font-medium">
-                  View activity
-                  <ChevronRight className="h-4 w-4" />
-                </Link> */}
+                <Link 
+                  to="/user/profile/edit" 
+                  className="inline-flex items-center text-[13px] font-medium text-gray-700 dark:text-gray-300 hover:text-black dark:hover:text-white mt-1 transition-colors"
+                >
+                  <span>Edit profile</span>
+                  <span className="text-[9px] ml-1 leading-none text-gray-500 dark:text-gray-400">▶</span>
+                </Link>
               </div>
             </div>
           </CardContent>
@@ -692,43 +834,6 @@ export default function Profile() {
             </Card>
           </motion.div>
 
-          <Link to="/user/profile/edit" className="block">
-            <motion.div
-              whileHover={{ x: 4, scale: 1.01 }}
-              transition={{ duration: 0.2, type: "spring", stiffness: 300 }}>
-              <Card className="bg-white dark:bg-[#1a1a1a] py-0 rounded-xl shadow-sm border-0 dark:border-gray-800 cursor-pointer">
-                <CardContent className="p-4 flex items-center justify-between">
-                  <div className="flex items-center gap-3">
-                    <motion.div
-                      className="bg-gray-100 dark:bg-gray-800 rounded-full p-2"
-                      whileHover={{ rotate: 15, scale: 1.1 }}
-                      transition={{ duration: 0.3 }}>
-                      <User className="h-5 w-5 text-gray-700 dark:text-gray-300" />
-                    </motion.div>
-                    <span className="text-base font-medium text-gray-900 dark:text-white">
-                      Your profile
-                    </span>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <motion.span
-                      className={`text-xs font-medium px-2 py-1 rounded transition-colors ${isComplete
-                          ? "bg-[#DC2626] text-white shadow-sm"
-                          : "bg-[#DC262615] text-[#DC2626] border border-[#DC2626]/10"
-                        }`}
-                      whileHover={{ scale: 1.1 }}
-                      transition={{ duration: 0.2 }}>
-                      {profileCompletion}% completed
-                    </motion.span>
-                    <motion.div
-                      whileHover={{ x: 4 }}
-                      transition={{ duration: 0.2 }}>
-                      <ChevronRight className="h-5 w-5 text-gray-400 dark:text-gray-500" />
-                    </motion.div>
-                  </div>
-                </CardContent>
-              </Card>
-            </motion.div>
-          </Link>
 
           <motion.div
             whileHover={{ x: 4, scale: 1.01 }}
@@ -934,7 +1039,7 @@ export default function Profile() {
                         className="bg-gray-100 dark:bg-gray-800 rounded-full p-2"
                         whileHover={{ rotate: 15, scale: 1.1 }}
                         transition={{ duration: 0.3 }}>
-                        <SettingsIcon className="h-5 w-5 text-gray-700 dark:text-gray-300" />
+                        <LifeBuoy className="h-5 w-5 text-gray-700 dark:text-gray-300" />
                       </motion.div>
                       <span className="text-base font-medium text-gray-900 dark:text-white">
                         Help & Support
@@ -1004,6 +1109,33 @@ export default function Profile() {
               </motion.div>
             </Link>
 
+            <Link to="/user/profile/settings" className="block">
+              <motion.div
+                whileHover={{ x: 4, scale: 1.01 }}
+                transition={{ duration: 0.2, type: "spring", stiffness: 300 }}>
+                <Card className="bg-white dark:bg-[#1a1a1a] py-0 rounded-xl shadow-sm border-0 dark:border-gray-800 cursor-pointer">
+                  <CardContent className="p-4 flex items-center justify-between">
+                    <div className="flex items-center gap-3">
+                      <motion.div
+                        className="bg-gray-100 dark:bg-gray-800 rounded-full p-2"
+                        whileHover={{ rotate: 15, scale: 1.1 }}
+                        transition={{ duration: 0.3 }}>
+                        <SettingsIcon className="h-5 w-5 text-gray-700 dark:text-gray-300" />
+                      </motion.div>
+                      <span className="text-base font-medium text-gray-900 dark:text-white">
+                        Settings
+                      </span>
+                    </div>
+                    <motion.div
+                      whileHover={{ x: 4 }}
+                      transition={{ duration: 0.2 }}>
+                      <ChevronRight className="h-5 w-5 text-gray-400 dark:text-gray-500" />
+                    </motion.div>
+                  </CardContent>
+                </Card>
+              </motion.div>
+            </Link>
+
             <motion.div
               whileHover={{ x: 4, scale: 1.01 }}
               transition={{ duration: 0.2, type: "spring", stiffness: 300 }}>
@@ -1016,7 +1148,7 @@ export default function Profile() {
                       className="bg-gray-100 dark:bg-gray-800 rounded-full p-2"
                       whileHover={{ rotate: 15, scale: 1.1 }}
                       transition={{ duration: 0.3 }}>
-                    <Power
+                      <Power
                         className={`h-5 w-5 text-gray-900 dark:text-white ${isLoggingOut ? "animate-pulse" : ""}`}
                       />
                     </motion.div>
@@ -1028,40 +1160,6 @@ export default function Profile() {
                     whileHover={{ x: 4 }}
                     transition={{ duration: 0.2 }}>
                     <ChevronRight className="h-5 w-5 text-gray-400 dark:text-gray-500" />
-                  </motion.div>
-                </CardContent>
-              </Card>
-            </motion.div>
-
-            <motion.div
-              whileHover={{ x: 4, scale: 1.01 }}
-              transition={{ duration: 0.2, type: "spring", stiffness: 300 }}>
-              <Card
-                className="bg-white dark:bg-[#1a1a1a] py-0 rounded-xl shadow-sm border-0 dark:border-gray-800 cursor-pointer"
-                onClick={() => { 
-                  setDeleteCaptcha(""); 
-                  setDeleteAccountOpen(true);
-                }}>
-                <CardContent className="p-4 flex items-center justify-between">
-                  <div className="flex items-center gap-3">
-                    <motion.div
-                      className="bg-[#FFF1F2] rounded-full p-2"
-                      whileHover={{ rotate: 15, scale: 1.1 }}
-                      transition={{ duration: 0.3 }}>
-                      {isCheckingBalance ? (
-                        <div className="h-5 w-5 border-2 border-[#FF3131]/30 border-t-[#FF3131] rounded-full animate-spin" />
-                      ) : (
-                        <Trash2 className="h-5 w-5 text-[#FF3131]" />
-                      )}
-                    </motion.div>
-                    <span className="text-base font-bold text-[#FF3131]">
-                      Delete Account
-                    </span>
-                  </div>
-                  <motion.div
-                    whileHover={{ x: 4 }}
-                    transition={{ duration: 0.2 }}>
-                    <ChevronRight className="h-5 w-5 text-[#FF3131]/40" />
                   </motion.div>
                 </CardContent>
               </Card>
@@ -1141,36 +1239,48 @@ export default function Profile() {
 
       {/* Logout Confirmation Popup */}
       {logoutConfirmOpen && (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/40 px-4 backdrop-blur-sm overflow-y-auto py-10">
-          <div className="w-full max-w-sm rounded-2xl bg-white dark:bg-[#1a1a1a] p-5 shadow-2xl border border-gray-200 dark:border-gray-800">
-            <h3 className="text-lg font-bold text-gray-900 dark:text-white">
-              Log out?
-            </h3>
-            <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
-              Are you sure you want to log out?
-            </p>
-            <div className="mt-5 flex items-center gap-3">
-              <Button
-                type="button"
-                variant="outline"
-                className="flex-1 rounded-xl"
-                onClick={() => setLogoutConfirmOpen(false)}
-                disabled={isLoggingOut}
-              >
-                No
-              </Button>
-              <Button
-                type="button"
-                className="flex-1 rounded-xl bg-[#991B1B] hover:bg-[#7F1D1D] text-white"
-                onClick={() => {
-                  setLogoutConfirmOpen(false);
-                  handleLogout();
-                }}
-                disabled={isLoggingOut}
-              >
-                Yes
-              </Button>
-            </div>
+        <div className="fixed inset-0 z-[1000] overflow-y-auto bg-black/60 backdrop-blur-sm">
+          <div className="flex min-h-screen items-center justify-center p-4">
+            <motion.div
+              initial={{ scale: 0.9, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              className="w-full max-w-sm rounded-2xl bg-white/75 dark:bg-[#1a1a1a]/75 backdrop-blur-md shadow-2xl border border-white/20 dark:border-white/10 overflow-hidden p-6 text-center">
+              
+              <div className="flex flex-col items-center mb-4">
+                <div className="w-14 h-14 rounded-full bg-red-50 dark:bg-red-950/30 flex items-center justify-center mb-3">
+                  <Power className="h-7 w-7 text-[#FF3131]" />
+                </div>
+                <h3 className="text-xl font-bold text-gray-900 dark:text-white">
+                  Log out?
+                </h3>
+              </div>
+
+              <p className="text-sm text-gray-500 dark:text-gray-400 mb-6 leading-relaxed">
+                Are you sure you want to log out?
+              </p>
+
+              <div className="flex items-center gap-3">
+                <button
+                  type="button"
+                  onClick={() => setLogoutConfirmOpen(false)}
+                  disabled={isLoggingOut}
+                  className="flex-1 h-12 rounded-xl text-md font-bold border border-gray-200 dark:border-gray-800 bg-white dark:bg-[#262626] text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-[#333] transition-colors outline-none"
+                >
+                  No
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setLogoutConfirmOpen(false);
+                    handleLogout();
+                  }}
+                  disabled={isLoggingOut}
+                  className="flex-1 h-12 rounded-xl bg-[#FF3131] hover:bg-[#E02626] text-white text-md font-bold shadow-lg shadow-red-500/20 active:scale-95 transition-all outline-none"
+                >
+                  Yes
+                </button>
+              </div>
+            </motion.div>
           </div>
         </div>
       )}
@@ -1360,6 +1470,26 @@ export default function Profile() {
           </div>
         </div>
       )}
+
+      <ImageSourcePicker
+        isOpen={photoPickerOpen}
+        onClose={() => setPhotoPickerOpen(false)}
+        onFileSelect={processProfileImageFile}
+        title="Update profile photo"
+        description="Choose how you want to upload your profile photo."
+        fileNamePrefix="profile-photo"
+        galleryInputRef={fileInputRef}
+      />
+
+      <ImageCropper 
+        isOpen={isCropModalOpen}
+        onClose={() => {
+          setIsCropModalOpen(false);
+          setCropImageFile(null);
+        }}
+        imageFile={cropImageFile}
+        onCropComplete={handleCropComplete}
+      />
     </AnimatedPage>
   );
 }

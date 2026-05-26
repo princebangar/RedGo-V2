@@ -1,7 +1,15 @@
 import { useState, useEffect, useRef } from "react"
 import { useNavigate } from "react-router-dom"
-import { ArrowLeft, X, Pencil, Loader2, Camera, Upload } from "lucide-react"
+import { ArrowLeft, X, Pencil, Loader2, Camera, Upload, Trash2 } from "lucide-react"
 import { Button } from "@food/components/ui/button"
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@food/components/ui/dropdown-menu"
+import { getAvatarColor } from "@food/utils/avatarUtils"
+import { ImageCropper } from "@food/components/ImageCropper"
 import { Input } from "@food/components/ui/input"
 import { Label } from "@food/components/ui/label"
 import { Card, CardContent } from "@food/components/ui/card"
@@ -21,6 +29,7 @@ import {
   DialogTitle,
 } from "@food/components/ui/dialog"
 import { useProfile } from "@food/context/ProfileContext"
+import { normalizeImageUrl } from "@food/utils/common"
 import { userAPI } from "@food/api"
 import { toast } from "sonner"
 import useAppBackNavigation from "@food/hooks/useAppBackNavigation"
@@ -132,9 +141,12 @@ export default function EditProfile() {
   const [hasChanges, setHasChanges] = useState(false)
   const [isSaving, setIsSaving] = useState(false)
   const [isUploadingImage, setIsUploadingImage] = useState(false)
-  const [profileImage, setProfileImage] = useState(initialProfile?.profileImage || "")
-  const [imagePreview, setImagePreview] = useState(initialProfile?.profileImage || "")
+  const [profileImage, setProfileImage] = useState(initialProfile?.profileImage || userProfile?.profileImage || "")
+  const [imagePreview, setImagePreview] = useState(initialProfile?.profileImage || userProfile?.profileImage || "")
+  const [pendingImageFile, setPendingImageFile] = useState(null)
   const [photoPickerOpen, setPhotoPickerOpen] = useState(false)
+  const [cropImageFile, setCropImageFile] = useState(null)
+  const [isCropModalOpen, setIsCropModalOpen] = useState(false)
   const [fieldErrors, setFieldErrors] = useState({
     mobile: "",
     email: "",
@@ -145,18 +157,19 @@ export default function EditProfile() {
 
   // Update form data when profile changes
   useEffect(() => {
-    if (hydratedFromDraftRef.current) return
-
     const storedProfile = loadProfileFromStorage()
     const profile = storedProfile || userProfile || {}
-    const newFormData = buildFormDataFromProfile(profile)
-    setFormData(newFormData)
-
-    // Update profile image
-    if (profile.profileImage) {
+    
+    // Always update image if available from profile
+    if (profile.profileImage && profile.profileImage !== profileImage) {
       setProfileImage(profile.profileImage)
       setImagePreview(profile.profileImage)
     }
+
+    if (hydratedFromDraftRef.current) return
+
+    const newFormData = buildFormDataFromProfile(profile)
+    setFormData(newFormData)
   }, [userProfile])
 
   useEffect(() => {
@@ -248,52 +261,39 @@ export default function EditProfile() {
       return
     }
 
-    // Show preview
+    // Open crop modal instead of uploading directly
+    setCropImageFile(file)
+    setIsCropModalOpen(true)
+  }
+
+  const handleCropComplete = async (croppedFile) => {
+    setIsCropModalOpen(false)
+    setCropImageFile(null)
+
+    if (!croppedFile) return
+
     const reader = new FileReader()
-    reader.onloadend = () => {
-      setImagePreview(reader.result)
-    }
-    reader.readAsDataURL(file)
+    reader.onloadend = async () => {
+      const base64Data = reader.result
+      setImagePreview(base64Data)
 
-    // Upload to server
-    try {
-      setIsUploadingImage(true)
-      const response = await userAPI.uploadProfileImage(file)
-      const imageUrl = response?.data?.data?.profileImage || response?.data?.profileImage
-
-      if (imageUrl) {
-        setProfileImage(imageUrl)
-        setImagePreview(imageUrl)
-        toast.success('Profile image uploaded successfully')
-
-        const mergedProfile = {
-          ...(userProfile || {}),
-          name: formData.name,
-          phone: formData.mobile,
-          mobile: formData.mobile,
-          email: formData.email,
-          dateOfBirth: formData.dateOfBirth ? formData.dateOfBirth.format('YYYY-MM-DD') : null,
-          anniversary: formData.anniversary ? formData.anniversary.format('YYYY-MM-DD') : null,
-          gender: formData.gender || "",
-          profileImage: imageUrl,
+      try {
+        setIsUploadingImage(true)
+        const uploadRes = await userAPI.uploadProfileImage(croppedFile)
+        const finalImageUrl = uploadRes?.data?.data?.profileImage || uploadRes?.data?.profileImage
+        
+        if (finalImageUrl) {
+          setProfileImage(finalImageUrl)
+          setHasChanges(true)
         }
-
-        // Update context + local persistence with current form values so refresh keeps all fields
-        updateUserProfile(mergedProfile)
-        saveProfileToStorage(mergedProfile)
-        saveEditProfileDraft(mergedProfile)
-
-        // Dispatch event to refresh profile
-        window.dispatchEvent(new Event("userAuthChanged"))
+      } catch (uploadErr) {
+        debugError('Error uploading image:', uploadErr)
+        toast.error('Failed to upload image')
+      } finally {
+        setIsUploadingImage(false)
       }
-    } catch (error) {
-      debugError('Error uploading image:', error)
-      toast.error(error?.response?.data?.message || 'Failed to upload image')
-      // Revert preview
-      setImagePreview(profileImage)
-    } finally {
-      setIsUploadingImage(false)
     }
+    reader.readAsDataURL(croppedFile)
   }
 
   const handleImageSelect = async (e) => {
@@ -340,7 +340,7 @@ export default function EditProfile() {
         dateOfBirth: formData.dateOfBirth ? formData.dateOfBirth.format('YYYY-MM-DD') : undefined,
         anniversary: formData.anniversary ? formData.anniversary.format('YYYY-MM-DD') : undefined,
         gender: formData.gender || undefined,
-        profileImage: profileImage || undefined, // Include profileImage in update
+        profileImage: profileImage, // Send updated profileImage (either the new Cloudinary URL, or empty string if deleted)
       }
 
       // Call API to update profile
@@ -352,7 +352,8 @@ export default function EditProfile() {
         updateUserProfile({
           ...updatedUser,
           phone: updatedUser.phone || formData.mobile,
-          profileImage: updatedUser.profileImage || profileImage,
+          profileImage: profileImage,
+          localImagePreview: imagePreview !== profileImage ? imagePreview : undefined
         })
 
         // Save to localStorage with complete data
@@ -362,6 +363,7 @@ export default function EditProfile() {
           mobile: updatedUser.phone || formData.mobile,
           email: updatedUser.email || formData.email,
           profileImage: updatedUser.profileImage || profileImage,
+          localImagePreview: imagePreview !== profileImage ? imagePreview : undefined,
           dateOfBirth: updatedUser.dateOfBirth || formData.dateOfBirth?.format('YYYY-MM-DD'),
           anniversary: updatedUser.anniversary || formData.anniversary?.format('YYYY-MM-DD'),
           gender: updatedUser.gender || formData.gender,
@@ -370,8 +372,6 @@ export default function EditProfile() {
 
         // Dispatch event to refresh profile from API
         window.dispatchEvent(new Event("userAuthChanged"))
-
-        toast.success('Profile updated successfully')
 
         // Navigate back
         navigate("/user/profile")
@@ -400,7 +400,10 @@ export default function EditProfile() {
       <div className="bg-white dark:bg-[#1a1a1a] sticky top-0 z-10 border-b border-gray-100 dark:border-gray-800">
         <div className="max-w-7xl mx-auto flex items-center gap-3 px-4 sm:px-6 md:px-8 lg:px-10 xl:px-12 py-4 md:py-5 lg:py-6">
           <button
-            onClick={goBack}
+            onClick={() => {
+              clearEditProfileDraft()
+              goBack()
+            }}
             className="w-9 h-9 flex items-center justify-center hover:bg-gray-100 dark:hover:bg-gray-800 rounded-full transition-colors flex-shrink-0"
           >
             <ArrowLeft className="h-5 w-5 text-gray-700 dark:text-white" />
@@ -410,185 +413,234 @@ export default function EditProfile() {
       </div>
 
       {/* Content */}
-      <div className="max-w-2xl md:max-w-3xl lg:max-w-4xl xl:max-w-5xl mx-auto px-4 sm:px-6 md:px-8 lg:px-10 xl:px-12 py-6 sm:py-8 md:py-10 lg:py-12 pb-28 md:pb-12 space-y-6 md:space-y-8 lg:space-y-10">
-        {/* Avatar Section */}
-        <div className="flex justify-center">
-          <div className="relative">
-            <Avatar className="h-24 w-24 bg-primary border-0">
-              {imagePreview && (
-                <AvatarImage
-                  src={imagePreview}
-                  alt={formData.name || 'User'}
-                />
-              )}
-              <AvatarFallback className="bg-primary text-white text-3xl font-semibold">
-                {avatarInitial}
-              </AvatarFallback>
-            </Avatar>
-            {/* Edit Icon */}
-            <button
-              onClick={handleProfileImageAction}
-              disabled={isUploadingImage}
-              className="absolute bottom-0 right-0 w-8 h-8 bg-primary rounded-full flex items-center justify-center shadow-lg border-2 border-white hover:bg-[#991B1B] transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-              {isUploadingImage ? (
-                <Loader2 className="h-4 w-4 text-white animate-spin" />
-              ) : (
-                <Pencil className="h-4 w-4 text-white" />
-              )}
-            </button>
-            <input
-              ref={fileInputRef}
-              type="file"
-              accept="image/*"
-              onChange={handleImageSelect}
-              className="hidden"
-            />
+      <div className="max-w-xl mx-auto px-4 sm:px-6 py-8 pb-28 md:pb-12 mt-20">
+        <div className="relative bg-white dark:bg-[#1a1a1a] rounded-[32px] pt-16 pb-8 px-4 sm:px-6 shadow-[0_2px_20px_rgb(0,0,0,0.04)] border border-gray-100/50 dark:border-gray-800">
+          
+          {/* SVG Hump overlapping top */}
+          <div className="absolute -top-[49px] left-1/2 -translate-x-1/2 w-[320px] h-[50px] overflow-hidden pointer-events-none">
+            <svg width="320" height="50" viewBox="0 0 320 50" fill="none" className="dark:hidden">
+              <path d="M0 50 C 50 50, 70 0, 92 0 L 228 0 C 250 0, 270 50, 320 50 Z" fill="white"/>
+            </svg>
+            <svg width="320" height="50" viewBox="0 0 320 50" fill="none" className="hidden dark:block">
+              <path d="M0 50 C 50 50, 70 0, 92 0 L 228 0 C 250 0, 270 50, 320 50 Z" fill="#1a1a1a"/>
+            </svg>
           </div>
-        </div>
 
-        {/* Form Card */}
-        <Card className="bg-white dark:bg-[#1a1a1a] rounded-xl shadow-sm border-0 dark:border-gray-800">
-          <CardContent className="p-4 sm:p-5 md:p-6 lg:p-8 space-y-4 md:space-y-5 lg:space-y-6">
-            {/* Name Field */}
-            <div className="space-y-1.5">
-              <Label htmlFor="name" className="text-sm font-medium text-gray-700 dark:text-white">
-                Name
-              </Label>
-              <div className="relative">
-                <Input
-                  id="name"
-                  type="text"
-                  value={formData.name}
-                  onChange={(e) => handleChange('name', e.target.value)}
-                  className="pr-10 h-12 text-base border border-gray-300 dark:border-gray-700 focus:border-primary focus:ring-1 focus:ring-primary rounded-lg bg-white dark:bg-[#1a1a1a] text-gray-900 dark:text-white"
-                  placeholder="Name"
-                />
-                {formData.name && (
-                  <button
-                    type="button"
-                    onClick={() => handleClear('name')}
-                    className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:hover:text-gray-300"
+          {/* Avatar Section */}
+          <div className="absolute -top-[105px] left-1/2 -translate-x-1/2 z-20 flex justify-center">
+            <div className="relative">
+              <Avatar className="h-28 w-28 border-4 border-white shadow-sm bg-transparent">
+                {(imagePreview && typeof imagePreview === "string" && imagePreview.trim() !== "" && imagePreview !== "null" && imagePreview !== "undefined") ? (
+                  <img
+                    src={normalizeImageUrl(imagePreview)}
+                    alt={formData.name || 'User'}
+                    className="w-full h-full object-cover rounded-full"
+                  />
+                ) : (
+                  <div 
+                    className="flex h-full w-full items-center justify-center rounded-full text-white text-3xl font-semibold"
+                    style={{ backgroundColor: getAvatarColor(formData.name || 'User') }}
                   >
-                    <X className="h-5 w-5" />
-                  </button>
+                    {avatarInitial}
+                  </div>
                 )}
-              </div>
+              </Avatar>
+              {(imagePreview && typeof imagePreview === "string" && imagePreview.trim() !== "" && imagePreview !== "null" && imagePreview !== "undefined") ? (
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <button
+                      disabled={isUploadingImage}
+                      className="absolute bottom-1 right-1 w-8 h-8 bg-white rounded-full flex items-center justify-center shadow-md border-[1.5px] border-gray-100 hover:bg-gray-50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                      {isUploadingImage ? (
+                        <Loader2 className="h-4 w-4 text-[#DC2626] animate-spin" />
+                      ) : (
+                        <Pencil className="h-[18px] w-[18px] text-[#DC2626]" strokeWidth={2.5} />
+                      )}
+                    </button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="center" sideOffset={12} className="w-[220px] bg-white/70 backdrop-blur-2xl dark:bg-[#1a1a1a]/70 rounded-[28px] border border-gray-100/50 dark:border-gray-800 shadow-[0_8px_30px_rgb(0,0,0,0.12)] p-2 z-50 flex flex-col gap-2 relative">
+                    <div className="absolute -top-2 left-1/2 -translate-x-1/2 w-4 h-4 bg-white/70 dark:bg-[#1a1a1a]/70 backdrop-blur-md rotate-45 rounded-sm z-[-1]" />
+                    <DropdownMenuItem 
+                      onClick={() => {
+                        setProfileImage("")
+                        setImagePreview("")
+                        setHasChanges(true)
+                      }}
+                      className="cursor-pointer text-[15.5px] font-medium py-3.5 px-4 rounded-[20px] bg-[#E5E7EB] dark:bg-[#333] text-[#DC2626] focus:text-[#DC2626] focus:bg-[#D1D5DB] dark:focus:bg-[#444] hover:bg-[#D1D5DB] dark:hover:bg-[#444] outline-none flex justify-center tracking-wide shadow-sm"
+                    >
+                      <span>Delete Photo</span>
+                    </DropdownMenuItem>
+                    <DropdownMenuItem 
+                      onClick={handleProfileImageAction} 
+                      className="cursor-pointer text-[15.5px] font-medium py-3.5 px-4 rounded-[20px] bg-[#E5E7EB] dark:bg-[#333] text-gray-900 dark:text-gray-100 focus:bg-[#D1D5DB] dark:focus:bg-[#444] hover:bg-[#D1D5DB] dark:hover:bg-[#444] outline-none flex justify-center tracking-wide shadow-sm"
+                    >
+                      <span>Change photo</span>
+                    </DropdownMenuItem>
+                  </DropdownMenuContent>
+                </DropdownMenu>
+              ) : (
+                <button
+                  onClick={handleProfileImageAction}
+                  disabled={isUploadingImage}
+                  className="absolute bottom-1 right-1 w-8 h-8 bg-white rounded-full flex items-center justify-center shadow-md border-[1.5px] border-gray-100 hover:bg-gray-50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  {isUploadingImage ? (
+                    <Loader2 className="h-4 w-4 text-[#DC2626] animate-spin" />
+                  ) : (
+                    <Pencil className="h-[18px] w-[18px] text-[#DC2626]" strokeWidth={2.5} />
+                  )}
+                </button>
+              )}
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept="image/*"
+                onChange={handleImageSelect}
+                className="hidden"
+              />
+            </div>
+          </div>
+
+        {/* Form Fields */}
+        <div className="space-y-4 md:space-y-5 lg:space-y-6 pt-6">
+          {/* Name Field */}
+            <div className="relative">
+              <fieldset className="border border-gray-300 dark:border-gray-700 rounded-[14px] px-3 pb-2 pt-0 transition-colors focus-within:border-[#DC2626] focus-within:border-[1.5px]">
+                <legend className="text-[13px] text-gray-400 dark:text-gray-500 px-1 font-normal tracking-wide">Name</legend>
+                <div className="flex items-center justify-between">
+                  <input
+                    id="name"
+                    type="text"
+                    value={formData.name}
+                    onChange={(e) => handleChange('name', e.target.value)}
+                    className="w-full bg-transparent border-none outline-none text-gray-800 dark:text-white text-[16px] font-medium pb-1"
+                  />
+                  {formData.name && (
+                    <button type="button" onClick={() => handleClear('name')} className="text-gray-400 hover:text-gray-600">
+                      <X className="h-4 w-4" />
+                    </button>
+                  )}
+                </div>
+              </fieldset>
             </div>
 
             {/* Mobile Field */}
-            <div className="space-y-1.5">
-              <Label htmlFor="mobile" className="text-sm font-medium text-gray-700 dark:text-white">
-                Mobile
-              </Label>
-              <div className="flex items-center gap-2">
-                <Input
-                  id="mobile"
-                  type="tel"
-                  value={formData.mobile}
-                  onChange={(e) => handleChange('mobile', e.target.value)}
-                  className="flex-1 h-12 text-base  border border-gray-300 dark:border-gray-700 focus:border-primary focus:ring-1 focus:ring-primary rounded-lg bg-white dark:bg-[#1a1a1a] text-gray-900 dark:text-white"
-                  placeholder="Mobile"
-                />
-              </div>
-              {fieldErrors.mobile && (
-                <p className="text-xs text-red-600">{fieldErrors.mobile}</p>
-              )}
+            <div>
+              <fieldset className="border border-gray-300 dark:border-gray-700 rounded-[14px] px-3 pb-2 pt-0 transition-colors focus-within:border-[#DC2626] focus-within:border-[1.5px]">
+                <legend className="text-[13px] text-gray-400 dark:text-gray-500 px-1 font-normal tracking-wide">Mobile</legend>
+                <div className="flex items-center justify-between">
+                  <input
+                    id="mobile"
+                    type="tel"
+                    value={formData.mobile}
+                    onChange={(e) => handleChange('mobile', e.target.value)}
+                    className="w-full bg-transparent border-none outline-none text-gray-800 dark:text-white text-[16px] font-medium pb-1"
+                  />
+                  <button type="button" onClick={handleMobileChange} className="text-[#DC2626] text-[13px] font-semibold tracking-wider shrink-0 px-1">
+                    CHANGE
+                  </button>
+                </div>
+              </fieldset>
+              {fieldErrors.mobile && <p className="text-xs text-red-600 mt-1">{fieldErrors.mobile}</p>}
             </div>
 
             {/* Email Field */}
-            <div className="space-y-1.5">
-              <Label htmlFor="email" className="text-sm font-medium text-gray-700 dark:text-white">
-                Email
-              </Label>
-              <div className="flex items-center gap-2">
-                <Input
-                  id="email"
-                  type="email"
-                  value={formData.email}
-                  onChange={(e) => handleChange('email', e.target.value)}
-                  className="flex-1 h-12 text-base border border-gray-300 dark:border-gray-700 focus:border-primary focus:ring-1 focus:ring-primary rounded-lg bg-white dark:bg-[#1a1a1a] text-gray-900 dark:text-white"
-                  placeholder="Email"
-                />
-              </div>
-              {fieldErrors.email && (
-                <p className="text-xs text-red-600">{fieldErrors.email}</p>
-              )}
+            <div>
+              <fieldset className="border border-gray-300 dark:border-gray-700 rounded-[14px] px-3 pb-2 pt-0 transition-colors focus-within:border-[#DC2626] focus-within:border-[1.5px]">
+                <legend className="text-[13px] text-gray-400 dark:text-gray-500 px-1 font-normal tracking-wide">Email</legend>
+                <div className="flex items-center justify-between">
+                  <input
+                    id="email"
+                    type="email"
+                    value={formData.email}
+                    onChange={(e) => handleChange('email', e.target.value)}
+                    className="w-full bg-transparent border-none outline-none text-gray-800 dark:text-white text-[16px] font-medium pb-1"
+                  />
+                  <button type="button" onClick={handleEmailChange} className="text-[#DC2626] text-[13px] font-semibold tracking-wider shrink-0 px-1">
+                    CHANGE
+                  </button>
+                </div>
+              </fieldset>
+              {fieldErrors.email && <p className="text-xs text-red-600 mt-1">{fieldErrors.email}</p>}
             </div>
 
             {/* Date of Birth Field */}
-            <div className="space-y-1.5">
-              <Label htmlFor="dateOfBirth" className="text-sm font-medium text-gray-700 dark:text-white">
-                Date of birth
-              </Label>
+            <div>
               <LocalizationProvider dateAdapter={AdapterDayjs}>
                 <DatePicker
+                  label="Date of birth"
                   value={formData.dateOfBirth}
                   onChange={(newValue) => handleChange('dateOfBirth', newValue)}
                   maxDate={dayjs()}
                   slotProps={{
                     textField: {
                       className: "w-full",
+                      InputLabelProps: { shrink: true },
                       sx: {
                         '& .MuiOutlinedInput-root': {
-                          height: '48px',
-                          borderRadius: '8px',
-                          '& fieldset': {
-                            borderColor: '#d1d5db',
-                          },
-                          '&:hover fieldset': {
-                            borderColor: '#9ca3af',
-                          },
-                          '&.Mui-focused fieldset': {
-                            borderColor: '#DC2626',
-                            borderWidth: '1px',
-                          },
+                          height: '56px',
+                          borderRadius: '14px',
+                          '& fieldset': { borderColor: '#d1d5db' },
+                          '&:hover fieldset': { borderColor: '#9ca3af' },
+                          '&.Mui-focused fieldset': { borderColor: '#DC2626', borderWidth: '1.5px' },
                         },
                         '& .MuiInputBase-input': {
-                          padding: '12px 14px',
+                          padding: '10px 14px 14px',
                           fontSize: '16px',
+                          fontWeight: 500,
+                          color: '#1f2937'
                         },
+                        '& .MuiInputLabel-root': {
+                          color: '#9ca3af',
+                          fontSize: '15px',
+                          transform: 'translate(14px, -9px) scale(0.85)',
+                          backgroundColor: 'transparent'
+                        },
+                        '& .MuiInputLabel-root.Mui-focused': {
+                          color: '#9ca3af'
+                        }
                       },
                     },
                   }}
                 />
               </LocalizationProvider>
-              {fieldErrors.dateOfBirth && (
-                <p className="text-xs text-red-600">{fieldErrors.dateOfBirth}</p>
-              )}
+              {fieldErrors.dateOfBirth && <p className="text-xs text-red-600 mt-1">{fieldErrors.dateOfBirth}</p>}
             </div>
 
             {/* Anniversary Field */}
-            <div className="space-y-1.5">
-              <Label htmlFor="anniversary" className="text-sm font-medium text-gray-700 dark:text-white">
-                Anniversary <span className="text-gray-400 dark:text-gray-500 font-normal">(Optional)</span>
-              </Label>
+            <div>
               <LocalizationProvider dateAdapter={AdapterDayjs}>
                 <DatePicker
+                  label="Anniversary"
                   value={formData.anniversary}
                   onChange={(newValue) => handleChange('anniversary', newValue)}
                   slotProps={{
                     textField: {
                       className: "w-full",
+                      InputLabelProps: { shrink: true },
                       sx: {
                         '& .MuiOutlinedInput-root': {
-                          height: '48px',
-                          borderRadius: '8px',
-                          '& fieldset': {
-                            borderColor: '#d1d5db',
-                          },
-                          '&:hover fieldset': {
-                            borderColor: '#9ca3af',
-                          },
-                          '&.Mui-focused fieldset': {
-                            borderColor: '#DC2626',
-                            borderWidth: '1px',
-                          },
+                          height: '56px',
+                          borderRadius: '14px',
+                          '& fieldset': { borderColor: '#d1d5db' },
+                          '&:hover fieldset': { borderColor: '#9ca3af' },
+                          '&.Mui-focused fieldset': { borderColor: '#DC2626', borderWidth: '1.5px' },
                         },
                         '& .MuiInputBase-input': {
-                          padding: '12px 14px',
+                          padding: '10px 14px 14px',
                           fontSize: '16px',
+                          fontWeight: 500,
+                          color: '#1f2937'
                         },
+                        '& .MuiInputLabel-root': {
+                          color: '#9ca3af',
+                          fontSize: '15px',
+                          transform: 'translate(14px, -9px) scale(0.85)',
+                        },
+                        '& .MuiInputLabel-root.Mui-focused': {
+                          color: '#9ca3af'
+                        }
                       },
                     },
                   }}
@@ -597,47 +649,49 @@ export default function EditProfile() {
             </div>
 
             {/* Gender Field */}
-            <div className="space-y-1.5">
-              <Label htmlFor="gender" className="text-sm font-medium text-gray-700 dark:text-white">
-                Gender
-              </Label>
-              <Select
-                value={formData.gender || ""}
-                onValueChange={(value) => handleChange('gender', value)}
-              >
-                <SelectTrigger className="h-12 text-base border border-gray-300 dark:border-gray-700 focus:border-primary focus:ring-1 focus:ring-primary rounded-lg bg-white dark:bg-[#1a1a1a] text-gray-900 dark:text-white">
-                  <SelectValue placeholder="Gender" />
-                </SelectTrigger>
-                <SelectContent>
-                  {genderOptions.map((option) => (
-                    <SelectItem key={option.value} value={option.value}>
-                      {option.label}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+            <div>
+              <fieldset className="border border-gray-300 dark:border-gray-700 rounded-[14px] px-3 pb-1 pt-0 transition-colors focus-within:border-[#DC2626] focus-within:border-[1.5px]">
+                <legend className="text-[13px] text-gray-400 dark:text-gray-500 px-1 font-normal tracking-wide">Gender</legend>
+                <Select
+                  value={formData.gender || ""}
+                  onValueChange={(value) => handleChange('gender', value)}
+                >
+                  <SelectTrigger className="w-full border-none shadow-none focus:ring-0 px-0 h-8 text-[16px] font-medium text-gray-800 bg-transparent mb-1 -mt-1">
+                    <SelectValue placeholder="" />
+                  </SelectTrigger>
+                  <SelectContent className="rounded-xl">
+                    {genderOptions.map((option) => (
+                      <SelectItem key={option.value} value={option.value} className="text-[15px] font-medium">
+                        {option.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </fieldset>
             </div>
-          </CardContent>
-        </Card>
+        </div>
 
         {/* Update Profile Button */}
-        <Button
-          onClick={handleUpdate}
-          disabled={!hasChanges || isSaving || isUploadingImage}
-          className={`w-full h-14 rounded-xl font-semibold text-base transition-all mb-2 ${hasChanges && !isSaving && !isUploadingImage
-            ? 'bg-primary hover:bg-[#991B1B] text-white'
-            : 'bg-gray-200 text-gray-400 cursor-not-allowed'
-            }`}
-        >
-          {isSaving ? (
-            <>
-              <Loader2 className="h-5 w-5 mr-2 animate-spin" />
-              Saving...
-            </>
-          ) : (
-            'Update profile'
-          )}
-        </Button>
+        <div className="mt-8 mb-2">
+          <Button
+            onClick={handleUpdate}
+            disabled={!hasChanges || isSaving || isUploadingImage}
+            className={`w-full h-[52px] rounded-xl font-semibold text-[15px] transition-all ${hasChanges && !isSaving && !isUploadingImage
+              ? 'bg-[#DC2626] hover:bg-[#991B1B] text-white shadow-md shadow-red-500/20'
+              : 'bg-gray-200 text-gray-400 cursor-not-allowed'
+              }`}
+          >
+            {isSaving ? (
+              <>
+                <Loader2 className="h-5 w-5 mr-2 animate-spin" />
+                Saving...
+              </>
+            ) : (
+              'Update profile'
+            )}
+          </Button>
+        </div>
+      </div>
 
         <ImageSourcePicker
           isOpen={photoPickerOpen}
@@ -647,6 +701,16 @@ export default function EditProfile() {
           description="Choose how you want to upload your profile photo."
           fileNamePrefix="profile-photo"
           galleryInputRef={fileInputRef}
+        />
+
+        <ImageCropper 
+          isOpen={isCropModalOpen}
+          onClose={() => {
+            setIsCropModalOpen(false)
+            setCropImageFile(null)
+          }}
+          imageFile={cropImageFile}
+          onCropComplete={handleCropComplete}
         />
       </div>
     </div>

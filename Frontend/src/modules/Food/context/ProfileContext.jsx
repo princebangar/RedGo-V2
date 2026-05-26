@@ -1,5 +1,6 @@
 import { createContext, useContext, useState, useEffect, useMemo, useCallback } from "react"
 import { authAPI, userAPI } from "@food/api"
+import { normalizeImageUrl } from "@food/utils/common"
 const debugLog = (...args) => {}
 const debugWarn = (...args) => {}
 const debugError = (...args) => {}
@@ -171,10 +172,36 @@ export function ProfileProvider({ children }) {
         const userData = response?.data?.data?.user || response?.data?.user || response?.data
         
         if (userData) {
-          setUserProfile(userData)
-          // Update localStorage
-          localStorage.setItem("user_user", JSON.stringify(userData))
-          localStorage.setItem("userProfile", JSON.stringify(userData))
+          setUserProfile((prev) => {
+            // Background pre-fetching for smooth avatar transition
+            if (prev?.localImagePreview && userData.profileImage) {
+              const img = new Image();
+              img.src = normalizeImageUrl(userData.profileImage);
+              img.onload = () => {
+                setUserProfile((current) => {
+                  if (current?.profileImage === userData.profileImage && current?.localImagePreview) {
+                    const cleaned = {
+                      ...current,
+                      localImagePreview: undefined
+                    };
+                    localStorage.setItem("user_user", JSON.stringify(cleaned));
+                    localStorage.setItem("userProfile", JSON.stringify(cleaned));
+                    return cleaned;
+                  }
+                  return current;
+                });
+              };
+            }
+
+            const mergedData = {
+              ...userData,
+              localImagePreview: prev?.localImagePreview
+            };
+            // Update localStorage
+            localStorage.setItem("user_user", JSON.stringify(mergedData));
+            localStorage.setItem("userProfile", JSON.stringify(mergedData));
+            return mergedData;
+          });
         }
 
         // Fetch addresses
