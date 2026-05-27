@@ -211,7 +211,7 @@ export default function EditProfile() {
   useEffect(() => {
     const storedProfile = loadProfileFromStorage()
     const profile = storedProfile || userProfile || {}
-    
+
     // Always update image if available from profile
     if (profile.profileImage && profile.profileImage !== profileImage) {
       setProfileImage(profile.profileImage)
@@ -479,16 +479,16 @@ export default function EditProfile() {
       </div>
 
       {/* Content */}
-      <div className="max-w-xl mx-auto px-4 sm:px-6 py-8 pb-28 md:pb-12 mt-28">
+      <div className="max-w-xl mx-auto px-4 sm:px-6 py-8 pb-28 md:pb-12 mt-20">
         <div className="relative bg-white dark:bg-[#1a1a1a] rounded-[32px] pt-16 pb-8 px-4 sm:px-6 shadow-[0_2px_20px_rgb(0,0,0,0.04)] border border-gray-100/50 dark:border-gray-800">
-          
+
           {/* SVG Hump overlapping top */}
           <div className="absolute -top-[49px] left-1/2 -translate-x-1/2 w-[320px] h-[50px] overflow-hidden pointer-events-none">
             <svg width="320" height="50" viewBox="0 0 320 50" fill="none" className="dark:hidden">
-              <path d="M0 50 C 50 50, 70 0, 92 0 L 228 0 C 250 0, 270 50, 320 50 Z" fill="white"/>
+              <path d="M0 50 C 50 50, 70 0, 92 0 L 228 0 C 250 0, 270 50, 320 50 Z" fill="white" />
             </svg>
             <svg width="320" height="50" viewBox="0 0 320 50" fill="none" className="hidden dark:block">
-              <path d="M0 50 C 50 50, 70 0, 92 0 L 228 0 C 250 0, 270 50, 320 50 Z" fill="#1a1a1a"/>
+              <path d="M0 50 C 50 50, 70 0, 92 0 L 228 0 C 250 0, 270 50, 320 50 Z" fill="#1a1a1a" />
             </svg>
           </div>
 
@@ -503,7 +503,7 @@ export default function EditProfile() {
                     className="w-full h-full object-cover rounded-full"
                   />
                 ) : (
-                  <div 
+                  <div
                     className="flex h-full w-full items-center justify-center rounded-full text-white text-3xl font-semibold"
                     style={{ backgroundColor: getAvatarColor(formData.name || 'User') }}
                   >
@@ -527,7 +527,7 @@ export default function EditProfile() {
                   </DropdownMenuTrigger>
                   <DropdownMenuContent align="center" sideOffset={12} className="w-[220px] bg-white/70 backdrop-blur-2xl dark:bg-[#1a1a1a]/70 rounded-[28px] border border-gray-100/50 dark:border-gray-800 shadow-[0_8px_30px_rgb(0,0,0,0.12)] p-2 z-50 flex flex-col gap-2 relative">
                     <div className="absolute -top-2 left-1/2 -translate-x-1/2 w-4 h-4 bg-white/70 dark:bg-[#1a1a1a]/70 backdrop-blur-md rotate-45 rounded-sm z-[-1]" />
-                    <DropdownMenuItem 
+                    <DropdownMenuItem
                       onClick={() => {
                         setProfileImage("")
                         setImagePreview("")
@@ -537,8 +537,8 @@ export default function EditProfile() {
                     >
                       <span>Delete Photo</span>
                     </DropdownMenuItem>
-                    <DropdownMenuItem 
-                      onClick={handleProfileImageAction} 
+                    <DropdownMenuItem
+                      onClick={handleProfileImageAction}
                       className="cursor-pointer text-[15.5px] font-medium py-3.5 px-4 rounded-[20px] bg-[#E5E7EB] dark:bg-[#333] text-gray-900 dark:text-gray-100 focus:bg-[#D1D5DB] dark:focus:bg-[#444] hover:bg-[#D1D5DB] dark:hover:bg-[#444] outline-none flex justify-center tracking-wide shadow-sm"
                     >
                       <span>Change photo</span>
@@ -568,9 +568,9 @@ export default function EditProfile() {
             </div>
           </div>
 
-        {/* Form Fields */}
-        <div className="space-y-4 md:space-y-5 lg:space-y-6 pt-6">
-          {/* Name Field */}
+          {/* Form Fields */}
+          <div className="space-y-4 md:space-y-5 lg:space-y-6 pt-6">
+            {/* Name Field */}
             <div className="relative">
               <fieldset className="border border-gray-300 dark:border-gray-700 rounded-[14px] px-3 pb-2 pt-0 transition-colors focus-within:border-[#DC2626] focus-within:border-[1.5px]">
                 <legend className="text-[13px] text-gray-400 dark:text-gray-500 px-1 font-normal tracking-wide">Name</legend>
@@ -735,30 +735,29 @@ export default function EditProfile() {
                 </Select>
               </fieldset>
             </div>
-        </div>
+          </div>
 
-        {/* Update Profile Button */}
-        <div className="mt-8 mb-2">
-          <Button
-            onClick={handleUpdate}
-            disabled={!hasChanges || isSaving || isUploadingImage}
-            className={`w-full h-[52px] rounded-xl font-semibold text-[15px] transition-all ${
-              isSaving || isUploadingImage || !hasChanges
-                ? 'bg-[#DC2626]/70 text-white cursor-not-allowed'
-                : 'bg-[#DC2626] hover:bg-[#991B1B] text-white shadow-md shadow-red-500/20'
-            }`}
-          >
-            {isSaving ? (
-              <>
-                <Loader2 className="h-5 w-5 mr-2 animate-spin" />
-                Saving...
-              </>
-            ) : (
-              'Update profile'
-            )}
-          </Button>
+          {/* Update Profile Button */}
+          <div className="mt-8 mb-2">
+            <Button
+              onClick={handleUpdate}
+              disabled={!hasChanges || isSaving || isUploadingImage}
+              className={`w-full h-[52px] rounded-xl font-semibold text-[15px] transition-all ${isSaving || isUploadingImage || !hasChanges
+                  ? 'bg-[#DC2626]/70 text-white cursor-not-allowed'
+                  : 'bg-[#DC2626] hover:bg-[#991B1B] text-white shadow-md shadow-red-500/20'
+                }`}
+            >
+              {isSaving ? (
+                <>
+                  <Loader2 className="h-5 w-5 mr-2 animate-spin" />
+                  Saving...
+                </>
+              ) : (
+                'Update profile'
+              )}
+            </Button>
+          </div>
         </div>
-      </div>
 
         <ImageSourcePicker
           isOpen={photoPickerOpen}
@@ -770,7 +769,7 @@ export default function EditProfile() {
           galleryInputRef={fileInputRef}
         />
 
-        <ImageCropper 
+        <ImageCropper
           isOpen={isCropModalOpen}
           onClose={() => {
             setIsCropModalOpen(false)
