@@ -461,9 +461,9 @@ export default function EditProfile() {
   }
 
   return (
-    <div className="min-h-screen bg-[#f5f5f5] dark:bg-[#0a0a0a]">
+    <div className="min-h-screen bg-[#f5f5f5] dark:bg-[#0a0a0a] pb-12">
       {/* Header */}
-      <div className="bg-white dark:bg-[#1a1a1a] sticky top-0 z-50 border-b border-gray-100 dark:border-gray-800">
+      <div className="bg-white dark:bg-[#1a1a1a] border-b border-gray-100 dark:border-gray-800">
         <div className="max-w-7xl mx-auto flex items-center gap-3 px-4 sm:px-6 md:px-8 lg:px-10 xl:px-12 py-4 md:py-5 lg:py-6">
           <button
             onClick={() => {
