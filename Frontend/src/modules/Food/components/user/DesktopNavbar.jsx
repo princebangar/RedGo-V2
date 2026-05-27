@@ -325,7 +325,7 @@ export default function DesktopNavbar({ showLogo = true }) {
                             </Link>
 
                             {/* Cart Icon */}
-                            <Link to="/food/user/cart">
+                            <Link to="/food/user/cart" state={{ from: location.pathname }}>
                                 <Button
                                     variant="ghost"
                                     className="relative h-12 w-12 lg:h-14 lg:w-14 rounded-full p-0 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"

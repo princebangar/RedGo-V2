@@ -38,8 +38,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@food/components/ui/dropdown-menu";
-import { ImageCropper } from "@food/components/ImageCropper";
-import { ImageSourcePicker } from "@food/components/ImageSourcePicker";
+
 import { getAvatarColor } from "@food/utils/avatarUtils";
 import { normalizeImageUrl } from "@food/utils/common";
 
@@ -108,115 +107,7 @@ export default function Profile() {
   const [balanceData, setBalanceData] = useState({ balance: 0, type: "Wallet" });
   const [isCheckingBalance, setIsCheckingBalance] = useState(false);
 
-  // Profile image upload states
-  const [isUploadingImage, setIsUploadingImage] = useState(false);
-  const [photoPickerOpen, setPhotoPickerOpen] = useState(false);
-  const [cropImageFile, setCropImageFile] = useState(null);
-  const [isCropModalOpen, setIsCropModalOpen] = useState(false);
-  const fileInputRef = useRef(null);
 
-  const handleProfileImageAction = () => {
-    if (!userProfile?.profileImage || !userProfile.profileImage.trim()) {
-      if (isFlutterBridgeAvailable()) {
-        setPhotoPickerOpen(true);
-      } else {
-        fileInputRef.current?.click();
-      }
-      return;
-    }
-    setPhotoPickerOpen(true);
-  };
-
-  const processProfileImageFile = async (file) => {
-    if (!file) return;
-    if (!file.type.startsWith('image/')) {
-      toast.error('Please select a valid image file');
-      return;
-    }
-    if (file.size > 5 * 1024 * 1024) {
-      toast.error('Image size should be less than 5MB');
-      return;
-    }
-    setCropImageFile(file);
-    setIsCropModalOpen(true);
-  };
-  const handleCropComplete = async (croppedFile) => {
-    setIsCropModalOpen(false);
-    setCropImageFile(null);
-
-    if (!croppedFile) return;
-
-    const reader = new FileReader();
-    reader.onloadend = async () => {
-      const base64Data = reader.result;
-
-      // Set preview locally first
-      const tempProfile = {
-        ...(userProfile || {}),
-        localImagePreview: base64Data,
-      };
-      updateUserProfile(tempProfile);
-      localStorage.setItem("user_user", JSON.stringify(tempProfile));
-      localStorage.setItem("userProfile", JSON.stringify(tempProfile));
-
-      try {
-        setIsUploadingImage(true);
-        const response = await userAPI.uploadProfileImage(croppedFile);
-        const imageUrl = response?.data?.data?.profileImage || response?.data?.profileImage;
-
-        if (imageUrl) {
-          // Also save to database
-          const updateRes = await userAPI.updateProfile({ profileImage: imageUrl });
-          const updatedUser = updateRes?.data?.data?.user || updateRes?.data?.user;
-
-          const mergedProfile = {
-            ...(userProfile || {}),
-            ...updatedUser,
-            profileImage: imageUrl,
-            localImagePreview: base64Data,
-          };
-          updateUserProfile(mergedProfile);
-          localStorage.setItem("user_user", JSON.stringify(mergedProfile));
-          localStorage.setItem("userProfile", JSON.stringify(mergedProfile));
-          
-          window.dispatchEvent(new Event("userAuthChanged"));
-        }
-      } catch (error) {
-        debugError('Error uploading image:', error);
-        toast.error(error?.response?.data?.message || 'Failed to upload image');
-      } finally {
-        setIsUploadingImage(false);
-      }
-    };
-    reader.readAsDataURL(croppedFile);
-  };
-
-  const handleDeletePhoto = async () => {
-    try {
-      setIsUploadingImage(true);
-      
-      // Optimistic UI update - instantly remove the photo
-      const mergedProfile = {
-        ...(userProfile || {}),
-        profileImage: "",
-        localImagePreview: undefined,
-      };
-      updateUserProfile(mergedProfile);
-      localStorage.setItem("user_user", JSON.stringify(mergedProfile));
-      localStorage.setItem("userProfile", JSON.stringify(mergedProfile));
-      
-      // Background API call
-      await userAPI.updateProfile({ profileImage: "" });
-      
-      window.dispatchEvent(new Event("userAuthChanged"));
-    } catch (error) {
-      debugError('Error deleting photo:', error);
-      toast.error('Failed to remove photo');
-      // If it fails, the next fetch will revert it, but we can also handle rollback here if needed
-    } finally {
-      setIsUploadingImage(false);
-    }
-  };
 
   // Lock scroll when any popup is open
   useEffect(() => {
@@ -598,11 +489,7 @@ export default function Profile() {
         <Card className="bg-white dark:bg-[#1a1a1a] rounded-[20px] shadow-[0_4px_16px_rgba(0,0,0,0.02)] mb-0 border-0 dark:border-gray-800 overflow-hidden">
           <CardContent className="p-4 py-3.5">
             <div className="flex items-center gap-4">
-              <motion.div
-                className="relative cursor-pointer"
-                onClick={handleProfileImageAction}
-                whileHover={{ scale: 1.03 }}
-                transition={{ duration: 0.2 }}>
+              <div className="relative">
                 <Avatar className="h-16 w-16 border border-gray-100 dark:border-gray-800 shadow-sm bg-transparent">
                   {(userProfile?.localImagePreview || (userProfile?.profileImage && typeof userProfile.profileImage === "string" && userProfile.profileImage.trim() !== "" && userProfile.profileImage !== "null" && userProfile.profileImage !== "undefined")) ? (
                     <img
@@ -619,18 +506,7 @@ export default function Profile() {
                     </div>
                   )}
                 </Avatar>
-                <input
-                  ref={fileInputRef}
-                  type="file"
-                  accept="image/*"
-                  onChange={(e) => {
-                    const file = e.target.files?.[0];
-                    if (file) processProfileImageFile(file);
-                    e.target.value = "";
-                  }}
-                  className="hidden"
-                />
-              </motion.div>
+              </div>
               <div className="flex-1">
                 <h2 className="text-[19px] font-bold text-gray-900 dark:text-white leading-tight capitalize">
                   {displayName}
@@ -1471,25 +1347,7 @@ export default function Profile() {
         </div>
       )}
 
-      <ImageSourcePicker
-        isOpen={photoPickerOpen}
-        onClose={() => setPhotoPickerOpen(false)}
-        onFileSelect={processProfileImageFile}
-        title="Update profile photo"
-        description="Choose how you want to upload your profile photo."
-        fileNamePrefix="profile-photo"
-        galleryInputRef={fileInputRef}
-      />
 
-      <ImageCropper 
-        isOpen={isCropModalOpen}
-        onClose={() => {
-          setIsCropModalOpen(false);
-          setCropImageFile(null);
-        }}
-        imageFile={cropImageFile}
-        onCropComplete={handleCropComplete}
-      />
     </AnimatedPage>
   );
 }

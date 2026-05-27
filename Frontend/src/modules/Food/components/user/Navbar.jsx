@@ -1,4 +1,4 @@
-import { Link } from "react-router-dom"
+import { Link, useLocation as useRouterLocation } from "react-router-dom"
 import { useState, useEffect } from "react"
 import { MapPin, ShoppingCart, Trophy } from "lucide-react"
 import { Button } from "@food/components/ui/button"
@@ -21,6 +21,7 @@ const debugError = (...args) => {}
 
 
 export default function Navbar() {
+  const routerLocation = useRouterLocation()
   const { location, loading } = useLocation()
   const { userProfile } = useProfile()
   const { getCartCount } = useCart()
@@ -159,7 +160,7 @@ export default function Navbar() {
             </Button>
 
             {/* Cart */}
-            <Link to="/food/cart">
+            <Link to="/food/cart" state={{ from: routerLocation.pathname }}>
               <Button variant="ghost" size="icon" className="relative h-10 w-10 hover:bg-gray-100">
                 <ShoppingCart className="h-5 w-5 text-gray-700" />
                 {cartCount > 0 && (
@@ -200,7 +201,7 @@ export default function Navbar() {
                 </Button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end" className="w-48">
-                <Link to="/food/user/cart">
+                <Link to="/food/user/cart" state={{ from: routerLocation.pathname }}>
                   <DropdownMenuItem>YOUR CART</DropdownMenuItem>
                 </Link>
                 <Link to="/food/user/profile">

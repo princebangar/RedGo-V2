@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useMemo, Fragment } from "react"
 import { createPortal } from "react-dom"
-import { Link, useNavigate } from "react-router-dom"
+import { Link, useNavigate, useLocation } from "react-router-dom"
 import { Plus, Minus, ArrowLeft, ChevronRight, Clock, MapPin, Phone, FileText, Utensils, Tag, Percent, Share2, ChevronUp, ChevronDown, X, Check, Settings, CreditCard, Wallet, Building2, Sparkles, Banknote, Zap, CheckCircle2, MessageCircle, Send, Mail, Copy, ShoppingBag } from "lucide-react"
 import { motion, AnimatePresence } from "framer-motion"
 import confetti from "canvas-confetti"
@@ -83,6 +83,7 @@ const CART_ORDER_NOTE_STORAGE_KEY = "food-cart-order-note-v1"
 export default function Cart() {
   const companyName = useCompanyName()
   const navigate = useNavigate()
+  const location = useLocation()
   const goBack = useAppBackNavigation()
   const orderSuccessAudioRef = useRef(null)
   const hasRestoredRecipientRef = useRef(false)
@@ -1323,12 +1324,22 @@ export default function Cart() {
   }
 
   const handleBack = () => {
-    // Priority: slug > restaurantId (both work for the restaurant details route)
-    const idOrSlug = restaurantData?.slug || restaurantId
-    if (idOrSlug) {
-      navigate(`/food/user/restaurants/${idOrSlug}`)
-    } else {
+    // Check if the previous page was the restaurant details page
+    const cameFromRestaurant = 
+      location.state?.from?.includes('/restaurants/') || 
+      location.state?.fromRestaurant ||
+      document.referrer.includes('/restaurants/') // fallback
+      
+    if (cameFromRestaurant) {
       goBack()
+    } else {
+      // Replaces Cart page with the restaurant page to break redirect loop
+      const idOrSlug = restaurantData?.slug || restaurantId
+      if (idOrSlug) {
+        navigate(`/food/user/restaurants/${idOrSlug}`, { replace: true })
+      } else {
+        goBack()
+      }
     }
   }
 

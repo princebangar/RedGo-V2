@@ -116,6 +116,58 @@ const saveEditProfileDraft = (data) => {
   }
 }
 
+const convertToWebP = (file, quality = 0.8) => {
+  return new Promise((resolve) => {
+    const img = new Image()
+    img.src = URL.createObjectURL(file)
+    img.onload = () => {
+      URL.revokeObjectURL(img.src)
+      const canvas = document.createElement('canvas')
+      const ctx = canvas.getContext('2d')
+      if (!ctx) {
+        resolve(file)
+        return
+      }
+
+      // Downscale to max 1024px for profile photo performance
+      const maxDim = 1024
+      let width = img.width
+      let height = img.height
+      if (width > maxDim || height > maxDim) {
+        if (width > height) {
+          height = Math.round((height * maxDim) / width)
+          width = maxDim
+        } else {
+          width = Math.round((width * maxDim) / height)
+          height = maxDim
+        }
+      }
+
+      canvas.width = width
+      canvas.height = height
+      ctx.drawImage(img, 0, 0, width, height)
+
+      canvas.toBlob(
+        (blob) => {
+          if (!blob) {
+            resolve(file)
+            return
+          }
+          const webpFile = new File(
+            [blob],
+            file.name.replace(/\.[^/.]+$/, "") + ".webp",
+            { type: "image/webp", lastModified: Date.now() }
+          )
+          resolve(webpFile)
+        },
+        "image/webp",
+        quality
+      )
+    }
+    img.onerror = () => resolve(file)
+  })
+}
+
 const clearEditProfileDraft = () => {
   try {
     localStorage.removeItem(EDIT_PROFILE_DRAFT_KEY)
@@ -188,12 +240,14 @@ export default function EditProfile() {
   // Get avatar initial
   const avatarInitial = formData.name?.charAt(0).toUpperCase() || 'A'
 
-  // Check if form has changes
+  // Check if form has changes (including profile photo changes)
   useEffect(() => {
     const currentData = JSON.stringify(formData)
     const savedData = JSON.stringify(initialData)
-    setHasChanges(currentData !== savedData)
-  }, [formData, initialData])
+    const originalImage = initialProfile?.profileImage || userProfile?.profileImage || ""
+    const isImageChanged = pendingImageFile !== null || profileImage !== originalImage
+    setHasChanges(currentData !== savedData || isImageChanged)
+  }, [formData, initialData, pendingImageFile, profileImage, initialProfile, userProfile])
 
   const validateEmail = (value) => {
     if (!value) return ""
@@ -272,28 +326,25 @@ export default function EditProfile() {
 
     if (!croppedFile) return
 
-    const reader = new FileReader()
-    reader.onloadend = async () => {
-      const base64Data = reader.result
-      setImagePreview(base64Data)
-
-      try {
-        setIsUploadingImage(true)
-        const uploadRes = await userAPI.uploadProfileImage(croppedFile)
-        const finalImageUrl = uploadRes?.data?.data?.profileImage || uploadRes?.data?.profileImage
-        
-        if (finalImageUrl) {
-          setProfileImage(finalImageUrl)
-          setHasChanges(true)
-        }
-      } catch (uploadErr) {
-        debugError('Error uploading image:', uploadErr)
-        toast.error('Failed to upload image')
-      } finally {
-        setIsUploadingImage(false)
+    try {
+      const webpFile = await convertToWebP(croppedFile, 0.8)
+      const reader = new FileReader()
+      reader.onloadend = () => {
+        const base64Data = reader.result
+        setImagePreview(base64Data)
+        setPendingImageFile(webpFile)
       }
+      reader.readAsDataURL(webpFile)
+    } catch (err) {
+      console.error("WebP conversion failed, falling back to original cropped file", err)
+      const reader = new FileReader()
+      reader.onloadend = () => {
+        const base64Data = reader.result
+        setImagePreview(base64Data)
+        setPendingImageFile(croppedFile)
+      }
+      reader.readAsDataURL(croppedFile)
     }
-    reader.readAsDataURL(croppedFile)
   }
 
   const handleImageSelect = async (e) => {
@@ -333,6 +384,22 @@ export default function EditProfile() {
     try {
       setIsSaving(true)
 
+      let finalImageUrl = profileImage
+      if (pendingImageFile) {
+        setIsUploadingImage(true)
+        try {
+          const uploadRes = await userAPI.uploadProfileImage(pendingImageFile)
+          finalImageUrl = uploadRes?.data?.data?.profileImage || uploadRes?.data?.profileImage || profileImage
+        } catch (uploadErr) {
+          debugError('Error uploading image:', uploadErr)
+          toast.error('Failed to upload image')
+          setIsUploadingImage(false)
+          setIsSaving(false)
+          return
+        }
+        setIsUploadingImage(false)
+      }
+
       // Prepare data for API
       const updateData = {
         name: formData.name,
@@ -340,7 +407,7 @@ export default function EditProfile() {
         dateOfBirth: formData.dateOfBirth ? formData.dateOfBirth.format('YYYY-MM-DD') : undefined,
         anniversary: formData.anniversary ? formData.anniversary.format('YYYY-MM-DD') : undefined,
         gender: formData.gender || undefined,
-        profileImage: profileImage, // Send updated profileImage (either the new Cloudinary URL, or empty string if deleted)
+        profileImage: finalImageUrl,
       }
 
       // Call API to update profile
@@ -352,8 +419,8 @@ export default function EditProfile() {
         updateUserProfile({
           ...updatedUser,
           phone: updatedUser.phone || formData.mobile,
-          profileImage: profileImage,
-          localImagePreview: imagePreview !== profileImage ? imagePreview : undefined
+          profileImage: finalImageUrl,
+          localImagePreview: imagePreview !== finalImageUrl ? imagePreview : undefined
         })
 
         // Save to localStorage with complete data
@@ -362,8 +429,8 @@ export default function EditProfile() {
           phone: updatedUser.phone || formData.mobile,
           mobile: updatedUser.phone || formData.mobile,
           email: updatedUser.email || formData.email,
-          profileImage: updatedUser.profileImage || profileImage,
-          localImagePreview: imagePreview !== profileImage ? imagePreview : undefined,
+          profileImage: updatedUser.profileImage || finalImageUrl,
+          localImagePreview: imagePreview !== finalImageUrl ? imagePreview : undefined,
           dateOfBirth: updatedUser.dateOfBirth || formData.dateOfBirth?.format('YYYY-MM-DD'),
           anniversary: updatedUser.anniversary || formData.anniversary?.format('YYYY-MM-DD'),
           gender: updatedUser.gender || formData.gender,
@@ -379,7 +446,6 @@ export default function EditProfile() {
     } catch (error) {
       debugError('Error updating profile:', error)
       toast.error(error?.response?.data?.message || 'Failed to update profile')
-    } finally {
       setIsSaving(false)
     }
   }
@@ -397,7 +463,7 @@ export default function EditProfile() {
   return (
     <div className="min-h-screen bg-[#f5f5f5] dark:bg-[#0a0a0a]">
       {/* Header */}
-      <div className="bg-white dark:bg-[#1a1a1a] sticky top-0 z-10 border-b border-gray-100 dark:border-gray-800">
+      <div className="bg-white dark:bg-[#1a1a1a] sticky top-0 z-50 border-b border-gray-100 dark:border-gray-800">
         <div className="max-w-7xl mx-auto flex items-center gap-3 px-4 sm:px-6 md:px-8 lg:px-10 xl:px-12 py-4 md:py-5 lg:py-6">
           <button
             onClick={() => {
@@ -413,7 +479,7 @@ export default function EditProfile() {
       </div>
 
       {/* Content */}
-      <div className="max-w-xl mx-auto px-4 sm:px-6 py-8 pb-28 md:pb-12 mt-20">
+      <div className="max-w-xl mx-auto px-4 sm:px-6 py-8 pb-28 md:pb-12 mt-28">
         <div className="relative bg-white dark:bg-[#1a1a1a] rounded-[32px] pt-16 pb-8 px-4 sm:px-6 shadow-[0_2px_20px_rgb(0,0,0,0.04)] border border-gray-100/50 dark:border-gray-800">
           
           {/* SVG Hump overlapping top */}
@@ -465,7 +531,7 @@ export default function EditProfile() {
                       onClick={() => {
                         setProfileImage("")
                         setImagePreview("")
-                        setHasChanges(true)
+                        setPendingImageFile(null)
                       }}
                       className="cursor-pointer text-[15.5px] font-medium py-3.5 px-4 rounded-[20px] bg-[#E5E7EB] dark:bg-[#333] text-[#DC2626] focus:text-[#DC2626] focus:bg-[#D1D5DB] dark:focus:bg-[#444] hover:bg-[#D1D5DB] dark:hover:bg-[#444] outline-none flex justify-center tracking-wide shadow-sm"
                     >
@@ -676,10 +742,11 @@ export default function EditProfile() {
           <Button
             onClick={handleUpdate}
             disabled={!hasChanges || isSaving || isUploadingImage}
-            className={`w-full h-[52px] rounded-xl font-semibold text-[15px] transition-all ${hasChanges && !isSaving && !isUploadingImage
-              ? 'bg-[#DC2626] hover:bg-[#991B1B] text-white shadow-md shadow-red-500/20'
-              : 'bg-gray-200 text-gray-400 cursor-not-allowed'
-              }`}
+            className={`w-full h-[52px] rounded-xl font-semibold text-[15px] transition-all ${
+              isSaving || isUploadingImage || !hasChanges
+                ? 'bg-[#DC2626]/70 text-white cursor-not-allowed'
+                : 'bg-[#DC2626] hover:bg-[#991B1B] text-white shadow-md shadow-red-500/20'
+            }`}
           >
             {isSaving ? (
               <>

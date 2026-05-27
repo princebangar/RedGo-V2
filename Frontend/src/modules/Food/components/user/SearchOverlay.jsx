@@ -8,7 +8,7 @@ import { useVoiceSearch } from "@food/hooks/useVoiceSearch"
 
 const SEARCH_HISTORY_KEY = "user_recent_searches_v1"
 
-export default function SearchOverlay({ isOpen, onClose, searchValue, onSearchChange }) {
+export default function SearchOverlay({ isOpen, onClose, searchValue, onSearchChange, autoStartVoice = false }) {
   const navigate = useNavigate()
   const inputRef = useRef(null)
   const [allFoods, setAllFoods] = useState([])

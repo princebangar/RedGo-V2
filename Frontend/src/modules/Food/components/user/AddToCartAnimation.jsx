@@ -452,7 +452,7 @@ export default function AddToCartAnimation({
                 e.preventDefault();
                 e.stopPropagation();
                 debugLog('View cart clicked, navigating to:', linkTo);
-                navigate(linkTo);
+                navigate(linkTo, { state: { from: location.pathname } });
               }}
               className={`bg-gradient-to-r from-[#991b1b] via-[#DC2626] to-[#991b1b] text-white rounded-full shadow-xl shadow-[#DC2626]/30 px-3 py-2 flex items-center gap-2 hover:from-[#991b1b] hover:via-[#DC2626] hover:to-[#991b1b] transition-all duration-300 pointer-events-auto border border-[#DC2626]/30 backdrop-blur-sm cursor-pointer ${pillClassName}`}
             >

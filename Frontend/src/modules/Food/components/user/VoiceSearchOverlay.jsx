@@ -5,10 +5,15 @@ import { Mic, X } from 'lucide-react';
 import { useVoiceSearch } from '@food/hooks/useVoiceSearch';
 
 const VoiceSearchOverlay = ({ isOpen, onClose, onSearchResult }) => {
-  const { isListening, startListening, stopListening } = useVoiceSearch((transcript) => {
-    onSearchResult(transcript);
-    onClose();
-  });
+  const { isListening, transcript, startListening, stopListening } = useVoiceSearch(
+    (transcript) => {
+      onSearchResult(transcript);
+      onClose();
+    },
+    () => {
+      onClose();
+    }
+  );
 
   useEffect(() => {
     let timeoutId;
@@ -45,9 +50,9 @@ const VoiceSearchOverlay = ({ isOpen, onClose, onSearchResult }) => {
             {/* Close Button */}
             <button
               onClick={onClose}
-              className="absolute top-5 right-5 p-2 bg-gray-100 dark:bg-gray-800 rounded-full hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors z-20"
+              className="absolute top-5 right-5 p-2 bg-red-50 dark:bg-red-950/30 rounded-full hover:bg-red-100 dark:hover:bg-red-950/50 transition-colors z-20"
             >
-              <X className="h-5 w-5 text-gray-500" />
+              <X className="h-5 w-5 text-red-500 dark:text-red-400" />
             </button>
 
             {/* Mic Animation Section */}
@@ -70,10 +75,10 @@ const VoiceSearchOverlay = ({ isOpen, onClose, onSearchResult }) => {
             {/* Text Section */}
             <div className="text-center z-10 space-y-2">
               <h2 className="text-2xl font-black text-gray-900 dark:text-white uppercase tracking-tight">
-                Listening...
+                {transcript ? `"${transcript}"` : "Listening..."}
               </h2>
               <p className="text-gray-500 dark:text-gray-400 font-medium px-4">
-                Say a dish or restaurant name
+                {transcript ? "Processing search..." : "Say a dish or restaurant name"}
               </p>
             </div>
 
