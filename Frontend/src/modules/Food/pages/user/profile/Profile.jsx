@@ -390,10 +390,10 @@ export default function Profile() {
         const { signOut } = await import("firebase/auth");
         // Firebase Auth is lazy-initialized now; only attempt sign out if it was actually used
         if (firebaseAuth) {
-           const currentUser = firebaseAuth.currentUser;
-           if (currentUser) {
-             await signOut(firebaseAuth);
-           }
+          const currentUser = firebaseAuth.currentUser;
+          if (currentUser) {
+            await signOut(firebaseAuth);
+          }
         }
       } catch (firebaseError) {
         // Continue even if Firebase logout fails
@@ -452,15 +452,15 @@ export default function Profile() {
     setIsDeleting(true);
     try {
       await authAPI.deleteAccount("user");
-      
+
       showAccountDeletedToast();
-      
+
       // Clear user module authentication data
       clearModuleAuth("user");
-      
+
       // Dispatch auth change event to notify other components
       window.dispatchEvent(new Event("userAuthChanged"));
-      
+
       // Navigate to sign in page
       navigate("/user/auth/login", { replace: true });
     } catch (error) {
@@ -477,8 +477,8 @@ export default function Profile() {
       <div className="max-w-md md:max-w-2xl lg:max-w-4xl xl:max-w-5xl mx-auto px-4 sm:px-6 md:px-8 lg:px-10 xl:px-12 py-4 sm:py-6 md:py-8 lg:py-10 pb-20 sm:pb-24">
         {/* Header: Back Arrow */}
         <div className="flex items-center mb-5">
-          <button 
-            onClick={() => navigate(-1)} 
+          <button
+            onClick={() => navigate(-1)}
             className="h-11 w-11 flex items-center justify-center bg-white/70 dark:bg-[#1a1a1a]/70 backdrop-blur-md rounded-full shadow-[0_2px_12px_rgba(0,0,0,0.08)] hover:bg-white/90 dark:hover:bg-[#222]/90 active:scale-95 transition-all outline-none border border-black/10 dark:border-white/10"
           >
             <ArrowLeft className="h-6 w-6 text-black dark:text-white" />
@@ -486,8 +486,8 @@ export default function Profile() {
         </div>
 
         {/* Profile Info Card */}
-        <Card className="bg-white dark:bg-[#1a1a1a] rounded-[20px] shadow-[0_4px_16px_rgba(0,0,0,0.02)] mb-0 border-0 dark:border-gray-800 overflow-hidden">
-          <CardContent className="p-4 py-3.5">
+        <Card className="bg-white dark:bg-[#1a1a1a] py-0 rounded-[20px] shadow-[0_4px_16px_rgba(0,0,0,0.02)] mb-0 border-0 dark:border-gray-800 overflow-hidden">
+          <CardContent className="p-4 py-2.3">
             <div className="flex items-center gap-4">
               <div className="relative">
                 <Avatar className="h-16 w-16 border border-gray-100 dark:border-gray-800 shadow-sm bg-transparent">
@@ -498,7 +498,7 @@ export default function Profile() {
                       className="w-full h-full object-cover rounded-full"
                     />
                   ) : (
-                    <div 
+                    <div
                       className="flex h-full w-full items-center justify-center rounded-full text-white text-2xl font-semibold"
                       style={{ backgroundColor: getAvatarColor(displayName) }}
                     >
@@ -526,8 +526,8 @@ export default function Profile() {
                     Not available
                   </p>
                 )}
-                <Link 
-                  to="/user/profile/edit" 
+                <Link
+                  to="/user/profile/edit"
                   className="inline-flex items-center text-[13px] font-medium text-gray-700 dark:text-gray-300 hover:text-black dark:hover:text-white mt-1 transition-colors"
                 >
                   <span>Edit profile</span>
@@ -630,46 +630,46 @@ export default function Profile() {
             <motion.div
               whileHover={{ x: 4, scale: 1.01 }}
               transition={{ duration: 0.2, type: "spring", stiffness: 300 }}>
-            <Card className="bg-white dark:bg-[#1a1a1a] py-0 rounded-xl shadow-sm border-0 dark:border-gray-800">
-              <CardContent className="p-4">
-                <div className="flex items-center justify-between mb-2">
-                  <div className="flex items-center gap-3">
-                    <motion.div
-                      className="bg-gray-100 dark:bg-gray-800 rounded-full p-2"
-                      whileHover={{ rotate: 15, scale: 1.1 }}
-                      transition={{ duration: 0.3 }}>
-                      <Tag className="h-5 w-5 text-gray-700 dark:text-gray-300" />
-                    </motion.div>
-                    <span className="text-base font-medium text-gray-900 dark:text-white">
-                      Refer & Earn
-                    </span>
+              <Card className="bg-white dark:bg-[#1a1a1a] py-0 rounded-xl shadow-sm border-0 dark:border-gray-800">
+                <CardContent className="p-4">
+                  <div className="flex items-center justify-between mb-2">
+                    <div className="flex items-center gap-3">
+                      <motion.div
+                        className="bg-gray-100 dark:bg-gray-800 rounded-full p-2"
+                        whileHover={{ rotate: 15, scale: 1.1 }}
+                        transition={{ duration: 0.3 }}>
+                        <Tag className="h-5 w-5 text-gray-700 dark:text-gray-300" />
+                      </motion.div>
+                      <span className="text-base font-medium text-gray-900 dark:text-white">
+                        Refer & Earn
+                      </span>
+                    </div>
+                    {referralReward > 0 && (
+                      <span className="text-xs font-semibold px-2 py-1 rounded bg-green-100 text-green-700 dark:bg-green-900/20 dark:text-green-300">
+                        Earn {"\u20B9"}{referralReward}
+                      </span>
+                    )}
                   </div>
-                  {referralReward > 0 && (
-                    <span className="text-xs font-semibold px-2 py-1 rounded bg-green-100 text-green-700 dark:bg-green-900/20 dark:text-green-300">
-                      Earn {"\u20B9"}{referralReward}
-                    </span>
-                  )}
-                </div>
-                <div className="flex items-center justify-between">
-                  <p className="text-xs text-gray-500 dark:text-gray-400">
-                    Invite a friend. Reward is added to your wallet when they
-                    sign up.
-                  </p>
-                  <button
-                    type="button"
-                    onClick={(e) => {
-                      e.preventDefault();
-                      e.stopPropagation();
-                      handleShareReferral();
-                    }}
-                    className="inline-flex items-center gap-1 text-xs text-[#DC2626] font-medium ml-2 px-2 py-1 rounded-md"
-                    disabled={!referralLink}>
-                    <Share2 className="h-3.5 w-3.5" />
-                    Refer
-                  </button>
-                </div>
-              </CardContent>
-            </Card>
+                  <div className="flex items-center justify-between">
+                    <p className="text-xs text-gray-500 dark:text-gray-400">
+                      Invite a friend. Reward is added to your wallet when they
+                      sign up.
+                    </p>
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        handleShareReferral();
+                      }}
+                      className="inline-flex items-center gap-1 text-xs text-[#DC2626] font-medium ml-2 px-2 py-1 rounded-md"
+                      disabled={!referralLink}>
+                      <Share2 className="h-3.5 w-3.5" />
+                      Refer
+                    </button>
+                  </div>
+                </CardContent>
+              </Card>
             </motion.div>
           </Link>
 
@@ -1062,14 +1062,14 @@ export default function Profile() {
                 setVegModeOpen(false);
               }}
               className={`w-full p-3 rounded-xl border-2 transition-all flex items-center justify-between ${vegMode
-                  ? "border-green-600 bg-green-50"
-                  : "border-gray-200 bg-white hover:border-gray-300"
+                ? "border-green-600 bg-green-50"
+                : "border-gray-200 bg-white hover:border-gray-300"
                 }`}>
               <div className="flex items-center gap-3">
                 <div
                   className={`w-5 h-5 rounded-full border-2 flex items-center justify-center ${vegMode
-                      ? "border-green-600 bg-green-600"
-                      : "border-gray-300"
+                    ? "border-green-600 bg-green-600"
+                    : "border-gray-300"
                     }`}>
                   {vegMode && <Check className="h-3 w-3 text-white" />}
                 </div>
@@ -1092,8 +1092,8 @@ export default function Profile() {
                 setVegModeOpen(false);
               }}
               className={`w-full p-3 rounded-xl border-2 transition-all flex items-center justify-between ${!vegMode
-                  ? "border-[#991B1B] bg-[#fdfafc] dark:bg-[#7F1D1D]/10"
-                  : "border-gray-200 dark:border-gray-800 bg-white hover:border-gray-300"
+                ? "border-[#991B1B] bg-[#fdfafc] dark:bg-[#7F1D1D]/10"
+                : "border-gray-200 dark:border-gray-800 bg-white hover:border-gray-300"
                 }`}>
               <div className="flex items-center gap-3">
                 <div
@@ -1121,7 +1121,7 @@ export default function Profile() {
               initial={{ scale: 0.9, opacity: 0 }}
               animate={{ scale: 1, opacity: 1 }}
               className="w-full max-w-sm rounded-2xl bg-white/75 dark:bg-[#1a1a1a]/75 backdrop-blur-md shadow-2xl border border-white/20 dark:border-white/10 overflow-hidden p-6 text-center">
-              
+
               <div className="flex flex-col items-center mb-4">
                 <div className="w-14 h-14 rounded-full bg-red-50 dark:bg-red-950/30 flex items-center justify-center mb-3">
                   <Power className="h-7 w-7 text-[#FF3131]" />
@@ -1179,13 +1179,13 @@ export default function Profile() {
                 setAppearanceOpen(false);
               }}
               className={`w-full p-3 rounded-xl border-2 transition-all flex items-center gap-3 ${appearance === "light"
-                  ? "border-[#DC2626] bg-[#fdfafc] dark:border-[#FEE2E2] dark:bg-[#7F1D1D]/20"
-                  : "border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 hover:border-gray-300 dark:hover:border-gray-600"
+                ? "border-[#DC2626] bg-[#fdfafc] dark:border-[#FEE2E2] dark:bg-[#7F1D1D]/20"
+                : "border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 hover:border-gray-300 dark:hover:border-gray-600"
                 }`}>
               <div
                 className={`w-5 h-5 rounded-full border-2 flex items-center justify-center flex-shrink-0 ${appearance === "light"
-                    ? "border-[#DC2626] bg-[#DC2626] dark:border-[#FEE2E2] dark:bg-[#FEE2E2]"
-                    : "border-gray-300 dark:border-gray-600"
+                  ? "border-[#DC2626] bg-[#DC2626] dark:border-[#FEE2E2] dark:bg-[#FEE2E2]"
+                  : "border-gray-300 dark:border-gray-600"
                   }`}>
                 {appearance === "light" && (
                   <Check className="h-3 w-3 text-white" />
@@ -1207,13 +1207,13 @@ export default function Profile() {
                 setAppearanceOpen(false);
               }}
               className={`w-full p-3 rounded-xl border-2 transition-all flex items-center gap-3 ${appearance === "dark"
-                  ? "border-[#DC2626] dark:border-[#FEE2E2] bg-[#fdfafc] dark:bg-[#7F1D1D]/20"
-                  : "border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 hover:border-gray-300 dark:hover:border-gray-600"
+                ? "border-[#DC2626] dark:border-[#FEE2E2] bg-[#fdfafc] dark:bg-[#7F1D1D]/20"
+                : "border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 hover:border-gray-300 dark:hover:border-gray-600"
                 }`}>
               <div
                 className={`w-5 h-5 rounded-full border-2 flex items-center justify-center flex-shrink-0 ${appearance === "dark"
-                    ? "border-[#DC2626] bg-[#DC2626] dark:border-[#FEE2E2] dark:bg-[#FEE2E2]"
-                    : "border-gray-300 dark:border-gray-600"
+                  ? "border-[#DC2626] bg-[#DC2626] dark:border-[#FEE2E2] dark:bg-[#FEE2E2]"
+                  : "border-gray-300 dark:border-gray-600"
                   }`}>
                 {appearance === "dark" && (
                   <Check className="h-3 w-3 text-white" />
@@ -1236,7 +1236,7 @@ export default function Profile() {
       {/* Balance Warning Popup */}
       {showBalanceWarning && (
         <div className="fixed inset-0 bg-black/80 z-[1000] flex items-center justify-center px-4 backdrop-blur-sm overflow-y-auto py-10">
-          <motion.div 
+          <motion.div
             initial={{ scale: 0.9, opacity: 0 }}
             animate={{ scale: 1, opacity: 1 }}
             className="bg-white dark:bg-[#1a1a1a] w-full max-w-sm rounded-2xl shadow-2xl p-6"
@@ -1288,7 +1288,7 @@ export default function Profile() {
               initial={{ scale: 0.9, opacity: 0 }}
               animate={{ scale: 1, opacity: 1 }}
               className="w-full max-w-sm rounded-2xl bg-white dark:bg-[#1a1a1a] shadow-2xl border border-red-100 dark:border-red-900/30 overflow-hidden p-6">
-              
+
               {/* Icon + Title centered */}
               <div className="flex flex-col items-center text-center mb-4">
                 <div className="w-14 h-14 rounded-full bg-red-100 dark:bg-red-900/30 flex items-center justify-center mb-3">
@@ -1312,11 +1312,11 @@ export default function Profile() {
                   Your account will be Deleted. Admin will keep your historical records for revenue reporting.
                 </p>
               </div>
-              
+
               <div className="mb-6">
-                <input 
-                  type="text" 
-                  placeholder="Type DELETE to confirm" 
+                <input
+                  type="text"
+                  placeholder="Type DELETE to confirm"
                   value={deleteCaptcha}
                   onChange={(e) => setDeleteCaptcha(e.target.value.toUpperCase())}
                   className="w-full h-12 px-4 rounded-xl border-2 border-gray-200 dark:border-gray-700 bg-transparent dark:text-white focus:border-red-500 focus:ring-4 focus:ring-red-50 dark:focus:ring-red-900/20 outline-none transition-all font-bold text-center tracking-widest placeholder:tracking-normal placeholder:font-medium placeholder:text-gray-400 dark:placeholder:text-gray-500"
