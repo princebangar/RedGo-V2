@@ -96,10 +96,10 @@ export default function LocationPrompt() {
       >
         {/* Close Button */}
         <button
-          className="absolute right-4 top-4 text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-200 transition-colors p-1 rounded-full hover:bg-zinc-50 dark:hover:bg-zinc-800"
+          className="absolute right-4 top-4 text-[#DC2626] hover:text-[#B91C1C] transition-all p-1.5 rounded-full bg-red-50 hover:bg-red-100 dark:bg-red-950/40 dark:hover:bg-red-900/60 shadow-sm active:scale-95 duration-200"
           onClick={handleDismiss}
         >
-          <X className="h-5 w-5" />
+          <X className="h-4.5 w-4.5" strokeWidth={2.5} />
         </button>
 
         {/* Pin Icon with pulse ring */}
@@ -141,7 +141,7 @@ export default function LocationPrompt() {
           
           <button
             onClick={handleSelectManually}
-            className="w-full h-12 rounded-full bg-zinc-50 hover:bg-zinc-100 dark:bg-zinc-800 dark:hover:bg-zinc-700/80 text-zinc-700 dark:text-zinc-300 font-semibold text-sm transition-all duration-200 border border-zinc-200/50 dark:border-zinc-700"
+            className="w-full h-12 rounded-full bg-zinc-500/10 dark:bg-zinc-400/10 hover:bg-zinc-500/20 dark:hover:bg-zinc-400/20 text-zinc-700 dark:text-zinc-200 font-bold text-sm transition-all duration-200 border border-zinc-500/20 dark:border-zinc-400/20 backdrop-blur-md shadow-inner flex items-center justify-center"
           >
             Select Location Manually
           </button>
