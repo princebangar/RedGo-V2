@@ -49,6 +49,13 @@ const CUSTOMIZATION_TOGGLES = [
       "Controls visibility of Razorpay online payment at checkout.",
     defaultValue: true,
   },
+  {
+    key: "default_location_enabled",
+    label: "Default Location Mode",
+    description:
+      "Bypasses device location permissions and sets default location to Indore for all users.",
+    defaultValue: false,
+  },
 ];
 
 const getAdminToastOffsetPx = () => {

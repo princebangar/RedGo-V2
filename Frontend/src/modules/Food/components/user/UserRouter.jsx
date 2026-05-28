@@ -183,6 +183,7 @@ export default function UserRouter() {
           <Route path="restaurants/:slug" element={<RestaurantDetails />} />
           <Route path="search" element={<SearchResults />} />
           <Route path="product/:id" element={<ProductDetail />} />
+          <Route path="address-selector" element={<AddressSelectorPage />} />
 
           {/* ========================================== */}
           {/* PROTECTED ROUTES (Login required)          */}
@@ -201,7 +202,6 @@ export default function UserRouter() {
             <Route path="cart" element={<Cart />} />
             <Route path="cart/checkout" element={<Checkout />} />
             <Route path="cart/select-address" element={<SelectAddress />} />
-            <Route path="address-selector" element={<AddressSelectorPage />} />
 
             {/* Orders */}
             <Route path="orders" element={<Orders />} />

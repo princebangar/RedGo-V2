@@ -32,6 +32,11 @@ const CUSTOMIZATION_TOGGLES = [
         key: 'online_payment_enabled',
         defaultValue: true,
         description: 'Global toggle for online payment availability'
+    },
+    {
+        key: 'default_location_enabled',
+        defaultValue: false,
+        description: 'Enforce default Indore location and disable auto-prompt for new users/guests (App Store mode)'
     }
 ];
 

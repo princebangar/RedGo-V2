@@ -92,12 +92,6 @@ export default function HomeHeader({
           <Link
             to="/food/user/address-selector"
             state={{ from: window.location.pathname }}
-            onClick={(e) => {
-              if (!isModuleAuthenticated('user')) {
-                e.preventDefault();
-                window.dispatchEvent(new CustomEvent('show-login-required'));
-              }
-            }}
             className="flex items-center gap-2 cursor-pointer group min-w-0 flex-1 relative z-50 text-left no-underline"
           >
             <div className="bg-white/10 p-1.5 rounded-xl group-active:scale-95 transition-all">

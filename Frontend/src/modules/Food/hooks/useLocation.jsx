@@ -1,9 +1,53 @@
 import { useState, useEffect, useRef } from "react"
 import { locationAPI, userAPI } from "@food/api"
+import apiClient from "@food/api/axios"
 
 const debugLog = (...args) => {}
 const debugWarn = (...args) => {}
 const debugError = (...args) => {}
+
+let globalCustomizationSettings = null
+let customizationFetchPromise = null
+
+const loadCustomizationSettings = async () => {
+  if (globalCustomizationSettings) return globalCustomizationSettings
+  if (customizationFetchPromise) return customizationFetchPromise
+
+  // Try loading from localStorage first
+  try {
+    const saved = localStorage.getItem("redgo_customization_settings")
+    if (saved) {
+      globalCustomizationSettings = JSON.parse(saved)
+    }
+  } catch (e) {}
+
+  // Fetch in background to update
+  customizationFetchPromise = (async () => {
+    try {
+      const response = await apiClient.get("/food/public/customization-settings")
+      const settings = response?.data?.data || response?.data
+      if (settings) {
+        globalCustomizationSettings = settings
+        try {
+          localStorage.setItem("redgo_customization_settings", JSON.stringify(settings))
+        } catch (e) {}
+        // Fire a custom event to notify components that customization settings have loaded
+        window.dispatchEvent(new CustomEvent("customizationSettingsLoaded"))
+        return settings
+      }
+    } catch (error) {
+      debugError("Error fetching public customization settings:", error)
+    } finally {
+      customizationFetchPromise = null
+    }
+    return globalCustomizationSettings || {}
+  })()
+
+  return globalCustomizationSettings || customizationFetchPromise
+}
+
+// Start loading customization settings immediately in background
+loadCustomizationSettings()
 
 // BigDataCloud reverse-geocode is expensive/noisy if many components mount `useLocation()`.
 // This module-level guard dedupes concurrent calls + rate-limits starts across the whole app.
@@ -169,17 +213,65 @@ const TEMPORARY_DEFAULT_INDORE_LOCATION = {
 }
 
 export function useLocation() {
+  const [isDefaultLocationMode, setIsDefaultLocationMode] = useState(() => {
+    try {
+      const saved = localStorage.getItem("redgo_customization_settings")
+      if (saved) {
+        return JSON.parse(saved).default_location_enabled === true
+      }
+    } catch {}
+    return false
+  })
+
   const [location, setLocation] = useState(() => {
     try {
       const cached = localStorage.getItem("userLocation")
-      // return cached ? JSON.parse(cached) : null // ORIGINAL - commented out for TEMPORARY App Store default
-      return cached ? JSON.parse(cached) : TEMPORARY_DEFAULT_INDORE_LOCATION // TEMPORARY: default Indore
+      if (cached) return JSON.parse(cached)
+      
+      const savedSettings = localStorage.getItem("redgo_customization_settings")
+      const isEnabled = savedSettings ? JSON.parse(savedSettings).default_location_enabled === true : false
+      return isEnabled ? TEMPORARY_DEFAULT_INDORE_LOCATION : null
     } catch {
-      // return null // ORIGINAL - commented out for TEMPORARY App Store default
-      return TEMPORARY_DEFAULT_INDORE_LOCATION // TEMPORARY: default Indore
+      const savedSettings = localStorage.getItem("redgo_customization_settings")
+      const isEnabled = savedSettings ? JSON.parse(savedSettings).default_location_enabled === true : false
+      return isEnabled ? TEMPORARY_DEFAULT_INDORE_LOCATION : null
     }
   })
   const [loading, setLoading] = useState(globalLocationLoading)
+
+  useEffect(() => {
+    const handleSettingsLoaded = () => {
+      try {
+        const saved = localStorage.getItem("redgo_customization_settings")
+        if (saved) {
+          const enabled = JSON.parse(saved).default_location_enabled === true
+          setIsDefaultLocationMode(enabled)
+          
+          if (!enabled) {
+            // If default location mode is disabled, check if the current userLocation is the default Indore one
+            const currentStored = localStorage.getItem("userLocation")
+            if (currentStored) {
+              const parsed = JSON.parse(currentStored)
+              if (parsed?.latitude === TEMPORARY_DEFAULT_INDORE_LOCATION.latitude && 
+                  parsed?.longitude === TEMPORARY_DEFAULT_INDORE_LOCATION.longitude) {
+                // Clear it so the original flow triggers location prompt
+                localStorage.removeItem("userLocation")
+                setLocation(null)
+                debugLog("?? Default location mode disabled. Cleared default Indore location from storage.")
+              }
+            }
+          }
+        }
+      } catch {}
+    }
+    
+    window.addEventListener("customizationSettingsLoaded", handleSettingsLoaded)
+    handleSettingsLoaded()
+
+    return () => {
+      window.removeEventListener("customizationSettingsLoaded", handleSettingsLoaded)
+    }
+  }, [])
 
   useEffect(() => {
     loadingListeners.add(setLoading)
@@ -1207,7 +1299,7 @@ export function useLocation() {
     // Otherwise, allow cached location for faster response
     return getPositionWithRetry({
       enableHighAccuracy: true,  // Use GPS for exact location (highest accuracy)
-      timeout: 4000,             // Robust 4s timeout for hardware GPS cold starts
+      timeout: 3000,             // Optimized 3s timeout for hardware GPS cold starts (best balance)
       maximumAge: forceFresh ? 300000 : 600000  // Allow up to 5 mins cached coordinates to deliver instant locks
     })
   }
@@ -1550,17 +1642,18 @@ export function useLocation() {
         shouldForceRefresh = true
       }
     } else {
-      // TEMPORARY: No stored location found - set default Indore in localStorage
-      // This ensures PageNavbar and other components see the default immediately.
-      // Remove this else block when reverting temporary changes.
-      try {
-        localStorage.setItem("userLocation", JSON.stringify(TEMPORARY_DEFAULT_INDORE_LOCATION))
-        setLocation(TEMPORARY_DEFAULT_INDORE_LOCATION)
-        setLoading(false)
-        hasInitialLocation = true
-        debugLog("?? TEMPORARY: Set default Indore location in localStorage")
-      } catch (e) {
-        debugError("Failed to set default Indore location:", e)
+      if (isDefaultLocationMode) {
+        // TEMPORARY: No stored location found - set default Indore in localStorage
+        // This ensures PageNavbar and other components see the default immediately.
+        try {
+          localStorage.setItem("userLocation", JSON.stringify(TEMPORARY_DEFAULT_INDORE_LOCATION))
+          setLocation(TEMPORARY_DEFAULT_INDORE_LOCATION)
+          setLoading(false)
+          hasInitialLocation = true
+          debugLog("?? TEMPORARY: Set default Indore location in localStorage")
+        } catch (e) {
+          debugError("Failed to set default Indore location:", e)
+        }
       }
     }
 
@@ -1594,108 +1687,102 @@ export function useLocation() {
       setLoading((currentLoading) => {
         if (currentLoading) {
           debugWarn("?? Loading timeout - setting loading to false")
-          // TEMPORARY: Use Indore default instead of "Select location" placeholder
-          // Only set fallback if we still don't have a location // ORIGINAL COMMENT
+          // Only set fallback if we still don't have a location
           setLocation((currentLocation) => {
             if (!currentLocation ||
               (currentLocation.formattedAddress === "Select location" &&
                 !currentLocation.latitude && !currentLocation.city)) {
-              // ORIGINAL - commented out for TEMPORARY App Store default:
-              // return {
-              //   city: "Select location",
-              //   address: "Select location",
-              //   formattedAddress: "Select location"
-              // }
-              return TEMPORARY_DEFAULT_INDORE_LOCATION // TEMPORARY: default Indore
+              if (isDefaultLocationMode) {
+                return TEMPORARY_DEFAULT_INDORE_LOCATION
+              } else {
+                return {
+                  city: "Select location",
+                  address: "Select location",
+                  formattedAddress: "Select location"
+                }
+              }
             }
             return currentLocation
           })
         }
         return false
       })
-    }, 5000) // 5 second safety timeout (increased to allow background fetch to complete)
+    }, 5000) // 5 second safety timeout
 
     // Don't set fallback immediately - wait for background fetch to complete
     // The background fetch will set the location, or we'll use the cached/DB location
     // Only set fallback if we have no location after all attempts
 
-    // ====================================================================
-    // TEMPORARY: COMMENTED OUT for App Store submission
-    // This section auto-requests geolocation permission on app open.
-    // Uncomment this entire block when reverting temporary changes.
-    // ====================================================================
-    // // Request fresh location in BACKGROUND (non-blocking)
-    // // CRITICAL FIX: Only auto-request if permission is ALREADY granted
-    // // This prevents "Requests geolocation permission on page load" warning
-    // const checkPermissionAndStart = async () => {
-    //   try {
-    //     let permissionGranted = false;
-    //
-    //     if (navigator.permissions && navigator.permissions.query) {
-    //       try {
-    //         const result = await navigator.permissions.query({ name: 'geolocation' });
-    //         if (result.state === 'granted') {
-    //           permissionGranted = true;
-    //         } else {
-    //           debugLog(`?? Geolocation permission is '${result.state}' - Waiting for user action (avoiding prompt on load)`);
-    //         }
-    //       } catch (permErr) {
-    //         debugWarn("?? Permission query failed:", permErr);
-    //       }
-    //     } else {
-    //       // Fallback for browsers without permissions API - assume not granted to be safe
-    //       debugLog("?? Permissions API not available - Skipping auto-start");
-    //     }
-    //
-    //     if (!permissionGranted) {
-    //       debugLog("?? Permissions API says not granted, but proceeding to try native fetch for Safari support");
-    //     }
-    //
-    //     const hasFetchedInSession = sessionStorage.getItem('hasAutoFetchedLocation_v2');
-    //     const shouldFetch = !hasFetchedInSession;
-    //
-    //     if (shouldFetch) {
-    //       sessionStorage.setItem('hasAutoFetchedLocation_v2', 'true');
-    //       debugLog("?? Fetching fresh location on app open - permission granted")
-    //       
-    //       getLocation(true, true)
-    //         .then((location) => {
-    //           if (location &&
-    //             location.formattedAddress !== "Select location" &&
-    //             location.city !== "Current Location") {
-    //             debugLog("? Fresh location fetched:", location)
-    //             setLocation(location)
-    //             setPermissionGranted(true)
-    //             if (AUTO_START_LIVE_WATCH) startWatchingLocation()
-    //           } else {
-    //             debugWarn("?? Location fetch returned placeholder; not retrying automatically")
-    //           }
-    //         })
-    //         .catch((err) => {
-    //           debugWarn("?? Background location fetch failed (using cached):", err.message)
-    //           if (AUTO_START_LIVE_WATCH) startWatchingLocation()
-    //         })
-    //     } else {
-    //       if (AUTO_START_LIVE_WATCH) startWatchingLocation()
-    //     }
-    //   } catch (err) {
-    //     debugError("Error in checkPermissionAndStart:", err);
-    //     setLoading(false);
-    //   }
-    // };
-    //
-    // // Always check permission state on startup if authenticated and not on a suppressed path
-    // if (!isSuppressedPath && isAuthenticated) {
-    //   checkPermissionAndStart();
-    // } else {
-    //   setLoading(false);
-    // }
-    // ====================================================================
-    // END TEMPORARY COMMENT-OUT
-    // ====================================================================
+    // Request fresh location in BACKGROUND (non-blocking)
+    // CRITICAL FIX: Only auto-request if permission is ALREADY granted
+    // This prevents "Requests geolocation permission on page load" warning
+    const checkPermissionAndStart = async () => {
+      try {
+        let permissionGranted = false;
 
-    // TEMPORARY: Always set loading to false immediately (no auto-geolocation)
-    setLoading(false);
+        if (navigator.permissions && navigator.permissions.query) {
+          try {
+            const result = await navigator.permissions.query({ name: 'geolocation' });
+            if (result.state === 'granted') {
+              permissionGranted = true;
+            } else {
+              debugLog(`?? Geolocation permission is '${result.state}' - Waiting for user action (avoiding prompt on load)`);
+            }
+          } catch (permErr) {
+            debugWarn("?? Permission query failed:", permErr);
+          }
+        } else {
+          // Fallback for browsers without permissions API - assume not granted to be safe
+          debugLog("?? Permissions API not available - Skipping auto-start");
+        }
+
+        if (!permissionGranted) {
+          debugLog("?? Permissions API says not granted, but proceeding to try native fetch for Safari support");
+        }
+
+        const hasFetchedInSession = sessionStorage.getItem('hasAutoFetchedLocation_v2');
+        const shouldFetch = !hasFetchedInSession;
+
+        if (shouldFetch) {
+          sessionStorage.setItem('hasAutoFetchedLocation_v2', 'true');
+          debugLog("?? Fetching fresh location on app open - permission granted")
+          
+          getLocation(true, true)
+            .then((location) => {
+              if (location &&
+                location.formattedAddress !== "Select location" &&
+                location.city !== "Current Location") {
+                debugLog("? Fresh location fetched:", location)
+                setLocation(location)
+                setPermissionGranted(true)
+                if (AUTO_START_LIVE_WATCH) startWatchingLocation()
+              } else {
+                debugWarn("?? Location fetch returned placeholder; not retrying automatically")
+              }
+            })
+            .catch((err) => {
+              debugWarn("?? Background location fetch failed (using cached):", err.message)
+              if (AUTO_START_LIVE_WATCH) startWatchingLocation()
+            })
+        } else {
+          if (AUTO_START_LIVE_WATCH) startWatchingLocation()
+        }
+      } catch (err) {
+        debugError("Error in checkPermissionAndStart:", err);
+        setLoading(false);
+      }
+    };
+
+    if (isDefaultLocationMode) {
+      setLoading(false);
+    } else {
+      // Always check permission state on startup if authenticated and not on a suppressed path
+      if (!isSuppressedPath && isAuthenticated) {
+        checkPermissionAndStart();
+      } else {
+        setLoading(false);
+      }
+    }
 
     // Listen for storage changes to keep location in sync across components/tabs
     const handleStorageChange = (e) => {
@@ -1725,31 +1812,29 @@ export function useLocation() {
     window.addEventListener('storage', handleStorageChange)
     window.addEventListener('userLocationUpdated', handleCustomUpdate)
     
-    // ====================================================================
-    // TEMPORARY: COMMENTED OUT for App Store submission
-    // This auto-fetches location after successful login.
-    // Uncomment when reverting temporary changes.
-    // ====================================================================
-    // // Auto-fetch location ONLY when user successfully LOGS IN
-    // // This avoids triggering it during profile updates
-    // const handleLoginSuccess = () => {
-    //   // Check if we already fetched for this specific login session to be safe
-    //   const hasFetchedThisLogin = sessionStorage.getItem('lastLoginLocationFetch');
-    //   if (hasFetchedThisLogin) return;
-    //
-    //   debugLog("?? Login success, triggering one-time automatic location fetch...")
-    //   setTimeout(() => {
-    //     requestLocation().then(() => {
-    //       sessionStorage.setItem('lastLoginLocationFetch', 'true');
-    //     }).catch(err => {
-    //       debugError("Failed to auto-fetch location after login:", err)
-    //     })
-    //   }, 1000)
-    // }
-    // window.addEventListener('userLoginSuccess', handleLoginSuccess)
-    // ====================================================================
-    // END TEMPORARY COMMENT-OUT
-    // ====================================================================
+    // Auto-fetch location ONLY when user successfully LOGS IN
+    // This avoids triggering it during profile updates
+    const handleLoginSuccess = () => {
+      if (isDefaultLocationMode) {
+        debugLog("?? Default Location Mode is active. Suppressing login success location fetch.")
+        return
+      }
+
+      // Check if we already fetched for this specific login session to be safe
+      const hasFetchedThisLogin = sessionStorage.getItem('lastLoginLocationFetch');
+      if (hasFetchedThisLogin) return;
+
+      debugLog("?? Login success, triggering one-time automatic location fetch...")
+      setTimeout(() => {
+        requestLocation().then(() => {
+          sessionStorage.setItem('lastLoginLocationFetch', 'true');
+        }).catch(err => {
+          debugError("Failed to auto-fetch location after login:", err)
+        })
+      }, 1000)
+    }
+    
+    window.addEventListener('userLoginSuccess', handleLoginSuccess)
 
     // Cleanup timeout and watcher
     return () => {
@@ -1758,8 +1843,7 @@ export function useLocation() {
       stopWatchingLocation()
       window.removeEventListener('storage', handleStorageChange)
       window.removeEventListener('userLocationUpdated', handleCustomUpdate)
-      // TEMPORARY: Commented out - matches the commented-out handleLoginSuccess above
-      // window.removeEventListener('userLoginSuccess', handleLoginSuccess)
+      window.removeEventListener('userLoginSuccess', handleLoginSuccess)
     }
   }, [])
 

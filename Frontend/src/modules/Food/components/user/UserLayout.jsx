@@ -134,11 +134,6 @@ function LocationSelectorProvider({ children }) {
   const navigate = useNavigate()
 
   const openLocationSelector = useCallback(() => {
-    // Check if the user is a guest / not authenticated
-    if (!isModuleAuthenticated('user')) {
-      window.dispatchEvent(new CustomEvent('show-login-required'));
-      return;
-    }
     // Navigate to the standalone address selector page
     // Using window.location.pathname to avoid hook issues in some contexts
     navigate("/food/user/address-selector", { state: { from: window.location.pathname } })

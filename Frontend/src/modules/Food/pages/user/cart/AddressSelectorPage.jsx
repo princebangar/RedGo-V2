@@ -125,7 +125,6 @@ export default function AddressSelectorPage() {
 
   // Nominatim search
   useEffect(() => {
-    if (!showAddressForm) return
     const q = String(addressAutocompleteValue || "").trim()
     if (!ENABLE_NOMINATIM_SEARCH || q.length < 3) {
       setKeywordAddressSuggestions([])
@@ -161,17 +160,29 @@ export default function AddressSelectorPage() {
       }
     }, 350)
     return () => clearTimeout(t)
-  }, [addressAutocompleteValue, showAddressForm, location, ENABLE_NOMINATIM_SEARCH])
+  }, [addressAutocompleteValue, location, ENABLE_NOMINATIM_SEARCH])
 
   // Map Initialization logic
   useEffect(() => {
-    if (!MAPS_ENABLED || !showAddressForm || !mapContainerRef.current || !GOOGLE_MAPS_API_KEY) return
+    if (!MAPS_ENABLED || !showAddressForm || !GOOGLE_MAPS_API_KEY) return
 
     let isMounted = true
     setMapLoading(true)
 
     const initializeGoogleMap = async () => {
       try {
+        // Retry a few times if the container ref isn't immediately populated in the DOM
+        let retries = 0
+        while (!mapContainerRef.current && retries < 10) {
+          await new Promise(resolve => setTimeout(resolve, 50))
+          retries++
+        }
+
+        if (!isMounted || !mapContainerRef.current) {
+          setMapLoading(false)
+          return
+        }
+
         const loader = new Loader({ apiKey: GOOGLE_MAPS_API_KEY, version: "weekly" })
         const google = await loader.load()
         if (!isMounted || !mapContainerRef.current) return
@@ -251,16 +262,89 @@ export default function AddressSelectorPage() {
     }
   }
 
+  const handleSelectOuterSuggestion = (s) => {
+    setIsFetchingLocationState(true)
+    try {
+      const lat = s.lat
+      const lng = s.lng
+      const display = s.display
+      const a = s.address || {}
+      
+      const displayParts = display ? display.split(",").map(p => p.trim()).filter(Boolean) : []
+      
+      // Robust city extraction
+      let city = a.city || a.town || a.village || a.hamlet || a.county || a.state_district || a.district || a.municipality || ""
+      if (!city && displayParts.length > 0) {
+        city = displayParts[0]
+      }
+      if (!city) {
+        city = "Indore"
+      }
+
+      // Robust area extraction
+      let area = a.suburb || a.neighbourhood || a.sublocality || a.quarter || ""
+      if (!area && displayParts.length > 1 && city !== displayParts[0]) {
+        area = displayParts[0]
+      }
+
+      // Robust state extraction
+      let state = a.state || ""
+      if (!state && displayParts.length > 1) {
+        const potentialStates = displayParts.slice(0, -1).filter(p => !/^\d+$/.test(p))
+        if (potentialStates.length > 0) {
+          state = potentialStates[potentialStates.length - 1]
+        }
+      }
+      if (!state) {
+        state = "Madhya Pradesh"
+      }
+
+      if (lat && lng) {
+        const finalLoc = {
+          latitude: lat,
+          longitude: lng,
+          city: city,
+          state: state,
+          country: "India",
+          area: area,
+          address: display || "Selected Location",
+          formattedAddress: display || "Selected Location"
+        }
+
+        // Save to local storage
+        localStorage.setItem("userLocation", JSON.stringify(finalLoc))
+        sessionStorage.setItem("manual_location_update", "true")
+        localStorage.setItem("deliveryAddressMode", "current")
+        
+        // Dispatch update event
+        window.dispatchEvent(new CustomEvent("userLocationUpdated"))
+        
+        handleBack()
+      } else {
+        toast.error("Could not resolve location coordinates")
+      }
+    } catch (err) {
+      console.error("Error selecting search suggestion:", err)
+      toast.error("Failed to select location")
+    } finally {
+      setIsFetchingLocationState(false)
+    }
+  }
+
   const handleAddAddressClick = () => {
     if (!isAuthenticated) {
       toast.info("Please login to add an address")
       navigate("/user/auth/login")
       return
     }
+    setAddressAutocompleteValue("")
+    setKeywordAddressSuggestions([])
     setShowAddressForm(true)
   }
 
   const handleCancelAddressForm = () => {
+    setAddressAutocompleteValue("")
+    setKeywordAddressSuggestions([])
     setShowAddressForm(false)
   }
 
@@ -453,17 +537,25 @@ export default function AddressSelectorPage() {
           >
             <div className="absolute top-4 left-4 right-4 z-20">
               <div className="relative group shadow-2xl">
-                <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                  <Search className="h-5 w-5 text-gray-400" />
+                <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
+                  <Search className="h-5 w-5 text-[#DC2626]" />
                 </div>
                 <Input
                   value={addressAutocompleteValue}
                   onChange={(e) => setAddressAutocompleteValue(e.target.value)}
                   placeholder="Search area, street, landmark..."
-                  className="pl-10 h-12 bg-white/95 dark:bg-[#1a1a1a]/95 backdrop-blur-md border-none rounded-xl shadow-lg focus:ring-2 focus:ring-[#DC2626] transition-all"
+                  className="pl-12 pr-10 h-14 bg-white dark:bg-[#1a1a1a] border-2 border-zinc-300 dark:border-zinc-700 rounded-2xl focus:ring-0 focus-visible:ring-0 focus-visible:ring-offset-0 focus:border-zinc-500 dark:focus:border-zinc-500 text-zinc-900 dark:text-zinc-50 placeholder-zinc-400 font-medium text-sm transition-all shadow-sm w-full"
                 />
+                {addressAutocompleteValue && (
+                  <button 
+                    onClick={() => setAddressAutocompleteValue("")}
+                    className="absolute right-3.5 top-1/2 -translate-y-1/2 p-1 rounded-full hover:bg-zinc-200 dark:hover:bg-zinc-800 text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-200 transition-colors"
+                  >
+                    <X className="h-4 w-4" />
+                  </button>
+                )}
                 {isKeywordSearching && (
-                  <div className="absolute right-3 top-1/2 -translate-y-1/2">
+                  <div className="absolute right-10 top-1/2 -translate-y-1/2">
                      <div className="animate-spin rounded-full h-4 w-4 border-2 border-[#DC2626] border-t-transparent" />
                   </div>
                 )}
@@ -653,28 +745,95 @@ export default function AddressSelectorPage() {
       </div>
 
       <div className="flex-1 overflow-y-auto pb-10">
-        <div className="p-4 bg-gray-50 dark:bg-gray-900 border-b dark:border-gray-800">
+        {/* Search Bar */}
+        <div className="p-4 bg-white dark:bg-[#0a0a0a] border-b dark:border-gray-800/10">
+          <div className="relative group">
+            <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
+              <Search className="h-5 w-5 text-[#DC2626]" />
+            </div>
+            <Input
+              value={addressAutocompleteValue}
+              onChange={(e) => setAddressAutocompleteValue(e.target.value)}
+              placeholder="Search for area, street name..."
+              className="pl-12 pr-10 h-14 bg-white dark:bg-[#1a1a1a] border-2 border-zinc-300 dark:border-zinc-700 rounded-2xl focus:ring-0 focus-visible:ring-0 focus-visible:ring-offset-0 focus:border-zinc-500 dark:focus:border-zinc-500 text-zinc-900 dark:text-zinc-50 placeholder-zinc-400 font-medium text-sm transition-all shadow-sm w-full"
+            />
+            {addressAutocompleteValue && (
+              <button 
+                onClick={() => setAddressAutocompleteValue("")}
+                className="absolute right-3.5 top-1/2 -translate-y-1/2 p-1 rounded-full hover:bg-zinc-200 dark:hover:bg-zinc-800 text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-200 transition-colors"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            )}
+          </div>
+        </div>
+
+        {/* Search Suggestions List */}
+        {keywordAddressSuggestions.length > 0 && (
+          <div className="mx-4 mt-2 mb-4 bg-white dark:bg-zinc-900 border border-zinc-150 dark:border-zinc-800 rounded-2xl shadow-xl overflow-hidden divide-y divide-zinc-100 dark:divide-zinc-850 z-50 animate-in fade-in duration-200">
+            {keywordAddressSuggestions.map((s) => {
+              const title = s.display.split(",")[0] || s.display
+              const subtitle = s.display.split(",").slice(1).join(",").trim() || s.display
+              return (
+                <button
+                  key={s.id}
+                  onClick={() => handleSelectOuterSuggestion(s)}
+                  className="w-full px-4 py-3.5 flex items-start gap-3.5 hover:bg-[#DC2626]/5 dark:hover:bg-[#DC2626]/10 transition-colors text-left"
+                >
+                  <div className="h-9 w-9 rounded-full bg-red-50 dark:bg-red-950/20 flex items-center justify-center flex-shrink-0 mt-0.5">
+                    <MapPin className="h-4.5 w-4.5 text-[#DC2626]" />
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <p className="text-sm font-bold text-zinc-900 dark:text-zinc-50 truncate">{title}</p>
+                    <p className="text-xs text-zinc-500 dark:text-zinc-400 truncate mt-0.5">{subtitle}</p>
+                  </div>
+                  <ChevronRight className="h-4 w-4 text-zinc-300 dark:text-zinc-600 mt-2.5 flex-shrink-0" />
+                </button>
+              )
+            })}
+          </div>
+        )}
+
+        {isKeywordSearching && (
+          <div className="mx-4 mt-2 mb-4 p-4 flex items-center justify-center gap-2 text-xs text-zinc-500 bg-zinc-50 dark:bg-zinc-900/50 rounded-xl">
+            <div className="animate-spin rounded-full h-4 w-4 border-2 border-[#DC2626] border-t-transparent" />
+            Searching location...
+          </div>
+        )}
+
+        {/* Action Rows: Use Current Location & Add Address */}
+        <div className="bg-white dark:bg-[#0a0a0a] border-b border-zinc-100 dark:border-zinc-800/60 divide-y divide-zinc-100 dark:divide-zinc-800/40">
           <button 
             onClick={handleUseCurrentLocation}
-            className="w-full flex items-center gap-4 p-4 bg-white dark:bg-[#1a1a1a] rounded-xl shadow-sm hover:shadow-md transition-all group"
+            className="w-full flex items-center gap-4 py-4 px-6 hover:bg-zinc-50 dark:hover:bg-zinc-900/40 transition-all text-left"
           >
-            <div className="h-10 w-10 rounded-full bg-[#DC262610] dark:bg-[#DC262620] flex items-center justify-center">
-              <Navigation className="h-5 w-5 text-[#DC2626]" />
+            <div className="h-10 w-10 rounded-full bg-red-50 dark:bg-red-950/10 flex items-center justify-center flex-shrink-0">
+              <Crosshair className="h-5 w-5 text-[#DC2626]" />
             </div>
-            <div className="text-left flex-1">
-              <p className="font-bold text-[#DC2626]">Use Current Location</p>
-              <p className="text-xs text-gray-500 line-clamp-1">{currentAddress || "Enable GPS for accuracy"}</p>
+            <div className="flex-1 min-w-0">
+              <p className="font-bold text-[#DC2626] text-[15px]">Use current location</p>
+              <p className="text-xs text-zinc-400 dark:text-zinc-500 truncate mt-0.5">{currentAddress || "Enable GPS for accuracy"}</p>
             </div>
-            <ChevronRight className="h-5 w-5 text-gray-400" />
+            <ChevronRight className="h-5 w-5 text-zinc-300 dark:text-zinc-600 flex-shrink-0" />
+          </button>
+
+          <button 
+            onClick={handleAddAddressClick}
+            className="w-full flex items-center gap-4 py-4 px-6 hover:bg-zinc-50 dark:hover:bg-zinc-900/40 transition-all text-left"
+          >
+            <div className="h-10 w-10 rounded-full bg-red-50 dark:bg-red-950/10 flex items-center justify-center flex-shrink-0">
+              <Plus className="h-5 w-5 text-[#DC2626]" />
+            </div>
+            <div className="flex-1 min-w-0">
+              <p className="font-bold text-[#DC2626] text-[15px]">Add Address</p>
+            </div>
+            <ChevronRight className="h-5 w-5 text-zinc-300 dark:text-zinc-600 flex-shrink-0" />
           </button>
         </div>
 
-        <div className="p-4">
+        <div className="p-6">
           <div className="flex items-center justify-between mb-4">
-            <h2 className="text-sm font-bold uppercase tracking-wider text-gray-500">Saved Addresses</h2>
-            <Button variant="ghost" className="text-[#DC2626] p-0 h-auto font-bold" onClick={handleAddAddressClick}>
-              <Plus className="h-4 w-4 mr-1" /> Add New
-            </Button>
+            <h2 className="text-xs font-bold uppercase tracking-wider text-zinc-400 dark:text-zinc-500">Saved Addresses</h2>
           </div>
 
           <div className="space-y-4">
