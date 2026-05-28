@@ -658,14 +658,14 @@ export default function UnifiedOTPFastLogin() {
                   <div className="flex flex-col items-center gap-4">
                     <div className="flex items-center gap-2 text-xs font-semibold">
                       {blockTimer > 0 ? (
-                        <span className="text-gray-400 uppercase tracking-wider">Resend SMS</span>
+                        <span className="text-gray-400 uppercase tracking-wider font-extrabold">Resend SMS</span>
                       ) : resendTimer > 0 ? (
-                        <span className="text-gray-400">Resend SMS in <span className="text-[#B80B3D]">{formatResendTimer(resendTimer)}</span></span>
+                        <span className="text-gray-400 font-extrabold">Resend SMS in <span className="text-slate-800 dark:text-slate-200 font-black">{formatResendTimer(resendTimer)}</span></span>
                       ) : (
                         <button
                           type="button"
                           onClick={handleResendOTP}
-                          className="text-[#B80B3D] hover:underline"
+                          className="text-slate-800 dark:text-slate-200 hover:text-slate-950 dark:hover:text-white hover:underline font-extrabold"
                         >
                           Didn't receive SMS? Resend SMS
                         </button>

@@ -3,6 +3,65 @@
 
 <head>
   <meta charset="UTF-8" />
+  <script>
+    // Prevent chunk loading and dynamic import MIME type mismatch crashes on deployment updates
+    (function() {
+      function reloadPage(reason) {
+        try {
+          var lastReload = sessionStorage.getItem('chunk_reload_timestamp');
+          var now = Date.now();
+          // Cooldown of 10 seconds to avoid infinite reload loops (e.g., if offline or asset is truly missing)
+          if (!lastReload || (now - parseInt(lastReload, 10)) > 10000) {
+            sessionStorage.setItem('chunk_reload_timestamp', String(now));
+            console.warn('RedGo: Chunk/Module load failure caught (' + reason + '). Reloading application...');
+            window.location.reload();
+          }
+        } catch (e) {
+          console.error('RedGo: Failed to handle reload', e);
+        }
+      }
+
+      // 1. Listen for global uncaught module fetch and MIME type errors
+      window.addEventListener('error', function(event) {
+        var errorMsg = event.message || '';
+        var errorObj = event.error;
+        var errorObjMsg = errorObj ? (errorObj.message || String(errorObj)) : '';
+
+        var isMimeOrImportError = 
+          errorMsg.indexOf('Failed to fetch dynamically imported module') > -1 ||
+          errorMsg.indexOf('Expected a JavaScript-or-Wasm module script') > -1 ||
+          errorObjMsg.indexOf('Failed to fetch dynamically imported module') > -1 ||
+          errorObjMsg.indexOf('Expected a JavaScript-or-Wasm module script') > -1;
+
+        if (isMimeOrImportError) {
+          reloadPage('Error Event: ' + (errorMsg || errorObjMsg));
+          return;
+        }
+
+        // 2. Capture failed <script> / <link> tag loads (e.g. 404 on old hashes)
+        if (event.target && (event.target.tagName === 'SCRIPT' || event.target.tagName === 'LINK')) {
+          var url = event.target.src || event.target.href || '';
+          if (url && (url.indexOf('/assets/') > -1 || url.indexOf('.js') > -1)) {
+            reloadPage('Asset Load Failure: ' + url);
+          }
+        }
+      }, true); // Must use capture phase to intercept resource loading errors
+
+      // 3. Listen for unhandled promise rejections (Vite dynamic import failures are rejected promises)
+      window.addEventListener('unhandledrejection', function(event) {
+        var reason = event.reason;
+        var reasonMsg = reason ? (reason.message || String(reason)) : '';
+        if (reasonMsg.indexOf('Failed to fetch dynamically imported module') > -1) {
+          reloadPage('Unhandled Rejection: ' + reasonMsg);
+        }
+      });
+
+      // 4. Vite-specific preload error handler
+      window.addEventListener('vite:preloadError', function(event) {
+        reloadPage('Vite Preload Error');
+      });
+    })();
+  </script>
   <link rel="icon" type="image/png" href="/logo.png" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
   <style>

@@ -59,7 +59,7 @@ export default function DeliveryRouter() {
         {/* Auth routes */}
         <Route path="welcome" element={<Welcome />} />
         <Route path="login" element={<SignIn />} />
-        <Route path="otp" element={<OTP />} />
+        <Route path="otp" element={<SignIn />} />
         <Route path="signup" element={<Signup />} />
         <Route path="signup/details" element={<SignupStep1 />} />
         <Route path="signup/documents" element={<SignupStep2 />} />

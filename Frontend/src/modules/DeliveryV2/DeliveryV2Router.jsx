@@ -66,7 +66,7 @@ const DeliveryV2Router = () => {
         {/* Auth routes */}
 
         <Route path="login" element={<AuthRedirect module="delivery"><SignIn /></AuthRedirect>} />
-        <Route path="otp" element={<AuthRedirect module="delivery"><OTP /></AuthRedirect>} />
+        <Route path="otp" element={<AuthRedirect module="delivery"><SignIn /></AuthRedirect>} />
         <Route path="signup" element={<AuthRedirect module="delivery"><Navigate to="/food/delivery/login" replace /></AuthRedirect>} />
         <Route path="signup/details" element={<AuthRedirect module="delivery"><SignupStep1 /></AuthRedirect>} />
         <Route path="signup/documents" element={<AuthRedirect module="delivery"><SignupStep2 /></AuthRedirect>} />

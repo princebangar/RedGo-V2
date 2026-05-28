@@ -101,7 +101,7 @@ export default function RestaurantRouter() {
         {/* Auth Routes */}
 
         <Route path="login" element={<AuthRedirect module="restaurant"><Login /></AuthRedirect>} />
-        <Route path="otp" element={<AuthRedirect module="restaurant"><OTP /></AuthRedirect>} />
+        <Route path="otp" element={<AuthRedirect module="restaurant"><Login /></AuthRedirect>} />
         <Route path="signup" element={<AuthRedirect module="restaurant"><Signup /></AuthRedirect>} />
         <Route path="forgot-password" element={<AuthRedirect module="restaurant"><ForgotPassword /></AuthRedirect>} />
         <Route path="pending-verification" element={<VerificationPending />} />

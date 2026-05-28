@@ -384,8 +384,8 @@ export default function RestaurantOTP() {
           <path fill="url(#topRedGrad)" d="M -50,-50 L -50,280 C 200,100 800,100 1490,100 L 1490,-50 Z" filter="drop-shadow(0px 5px 15px rgba(0,0,0,0.15))" />
         </svg>
         <img
-          src="/food_dish.png"
-          alt="Delicious food"
+          src="/Restaurant_logo_2.png"
+          alt="Restaurant Partner"
           className="absolute top-[8%] left-[5%] w-[14vh] h-[14vh] md:w-[120px] md:h-[120px] object-contain animate-float-dish-1 drop-shadow-xl"
         />
       </div>
@@ -402,9 +402,9 @@ export default function RestaurantOTP() {
           <path fill="url(#botRedGrad)" d="M -50,370 L -50,220 C 640,220 1240,220 1490,40 L 1490,370 Z" filter="drop-shadow(0px -5px 15px rgba(0,0,0,0.15))" />
         </svg>
         <img
-          src="/food_dish_2.png"
-          alt="Delicious food"
-          className="absolute bottom-[8%] right-[5%] w-[18vh] h-[18vh] md:w-[150px] md:h-[150px] object-contain animate-float-dish-2 drop-shadow-2xl"
+          src="/Restaurant_logo_1.png"
+          alt="Restaurant Partner"
+          className="absolute bottom-[13%] right-[5%] w-[18vh] h-[18vh] md:w-[150px] md:h-[150px] object-contain animate-float-dish-2 drop-shadow-2xl"
         />
       </div>
 
@@ -468,14 +468,14 @@ export default function RestaurantOTP() {
               <div className="flex flex-col items-center gap-4">
                 <div className="flex items-center gap-2 text-xs font-semibold">
                   {blockTimer > 0 ? (
-                    <span className="text-gray-400 uppercase tracking-wider">Resend SMS</span>
+                    <span className="text-gray-400 uppercase tracking-wider font-extrabold">Resend SMS</span>
                   ) : resendTimer > 0 ? (
-                    <span className="text-gray-400">Resend SMS in <span className="text-[#B80B3D]">{formatResendTimer(resendTimer)}</span></span>
+                    <span className="text-gray-400 font-extrabold">Resend SMS in <span className="text-slate-800 dark:text-slate-200 font-black">{formatResendTimer(resendTimer)}</span></span>
                   ) : (
                     <button
                       type="button"
                       onClick={handleResend}
-                      className="text-[#B80B3D] hover:underline"
+                      className="text-slate-800 dark:text-slate-200 hover:text-slate-950 dark:hover:text-white hover:underline font-extrabold"
                     >
                       Didn't receive SMS? Resend SMS
                     </button>

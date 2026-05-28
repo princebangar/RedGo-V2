@@ -1,16 +1,14 @@
 import { useState, useEffect, useRef } from "react"
-import { useNavigate, useLocation } from "react-router-dom"
-import { motion } from "framer-motion"
-import { ArrowLeft, Loader2, Smartphone } from "lucide-react"
-import AnimatedPage from "@food/components/user/AnimatedPage"
-import { Input } from "@food/components/ui/input"
-import { Button } from "@food/components/ui/button"
+import { useNavigate, Link, useLocation } from "react-router-dom"
+import { motion, AnimatePresence } from "framer-motion"
+import { ArrowLeft, Loader2, Pencil, X, ShieldCheck } from "lucide-react"
+import { toast } from "sonner"
 import { deliveryAPI } from "@food/api"
 import { setAuthData as storeAuthData } from "@food/utils/auth"
+
 const debugLog = (...args) => {}
 const debugWarn = (...args) => {}
 const debugError = (...args) => {}
-
 
 export default function DeliveryOTP() {
   const navigate = useNavigate()
@@ -158,55 +156,61 @@ export default function DeliveryOTP() {
   }, [])
 
   const handleChange = (index, value) => {
-    // Only allow digits
-    if (value && !/^\d$/.test(value)) {
-      return
-    }
-
-    const newOtp = [...otp]
-    newOtp[index] = value
-    setOtp(newOtp)
     if (index === 0 && value) {
       setError("")
     }
 
-    // Auto-focus next input
+    // Handle multi-character inputs (e.g. autofill suggestions or pastes)
+    if (value.length > 1) {
+      const digits = value.replace(/\D/g, "").slice(0, 4 - index).split("")
+      if (digits.length > 0) {
+        const newOtp = [...otp]
+        digits.forEach((digit, i) => {
+          if (index + i < 4) {
+            newOtp[index + i] = digit
+          }
+        })
+        setOtp(newOtp)
+        inputRefs.current[Math.min(3, index + digits.length)]?.focus()
+      }
+      return
+    }
+
+    if (value && !/^\d$/.test(value)) return
+
+    const newOtp = [...otp]
+    newOtp[index] = value
+    setOtp(newOtp)
+
     if (value && index < 3) {
       inputRefs.current[index + 1]?.focus()
     }
-
   }
 
   const handleKeyDown = (index, e) => {
-    // Handle backspace
     if (e.key === "Backspace") {
-      if (otp[index]) {
-        // If current input has value, clear it
-        const newOtp = [...otp]
-        newOtp[index] = ""
-        setOtp(newOtp)
-      } else if (index > 0) {
-        // If current input is empty, move to previous and clear it
+      if (!otp[index] && index > 0) {
         inputRefs.current[index - 1]?.focus()
         const newOtp = [...otp]
         newOtp[index - 1] = ""
         setOtp(newOtp)
+      } else if (otp[index]) {
+        const newOtp = [...otp]
+        newOtp[index] = ""
+        setOtp(newOtp)
       }
     }
-    // Handle paste
+    // Handle paste keyboard shortcut (Ctrl+V / Cmd+V)
     if (e.key === "v" && (e.ctrlKey || e.metaKey)) {
       e.preventDefault()
       navigator.clipboard.readText().then((text) => {
         const digits = text.replace(/\D/g, "").slice(0, 4).split("")
         const newOtp = [...otp]
         digits.forEach((digit, i) => {
-          if (i < 4) {
-            newOtp[i] = digit
-          }
+          if (i < 4) newOtp[i] = digit
         })
         setOtp(newOtp)
-        const targetIndex = Math.min(digits.length, 3)
-        inputRefs.current[targetIndex]?.focus()
+        inputRefs.current[Math.min(digits.length, 3)]?.focus()
       })
     }
   }
@@ -217,13 +221,10 @@ export default function DeliveryOTP() {
     const digits = pastedData.replace(/\D/g, "").slice(0, 4).split("")
     const newOtp = [...otp]
     digits.forEach((digit, i) => {
-      if (i < 4) {
-        newOtp[i] = digit
-      }
+      if (i < 4) newOtp[i] = digit
     })
     setOtp(newOtp)
-    const targetIndex = Math.min(digits.length, 3)
-    inputRefs.current[targetIndex]?.focus()
+    inputRefs.current[Math.min(digits.length, 3)]?.focus()
   }
 
   const handleVerify = async (otpValue = null, confirmAction = null) => {
@@ -235,6 +236,7 @@ export default function DeliveryOTP() {
     const code = otpValue || otp.join("")
 
     if (code.length !== 4) {
+      toast.error("Please enter the complete 4-digit code")
       return
     }
 
@@ -281,7 +283,6 @@ export default function DeliveryOTP() {
       setDeviceToken(fcmToken);
       setActivePlatform(platform);
 
-      // Backend: POST /auth/delivery/verify-otp
       const response = await deliveryAPI.verifyOTP(phone, code, purpose, providedName, fcmToken, platform, confirmAction)
       debugLog("Delivery OTP Response:", response)
       const data = response?.data?.data || response?.data || {}
@@ -293,7 +294,6 @@ export default function DeliveryOTP() {
         setIsLoading(false)
         return
       }
-      debugLog("Parsed Delivery OTP Data:", data)
 
       if (data.pendingApproval === true) {
         sessionStorage.removeItem("deliveryAuthData")
@@ -310,7 +310,6 @@ export default function DeliveryOTP() {
       const needsRegistration = data.needsRegistration === true
 
       if (needsRegistration) {
-        // No DB record yet; redirect to registration details page WITHOUT creating anything in DB.
         sessionStorage.removeItem("deliveryAuthData")
         sessionStorage.removeItem(getBlockKey())
         sessionStorage.removeItem(getResendKey())
@@ -339,18 +338,14 @@ export default function DeliveryOTP() {
       sessionStorage.removeItem(getResendKey())
 
       try {
-        debugLog("Storing auth data for delivery:", { hasToken: !!accessToken, hasUser: !!user })
         storeAuthData("delivery", accessToken, user, refreshToken)
-        debugLog("Auth data stored successfully")
       } catch (storageError) {
-        debugError("Failed to store authentication data:", storageError)
-        setError("Failed to save authentication. Please try again or clear your browser storage.")
+        setError("Failed to save authentication. Please try again.")
         setIsLoading(false)
         return
       }
 
       window.dispatchEvent(new Event("deliveryAuthChanged"))
-
       setSuccess(true)
 
       let retryCount = 0
@@ -433,7 +428,6 @@ export default function DeliveryOTP() {
         return
       }
 
-      // Second call with name to auto-register and login
       const response = await deliveryAPI.verifyOTP(phone, verifiedOtp, purpose, trimmedName, deviceToken, activePlatform)
       const data = response?.data?.data || response?.data || {}
 
@@ -445,57 +439,38 @@ export default function DeliveryOTP() {
         throw new Error("Invalid response from server")
       }
 
-      // Clear auth data from sessionStorage
       sessionStorage.removeItem("deliveryAuthData")
 
-      // Store auth data using utility function to ensure proper role handling
-      // The setAuthData function includes error handling and verification
       try {
-        debugLog("Storing auth data for delivery (with name):", { hasToken: !!accessToken, hasUser: !!user })
         storeAuthData("delivery", accessToken, user, refreshToken)
-        debugLog("Auth data stored successfully")
       } catch (storageError) {
-        debugError("Failed to store authentication data:", storageError)
-        setError("Failed to save authentication. Please try again or clear your browser storage.")
+        setError("Failed to save authentication. Please try again.")
         setIsLoading(false)
         return
       }
 
-      // Dispatch custom event for same-tab updates
       window.dispatchEvent(new Event("deliveryAuthChanged"))
-
       setSuccess(true)
       setIsLoading(false)
 
-      // Verify token is stored and then navigate
       let retryCount = 0
       const maxRetries = 10
       const verifyAndNavigate = () => {
         const storedToken = localStorage.getItem("delivery_accessToken")
         const storedAuth = localStorage.getItem("delivery_authenticated")
 
-        debugLog("Verifying token storage (with name):", { hasToken: !!storedToken, authenticated: storedAuth, retryCount })
-
         if (storedToken && storedAuth === "true") {
-          // Token is stored, navigate to delivery home
-          debugLog("Token verified, navigating to /delivery")
           navigate("/food/delivery", { replace: true })
         } else if (retryCount < maxRetries) {
-          // Token not stored yet, retry after short delay
           retryCount++
           setTimeout(verifyAndNavigate, 100)
         } else {
-          // Max retries reached, show error
-          debugError("Token storage verification failed after max retries")
           setError("Failed to save authentication. Please try again.")
           setIsLoading(false)
         }
       }
-
-      // Start verification after a small delay
       setTimeout(verifyAndNavigate, 200)
     } catch (err) {
-      debugError("Name Submission Error:", err)
       const message =
         err?.response?.data?.message ||
         err?.response?.data?.error ||
@@ -528,7 +503,6 @@ export default function DeliveryOTP() {
         return
       }
 
-      // Call backend to resend OTP
       await deliveryAPI.sendOTP(phone, purpose)
       setResendTimer(59)
       sessionStorage.setItem(getResendKey(), (Date.now() + (59 * 1000)).toString())
@@ -538,6 +512,7 @@ export default function DeliveryOTP() {
       setNameError("")
       setVerifiedOtp("")
       inputRefs.current[0]?.focus()
+      toast.success("OTP resent successfully.")
     } catch (err) {
       const message =
         err?.response?.data?.error ||
@@ -568,273 +543,373 @@ export default function DeliveryOTP() {
     }
   }
 
+  const formatResendTimer = (seconds) => {
+    const mins = Math.floor(seconds / 60)
+    const secs = seconds % 60
+    return `${String(mins).padStart(2, "0")}:${String(secs).padStart(2, "0")}`
+  }
+
   const getPhoneNumber = () => {
     if (!authData) return ""
     if (authData.method === "phone") {
-      // Format phone number as +91-9098569620
       const phone = authData.phone || ""
-      // Remove spaces and format
       const cleaned = phone.replace(/\s/g, "")
-      // Add hyphen after country code if not present
       if (cleaned.startsWith("+91") && cleaned.length > 3) {
-        return cleaned.slice(0, 3) + "-" + cleaned.slice(3)
+        return cleaned.slice(0, 3) + " " + cleaned.slice(3)
       }
       return cleaned
     }
     return authData.email || ""
   }
 
+  const isOtpComplete = otp.every((digit) => digit !== "")
+
   if (!authData) {
     return null
   }
 
   return (
-    <>
-      <AnimatedPage className="min-h-screen bg-white flex flex-col">
-      {/* Header */}
-      <div className="relative flex items-center justify-center py-4 px-4 border-b border-gray-200">
-        <button
-          onClick={() => navigate("/food/delivery/login")}
-          className="absolute left-4 top-1/2 -translate-y-1/2"
-          aria-label="Go back"
-        >
-          <ArrowLeft className="h-5 w-5 text-black" />
-        </button>
-        <h1 className="text-lg font-bold text-black">OTP Verification</h1>
+    <div className="min-h-screen bg-white dark:bg-[#0a0a0a] flex flex-col relative overflow-hidden font-['Poppins']">
+      <style>
+        {`
+          @keyframes floatDish1 {
+            0%, 100% { transform: translateX(0vw) translateY(0px) rotate(0deg); }
+            50% { transform: translateX(25vw) translateY(-15px) rotate(8deg); }
+          }
+          @keyframes floatDish2 {
+            0%, 100% { transform: translateX(0vw) translateY(0px) rotate(0deg); }
+            50% { transform: translateX(-25vw) translateY(-15px) rotate(-8deg); }
+          }
+          .animate-float-dish-1 {
+            animation: floatDish1 12s ease-in-out infinite;
+          }
+          .animate-float-dish-2 {
+            animation: floatDish2 12s ease-in-out infinite;
+          }
+        `}
+      </style>
+
+      {/* Top Wave (Log In style) */}
+      <div className="absolute top-0 left-0 w-full h-[40vh] pointer-events-none z-0 transform scale-[1.05] origin-center">
+        <svg viewBox="0 0 1440 320" className="w-full h-full block" preserveAspectRatio="none" overflow="visible">
+          <defs>
+            <linearGradient id="topBlueGrad" x1="0%" y1="0%" x2="100%" y2="0%">
+              <stop offset="0%" stopColor="#0E4B9C" />
+              <stop offset="100%" stopColor="#021024" />
+            </linearGradient>
+          </defs>
+          <path fill="url(#topBlueGrad)" d="M -50,-50 L -50,280 C 200,100 800,100 1490,100 L 1490,-50 Z" filter="drop-shadow(0px 5px 15px rgba(0,0,0,0.15))" />
+        </svg>
+        <img
+          src="/Driver_logo_1.png"
+          alt="Delivery Partner"
+          className="absolute top-[8%] left-[5%] w-[14vh] h-[14vh] md:w-[120px] md:h-[120px] object-contain animate-float-dish-1 drop-shadow-xl"
+        />
+      </div>
+
+      {/* Bottom Wave (Log In style) */}
+      <div className="absolute bottom-0 left-0 w-full h-[50vh] pointer-events-none z-0 transform scale-[1.05] origin-center">
+        <svg viewBox="0 0 1440 320" className="w-full h-full block" preserveAspectRatio="none" overflow="visible">
+          <defs>
+            <linearGradient id="botBlueGrad" x1="0%" y1="0%" x2="100%" y2="0%">
+              <stop offset="0%" stopColor="#0E4B9C" />
+              <stop offset="100%" stopColor="#021024" />
+            </linearGradient>
+          </defs>
+          <path fill="url(#botBlueGrad)" d="M -50,370 L -50,220 C 640,220 1240,220 1490,40 L 1490,370 Z" filter="drop-shadow(0px -5px 15px rgba(0,0,0,0.15))" />
+        </svg>
+        <img
+          src="/Driver_logo_2.png"
+          alt="Delivery Rider"
+          className="absolute bottom-[8%] right-[5%] w-[18vh] h-[18vh] md:w-[150px] md:h-[150px] object-contain animate-float-dish-2 drop-shadow-2xl"
+        />
       </div>
 
       {/* Main Content */}
-      <div className="flex flex-col justify-center px-6 pt-8 pb-12">
-        <div className="max-w-md mx-auto w-full space-y-8">
-          {/* Message */}
-          <div className="text-center space-y-2">
-            <p className="text-base text-black">
-              {showNameInput
-                ? "You're almost done! Please tell us your name to complete registration."
-                : "We have sent a verification code to"}
-            </p>
-            {!showNameInput && (
-              <p className="text-base text-black font-medium">
-                {getPhoneNumber()}
-              </p>
+      <div className="flex-1 flex flex-col items-center justify-center px-6 py-12 pb-24 relative z-10">
+        <div className="w-full max-w-sm flex flex-col relative -top-10">
+          {/* Main Title */}
+          <div className="mb-5 text-center flex flex-col items-center">
+            <img
+              src="/redgo_logo_transparent.png"
+              alt="RedGo Logo"
+              className="h-28 -mb-3.5 object-contain drop-shadow-md"
+            />
+            <h2 className="text-[25px] font-extrabold bg-gradient-to-r from-[#0E4B9C] to-[#06336B] dark:from-blue-400 dark:to-blue-600 bg-clip-text text-transparent tracking-tight font-['Outfit'] pb-0.5">
+              Delivery Partner
+            </h2>
+            
+            {/* Show different descriptions depending on active step */}
+            {!showNameInput && !pendingMessage && (
+              <div className="text-[13px] text-slate-500/90 dark:text-slate-400/90 font-['Outfit'] font-semibold tracking-[0.015em] leading-relaxed w-full max-w-none text-center px-4 mt-5 flex items-center justify-center gap-1.5 whitespace-nowrap">
+                <span>We've sent a code to {getPhoneNumber()}</span>
+                <button
+                  onClick={() => navigate("/food/delivery/login")}
+                  className="p-1.5 ml-1 bg-gradient-to-r from-[#0E4B9C] to-[#021024] hover:from-[#1157b5] hover:to-[#041630] rounded-[10px] text-white shadow-md shadow-[#0E4B9C]/20 transition-all hover:scale-105 active:scale-95"
+                  aria-label="Edit phone number"
+                >
+                  <Pencil className="w-3.5 h-3.5" strokeWidth={2.5} />
+                </button>
+              </div>
+            )}
+            
+            {showNameInput && (
+              <div className="text-[13px] text-slate-500/90 dark:text-slate-400/90 font-['Outfit'] font-semibold tracking-[0.015em] leading-relaxed max-w-[300px] text-center px-4 mt-5">
+                You're almost done! Please tell us your name to complete registration.
+              </div>
             )}
           </div>
 
-          {/* Pending approval message – already registered, waiting for admin */}
-          {pendingMessage && (
-            <div className={`rounded-xl border p-5 text-center space-y-4 shadow-sm ${isRejected ? "bg-red-50 border-red-100" : "bg-amber-50 border-amber-100"}`}>
-              <div className="space-y-2">
-                <p className={`text-sm font-semibold ${isRejected ? "text-red-800" : "text-amber-800"}`}>
-                  {isRejected ? "Application Rejected" : "Pending Verification"}
-                </p>
-                <p className={`text-sm leading-relaxed ${isRejected ? "text-red-700" : "text-amber-700"}`}>
-                  {pendingMessage}
-                </p>
-                {isRejected && rejectionReason && (
-                  <div className="mt-2 p-3 bg-white/50 rounded-lg border border-red-200">
-                    <p className="text-xs font-medium text-red-600 uppercase tracking-wider mb-1">Reason</p>
-                    <p className="text-sm text-red-800 italic">"{rejectionReason}"</p>
-                  </div>
-                )}
-              </div>
+          <div className="relative">
+            {/* Pending approval/rejection view */}
+            {pendingMessage && (
+              <div className={`rounded-3xl border p-6 text-center space-y-5 shadow-lg ${isRejected ? "bg-red-50 border-red-200 dark:bg-red-950/20 dark:border-red-900/50" : "bg-amber-50 border-amber-200 dark:bg-amber-950/20 dark:border-amber-900/50"}`}>
+                <div className="space-y-2">
+                  <p className={`text-base font-extrabold uppercase tracking-wider ${isRejected ? "text-red-700 dark:text-red-400" : "text-amber-700 dark:text-amber-400"}`}>
+                    {isRejected ? "Application Rejected" : "Pending Verification"}
+                  </p>
+                  <p className={`text-sm font-medium leading-relaxed ${isRejected ? "text-red-600/90 dark:text-red-300/80" : "text-amber-600/90 dark:text-amber-300/80"}`}>
+                    {pendingMessage}
+                  </p>
+                  {isRejected && rejectionReason && (
+                    <div className="mt-3 p-4 bg-white/70 dark:bg-[#1a1a1a]/70 rounded-2xl border border-red-100 dark:border-red-900/30">
+                      <p className="text-[10px] font-black text-red-600 uppercase tracking-widest mb-1">Reason</p>
+                      <p className="text-sm text-red-800 dark:text-red-300 italic font-medium">"{rejectionReason}"</p>
+                    </div>
+                  )}
+                </div>
 
-              <div className="flex flex-col gap-2 pt-2">
-                {isRejected ? (
+                <div className="flex flex-col gap-3 pt-2">
+                  {isRejected && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const phone = authData?.phone
+                        const digits = String(phone || "").replace(/\D/g, "")
+                        sessionStorage.setItem("deliveryNeedsRegistration", "true")
+                        const details = {
+                          name: "",
+                          phone: digits.slice(-10),
+                          countryCode: "+91",
+                        }
+                        sessionStorage.setItem("deliverySignupDetails", JSON.stringify(details))
+                        navigate("/food/delivery/signup/details", { replace: true })
+                      }}
+                      className="w-full py-3.5 bg-gradient-to-r from-[#0E4B9C] to-[#021024] hover:from-[#1157b5] hover:to-[#041630] text-white rounded-full font-semibold text-base shadow-[0_8px_20px_rgba(14,75,156,0.2)] transition-all active:scale-[0.98]"
+                    >
+                      Re-apply Now
+                    </button>
+                  )}
+                  
                   <button
                     type="button"
-                    onClick={() => {
-                      const phone = authData?.phone
-                      const digits = String(phone || "").replace(/\D/g, "")
-                      sessionStorage.setItem("deliveryNeedsRegistration", "true")
-                      const details = {
-                        name: "",
-                        phone: digits.slice(-10),
-                        countryCode: "+91",
-                      }
-                      sessionStorage.setItem("deliverySignupDetails", JSON.stringify(details))
-                      navigate("/food/delivery/signup/details", { replace: true })
-                    }}
-                    className="w-full py-3 bg-red-600 text-white rounded-lg font-bold text-sm hover:bg-red-700 shadow-md transition-all active:scale-95"
+                    onClick={() => navigate("/food/delivery/login", { replace: true })}
+                    className={`text-sm font-semibold hover:underline ${isRejected ? "text-red-700 dark:text-red-400" : "text-amber-700 dark:text-amber-400"}`}
                   >
-                    Re-apply Now
+                    Back to login
                   </button>
-                ) : null}
-                
+                </div>
+              </div>
+            )}
+
+            {/* OTP Input Fields View */}
+            {!showNameInput && !pendingMessage && (
+              <form onSubmit={(e) => { e.preventDefault(); handleVerify(); }} className="space-y-6">
+                {error && (
+                  <motion.div
+                    initial={{ opacity: 0, y: -6 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    className="text-red-600 dark:text-red-500 text-[15px] font-bold text-center tracking-wide mb-4 mt-2"
+                  >
+                    {error}
+                  </motion.div>
+                )}
+
+                <div className="flex justify-between gap-3">
+                  {[0, 1, 2, 3].map((index) => (
+                    <input
+                      key={index}
+                      ref={(el) => (inputRefs.current[index] = el)}
+                      type="tel"
+                      inputMode="numeric"
+                      required
+                      disabled={isLoading || blockTimer > 0}
+                      autoFocus={index === 0}
+                      value={otp[index]}
+                      onChange={(e) => handleChange(index, e.target.value)}
+                      onKeyDown={(e) => handleKeyDown(index, e)}
+                      onPaste={index === 0 ? handlePaste : undefined}
+                      className={`w-14 h-14 sm:w-16 sm:h-16 text-center text-2xl font-bold bg-gray-50 dark:bg-gray-800 border-2 border-gray-300 dark:border-gray-600 shadow-sm rounded-[20px] outline-none transition-all duration-300 text-gray-900 dark:text-white focus:bg-white dark:focus:bg-gray-900 focus:border-[#0E4B9C] focus:ring-4 focus:ring-[#0E4B9C]/10 hover:border-gray-400 ${blockTimer > 0 ? "opacity-50 cursor-not-allowed border-red-400 bg-red-50 text-red-800" : ""}`}
+                      placeholder="•"
+                    />
+                  ))}
+                </div>
+
+                <div className="flex flex-col items-center gap-4">
+                  <div className="flex items-center gap-2 text-xs font-semibold">
+                    {blockTimer > 0 ? (
+                      <span className="text-gray-400 uppercase tracking-wider font-extrabold">Resend SMS</span>
+                    ) : resendTimer > 0 ? (
+                      <span className="text-gray-400 font-extrabold">Resend SMS in <span className="text-slate-800 dark:text-slate-200 font-black">{formatResendTimer(resendTimer)}</span></span>
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={handleResend}
+                        className="text-slate-800 dark:text-slate-200 hover:text-slate-950 dark:hover:text-white hover:underline font-extrabold"
+                      >
+                        Didn't receive SMS? Resend SMS
+                      </button>
+                    )}
+                  </div>
+                </div>
+
                 <button
-                  type="button"
-                  onClick={() => navigate("/food/delivery/login", { replace: true })}
-                  className={`text-sm font-medium underline transition-colors ${isRejected ? "text-red-600 hover:text-red-800" : "text-amber-700 hover:text-amber-900"}`}
+                  type="submit"
+                  disabled={isLoading || !isOtpComplete || blockTimer > 0}
+                  className="w-full py-3.5 bg-gradient-to-r from-[#0E4B9C] to-[#021024] hover:from-[#1157b5] hover:to-[#041630] disabled:opacity-50 text-white rounded-full font-medium text-base shadow-[0_8px_20px_rgba(14,75,156,0.3)] disabled:shadow-none transition-all active:scale-[0.98] flex items-center justify-center gap-2 mt-4"
                 >
-                  Back to login
+                  {isLoading ? (
+                    <span className="flex items-center gap-2">
+                      <Loader2 className="w-5 h-5 animate-spin" />
+                      Verifying...
+                    </span>
+                  ) : (
+                    "Verify & Continue"
+                  )}
+                </button>
+
+                {blockTimer > 0 && (
+                  <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="text-center w-fit mx-auto px-6 py-2.5 bg-blue-50 dark:bg-blue-950/20 rounded-xl border border-blue-100 dark:border-blue-900/50 mt-4">
+                    <p className="text-[11px] font-bold text-[#0E4B9C] uppercase tracking-wider">
+                      Too many failed attempts
+                    </p>
+                    <p className="text-sm font-bold text-[#0E4B9C]">
+                      Try again after {Math.floor((blockTimer - 1) / 60)}:{String((blockTimer - 1) % 60).padStart(2, '0')}
+                    </p>
+                  </motion.div>
+                )}
+              </form>
+            )}
+
+            {/* Name Input View */}
+            {showNameInput && (
+              <div className="space-y-6">
+                <div className="space-y-2">
+                  <label className="block text-sm font-semibold text-gray-700 dark:text-gray-300 text-left pl-3">
+                    Full name
+                  </label>
+                  <input
+                    type="text"
+                    value={name}
+                    onChange={(e) => {
+                      setName(e.target.value)
+                      if (nameError) setNameError("")
+                    }}
+                    disabled={isLoading}
+                    placeholder="Enter your name"
+                    className={`block w-full px-6 py-3.5 bg-gray-50 dark:bg-gray-800 border-2 shadow-sm text-gray-900 dark:text-white rounded-full outline-none transition-all duration-300 placeholder:text-gray-400 font-medium text-base focus:bg-white dark:focus:bg-gray-900 focus:border-[#0E4B9C] focus:ring-4 focus:ring-[#0E4B9C]/10 ${nameError ? "border-red-500" : "border-gray-300 dark:border-gray-600"}`}
+                  />
+                  {nameError && (
+                    <p className="text-xs text-red-500 text-left pl-3">
+                      {nameError}
+                    </p>
+                  )}
+                </div>
+
+                <button
+                  onClick={handleSubmitName}
+                  disabled={isLoading || !name.trim()}
+                  className="w-full py-3.5 bg-gradient-to-r from-[#0E4B9C] to-[#021024] hover:from-[#1157b5] hover:to-[#041630] disabled:opacity-50 text-white rounded-full font-medium text-base shadow-[0_8px_20px_rgba(14,75,156,0.3)] disabled:shadow-none transition-all active:scale-[0.98] flex items-center justify-center gap-2 mt-4"
+                >
+                  {isLoading ? (
+                    <span className="flex items-center gap-2">
+                      <Loader2 className="w-5 h-5 animate-spin" />
+                      Continuing...
+                    </span>
+                  ) : (
+                    "Continue"
+                  )}
                 </button>
               </div>
-            </div>
-          )}
+            )}
+          </div>
 
-          {/* OTP Input Fields */}
-          {!showNameInput && !pendingMessage && (
-            <>
-              {error && (
-                <motion.div
-                  initial={{ opacity: 0, y: -6 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  className="text-red-600 dark:text-red-500 text-[15px] font-bold text-center tracking-wide mb-4 mt-2"
-                >
-                  {error}
-                </motion.div>
-              )}
+          {/* Footer Info */}
+          <div className="mt-8 text-center">
+            <p className="text-[11px] text-gray-400/80 font-medium leading-relaxed max-w-[320px] mx-auto">
+              By continuing, you agree to our <br />
+              <Link to="/food/delivery/terms" className="text-gray-400 hover:text-[#0E4B9C] transition-colors uppercase tracking-wider font-semibold">TERMS</Link>
+              <span className="mx-2 text-gray-400/80 font-bold">•</span>
+              <Link to="/food/delivery/privacy" className="text-gray-400 hover:text-[#0E4B9C] transition-colors uppercase tracking-wider font-semibold">PRIVACY</Link>
+              <span className="mx-2 text-gray-400/80 font-bold">•</span>
+              <Link to="/food/delivery/help/content" className="text-gray-400 hover:text-[#0E4B9C] transition-colors uppercase tracking-wider font-semibold">SUPPORT</Link>
+            </p>
+          </div>
 
-              <div className="flex justify-center gap-2">
-                {otp.map((digit, index) => (
-                  <Input
-                    key={index}
-                    ref={(el) => (inputRefs.current[index] = el)}
-                    type="text"
-                    inputMode="numeric"
-                    maxLength={1}
-                    value={digit}
-                    onChange={(e) => handleChange(index, e.target.value)}
-                    onKeyDown={(e) => handleKeyDown(index, e)}
-                    onPaste={index === 0 ? handlePaste : undefined}
-                    disabled={isLoading || blockTimer > 0}
-                    autoComplete="off"
-                    autoFocus={false}
-                    className={`w-12 h-12 text-center text-lg font-semibold p-0 border border-black rounded-md focus-visible:ring-0 focus-visible:border-black bg-white ${
-                      blockTimer > 0 ? "opacity-50 cursor-not-allowed border-red-400 bg-red-50 text-red-800" : ""
-                    }`}
-                  />
-                ))}
-              </div>
-
-              {/* Resend Section */}
-              <div className="text-center space-y-1">
-                <p className="text-sm text-black">
-                  Didn't get the OTP?
-                </p>
-                {blockTimer > 0 ? (
-                  <p className="text-sm text-gray-400 uppercase tracking-wider font-semibold">
-                    Resend SMS
-                  </p>
-                ) : resendTimer > 0 ? (
-                  <p className="text-sm text-gray-500">
-                    Resend SMS in 00:{String(resendTimer).padStart(2, '0')}
-                  </p>
-                ) : (
-                  <button
-                    type="button"
-                    onClick={handleResend}
-                    disabled={isLoading}
-                    className="text-sm text-gray-500 hover:text-gray-700 disabled:opacity-50"
-                  >
-                    Resend SMS
-                  </button>
-                )}
-              </div>
-
-              <button
-                onClick={() => handleVerify()}
-                disabled={isLoading || otp.every(digit => digit === "") || blockTimer > 0}
-                className="w-full h-11 bg-[#00B761] hover:opacity-90 disabled:opacity-50 text-white font-semibold rounded-md flex items-center justify-center gap-2 mt-4 transition-all"
-              >
-                {isLoading ? (
-                  <span className="flex items-center justify-center gap-2">
-                    <Loader2 className="h-5 w-5 animate-spin" />
-                    Verifying...
-                  </span>
-                ) : (
-                  "Verify & Continue"
-                )}
-              </button>
-
-              {blockTimer > 0 && (
-                <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="text-center w-fit mx-auto px-6 py-2.5 bg-red-50 rounded-xl border border-red-100 mt-4">
-                  <p className="text-[11px] font-bold text-red-600 uppercase tracking-wider">
-                    Too many failed attempts
-                  </p>
-                  <p className="text-sm font-bold text-red-600">
-                    Try again after {Math.floor((blockTimer - 1) / 60)}:{String((blockTimer - 1) % 60).padStart(2, '0')}
-                  </p>
-                </motion.div>
-              )}
-            </>
-          )}
-
-          {/* Name Input (shown only after OTP verified and user is new) */}
-          {showNameInput && (
-            <div className="space-y-3">
-              <div className="space-y-1">
-                <label className="block text-sm font-medium text-black text-left">
-                  Full name
-                </label>
-                <Input
-                  type="text"
-                  value={name}
-                  onChange={(e) => {
-                    setName(e.target.value)
-                    if (nameError) setNameError("")
-                  }}
-                  disabled={isLoading}
-                  placeholder="Enter your name"
-                  className={`h-11 border ${nameError ? "border-red-500" : "border-gray-300"
-                    }`}
-                />
-                {nameError && (
-                  <p className="text-xs text-red-500 text-left">
-                    {nameError}
-                  </p>
-                )}
-              </div>
-
-              <button
-                onClick={handleSubmitName}
-                disabled={isLoading}
-                className="w-full h-11 bg-[#00B761] hover:opacity-90 disabled:opacity-50 text-white font-semibold rounded-md flex items-center justify-center transition-all"
-              >
-                {isLoading ? "Continuing..." : "Continue"}
-              </button>
-            </div>
-          )}
         </div>
       </div>
 
-    </AnimatedPage>
-
       {/* Restore/New Account Popup */}
-      {showRestorePopup && (
-        <div className="fixed inset-0 z-[1000] flex items-center justify-center bg-black/60 backdrop-blur-sm px-4 overflow-y-auto py-10">
-          <div 
-            className="w-full max-w-sm bg-white rounded-3xl shadow-2xl overflow-hidden p-8 text-center border border-gray-100"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <div className="w-16 h-16 bg-green-50 rounded-full flex items-center justify-center mx-auto mb-4">
-              <Smartphone className="h-8 w-8 text-green-600" />
-            </div>
-            
-            <h3 className="text-xl font-bold text-gray-900 mb-2">Account Found!</h3>
-            <p className="text-sm text-gray-600 mb-8 leading-relaxed">
-              An existing deleted delivery account for <span className="font-bold text-black">{getPhoneNumber()}</span> was found. 
-              Do you want to restore your old data or start fresh with a new account?
-            </p>
+      <AnimatePresence>
+        {showRestorePopup && (
+          <div className="fixed inset-0 z-[200] flex items-center justify-center p-4">
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              className="absolute inset-0 bg-black/60 backdrop-blur-sm"
+              onClick={() => {
+                setShowRestorePopup(false);
+                navigate("/food/delivery/login");
+              }}
+            />
+            <motion.div
+              initial={{ opacity: 0, scale: 0.9, y: 20 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.9, y: 20 }}
+              transition={{ type: "spring", damping: 25, stiffness: 300 }}
+              className="w-full max-w-sm bg-white dark:bg-[#1a1a1a] rounded-3xl shadow-2xl overflow-hidden p-8 text-center border border-gray-100 dark:border-gray-800 relative z-10"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <button
+                onClick={() => {
+                  setShowRestorePopup(false);
+                  navigate("/food/delivery/login");
+                }}
+                className="absolute top-4 right-4 p-2 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-xl text-gray-400 hover:text-gray-600 transition-all active:scale-95"
+                aria-label="Close and return to login"
+              >
+                <X className="w-5 h-5" />
+              </button>
 
-            <div className="space-y-3">
-              <Button
-                onClick={() => handleRestoreAction("restore")}
-                className="w-full h-12 bg-[#00B761] hover:bg-[#00A055] text-white font-bold rounded-xl"
-              >
-                Restore My Account
-              </Button>
-              <Button
-                variant="outline"
-                onClick={() => handleRestoreAction("new")}
-                className="w-full h-12 border-2 border-gray-200 text-gray-700 font-bold rounded-xl"
-              >
-                Create New Account
-              </Button>
-            </div>
+              <div className="w-20 h-20 bg-[#0E4B9C]/10 rounded-full flex items-center justify-center mx-auto mb-6">
+                <ShieldCheck className="h-10 w-10 text-[#0E4B9C]" />
+              </div>
+
+              <h3 className="text-2xl font-bold text-gray-900 dark:text-white mb-3">Account Found!</h3>
+              <p className="text-gray-500 dark:text-gray-400 mb-8 leading-relaxed">
+                An existing deleted delivery account for <span className="font-bold text-gray-900 dark:text-white">{getPhoneNumber()}</span> was found.
+                Do you want to restore your old data or start fresh with a new account?
+              </p>
+
+              <div className="space-y-4">
+                <button
+                  onClick={() => handleRestoreAction("restore")}
+                  className="w-full h-14 bg-gradient-to-r from-[#0E4B9C] to-[#021024] text-white font-bold rounded-2xl shadow-xl shadow-[#0E4B9C]/20 transition-all active:scale-[0.98]"
+                >
+                  Restore My Account
+                </button>
+                <button
+                  onClick={() => handleRestoreAction("new")}
+                  className="w-full h-14 border-2 border-gray-200 dark:border-gray-800 text-gray-700 dark:text-gray-300 font-bold rounded-2xl hover:bg-gray-50 dark:hover:bg-gray-800 transition-all active:scale-[0.98]"
+                >
+                  Create New Account
+                </button>
+              </div>
+            </motion.div>
           </div>
-        </div>
-      )}
-    </>
+        )}
+      </AnimatePresence>
+    </div>
   )
 }
-
