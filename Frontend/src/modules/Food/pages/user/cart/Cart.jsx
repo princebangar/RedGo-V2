@@ -222,7 +222,7 @@ export default function Cart() {
   })
 
   useEffect(() => {
-    adminAPI.getCustomizationSettings()
+    userAPI.getCustomizationSettings()
       .then(res => {
         if (res?.data?.data) {
           setCustomizationSettings(prev => ({

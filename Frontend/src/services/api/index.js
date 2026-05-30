@@ -2071,6 +2071,8 @@ export const deliveryAPI = {
 };
 
 export const userAPI = {
+  getCustomizationSettings: () =>
+    apiClient.get("/food/public/customization-settings"),
   /** Get current user profile (Bearer USER). */
   getProfile: () =>
     getUserMeOnce().then((res) => {

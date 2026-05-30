@@ -331,7 +331,7 @@ function UserLayoutContent() {
       <RouteSyncHandler />
       
       {/* Location Fetching Loader - Only shown on main pages after login */}
-      {showGlobalLoader && !isInitialChecking && (
+      {showGlobalLoader && !isInitialChecking && !location.pathname.includes('/search') && (
         <div className="fixed inset-0 z-[1000] bg-white/60 backdrop-blur-sm flex flex-col items-center justify-center animate-in fade-in duration-300 pointer-events-auto">
           <div className="relative">
             <div className="w-10 h-10 border-[3px] border-gray-100/30 rounded-full"></div>
@@ -347,7 +347,7 @@ function UserLayoutContent() {
       </div>
       {!isPolicyPage && !isAuthPage && <LocationPrompt />}
       
-      {isInitialChecking ? (
+      {isInitialChecking && !location.pathname.includes('/search') ? (
         <AppShellSkeleton />
       ) : (zoneStatus === "OUT_OF_SERVICE") && isMainPage ? (
         <OutOfZoneScreen 

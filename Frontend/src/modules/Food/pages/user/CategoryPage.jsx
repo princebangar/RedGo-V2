@@ -36,7 +36,9 @@ const filterOptions = [
 
 const CATEGORY_PAGE_FILTERS_STORAGE_KEY = "food-category-page-filters-v1"
 
-
+const debugLog = (...args) => {};
+const debugWarn = (...args) => {};
+const debugError = (...args) => {};
 
 export default function CategoryPage() {
   const { category } = useParams()
@@ -64,6 +66,24 @@ export default function CategoryPage() {
   // State for categories from admin
   const [categories, setCategories] = useState([])
   const [loadingCategories, setLoadingCategories] = useState(true)
+
+  const activeCategory = useMemo(() => {
+    if (!selectedCategory || selectedCategory === 'all' || !categories) return null;
+    return categories.find(c =>
+      c.slug === selectedCategory ||
+      c.id === selectedCategory ||
+      c.name?.toLowerCase().replace(/\s+/g, '-') === selectedCategory
+    );
+  }, [selectedCategory, categories]);
+
+  const activeCategoryIds = useMemo(() => {
+    if (!activeCategory || !categories) return [];
+    const targetName = activeCategory.name?.toLowerCase();
+    return categories
+      .filter(c => c.name?.toLowerCase() === targetName)
+      .map(c => c.id)
+      .filter(Boolean);
+  }, [activeCategory, categories]);
 
   const [restaurantsData, setRestaurantsData] = useState([])
   const [loadingRestaurants, setLoadingRestaurants] = useState(true)
@@ -534,7 +554,7 @@ export default function CategoryPage() {
           const transformedCategories = [
             { id: 'all', name: "All", image: null, slug: 'all' },
             ...categoriesArray.map((cat) => ({
-              id: cat.slug || cat.id,
+              id: String(cat._id || cat.id || ''),
               name: cat.name,
               image: cat.image || foodImages[0],
               slug: cat.slug || cat.name.toLowerCase().replace(/\s+/g, '-'),
@@ -547,7 +567,7 @@ export default function CategoryPage() {
           // Generate category keywords dynamically from category names
           const keywordsMap = {}
           categoriesArray.forEach((cat) => {
-            const categoryId = cat.slug || cat.id
+            const categoryId = String(cat._id || cat.id || '')
             const categoryName = cat.name.toLowerCase()
 
             // Generate keywords from category name
@@ -605,6 +625,32 @@ export default function CategoryPage() {
       return false
     }
 
+    // Check by category ID first (strict ObjectId matching)
+    const targetIds = activeCategoryIds
+    if (targetIds.length > 0) {
+      for (const section of menu.sections) {
+        if (section.items && Array.isArray(section.items)) {
+          for (const item of section.items) {
+            if (item.categoryId && targetIds.includes(String(item.categoryId))) {
+              return true
+            }
+          }
+        }
+        if (section.subsections && Array.isArray(section.subsections)) {
+          for (const subsection of section.subsections) {
+            const subItems = Array.isArray(subsection?.items) ? subsection.items : []
+            for (const item of subItems) {
+              if (item.categoryId && targetIds.includes(String(item.categoryId))) {
+                return true
+              }
+            }
+          }
+        }
+      }
+      return false
+    }
+
+    // Fallback: name keyword matching if categories list is not loaded yet
     const keywords = getCategoryKeywords(categoryId)
     if (keywords.length === 0) {
       return false
@@ -630,7 +676,6 @@ export default function CategoryPage() {
         }
       }
 
-      // Also check subsection items (new menu builder can nest items)
       if (section.subsections && Array.isArray(section.subsections)) {
         for (const subsection of section.subsections) {
           const subsectionNameLower = (subsection?.name || "").toLowerCase()
@@ -662,12 +707,70 @@ export default function CategoryPage() {
       return []
     }
 
+    const matchingDishes = []
+    const targetIds = activeCategoryIds
+
+    if (targetIds.length > 0) {
+      for (const section of menu.sections) {
+        if (section.items && Array.isArray(section.items)) {
+          for (const item of section.items) {
+            if (item.categoryId && targetIds.includes(String(item.categoryId))) {
+              const originalPrice = item.originalPrice || item.price || 0
+              const discountPercent = item.discountPercent || 0
+              const finalPrice = discountPercent > 0
+                ? Math.round(originalPrice * (1 - discountPercent / 100))
+                : originalPrice
+
+              const dishImage = normalizeImageUrl(item.image?.url || item.image || section.image?.url || section.image)
+
+              matchingDishes.push({
+                name: item.name,
+                price: finalPrice,
+                image: dishImage,
+                originalPrice: originalPrice,
+                itemId: item._id || item.id || `${item.name}-${finalPrice}`,
+                foodType: item.foodType,
+              })
+            }
+          }
+        }
+
+        if (section.subsections && Array.isArray(section.subsections)) {
+          for (const subsection of section.subsections) {
+            const subItems = Array.isArray(subsection?.items) ? subsection.items : []
+            for (const item of subItems) {
+              if (item.categoryId && targetIds.includes(String(item.categoryId))) {
+                const originalPrice = item?.originalPrice || item?.price || 0
+                const discountPercent = item?.discountPercent || 0
+                const finalPrice = discountPercent > 0
+                  ? Math.round(originalPrice * (1 - discountPercent / 100))
+                  : originalPrice
+
+                const dishImage = normalizeImageUrl(
+                  item?.image?.url || item?.image || subsection?.image?.url || subsection?.image || section?.image?.url || section?.image
+                )
+
+                matchingDishes.push({
+                  name: item?.name,
+                  price: finalPrice,
+                  image: dishImage,
+                  originalPrice: originalPrice,
+                  itemId: item?._id || item?.id || `${item?.name}-${finalPrice}`,
+                  foodType: item?.foodType,
+                })
+              }
+            }
+          }
+        }
+      }
+      return matchingDishes
+    }
+
+    // Fallback: name keyword matching if categories list is not loaded yet
     const keywords = getCategoryKeywords(categoryId)
     if (keywords.length === 0) {
       return []
     }
-
-    const matchingDishes = []
 
     for (const section of menu.sections) {
       const sectionNameLower = (section?.name || "").toLowerCase()
@@ -682,16 +785,13 @@ export default function CategoryPage() {
             matchesCategoryText(itemNameLower, keywords) ||
             matchesCategoryText(itemCategoryLower, keywords)
 
-          // If the section name matches the category, include all items in it.
           if (sectionMatches || itemMatches) {
-            // Calculate final price considering discounts
             const originalPrice = item.originalPrice || item.price || 0
             const discountPercent = item.discountPercent || 0
             const finalPrice = discountPercent > 0
               ? Math.round(originalPrice * (1 - discountPercent / 100))
               : originalPrice
 
-            // Get dish image (prioritize item image, then section image)
             const dishImage = normalizeImageUrl(item.image?.url || item.image || section.image?.url || section.image)
 
             matchingDishes.push({
@@ -700,13 +800,12 @@ export default function CategoryPage() {
               image: dishImage,
               originalPrice: originalPrice,
               itemId: item._id || item.id || `${item.name}-${finalPrice}`,
-              foodType: item.foodType, // Include foodType for vegMode filtering
+              foodType: item.foodType,
             })
           }
         }
       }
 
-      // Include subsection items too
       if (section.subsections && Array.isArray(section.subsections)) {
         for (const subsection of section.subsections) {
           const subsectionNameLower = (subsection?.name || "").toLowerCase()

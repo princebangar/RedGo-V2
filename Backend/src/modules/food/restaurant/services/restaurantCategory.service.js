@@ -167,10 +167,25 @@ export async function listPublicCategories(query = {}) {
     const search = typeof query.search === 'string' ? query.search.trim() : '';
     const zoneIdRaw = typeof query.zoneId === 'string' ? query.zoneId.trim() : '';
 
-    const approvedCategoryIds = await FoodItem.distinct('categoryId', {
-        approvalStatus: 'approved',
-        categoryId: { $ne: null }
-    });
+    let approvedCategoryIds = [];
+    if (zoneIdRaw && mongoose.Types.ObjectId.isValid(zoneIdRaw)) {
+        const zoneRestaurants = await FoodRestaurant.find({
+            zoneId: new mongoose.Types.ObjectId(zoneIdRaw),
+            status: 'approved'
+        }).select('_id').lean();
+        const zoneRestaurantIds = zoneRestaurants.map(r => r._id);
+        
+        approvedCategoryIds = await FoodItem.distinct('categoryId', {
+            approvalStatus: 'approved',
+            restaurantId: { $in: zoneRestaurantIds },
+            categoryId: { $ne: null }
+        });
+    } else {
+        approvedCategoryIds = await FoodItem.distinct('categoryId', {
+            approvalStatus: 'approved',
+            categoryId: { $ne: null }
+        });
+    }
 
     if (!approvedCategoryIds.length) {
         return { categories: [], total: 0, page, limit };
@@ -188,18 +203,72 @@ export async function listPublicCategories(query = {}) {
     }
     applyZoneVisibilityFilter(filter.$and, zoneIdRaw);
 
-    const [list, total] = await Promise.all([
-        FoodCategory.find(filter)
-            .sort({ sortOrder: 1, createdAt: -1 })
-            .skip(skip)
-            .limit(limit)
-            .select('name image type foodTypeScope zoneId sortOrder createdAt updatedAt')
-            .lean(),
-        FoodCategory.countDocuments(filter)
-    ]);
+    const list = await FoodCategory.find(filter)
+        .sort({ sortOrder: 1, createdAt: -1 })
+        .select('name image type foodTypeScope zoneId sortOrder createdAt updatedAt')
+        .lean();
 
-    await backfillLegacyCategoryWorkflow(list);
-    const categories = list.map((category) => serializeCategoryForResponse(category));
+    // Deduplicate categories by name in memory
+    const groups = {};
+    for (const cat of list) {
+        const key = String(cat.name || '').toLowerCase().trim();
+        if (!key) continue;
+        if (!groups[key]) {
+            groups[key] = [];
+        }
+        groups[key].push(cat);
+    }
+
+    const deduplicated = [];
+    for (const key of Object.keys(groups)) {
+        const group = groups[key];
+        if (group.length === 1) {
+            deduplicated.push(group[0]);
+            continue;
+        }
+
+        // Prioritize: 1. zone specific match, 2. global category, 3. has image, 4. sortOrder, 5. updatedAt
+        group.sort((a, b) => {
+            const aZoneMatch = zoneIdRaw && String(a.zoneId) === String(zoneIdRaw);
+            const bZoneMatch = zoneIdRaw && String(b.zoneId) === String(zoneIdRaw);
+            if (aZoneMatch && !bZoneMatch) return -1;
+            if (!aZoneMatch && bZoneMatch) return 1;
+
+            const aGlobal = !a.zoneId;
+            const bGlobal = !b.zoneId;
+            if (aGlobal && !bGlobal) return -1;
+            if (!aGlobal && bGlobal) return 1;
+
+            const aHasImg = !!a.image;
+            const bHasImg = !!b.image;
+            if (aHasImg && !bHasImg) return -1;
+            if (!aHasImg && bHasImg) return 1;
+
+            const aOrder = typeof a.sortOrder === 'number' ? a.sortOrder : 0;
+            const bOrder = typeof b.sortOrder === 'number' ? b.sortOrder : 0;
+            if (aOrder !== bOrder) return aOrder - bOrder;
+
+            const aTime = new Date(a.updatedAt || a.createdAt || 0).getTime();
+            const bTime = new Date(b.updatedAt || b.createdAt || 0).getTime();
+            return bTime - aTime;
+        });
+
+        deduplicated.push(group[0]);
+    }
+
+    // Sort final list by sortOrder and then alphabetically
+    deduplicated.sort((a, b) => {
+        const aOrder = typeof a.sortOrder === 'number' ? a.sortOrder : 0;
+        const bOrder = typeof b.sortOrder === 'number' ? b.sortOrder : 0;
+        if (aOrder !== bOrder) return aOrder - bOrder;
+        return String(a.name || '').localeCompare(String(b.name || ''));
+    });
+
+    const total = deduplicated.length;
+    const paginatedList = deduplicated.slice(skip, skip + limit);
+
+    await backfillLegacyCategoryWorkflow(paginatedList);
+    const categories = paginatedList.map((category) => serializeCategoryForResponse(category));
 
     return { categories, total, page, limit };
 }

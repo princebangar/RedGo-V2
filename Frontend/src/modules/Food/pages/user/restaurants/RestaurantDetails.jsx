@@ -57,6 +57,7 @@ import {
 } from "@food/utils/foodVariants"
 import fssaiLogo from "@food/assets/fssai.png"
 import { RestaurantDetailSkeleton } from "@food/components/ui/loading-skeletons"
+import OptimizedImage from "@food/components/OptimizedImage"
 
 
 
@@ -152,6 +153,29 @@ function RestaurantDetailsContent() {
   const [selectedMenuCategory, setSelectedMenuCategory] = useState("all")
   const dishCardRefs = useRef({})
   const hasScrolledRef = useRef(false)
+
+  const [loadRemaining, setLoadRemaining] = useState(false)
+  useEffect(() => {
+    if (typeof window !== "undefined" && window.scrollY > 0) {
+      setLoadRemaining(true)
+      return
+    }
+
+    const handleScroll = () => {
+      setLoadRemaining(true)
+    }
+
+    window.addEventListener("scroll", handleScroll, { passive: true })
+
+    const timer = setTimeout(() => {
+      setLoadRemaining(true)
+    }, 1500)
+
+    return () => {
+      window.removeEventListener("scroll", handleScroll)
+      clearTimeout(timer)
+    }
+  }, [])
 
 
   const getLineItemIdForDish = (item, variant = null) =>
@@ -2211,12 +2235,23 @@ function RestaurantDetailsContent() {
               </div>
             )}
 
-            {filteredSections.map(({ section, originalIndex }, sectionIndex) => {
+            {(() => {
+              let overallItemCount = 0
+              return filteredSections.map(({ section, originalIndex }, sectionIndex) => {
               // Handle section name - check for valid non-empty string
               const isRecommended = isRecommendedSection(section)
               const sectionId = `menu-section-${originalIndex}`
               const sectionItems = toRenderableArray(section?.items)
               const sectionSubsections = toRenderableArray(section?.subsections)
+
+              const totalItemsInThisSection = sectionItems.length + sectionSubsections.reduce((sum, sub) => sum + toRenderableArray(sub?.items).length, 0)
+              const sectionStartIdx = overallItemCount
+              const hasPriorityItems = sectionStartIdx < 5
+
+              if (!hasPriorityItems && !loadRemaining) {
+                overallItemCount += totalItemsInThisSection
+                return null
+              }
 
               const isExpanded = expandedSections.has(originalIndex)
 
@@ -2279,6 +2314,10 @@ function RestaurantDetailsContent() {
                         const quantity = getDishQuantity(item)
                         // Determine veg/non-veg based on foodType
                         const isVeg = item.foodType === "Veg"
+                        const currentItemIndex = overallItemCount++
+                        const isPriority = currentItemIndex < 5 || loadRemaining
+
+                        if (!isPriority) return null
 
                         // Debug: Log preparationTime for troubleshooting
                         if (item.preparationTime) {
@@ -2407,9 +2446,10 @@ function RestaurantDetailsContent() {
                             {/* Right Side - Image and Add Button */}
                             <div className="relative w-32 h-32 flex-shrink-0">
                               {item.image ? (
-                                <img
+                                <OptimizedImage
                                   src={item.image}
                                   alt={item.name}
+                                  priority={isPriority}
                                   className="w-full h-full object-cover rounded-2xl shadow-sm"
                                   onError={(e) => {
                                     if (e.currentTarget.src !== FOOD_IMAGE_FALLBACK) {
@@ -2523,6 +2563,10 @@ function RestaurantDetailsContent() {
                                   const quantity = getDishQuantity(item)
                                   // Determine veg/non-veg based on foodType
                                   const isVeg = item.foodType === "Veg"
+                                  const currentItemIndex = overallItemCount++
+                                  const isPriority = currentItemIndex < 5 || loadRemaining
+
+                                  if (!isPriority) return null
 
                                   // Debug: Log preparationTime for troubleshooting
                                   if (item.preparationTime) {
@@ -2611,9 +2655,10 @@ function RestaurantDetailsContent() {
                                       {/* Right Side - Image and Add Button */}
                                       <div className="relative w-32 h-32 flex-shrink-0">
                                         {item.image ? (
-                                          <img
+                                          <OptimizedImage
                                             src={item.image}
                                             alt={item.name}
+                                            priority={isPriority}
                                             className="w-full h-full object-cover rounded-2xl shadow-sm"
                                             onError={(e) => {
                                               if (e.currentTarget.src !== FOOD_IMAGE_FALLBACK) {
@@ -2695,7 +2740,8 @@ function RestaurantDetailsContent() {
                   )}
                 </div>
               )
-            })}
+            })
+            })()}
           </div>
         )}
       </div>

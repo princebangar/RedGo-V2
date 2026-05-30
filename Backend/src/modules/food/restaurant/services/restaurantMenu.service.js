@@ -25,28 +25,57 @@ const buildMenuFromFoods = async (foods = []) => {
         : [];
     const categoryMap = new Map(categoryDocs.map((doc) => [String(doc._id), doc]));
 
+    const nameToDocMap = new Map();
+    for (const doc of categoryDocs) {
+        const nameKey = String(doc.name || '').toLowerCase().trim();
+        if (!nameKey) continue;
+        const existing = nameToDocMap.get(nameKey);
+        if (!existing) {
+            nameToDocMap.set(nameKey, doc);
+        } else {
+            const existingHasImg = !!existing.image;
+            const docHasImg = !!doc.image;
+            if (docHasImg && !existingHasImg) {
+                nameToDocMap.set(nameKey, doc);
+            } else if (existingHasImg === docHasImg) {
+                const existingOrder = typeof existing.sortOrder === 'number' ? existing.sortOrder : 0;
+                const docOrder = typeof doc.sortOrder === 'number' ? doc.sortOrder : 0;
+                if (docOrder < existingOrder) {
+                    nameToDocMap.set(nameKey, doc);
+                }
+            }
+        }
+    }
+
     const recommendedDishes = [];
     const byCategory = new Map();
     for (const food of foods) {
+        const foodCategoryName = (food?.categoryName || food?.category || '').trim();
         const categoryId = food?.categoryId ? String(food.categoryId) : '';
-        const categoryDoc = categoryMap.get(categoryId) || null;
-        const sectionName = (categoryDoc?.name || food?.categoryName || food?.category || 'Menu').trim() || 'Menu';
-        const groupKey = categoryId || `name:${sectionName.toLowerCase()}`;
+        const categoryDocFromId = categoryMap.get(categoryId) || null;
+        
+        const sectionName = (categoryDocFromId?.name || foodCategoryName || 'Menu').trim() || 'Menu';
+        const nameKey = sectionName.toLowerCase();
+        const categoryDoc = nameToDocMap.get(nameKey) || categoryDocFromId;
+
+        const groupKey = `name:${nameKey}`;
 
         if (!byCategory.has(groupKey)) {
             byCategory.set(groupKey, {
-                id: categoryId || null,
+                id: categoryDoc ? String(categoryDoc._id) : (categoryId || null),
                 name: sectionName,
                 image: categoryDoc?.image || '',
-                sortOrder: Number.isFinite(Number(categoryDoc?.sortOrder)) ? Number(categoryDoc.sortOrder) : Number.MAX_SAFE_INTEGER,
+                sortOrder: categoryDoc && Number.isFinite(Number(categoryDoc.sortOrder)) ? Number(categoryDoc.sortOrder) : Number.MAX_SAFE_INTEGER,
                 items: []
             });
         }
 
+        const resolvedCategoryId = categoryDoc ? String(categoryDoc._id) : (categoryId || null);
+
         const item = {
             id: String(food._id),
             _id: food._id,
-            categoryId: categoryId || null,
+            categoryId: resolvedCategoryId,
             categoryName: sectionName,
             category: sectionName,
             name: food.name,

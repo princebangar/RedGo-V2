@@ -14,6 +14,7 @@ import { searchAPI } from "@/services/api"
 import { motion, AnimatePresence } from "framer-motion"
 import OptimizedImage from "@food/components/OptimizedImage"
 import { useVoiceSearch } from "@food/hooks/useVoiceSearch"
+import { RestaurantGridSkeleton } from "@food/components/ui/loading-skeletons"
 
 // Helper to resolve media URLs consistently
 const getMediaUrl = (url) => {
@@ -58,6 +59,7 @@ export default function ProfessionalSearch() {
   const [categories, setCategories] = useState([])
   const [selectedCategoryId, setSelectedCategoryId] = useState(searchParams.get("cat") || null)
   const [history, setHistory] = useState([])
+  const resultsRef = useRef(null)
 
   // Load search history
   useEffect(() => {
@@ -65,6 +67,18 @@ export default function ProfessionalSearch() {
     if (savedHistory) setHistory(JSON.parse(savedHistory))
     fetchCategories()
   }, [])
+
+  // Auto-scroll to results when category/query updates
+  useEffect(() => {
+    if (!loading && (query || selectedCategoryId) && resultsRef.current) {
+      const timer = setTimeout(() => {
+        if (resultsRef.current) {
+          resultsRef.current.scrollIntoView({ behavior: "smooth", block: "start" });
+        }
+      }, 100);
+      return () => clearTimeout(timer);
+    }
+  }, [loading, selectedCategoryId, query])
 
   const fetchCategories = async () => {
     try {
@@ -115,7 +129,7 @@ export default function ProfessionalSearch() {
   useEffect(() => {
     performSearch(debouncedQuery, selectedCategoryId)
     if (debouncedQuery) {
-        setSearchParams({ q: debouncedQuery, ...(selectedCategoryId ? { cat: selectedCategoryId } : {}) })
+        setSearchParams({ q: debouncedQuery, ...(selectedCategoryId ? { cat: selectedCategoryId } : {}) }, { replace: true })
     }
   }, [debouncedQuery, selectedCategoryId, performSearch, setSearchParams])
 
@@ -131,7 +145,7 @@ export default function ProfessionalSearch() {
   const handleClear = () => {
     setQuery("")
     setSelectedCategoryId(null)
-    setSearchParams({})
+    setSearchParams({}, { replace: true })
     setResults({ restaurants: [], dishes: [] })
   }
 
@@ -139,11 +153,11 @@ export default function ProfessionalSearch() {
     const newCat = selectedCategoryId === id ? null : id
     setSelectedCategoryId(newCat)
     if (newCat) {
-        setSearchParams({ ...Object.fromEntries(searchParams), cat: newCat })
+        setSearchParams({ ...Object.fromEntries(searchParams), cat: newCat }, { replace: true })
     } else {
         const p = Object.fromEntries(searchParams)
         delete p.cat
-        setSearchParams(p)
+        setSearchParams(p, { replace: true })
     }
   }
 
@@ -192,7 +206,7 @@ export default function ProfessionalSearch() {
 
       <div className="max-w-3xl mx-auto p-4">
         {/* Categories */}
-        {!query && !loading && (
+        {!query && (
           <div className="mb-8">
             <div className="flex items-center justify-between mb-5 px-1">
               <h3 className="text-xs font-black text-gray-400 uppercase tracking-widest">Top Categories</h3>
@@ -200,52 +214,58 @@ export default function ProfessionalSearch() {
                 <span className="text-[10px] font-bold text-[#DC2626] uppercase tracking-tighter">Swipe for more</span>
               )}
             </div>
-            <div className="grid grid-cols-4 sm:grid-cols-5 md:grid-cols-6 lg:grid-cols-8 gap-x-3 gap-y-6">
-              {categories.map((cat) => (
-                <button 
-                  key={cat._id} 
-                  onClick={() => handleCategoryClick(cat._id)}
-                  className={`flex flex-col items-center group transition-all active:scale-90 ${selectedCategoryId === cat._id ? 'scale-105' : ''}`}
-                >
-                  <div className={`relative w-15 h-15 sm:w-16 sm:h-16 rounded-[22px] mb-2 shadow-sm border-2 transition-all duration-300 ${selectedCategoryId === cat._id ? 'border-[#DC2626] shadow-lg shadow-[#DC2626]/10 transform -translate-y-1' : 'border-gray-50 dark:border-zinc-800 bg-white dark:bg-zinc-900 group-hover:border-gray-200'}`}>
-                    <div className="absolute inset-0 rounded-[20px] overflow-hidden">
-                      {cat.image ? (
-                        <OptimizedImage 
-                          src={getMediaUrl(cat.image)} 
-                          alt={cat.name} 
-                          className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-115" 
-                        />
-                      ) : (
-                        <div className="w-full h-full flex items-center justify-center bg-gray-50">
-                          <Utensils className="w-6 h-6 text-gray-200" />
-                        </div>
-                      )}
-                    </div>
+            {categories.length === 0 ? (
+              <div className="grid grid-cols-4 sm:grid-cols-5 md:grid-cols-6 lg:grid-cols-8 gap-x-3 gap-y-6">
+                {Array.from({ length: 8 }).map((_, i) => (
+                  <div key={i} className="flex flex-col items-center animate-pulse">
+                    <div className="w-15 h-15 sm:w-16 sm:h-16 rounded-[22px] bg-gray-100 dark:bg-zinc-800 mb-2" />
+                    <div className="h-3 w-12 bg-gray-100 dark:bg-zinc-800 rounded animate-pulse" />
                   </div>
-                  <span className={`text-[10px] sm:text-[11px] font-bold text-center line-clamp-1 transition-colors ${selectedCategoryId === cat._id ? 'text-[#DC2626]' : 'text-gray-500 dark:text-zinc-400 group-hover:text-gray-800'}`}>
-                    {cat.name}
-                  </span>
-                </button>
-              ))}
-            </div>
+                ))}
+              </div>
+            ) : (
+              <div className="grid grid-cols-4 sm:grid-cols-5 md:grid-cols-6 lg:grid-cols-8 gap-x-3 gap-y-6">
+                {categories.map((cat) => (
+                  <button 
+                    key={cat._id} 
+                    onClick={() => handleCategoryClick(cat._id)}
+                    className={`flex flex-col items-center group transition-all active:scale-90 ${selectedCategoryId === cat._id ? 'scale-105' : ''}`}
+                  >
+                    <div className={`relative w-15 h-15 sm:w-16 sm:h-16 rounded-[22px] mb-2 shadow-sm border-2 transition-all duration-300 ${selectedCategoryId === cat._id ? 'border-[#DC2626] shadow-lg shadow-[#DC2626]/10 transform -translate-y-1' : 'border-gray-50 dark:border-zinc-800 bg-white dark:bg-zinc-900 group-hover:border-gray-200'}`}>
+                      <div className="absolute inset-0 rounded-[20px] overflow-hidden">
+                        {cat.image ? (
+                          <OptimizedImage 
+                            src={getMediaUrl(cat.image)} 
+                            alt={cat.name} 
+                            className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-115" 
+                          />
+                        ) : (
+                          <div className="w-full h-full flex items-center justify-center bg-gray-50">
+                            <Utensils className="w-6 h-6 text-gray-200" />
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                    <span className={`text-[10px] sm:text-[11px] font-bold text-center line-clamp-1 transition-colors ${selectedCategoryId === cat._id ? 'text-[#DC2626]' : 'text-gray-500 dark:text-zinc-400 group-hover:text-gray-800'}`}>
+                      {cat.name}
+                    </span>
+                  </button>
+                ))}
+              </div>
+            )}
           </div>
         )}
 
-        {/* Loading Spinner */}
-        <AnimatePresence>
-          {loading && (
-            <motion.div 
-               initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }}
-               className="flex flex-col items-center justify-center py-24"
-            >
-              <div className="relative">
-                <Loader2 className="w-10 h-10 text-[#DC2626] animate-spin" />
-                <div className="absolute inset-0 blur-xl bg-[#DC2626]/30 animate-pulse" />
-              </div>
-              <p className="text-gray-400 text-xs font-bold uppercase tracking-widest mt-6">Searching...</p>
-            </motion.div>
-          )}
-        </AnimatePresence>
+        {/* Loading Skeleton */}
+        {loading && (
+          <div className="space-y-6 mt-6 animate-in fade-in duration-200">
+            <div className="flex items-center justify-between mb-5 px-1">
+              <div className="h-4 w-32 bg-gray-100 dark:bg-zinc-800 rounded animate-pulse" />
+              <div className="h-4 w-16 bg-gray-100 dark:bg-zinc-800 rounded animate-pulse" />
+            </div>
+            <RestaurantGridSkeleton count={4} />
+          </div>
+        )}
 
         {/* Recent History */}
         {!query && !loading && history.length > 0 && (
@@ -268,7 +288,7 @@ export default function ProfessionalSearch() {
 
         {/* Search Results */}
         {!loading && (query || selectedCategoryId) && (
-          <div className="space-y-8 animate-in fade-in slide-in-from-bottom-2 duration-300">
+          <div ref={resultsRef} className="space-y-8 animate-in fade-in slide-in-from-bottom-2 duration-300">
             
             {/* Dish Results Section */}
             {results.dishes.length > 0 && (

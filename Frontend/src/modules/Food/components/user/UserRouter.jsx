@@ -4,11 +4,12 @@ import UserLayout from "./UserLayout"
 import Loader from "@food/components/Loader"
 import ProtectedRoute from "@food/components/ProtectedRoute"
 import AuthRedirect from "@food/components/AuthRedirect"
+import SearchResults from "@food/pages/user/search/ProfessionalSearch"
+import Home from "@food/pages/user/Home"
 
 // Lazy Loading Pages
 
 // Home & Discovery
-const Home = lazy(() => import("@food/pages/user/Home"))
 const Dining = lazy(() => import("@food/pages/user/Dining"))
 const DiningCategory = lazy(() => import("@food/pages/user/DiningCategory"))
 const DiningExplore50 = lazy(() => import("@food/pages/user/DiningExplore50"))
@@ -27,7 +28,6 @@ const TableModificationPolicy = lazy(() => import("@food/pages/user/dining/Table
 const TableCancellationPolicy = lazy(() => import("@food/pages/user/dining/TableCancellationPolicy"))
 const TableEditUserPage = lazy(() => import("@food/pages/user/dining/TableEditUserPage"))
 const MyBookings = lazy(() => import("@food/pages/user/dining/MyBookings"))
-const SearchResults = lazy(() => import("@food/pages/user/search/ProfessionalSearch"))
 const ProductDetail = lazy(() => import("@food/pages/user/ProductDetail"))
 
 // Cart

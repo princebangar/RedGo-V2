@@ -55,8 +55,20 @@ export const searchUnified = async (query = {}, options = {}) => {
 
     // 2. Handle Category Filtering (Restaurants don't have categoryId, FoodItems do)
     if (categoryId && mongoose.Types.ObjectId.isValid(categoryId)) {
+        const categoryDoc = await FoodCategory.findById(categoryId).select('name').lean();
+        let categoryIdsToMatch = [new mongoose.Types.ObjectId(categoryId)];
+        if (categoryDoc && categoryDoc.name) {
+            const escapedName = categoryDoc.name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+            const sameNamedCategories = await FoodCategory.find({
+                name: { $regex: new RegExp('^' + escapedName + '$', 'i') }
+            }).select('_id').lean();
+            if (sameNamedCategories.length > 0) {
+                categoryIdsToMatch = sameNamedCategories.map(c => c._id);
+            }
+        }
+
         const catFoodItems = await FoodItem.find({ 
-            categoryId: new mongoose.Types.ObjectId(categoryId),
+            categoryId: { $in: categoryIdsToMatch },
             approvalStatus: 'approved' 
         }).select('restaurantId').lean();
         
@@ -165,17 +177,6 @@ export const searchUnified = async (query = {}, options = {}) => {
         }
     };
 
-    // FALLBACK: If results are empty and a zoneId was provided, try one more time without zoneId 
-    // to ensure user sees SOMETHING if their current zone has no matches.
-    if (results.length === 0 && zoneId && mongoose.Types.ObjectId.isValid(zoneId)) {
-        console.log(`[Search-Service] No results in zone ${zoneId}. Trying global fallback...`);
-        const fallbackResults = await searchUnified({ ...query, zoneId: null }, options);
-        if (fallbackResults.data.total > 0) {
-            fallbackResults.data.wasFallback = true;
-            return fallbackResults;
-        }
-    }
-
     return finalResult;
 };
 
@@ -183,24 +184,119 @@ export const searchUnified = async (query = {}, options = {}) => {
  * Fetch Admin-only categories
  */
 export const getAdminCategories = async (query = {}) => {
+    const zoneId = query.zoneId;
+
+    let approvedCategoryIds = [];
+    if (zoneId && mongoose.Types.ObjectId.isValid(zoneId)) {
+        const zoneRestaurants = await FoodRestaurant.find({
+            zoneId: new mongoose.Types.ObjectId(zoneId),
+            status: 'approved'
+        }).select('_id').lean();
+        const zoneRestaurantIds = zoneRestaurants.map(r => r._id);
+        
+        approvedCategoryIds = await FoodItem.distinct('categoryId', {
+            approvalStatus: 'approved',
+            restaurantId: { $in: zoneRestaurantIds },
+            categoryId: { $ne: null }
+        });
+    } else {
+        approvedCategoryIds = await FoodItem.distinct('categoryId', {
+            approvalStatus: 'approved',
+            categoryId: { $ne: null }
+        });
+    }
+
+    if (!approvedCategoryIds.length) {
+        return [];
+    }
+
     const filter = { 
+        _id: { $in: approvedCategoryIds },
         isActive: true, 
         isApproved: true,
-        $or: [
-            { restaurantId: { $exists: false } },
-            { restaurantId: null },
-            { restaurantId: { $eq: undefined } }
+        $and: [
+            {
+                $or: [
+                    { restaurantId: { $exists: false } },
+                    { restaurantId: null },
+                    { restaurantId: { $eq: undefined } }
+                ]
+            }
         ]
     };
 
-    if (query.zoneId && mongoose.Types.ObjectId.isValid(query.zoneId)) {
-        filter.$or = [
-            { zoneId: new mongoose.Types.ObjectId(query.zoneId) },
-            { zoneId: { $exists: false } },
-            { zoneId: null }
-        ];
+    if (zoneId && mongoose.Types.ObjectId.isValid(zoneId)) {
+        filter.$and.push({
+            $or: [
+                { zoneId: new mongoose.Types.ObjectId(zoneId) },
+                { zoneId: { $exists: false } },
+                { zoneId: null }
+            ]
+        });
+    } else {
+        filter.$and.push({
+            $or: [
+                { zoneId: { $exists: false } },
+                { zoneId: null }
+            ]
+        });
     }
 
-    const categories = await FoodCategory.find(filter).sort({ sortOrder: 1, name: 1 }).lean();
-    return categories;
+    const list = await FoodCategory.find(filter).sort({ sortOrder: 1, name: 1 }).lean();
+
+    // Deduplicate in memory
+    const groups = {};
+    for (const cat of list) {
+        const key = String(cat.name || '').toLowerCase().trim();
+        if (!key) continue;
+        if (!groups[key]) {
+            groups[key] = [];
+        }
+        groups[key].push(cat);
+    }
+
+    const deduplicated = [];
+    for (const key of Object.keys(groups)) {
+        const group = groups[key];
+        if (group.length === 1) {
+            deduplicated.push(group[0]);
+            continue;
+        }
+
+        group.sort((a, b) => {
+            const aZoneMatch = zoneId && String(a.zoneId) === String(zoneId);
+            const bZoneMatch = zoneId && String(b.zoneId) === String(zoneId);
+            if (aZoneMatch && !bZoneMatch) return -1;
+            if (!aZoneMatch && bZoneMatch) return 1;
+
+            const aGlobal = !a.zoneId;
+            const bGlobal = !b.zoneId;
+            if (aGlobal && !bGlobal) return -1;
+            if (!aGlobal && bGlobal) return 1;
+
+            const aHasImg = !!a.image;
+            const bHasImg = !!b.image;
+            if (aHasImg && !bHasImg) return -1;
+            if (!aHasImg && bHasImg) return 1;
+
+            const aOrder = typeof a.sortOrder === 'number' ? a.sortOrder : 0;
+            const bOrder = typeof b.sortOrder === 'number' ? b.sortOrder : 0;
+            if (aOrder !== bOrder) return aOrder - bOrder;
+
+            const aTime = new Date(a.updatedAt || a.createdAt || 0).getTime();
+            const bTime = new Date(b.updatedAt || b.createdAt || 0).getTime();
+            return bTime - aTime;
+        });
+
+        deduplicated.push(group[0]);
+    }
+
+    deduplicated.sort((a, b) => {
+        const aOrder = typeof a.sortOrder === 'number' ? a.sortOrder : 0;
+        const bOrder = typeof b.sortOrder === 'number' ? b.sortOrder : 0;
+        if (aOrder !== bOrder) return aOrder - bOrder;
+        return String(a.name || '').localeCompare(String(b.name || ''));
+    });
+
+    return deduplicated;
 };

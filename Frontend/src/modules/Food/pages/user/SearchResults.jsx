@@ -47,6 +47,28 @@ export default function SearchResults() {
   ])
   const [loadingCategories, setLoadingCategories] = useState(true)
   const [categoryKeywords, setCategoryKeywords] = useState({})
+
+  const activeCategory = useMemo(() => {
+    if (!selectedCategory || selectedCategory === 'all' || !categories) return null;
+    return categories.find(c =>
+      c.id === selectedCategory ||
+      c.name?.toLowerCase().replace(/\s+/g, '-') === selectedCategory
+    );
+  }, [selectedCategory, categories]);
+
+  const activeCategoryIds = useMemo(() => {
+    if (!activeCategory || !categories) return [];
+    const isObjectId = /^[0-9a-fA-F]{24}$/.test(String(activeCategory.id));
+    if (isObjectId) {
+      const targetName = activeCategory.name?.toLowerCase();
+      return categories
+        .filter(c => c.name?.toLowerCase() === targetName)
+        .map(c => c.id)
+        .filter(Boolean);
+    }
+    return [activeCategory.id];
+  }, [activeCategory, categories]);
+
   const showRestaurantSkeleton = useDelayedLoading(loadingRestaurants)
   const deferredQuery = useDeferredValue(query)
   const slugify = (value) => String(value || "").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "")
@@ -74,7 +96,7 @@ export default function SearchResults() {
           const transformedCategories = [
             { id: 'all', name: "All", image: "" },
             ...categoriesArray.map((cat) => ({
-              id: cat.slug || cat.id,
+              id: String(cat._id || cat.id || ''),
               name: cat.name,
               image: cat.image || cat.imageUrl || "",
               type: cat.type,
@@ -86,7 +108,7 @@ export default function SearchResults() {
           // Generate category keywords dynamically from category names
           const keywordsMap = {}
           categoriesArray.forEach((cat) => {
-            const categoryId = cat.slug || cat.id
+            const categoryId = String(cat._id || cat.id || '')
             const categoryName = cat.name.toLowerCase()
 
             // Generate keywords from category name
@@ -114,6 +136,34 @@ export default function SearchResults() {
       return false
     }
 
+    // Check by category ID first (strict ObjectId matching)
+    const targetIds = activeCategoryIds
+    if (targetIds.length > 0) {
+      for (const section of menu.sections) {
+        if (section.items && Array.isArray(section.items)) {
+          for (const item of section.items) {
+            if (item.categoryId && targetIds.includes(String(item.categoryId))) {
+              return true
+            }
+          }
+        }
+        if (section.subsections && Array.isArray(section.subsections)) {
+          for (const subsection of section.subsections) {
+            const subItems = Array.isArray(subsection?.items) ? subsection.items : []
+            for (const item of subItems) {
+              if (item.categoryId && targetIds.includes(String(item.categoryId))) {
+                return true
+              }
+            }
+          }
+        }
+      }
+      const isObjectId = targetIds.some(id => /^[0-9a-fA-F]{24}$/.test(String(id)));
+      if (isObjectId) {
+        return false;
+      }
+    }
+
     // Get keywords for this category
     const keywords = categoryKeywords[categoryId] || []
     if (keywords.length === 0) {
@@ -137,9 +187,22 @@ export default function SearchResults() {
             return true
           }
           // Check item category
-          const itemCategoryLower = (item.category || '').toLowerCase()
+          const itemCategoryLower = (item.categoryName || item.category || '').toLowerCase()
           if (keywords.some(keyword => itemCategoryLower.includes(keyword))) {
             return true
+          }
+        }
+      }
+
+      if (section.subsections && Array.isArray(section.subsections)) {
+        for (const subsection of section.subsections) {
+          const subItems = Array.isArray(subsection?.items) ? subsection.items : []
+          for (const item of subItems) {
+            const itemNameLower = (item?.name || "").toLowerCase()
+            const itemCategoryLower = (item?.categoryName || item?.category || "").toLowerCase()
+            if (keywords.some(keyword => itemNameLower.includes(keyword) || itemCategoryLower.includes(keyword))) {
+              return true
+            }
           }
         }
       }
@@ -154,6 +217,33 @@ export default function SearchResults() {
       return null
     }
 
+    const targetIds = activeCategoryIds
+    if (targetIds.length > 0) {
+      for (const section of menu.sections) {
+        if (section.items && Array.isArray(section.items)) {
+          for (const item of section.items) {
+            if (item.categoryId && targetIds.includes(String(item.categoryId))) {
+              return item.name
+            }
+          }
+        }
+        if (section.subsections && Array.isArray(section.subsections)) {
+          for (const subsection of section.subsections) {
+            const subItems = Array.isArray(subsection?.items) ? subsection.items : []
+            for (const item of subItems) {
+              if (item.categoryId && targetIds.includes(String(item.categoryId))) {
+                return item.name
+              }
+            }
+          }
+        }
+      }
+      const isObjectId = targetIds.some(id => /^[0-9a-fA-F]{24}$/.test(String(id)));
+      if (isObjectId) {
+        return null;
+      }
+    }
+
     const keywords = categoryKeywords[categoryId] || []
     if (keywords.length === 0) {
       return null
@@ -164,12 +254,24 @@ export default function SearchResults() {
       if (section.items && Array.isArray(section.items)) {
         for (const item of section.items) {
           const itemNameLower = (item.name || '').toLowerCase()
-          const itemCategoryLower = (item.category || '').toLowerCase()
+          const itemCategoryLower = (item.categoryName || item.category || '').toLowerCase()
 
           if (keywords.some(keyword =>
             itemNameLower.includes(keyword) || itemCategoryLower.includes(keyword)
           )) {
             return item.name
+          }
+        }
+      }
+      if (section.subsections && Array.isArray(section.subsections)) {
+        for (const subsection of section.subsections) {
+          const subItems = Array.isArray(subsection?.items) ? subsection.items : []
+          for (const item of subItems) {
+            const itemNameLower = (item?.name || "").toLowerCase()
+            const itemCategoryLower = (item?.categoryName || item?.category || "").toLowerCase()
+            if (keywords.some(keyword => itemNameLower.includes(keyword) || itemCategoryLower.includes(keyword))) {
+              return item.name
+            }
           }
         }
       }
