@@ -1,5 +1,5 @@
 import { useState, useMemo, useRef, useEffect, startTransition, useDeferredValue } from "react"
-import { useParams, Link, useNavigate } from "react-router-dom"
+import { useParams, Link, useNavigate, useNavigationType } from "react-router-dom"
 import { createPortal } from "react-dom"
 import { motion, AnimatePresence } from "framer-motion"
 import { ArrowLeft, Star, Clock, Search, SlidersHorizontal, ChevronDown, Bookmark, BadgePercent, MapPin, ArrowDownUp, Timer, IndianRupee, UtensilsCrossed, ShieldCheck, X, Loader2, Grid2x2 } from "lucide-react"
@@ -15,7 +15,7 @@ import {
 // Import shared food images - prevents duplication
 import { foodImages } from "@food/constants/images"
 import api from "@food/api"
-import { restaurantAPI, adminAPI } from "@food/api"
+import { restaurantAPI, adminAPI, searchAPI } from "@food/api"
 import { API_BASE_URL } from "@food/api/config"
 import { useProfile } from "@food/context/ProfileContext"
 import { useLocation } from "@food/hooks/useLocation"
@@ -40,12 +40,31 @@ const debugLog = (...args) => {};
 const debugWarn = (...args) => {};
 const debugError = (...args) => {};
 
-export default function CategoryPage() {
-  const { category } = useParams()
+// In-memory cache to avoid localStorage quota limits and slow JSON parsing for large menus
+export const CATEGORY_SESSION_CACHE = new Map();
+export const clearCategoryCache = () => CATEGORY_SESSION_CACHE.clear();
+
+export default function CategoryPage({ embeddedCategorySlug = null, hideHeader = false, hideCategoryCarousel = false, hideFilters = false }) {
+  const params = useParams()
+  const category = embeddedCategorySlug || params.category
   const navigate = useNavigate()
   const { vegMode } = useProfile()
   const { location } = useLocation()
-  const { zoneId, isOutOfService } = useZone(location)
+  const { zoneId, isOutOfService, loading: loadingZone } = useZone(location)
+  const navType = useNavigationType()
+  const recommendedSectionRef = useRef(null)
+  const hasAutoScrolledRef = useRef(false)
+
+
+
+  // Let the network fetch effect handle clearing stale data if the zone actually changes.
+  useEffect(() => {
+    if (loadingZone) {
+      setLoadingCategories(true)
+      // Only set loading to true, but do not destroy the existing data immediately
+      // so the browser can restore scroll position seamlessly.
+    }
+  }, [loadingZone])
   const [searchQuery, setSearchQuery] = useState("")
   const [selectedCategory, setSelectedCategory] = useState(category?.toLowerCase() || 'all')
   const [activeFilters, setActiveFilters] = useState(new Set())
@@ -62,6 +81,7 @@ export default function CategoryPage() {
   const approvedFoodsCacheRef = useRef(null)
   const approvedFoodsInFlightRef = useRef(null)
   const hasRestoredCategoryFiltersRef = useRef(false)
+  const lastFetchedCategoryRef = useRef(null)
 
   // State for categories from admin
   const [categories, setCategories] = useState([])
@@ -85,12 +105,23 @@ export default function CategoryPage() {
       .filter(Boolean);
   }, [activeCategory, categories]);
 
-  const [restaurantsData, setRestaurantsData] = useState([])
-  const [loadingRestaurants, setLoadingRestaurants] = useState(true)
+  const [restaurantsData, setRestaurantsData] = useState(() => {
+    const initialCategory = category?.toLowerCase() || 'all';
+    const cacheKey = `redgo_cat_${initialCategory}_zone_${zoneId || ''}`;
+    if (CATEGORY_SESSION_CACHE.has(cacheKey)) {
+      return CATEGORY_SESSION_CACHE.get(cacheKey).restaurants || [];
+    }
+    return [];
+  })
+  const [loadingRestaurants, setLoadingRestaurants] = useState(() => {
+    const initialCategory = category?.toLowerCase() || 'all';
+    const cacheKey = `redgo_cat_${initialCategory}_zone_${zoneId || ''}`;
+    return !CATEGORY_SESSION_CACHE.has(cacheKey);
+  })
   const [isEnrichingMenus, setIsEnrichingMenus] = useState(false)
   const [approvedFoodsData, setApprovedFoodsData] = useState([])
   const [categoryKeywords, setCategoryKeywords] = useState({})
-  const showCategorySkeleton = useDelayedLoading(loadingCategories)
+  const showCategorySkeleton = useDelayedLoading((loadingCategories || loadingZone) && restaurantsData.length === 0)
   const deferredSearchQuery = useDeferredValue(searchQuery)
   const BACKEND_ORIGIN = useMemo(() => API_BASE_URL.replace(/\/api\/?$/, ""), [])
   const slugify = (value) => String(value || "").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "")
@@ -538,6 +569,8 @@ export default function CategoryPage() {
 
   // Fetch categories from admin API
   useEffect(() => {
+    if (loadingZone) return; // Prevent fetching while zone is resolving
+
     let isCancelled = false;
 
     const fetchCategories = async () => {
@@ -595,7 +628,7 @@ export default function CategoryPage() {
     return () => {
       isCancelled = true;
     }
-  }, [zoneId])
+  }, [zoneId, loadingZone])
 
   // Helper function to check if menu has dishes matching category keywords
   const getCategoryKeywords = (categoryId) => {
@@ -855,9 +888,29 @@ export default function CategoryPage() {
 
   // Fetch restaurants from API
   useEffect(() => {
+    if (loadingZone || loadingCategories) return; // Prevent fetching while zone or categories are resolving
+
+    let isCancelled = false
+
     const fetchRestaurants = async () => {
       try {
-        setLoadingRestaurants(true)
+        const cacheKey = `redgo_cat_${selectedCategory}_zone_${zoneId || ''}`;
+        const isCategoryChange = lastFetchedCategoryRef.current !== selectedCategory
+
+        if (isCategoryChange) {
+          if (CATEGORY_SESSION_CACHE.has(cacheKey)) {
+            const cachedData = CATEGORY_SESSION_CACHE.get(cacheKey);
+            setRestaurantsData(cachedData.restaurants);
+            setLoadingRestaurants(false);
+            setIsEnrichingMenus(false);
+            lastFetchedCategoryRef.current = selectedCategory;
+            return; // Skip fetch entirely
+          }
+
+          setRestaurantsData([])
+          setLoadingRestaurants(true)
+        }
+        lastFetchedCategoryRef.current = selectedCategory
         // Pass coordinates and category to backend for server-side optimization
         const params = {
           limit: 100,
@@ -868,11 +921,56 @@ export default function CategoryPage() {
           params.lng = parseFloat(location.longitude.toFixed(4));
         }
 
-        if (selectedCategory && selectedCategory !== 'all') {
-          params.cuisine = selectedCategory;
+        if (zoneId) {
+          params.zoneId = zoneId;
         }
 
-        const response = await restaurantAPI.getRestaurants(params)
+        const normalizedUserCity = String(location?.city || "")
+          .trim()
+          .toLowerCase();
+        const hasUsableUserCity =
+          normalizedUserCity &&
+          normalizedUserCity !== "current location" &&
+          normalizedUserCity !== "unknown city" &&
+          normalizedUserCity !== "select location";
+        if (hasUsableUserCity) {
+          params.city = String(location.city).trim();
+        }
+
+        // Compute active category inside the effect to avoid it as a dependency
+        const resolvedCategory = (selectedCategory && selectedCategory !== 'all' && categories?.length > 0)
+          ? categories.find(c =>
+              c.slug === selectedCategory ||
+              c.id === selectedCategory ||
+              c.name?.toLowerCase().replace(/\s+/g, '-') === selectedCategory
+            )
+          : null
+
+        let response
+        if (selectedCategory && selectedCategory !== 'all') {
+          if (resolvedCategory && resolvedCategory.id && resolvedCategory.id !== 'all' && /^[0-9a-fA-F]{24}$/.test(resolvedCategory.id)) {
+            response = await searchAPI.unifiedSearch({
+              categoryId: resolvedCategory.id,
+              zoneId: params.zoneId,
+              lat: params.lat,
+              lng: params.lng,
+              limit: 100
+            })
+          } else {
+            // Fallback to text query if categories are still loading or if ID is not ObjectId
+            response = await searchAPI.unifiedSearch({
+              q: selectedCategory,
+              zoneId: params.zoneId,
+              lat: params.lat,
+              lng: params.lng,
+              limit: 100
+            })
+          }
+        } else {
+          response = await restaurantAPI.getRestaurants(params)
+        }
+
+        if (isCancelled) return
 
         if (response.data && response.data.success && response.data.data && response.data.data.restaurants) {
           const restaurantsArray = response.data.data.restaurants
@@ -965,6 +1063,8 @@ export default function CategoryPage() {
               }
             }).filter(Boolean)
 
+          if (isCancelled) return
+
           startTransition(() => {
             setRestaurantsData(restaurantsWithIds)
           })
@@ -976,10 +1076,11 @@ export default function CategoryPage() {
               const transformedRestaurants = []
 
               for (let index = 0; index < restaurantsWithIds.length; index += 4) {
+                if (isCancelled) return
                 const batchRestaurants = restaurantsWithIds.slice(index, index + 4)
                 const batchResults = await Promise.all(
                   batchRestaurants.map(async (restaurant) => {
-                    try {
+                     try {
                       const lookupIds = [
                         restaurant.restaurantId,
                         restaurant.id,
@@ -1057,34 +1158,45 @@ export default function CategoryPage() {
                   })
                 )
 
-                if (enrichmentRequestId !== menuEnrichmentRequestRef.current) return
+                if (isCancelled || enrichmentRequestId !== menuEnrichmentRequestRef.current) return
                 transformedRestaurants.push(...batchResults)
               }
 
-              if (enrichmentRequestId === menuEnrichmentRequestRef.current) {
+              if (!isCancelled && enrichmentRequestId === menuEnrichmentRequestRef.current) {
                 startTransition(() => {
                   setRestaurantsData(transformedRestaurants)
                 })
+                
+                if (selectedCategory) {
+                  const cacheKey = `redgo_cat_${selectedCategory}_zone_${zoneId || ''}`;
+                  CATEGORY_SESSION_CACHE.set(cacheKey, {
+                    restaurants: transformedRestaurants
+                  });
+                }
               }
             } finally {
-              if (enrichmentRequestId === menuEnrichmentRequestRef.current) {
+              if (!isCancelled && enrichmentRequestId === menuEnrichmentRequestRef.current) {
                 setIsEnrichingMenus(false)
               }
             }
           })()
         } else {
-          setRestaurantsData([])
+          if (!isCancelled) setRestaurantsData([])
         }
       } catch (error) {
         debugError('Error fetching restaurants:', error)
-        setRestaurantsData([])
+        if (!isCancelled) setRestaurantsData([])
       } finally {
-        setLoadingRestaurants(false)
+        if (!isCancelled) setLoadingRestaurants(false)
       }
     }
 
     fetchRestaurants()
-  }, [zoneId, isOutOfService])
+
+    return () => {
+      isCancelled = true
+    }
+  }, [zoneId, loadingZone, loadingCategories, location?.latitude, location?.longitude, location?.city, selectedCategory, isOutOfService])
 
   // Update selected category when URL changes
   useEffect(() => {
@@ -1319,14 +1431,14 @@ export default function CategoryPage() {
   }, [selectedCategory, activeFilters, deferredSearchQuery, restaurantsData, categoryKeywords, vegMode, approvedFoodsData, sortBy])
 
   const showRestaurantSkeleton = useDelayedLoading(
-    isLoadingFilterResults || loadingRestaurants || (isEnrichingMenus && selectedCategory !== 'all' && filteredRecommended.length === 0),
+    isLoadingFilterResults || loadingRestaurants || loadingZone || loadingCategories || (isEnrichingMenus && selectedCategory !== 'all'),
     { delay: 140, minDuration: 360 }
   )
 
   const handleCategorySelect = (category) => {
     const categorySlug = category.slug || category.id
-    setSelectedCategory(categorySlug)
-    // Update URL to reflect category change
+    // Only navigate — the URL-sync useEffect will update selectedCategory
+    // This prevents a double state update that causes the skeleton to flash
     if (categorySlug === 'all') {
       navigate('/user/category/all')
     } else {
@@ -1338,171 +1450,190 @@ export default function CategoryPage() {
   const shouldShowGrayscale = isOutOfService
   const isCategoryView = selectedCategory && selectedCategory !== 'all'
 
+  // Auto-scroll to Recommended section on fresh navigation
+  useEffect(() => {
+    if (navType !== "POP" && !hasAutoScrolledRef.current && selectedCategory !== 'all' && filteredRecommended.length > 0 && recommendedSectionRef.current) {
+      hasAutoScrolledRef.current = true
+      setTimeout(() => {
+        if (recommendedSectionRef.current) {
+          const topOffset = recommendedSectionRef.current.getBoundingClientRect().top + window.scrollY - 80 // adjust for sticky headers
+          window.scrollTo({ top: topOffset, behavior: 'smooth' })
+        }
+      }, 100)
+    }
+  }, [navType, selectedCategory, filteredRecommended.length])
+
   return (
     <div className={`min-h-screen bg-white dark:bg-[#0a0a0a] ${shouldShowGrayscale ? 'grayscale opacity-75' : ''}`}>
       {/* Sticky Header */}
       <div className="sticky top-0 z-20 bg-white/95 dark:bg-[#1a1a1a]/95 backdrop-blur supports-[backdrop-filter]:bg-white/90 shadow-sm">
         <div className="max-w-7xl mx-auto">
           {/* Search Bar with Back Button */}
-          <div className="flex items-center gap-2 px-3 md:px-6 py-3 border-b border-gray-100 dark:border-gray-800">
-            <button
-              onClick={() => navigate('/user')}
-              className="w-9 h-9 flex items-center justify-center hover:bg-gray-100 dark:hover:bg-gray-800 rounded-full transition-colors flex-shrink-0"
-            >
-              <ArrowLeft className="h-5 w-5 text-gray-700 dark:text-gray-300" />
-            </button>
+          {!hideHeader && (
+            <div className="flex items-center gap-2 px-3 md:px-6 py-3 border-b border-gray-100 dark:border-gray-800">
+              <button
+                onClick={() => navigate('/user')}
+                className="w-9 h-9 flex items-center justify-center hover:bg-gray-100 dark:hover:bg-gray-800 rounded-full transition-colors flex-shrink-0"
+              >
+                <ArrowLeft className="h-5 w-5 text-gray-700 dark:text-gray-300" />
+              </button>
 
-            <div className="flex-1 relative max-w-2xl">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-500" />
-              <Input
-                placeholder="Restaurant name or a dish..."
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                className="pl-10 pr-4 h-11 md:h-12 rounded-lg border-gray-300 dark:border-gray-700 bg-gray-50 dark:bg-[#1a1a1a] focus:bg-white dark:focus:bg-[#2a2a2a] focus:border-gray-500 dark:focus:border-gray-600 text-sm md:text-base dark:text-white placeholder:text-gray-600 dark:placeholder:text-gray-400"
-              />
+              <div className="flex-1 relative max-w-2xl">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-500" />
+                <Input
+                  placeholder="Restaurant name or a dish..."
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  className="pl-10 pr-4 h-11 md:h-12 rounded-lg border-gray-300 dark:border-gray-700 bg-gray-50 dark:bg-[#1a1a1a] focus:bg-white dark:focus:bg-[#2a2a2a] focus:border-gray-500 dark:focus:border-gray-600 text-sm md:text-base dark:text-white placeholder:text-gray-600 dark:placeholder:text-gray-400"
+                />
+              </div>
             </div>
-          </div>
+          )}
 
           {/* Browse Category Section */}
-          <div
-            ref={categoryScrollRef}
-            className="flex gap-4 md:gap-6 overflow-x-auto scrollbar-hide px-4 md:px-6 py-3 bg-white dark:bg-[#1a1a1a] border-b border-gray-100 dark:border-gray-800"
-            style={{
-              scrollbarWidth: "none",
-              msOverflowStyle: "none",
-            }}
-          >
-            {showCategorySkeleton ? (
-              <CategoryChipRowSkeleton className="py-3" />
-            ) : (
-              categories && categories.length > 0 ? categories.map((cat) => {
-                const categorySlug = cat.slug || cat.id
-                const isSelected = selectedCategory === categorySlug || selectedCategory === cat.id
-                const isAllCategory = categorySlug === "all" || cat.id === "all"
-                return (
-                  <button
-                    key={cat.id}
-                    onClick={() => handleCategorySelect(cat)}
-                    data-category-selected={isSelected ? "true" : "false"}
-                    className={`flex flex-col items-center gap-1.5 flex-shrink-0 pb-2 transition-all ${isSelected ? 'border-b-2 border-[#DC2626]' : ''
-                      }`}
-                  >
-                    {isAllCategory ? (
-                      <div className={`w-16 h-16 md:w-20 md:h-20 rounded-full border-2 transition-all flex items-center justify-center ${isSelected ? 'border-[#DC2626] shadow-lg bg-[#DC2626]/10 dark:bg-[#DC2626]/20' : 'border-gray-200 dark:border-gray-700 bg-white dark:bg-[#222222]'}`}>
-                        <Grid2x2 className={`h-6 w-6 md:h-7 md:w-7 ${isSelected ? 'text-[#DC2626]' : 'text-gray-500 dark:text-gray-400'}`} />
-                      </div>
-                    ) : cat.image ? (
-                  <div className={`w-16 h-16 md:w-20 md:h-20 rounded-full overflow-hidden border-2 transition-all ${isSelected ? 'border-[#DC2626] shadow-lg' : 'border-transparent'
+          {!hideCategoryCarousel && (
+            <div
+              ref={categoryScrollRef}
+              className="flex gap-4 md:gap-6 overflow-x-auto scrollbar-hide px-4 md:px-6 py-3 bg-white dark:bg-[#1a1a1a] border-b border-gray-100 dark:border-gray-800"
+              style={{
+                scrollbarWidth: "none",
+                msOverflowStyle: "none",
+              }}
+            >
+              {showCategorySkeleton ? (
+                <CategoryChipRowSkeleton className="py-3" />
+              ) : (
+                categories && categories.length > 0 ? categories.map((cat) => {
+                  const categorySlug = cat.slug || cat.id
+                  const isSelected = selectedCategory === categorySlug || selectedCategory === cat.id
+                  const isAllCategory = categorySlug === "all" || cat.id === "all"
+                  return (
+                    <button
+                      key={cat.id}
+                      onClick={() => handleCategorySelect(cat)}
+                      data-category-selected={isSelected ? "true" : "false"}
+                      className={`flex flex-col items-center gap-1.5 flex-shrink-0 pb-2 transition-all ${isSelected ? 'border-b-2 border-[#DC2626]' : ''
+                        }`}
+                    >
+                      {isAllCategory ? (
+                        <div className={`w-16 h-16 md:w-20 md:h-20 rounded-full border-2 transition-all flex items-center justify-center ${isSelected ? 'border-[#DC2626] shadow-lg bg-[#DC2626]/10 dark:bg-[#DC2626]/20' : 'border-gray-200 dark:border-gray-700 bg-white dark:bg-[#222222]'}`}>
+                          <Grid2x2 className={`h-6 w-6 md:h-7 md:w-7 ${isSelected ? 'text-[#DC2626]' : 'text-gray-500 dark:text-gray-400'}`} />
+                        </div>
+                      ) : cat.image ? (
+                    <div className={`w-16 h-16 md:w-20 md:h-20 rounded-full overflow-hidden border-2 transition-all ${isSelected ? 'border-[#DC2626] shadow-lg' : 'border-transparent'
+                          }`}>
+                          <img
+                            src={cat.image}
+                            alt={cat.name}
+                            className="w-full h-full object-cover"
+                            onError={(e) => {
+                              // If the backend image is missing/broken, show initials instead of fake assets.
+                              e.target.style.display = 'none'
+                            }}
+                          />
+                        </div>
+                      ) : (
+                        <div
+                          className={`w-16 h-16 md:w-20 md:h-20 rounded-full bg-gray-100 dark:bg-gray-800 flex items-center justify-center border-2 transition-all ${isSelected ? 'border-[#DC2626] shadow-lg bg-[#DC2626]/10 dark:bg-[#DC2626]/20' : 'border-transparent'
+                            }`}
+                          aria-label={`${cat.name} category`}
+                        >
+                          <span className="text-sm md:text-base font-semibold text-gray-600 dark:text-gray-300">
+                            {String(cat.name || "?").trim().slice(0, 2).toUpperCase()}
+                          </span>
+                        </div>
+                      )}
+                      <span className={`text-xs md:text-sm font-medium whitespace-nowrap ${isSelected ? 'text-[#DC2626] dark:text-[#DC2626]' : 'text-gray-600 dark:text-gray-400'
                         }`}>
-                        <img
-                          src={cat.image}
-                          alt={cat.name}
-                          className="w-full h-full object-cover"
-                          onError={(e) => {
-                            // If the backend image is missing/broken, show initials instead of fake assets.
-                            e.target.style.display = 'none'
-                          }}
-                        />
-                      </div>
-                    ) : (
-                      <div
-                        className={`w-16 h-16 md:w-20 md:h-20 rounded-full bg-gray-100 dark:bg-gray-800 flex items-center justify-center border-2 transition-all ${isSelected ? 'border-[#DC2626] shadow-lg bg-[#DC2626]/10 dark:bg-[#DC2626]/20' : 'border-transparent'
-                          }`}
-                        aria-label={`${cat.name} category`}
-                      >
-                        <span className="text-sm md:text-base font-semibold text-gray-600 dark:text-gray-300">
-                          {String(cat.name || "?").trim().slice(0, 2).toUpperCase()}
-                        </span>
-                      </div>
-                    )}
-                    <span className={`text-xs md:text-sm font-medium whitespace-nowrap ${isSelected ? 'text-[#DC2626] dark:text-[#DC2626]' : 'text-gray-600 dark:text-gray-400'
-                      }`}>
-                      {cat.name}
-                    </span>
-                  </button>
+                        {cat.name}
+                      </span>
+                    </button>
+                  )
+                }) : (
+                  <div className="flex items-center justify-center py-4">
+                    <span className="text-sm text-gray-600 dark:text-gray-400">No categories available</span>
+                  </div>
                 )
-              }) : (
-                <div className="flex items-center justify-center py-4">
-                  <span className="text-sm text-gray-600 dark:text-gray-400">No categories available</span>
-                </div>
-              )
-            )}
-          </div>
+              )}
+            </div>
+          )}
 
           {/* Filters */}
-          <div className="flex flex-col md:flex-row md:flex-wrap gap-2 px-4 md:px-6 py-3">
-            {/* Row 1 */}
-            <div
-              className="flex items-center gap-2 overflow-x-auto md:overflow-x-visible scrollbar-hide pb-1 md:pb-0"
-              style={{
-                scrollbarWidth: "none",
-                msOverflowStyle: "none",
-              }}
-            >
-              <Button
-                variant="outline"
-                onClick={() => setIsFilterOpen(true)}
-                className="h-7 md:h-8 px-2.5 md:px-3 rounded-md flex items-center gap-1.5 whitespace-nowrap shrink-0 transition-all bg-white dark:bg-[#1a1a1a] border border-gray-200 dark:border-gray-800 hover:bg-gray-50 dark:hover:bg-gray-800"
+          {!hideFilters && (
+            <div className="flex flex-col md:flex-row md:flex-wrap gap-2 px-4 md:px-6 py-3">
+              {/* Row 1 */}
+              <div
+                className="flex items-center gap-2 overflow-x-auto md:overflow-x-visible scrollbar-hide pb-1 md:pb-0"
+                style={{
+                  scrollbarWidth: "none",
+                  msOverflowStyle: "none",
+                }}
               >
-                <SlidersHorizontal className="h-3.5 w-3.5 md:h-4 md:w-4" />
-                <span className="text-xs md:text-sm font-bold text-black dark:text-white">Filters</span>
-              </Button>
-              {[
-                { id: 'under-30-mins', label: 'Under 30 mins' },
-                { id: 'delivery-under-45', label: 'Under 45 mins' },
-                { id: 'rating-4-plus', label: 'Rating 4.0+' },
-                { id: 'rating-45-plus', label: 'Rating 4.5+' },
-              ].map((filter) => {
-                const isActive = activeFilters.has(filter.id)
-                return (
-                  <Button
-                    key={filter.id}
-                    variant="outline"
-                    onClick={() => toggleFilter(filter.id)}
-                    className={`h-7 md:h-8 px-2.5 md:px-3 rounded-md flex items-center gap-1.5 whitespace-nowrap shrink-0 transition-all ${isActive
-                      ? 'bg-[#DC2626] text-white border border-[#DC2626] hover:bg-[#991B1B]'
-                      : 'bg-white dark:bg-[#1a1a1a] border border-gray-200 dark:border-gray-800 hover:bg-gray-50 dark:hover:bg-gray-800'
-                      }`}
-                  >
-                    <span className={`text-xs md:text-sm text-black dark:text-white font-bold ${isActive ? 'text-white' : 'text-black dark:text-white'}`}>{filter.label}</span>
-                  </Button>
-                )
-              })}
-            </div>
+                <Button
+                  variant="outline"
+                  onClick={() => setIsFilterOpen(true)}
+                  className="h-7 md:h-8 px-2.5 md:px-3 rounded-md flex items-center gap-1.5 whitespace-nowrap shrink-0 transition-all bg-white dark:bg-[#1a1a1a] border border-gray-200 dark:border-gray-800 hover:bg-gray-50 dark:hover:bg-gray-800"
+                >
+                  <SlidersHorizontal className="h-3.5 w-3.5 md:h-4 md:w-4" />
+                  <span className="text-xs md:text-sm font-bold text-black dark:text-white">Filters</span>
+                </Button>
+                {[
+                  { id: 'under-30-mins', label: 'Under 30 mins' },
+                  { id: 'delivery-under-45', label: 'Under 45 mins' },
+                  { id: 'rating-4-plus', label: 'Rating 4.0+' },
+                  { id: 'rating-45-plus', label: 'Rating 4.5+' },
+                ].map((filter) => {
+                  const isActive = activeFilters.has(filter.id)
+                  return (
+                    <Button
+                      key={filter.id}
+                      variant="outline"
+                      onClick={() => toggleFilter(filter.id)}
+                      className={`h-7 md:h-8 px-2.5 md:px-3 rounded-md flex items-center gap-1.5 whitespace-nowrap shrink-0 transition-all ${isActive
+                        ? 'bg-[#DC2626] text-white border border-[#DC2626] hover:bg-[#991B1B]'
+                        : 'bg-white dark:bg-[#1a1a1a] border border-gray-200 dark:border-gray-800 hover:bg-gray-50 dark:hover:bg-gray-800'
+                        }`}
+                    >
+                      <span className={`text-xs md:text-sm text-black dark:text-white font-bold ${isActive ? 'text-white' : 'text-black dark:text-white'}`}>{filter.label}</span>
+                    </Button>
+                  )
+                })}
+              </div>
 
-            {/* Row 2 */}
-            <div
-              className="flex items-center gap-2 overflow-x-auto md:overflow-x-visible scrollbar-hide pb-1 md:pb-0"
-              style={{
-                scrollbarWidth: "none",
-                msOverflowStyle: "none",
-              }}
-            >
-              {[
-                { id: 'distance-under-1km', label: 'Under 1km', icon: MapPin },
-                { id: 'distance-under-2km', label: 'Under 2km', icon: MapPin },
-                { id: 'flat-50-off', label: 'Flat 50% OFF' },
-                { id: 'under-250', label: 'Under ₹250' },
-              ].map((filter) => {
-                const Icon = filter.icon
-                const isActive = activeFilters.has(filter.id)
-                return (
-                  <Button
-                    key={filter.id}
-                    variant="outline"
-                    onClick={() => toggleFilter(filter.id)}
-                    className={`h-7 md:h-8 px-2.5 md:px-3 rounded-md flex items-center gap-1.5 whitespace-nowrap shrink-0 transition-all ${isActive
-                      ? 'bg-[#DC2626] text-white border border-[#DC2626] hover:bg-[#991B1B]'
-                      : 'bg-white dark:bg-[#1a1a1a] border border-gray-200 dark:border-gray-800 hover:bg-gray-50 dark:hover:bg-gray-800'
-                      }`}
-                  >
-                    {Icon && <Icon className={`h-3.5 w-3.5 md:h-4 md:w-4 ${isActive ? 'text-white' : 'text-gray-900 dark:text-white'}`} />}
-                    <span className={`text-xs md:text-sm font-bold ${isActive ? 'text-white' : 'text-black dark:text-white'}`}>{filter.label}</span>
-                  </Button>
-                )
-              })}
+              {/* Row 2 */}
+              <div
+                className="flex items-center gap-2 overflow-x-auto md:overflow-x-visible scrollbar-hide pb-1 md:pb-0"
+                style={{
+                  scrollbarWidth: "none",
+                  msOverflowStyle: "none",
+                }}
+              >
+                {[
+                  { id: 'distance-under-1km', label: 'Under 1km', icon: MapPin },
+                  { id: 'distance-under-2km', label: 'Under 2km', icon: MapPin },
+                  { id: 'flat-50-off', label: 'Flat 50% OFF' },
+                  { id: 'under-250', label: 'Under ₹250' },
+                ].map((filter) => {
+                  const Icon = filter.icon
+                  const isActive = activeFilters.has(filter.id)
+                  return (
+                    <Button
+                      key={filter.id}
+                      variant="outline"
+                      onClick={() => toggleFilter(filter.id)}
+                      className={`h-7 md:h-8 px-2.5 md:px-3 rounded-md flex items-center gap-1.5 whitespace-nowrap shrink-0 transition-all ${isActive
+                        ? 'bg-[#DC2626] text-white border border-[#DC2626] hover:bg-[#991B1B]'
+                        : 'bg-white dark:bg-[#1a1a1a] border border-gray-200 dark:border-gray-800 hover:bg-gray-50 dark:hover:bg-gray-800'
+                        }`}
+                    >
+                      {Icon && <Icon className={`h-3.5 w-3.5 md:h-4 md:w-4 ${isActive ? 'text-white' : 'text-gray-900 dark:text-white'}`} />}
+                      <span className={`text-xs md:text-sm font-bold ${isActive ? 'text-white' : 'text-black dark:text-white'}`}>{filter.label}</span>
+                    </Button>
+                  )
+                })}
+              </div>
             </div>
-          </div>
+          )}
         </div>
       </div>
 
@@ -1511,7 +1642,7 @@ export default function CategoryPage() {
         <div className="max-w-7xl mx-auto">
           {/* RECOMMENDED FOR YOU Section - Hide when "All" category is selected */}
           {filteredRecommended.length > 0 && selectedCategory !== 'all' && (
-            <section>
+            <section ref={recommendedSectionRef}>
               <h2 className="text-xs sm:text-sm md:text-base font-semibold text-gray-400 dark:text-gray-500 tracking-widest uppercase mb-4 md:mb-6">
                 RECOMMENDED FOR YOU
               </h2>
@@ -1523,11 +1654,12 @@ export default function CategoryPage() {
                   : filteredRecommended.slice(0, 6)
                 ).map((restaurant) => {
                   return (
-                    <Link
-                      key={restaurant.id}
-                      to={`/user/restaurants/${restaurant.name.toLowerCase().replace(/\s+/g, '-')}`}
-                      className="block"
-                    >
+                      <Link
+                        key={restaurant.id}
+                        to={`/user/restaurants/${restaurant.slug || restaurant._id || restaurant.restaurantId || restaurant.name.toLowerCase().replace(/\s+/g, '-')}${restaurant.dishId ? `?dish=${restaurant.dishId}` : ''}`}
+                        state={{ restaurantData: restaurant }}
+                        className="block"
+                      >
                       <div className={`group ${shouldShowGrayscale ? 'grayscale opacity-75' : ''}`}>
                         {/* Image Container */}
                         <div className="relative aspect-square rounded-xl md:rounded-2xl overflow-hidden mb-2">
@@ -1625,11 +1757,11 @@ export default function CategoryPage() {
             {/* Large Restaurant Cards */}
             <div className={`grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 md:gap-5 lg:gap-6 xl:gap-7 items-stretch ${showRestaurantSkeleton ? 'opacity-50' : 'opacity-100'} transition-opacity duration-300`}>
               {filteredAllRestaurants.map((restaurant) => {
-                const restaurantSlug = restaurant.name.toLowerCase().replace(/\s+/g, "-")
+                const restaurantSlug = restaurant.slug || restaurant._id || restaurant.restaurantId || restaurant.name.toLowerCase().replace(/\s+/g, "-")
                 const isFavorite = favorites.has(restaurant.id)
 
                 return (
-                  <Link key={restaurant.id} to={`/user/restaurants/${restaurantSlug}`} className="h-full flex">
+                  <Link key={restaurant.id} to={`/user/restaurants/${restaurantSlug}${restaurant.dishId ? `?dish=${restaurant.dishId}` : ''}`} state={{ restaurantData: restaurant }} className="h-full flex">
                     <Card className={`overflow-hidden cursor-pointer gap-0 border-0 dark:border-gray-800 group bg-white dark:bg-[#1a1a1a] shadow-md hover:shadow-xl transition-all duration-300 py-0 rounded-md h-full flex flex-col w-full ${shouldShowGrayscale ? 'grayscale opacity-75' : ''
                       }`}>
                       {/* Image Section */}
@@ -1758,7 +1890,7 @@ export default function CategoryPage() {
             </div>
 
             {/* Empty State */}
-            {filteredAllRestaurants.length === 0 && (
+            {filteredAllRestaurants.length === 0 && !showRestaurantSkeleton && !loadingRestaurants && !loadingZone && !loadingCategories && !isEnrichingMenus && (
               <div className="text-center py-12 md:py-16">
                 <p className="text-gray-500 dark:text-gray-400 text-sm md:text-base">
                   {searchQuery

@@ -108,6 +108,7 @@ import HomeHeader from "@food/components/user/home/HomeHeader";
 import QuickSection from "@food/components/user/home/QuickSection";
 import PromoRow from "@food/components/user/home/PromoRow";
 import FestBanner from "@food/components/user/home/FestBanner";
+import { clearCategoryCache } from "./CategoryPage";
 
 // Persistence for back-navigation and refresh speed
 const getSessionCache = (key) => {
@@ -1179,9 +1180,7 @@ export default function Home() {
   const gsapAnimationsRef = useRef([]);
   // Show skeletons immediately while loading — delayed toggles caused visible layout swap (CLS).
   const showBannerSkeleton = loadingBanners;
-  const showCategorySkeleton = loadingRealCategories || loadingMenuCategories;
   const showExploreSkeleton = loadingLandingConfig;
-  const showRestaurantSkeleton = isLoadingFilterResults || loadingRestaurants;
   // Safely get profile context - handle case when ProfileProvider is not available
   let profileContext = null;
   try {
@@ -1219,71 +1218,7 @@ export default function Home() {
   const [showManageCollections, setShowManageCollections] = useState(false);
   const [selectedRestaurantSlug, setSelectedRestaurantSlug] = useState(null);
 
-  // Fetch categories (zone-aware) for the homepage category rail.
-  useEffect(() => {
-    let cancelled = false
-    const run = async () => {
-      const zoneKey = String(zoneId || "global")
-      try {
-        // Dedupe repeated calls (StrictMode + zone settling). Cache per zoneKey and share in-flight request.
-        const cached = publicCategoriesCacheRef.current.get(zoneKey)
-        if (cached) {
-          if (!cancelled) setRealCategories(cached)
-          return
-        }
 
-        const inFlight = publicCategoriesInFlightRef.current.get(zoneKey)
-        if (inFlight) {
-          const categories = await inFlight
-          if (!cancelled) setRealCategories(categories)
-          return
-        }
-
-        setLoadingRealCategories(true)
-        const promise = (async () => {
-          const res = await adminAPI.getPublicCategories(zoneId ? { zoneId } : {})
-          const list =
-            res?.data?.data?.categories ||
-            res?.data?.categories ||
-            []
-          const categories = Array.isArray(list)
-            ? list.map((cat, idx) => ({
-              id: String(cat?.id || cat?._id || cat?.slug || idx),
-              name: cat?.name || "",
-              slug: cat?.slug || String(cat?.name || "").toLowerCase().replace(/\s+/g, "-"),
-              image:
-                normalizeImageUrl(cat?.image || cat?.imageUrl) ||
-                foodImages[idx % foodImages.length] ||
-                foodImages[0],
-              type: cat?.type || "",
-            }))
-            : []
-
-          publicCategoriesCacheRef.current.set(zoneKey, categories)
-          return categories
-        })()
-
-        publicCategoriesInFlightRef.current.set(zoneKey, promise)
-        const categories = await promise
-        publicCategoriesInFlightRef.current.delete(zoneKey)
-
-        if (!cancelled) {
-          setRealCategories(categories);
-          HOME_CATEGORIES_CACHE = categories;
-          setSessionCache('food_home_categories', categories);
-        }
-      } catch (err) {
-        debugWarn("Failed to fetch categories:", err)
-        if (!cancelled) setRealCategories(HOME_CATEGORIES_CACHE || [])
-      } finally {
-        if (!cancelled) setLoadingRealCategories(false)
-      }
-    }
-    run()
-    return () => {
-      cancelled = true
-    }
-  }, [zoneId, normalizeImageUrl])
 
   // Memoize cartCount to prevent recalculation on every render - use cart directly
   const cartCount = useMemo(
@@ -1372,73 +1307,92 @@ export default function Home() {
     return null;
   }, [defaultSavedAddress]);
 
-  const effectiveLocation = useMemo(() => {
-    let deliveryAddressMode = "saved";
-    try {
-      deliveryAddressMode =
-        localStorage.getItem("deliveryAddressMode") || "saved";
-    } catch {
-      deliveryAddressMode = "saved";
+  const effectiveLocation = location;
+
+  const { zoneId: effectiveZoneId, loading: effectiveZoneLoading } = useZone(effectiveLocation);
+
+  const showCategorySkeleton = loadingRealCategories || loadingMenuCategories || zoneLoading || effectiveZoneLoading;
+  const showRestaurantSkeleton = isLoadingFilterResults || loadingRestaurants || zoneLoading || effectiveZoneLoading;
+
+  // Clear states immediately on zone loading to prevent displaying stale data from previous zones
+  useEffect(() => {
+    if (zoneLoading || effectiveZoneLoading) {
+      setRealCategories([]);
+      setRestaurantsData([]);
+      setLoadingRealCategories(true);
+      setLoadingRestaurants(true);
     }
+  }, [zoneLoading, effectiveZoneLoading]);
 
-    if (deliveryAddressMode === "current") {
-      return location;
-    }
+  // Fetch categories (zone-aware) for the homepage category rail.
+  useEffect(() => {
+    if (zoneLoading || effectiveZoneLoading) return;
 
-    if (
-      defaultSavedAddressLocation &&
-      Number.isFinite(defaultSavedAddressLocation.latitude) &&
-      Number.isFinite(defaultSavedAddressLocation.longitude)
-    ) {
-      const resolvedAddress = formatSavedAddress(defaultSavedAddress);
-      return {
-        ...(location || {}),
-        latitude: defaultSavedAddressLocation.latitude,
-        longitude: defaultSavedAddressLocation.longitude,
-        area:
-          defaultSavedAddress?.additionalDetails ||
-          defaultSavedAddress?.street ||
-          defaultSavedAddress?.area ||
-          location?.area ||
-          "",
-        city: defaultSavedAddress?.city || location?.city || "",
-        state: defaultSavedAddress?.state || location?.state || "",
-        address:
-          resolvedAddress ||
-          defaultSavedAddress?.address ||
-          location?.address ||
-          "",
-        formattedAddress:
-          resolvedAddress ||
-          defaultSavedAddress?.formattedAddress ||
-          location?.formattedAddress ||
-          "",
-      };
-    }
+    let cancelled = false;
+    const run = async () => {
+      const zoneKey = String(zoneId || "global");
+      try {
+        // Dedupe repeated calls (StrictMode + zone settling). Cache per zoneKey and share in-flight request.
+        const cached = publicCategoriesCacheRef.current.get(zoneKey);
+        if (cached) {
+          if (!cancelled) setRealCategories(cached);
+          return;
+        }
 
-    return location;
-  }, [
-    defaultSavedAddress,
-    defaultSavedAddressLocation,
-    formatSavedAddress,
-    location,
-  ]);
+        const inFlight = publicCategoriesInFlightRef.current.get(zoneKey);
+        if (inFlight) {
+          const categories = await inFlight;
+          if (!cancelled) setRealCategories(categories);
+          return;
+        }
 
-  const { zoneId: effectiveZoneId } = useZone(effectiveLocation);
+        setLoadingRealCategories(true);
+        const promise = (async () => {
+          const res = await adminAPI.getPublicCategories(zoneId ? { zoneId } : {});
+          const list =
+            res?.data?.data?.categories ||
+            res?.data?.categories ||
+            [];
+          const categories = Array.isArray(list)
+            ? list.map((cat, idx) => ({
+              id: String(cat?.id || cat?._id || cat?.slug || idx),
+              name: cat?.name || "",
+              slug: cat?.slug || String(cat?.name || "").toLowerCase().replace(/\s+/g, "-"),
+              image:
+                normalizeImageUrl(cat?.image || cat?.imageUrl) ||
+                foodImages[idx % foodImages.length] ||
+                foodImages[0],
+              type: cat?.type || "",
+            }))
+            : [];
 
-  const {
-    isOutOfService: isSavedAddressOutOfService,
-    loading: savedAddressZoneLoading,
-    error: savedAddressZoneError,
-  } = useZone(defaultSavedAddressLocation);
+          publicCategoriesCacheRef.current.set(zoneKey, categories);
+          return categories;
+        })();
 
-  const hasSavedAddress = Boolean(defaultSavedAddress && savedAddressText);
-  const shouldShowOutOfZoneHome =
-    hasSavedAddress &&
-    Boolean(defaultSavedAddressLocation) &&
-    !savedAddressZoneLoading &&
-    !savedAddressZoneError &&
-    isSavedAddressOutOfService;
+        publicCategoriesInFlightRef.current.set(zoneKey, promise);
+        const categories = await promise;
+        publicCategoriesInFlightRef.current.delete(zoneKey);
+
+        if (!cancelled) {
+          setRealCategories(categories);
+          HOME_CATEGORIES_CACHE = categories;
+          setSessionCache('food_home_categories', categories);
+        }
+      } catch (err) {
+        debugWarn("Failed to fetch categories:", err);
+        if (!cancelled) setRealCategories(HOME_CATEGORIES_CACHE || []);
+      } finally {
+        if (!cancelled) setLoadingRealCategories(false);
+      }
+    };
+    run();
+    return () => {
+      cancelled = true;
+    };
+  }, [zoneId, zoneLoading, effectiveZoneLoading, normalizeImageUrl]);
+
+
 
   // Mock points value - replace with actual points from context/store
   const userPoints = 99;
@@ -1467,6 +1421,15 @@ export default function Home() {
   const restaurantsRequestSeqRef = useRef(0);
   const menuUnionRequestSeqRef = useRef(0);
   const menuUnionCacheRef = useRef(new Map());
+
+  // Clear category cache when returning to the Home page
+  useEffect(() => {
+    try {
+      clearCategoryCache();
+    } catch (e) {
+      // Ignore
+    }
+  }, []);
 
   // Scroll tracking effect
   useEffect(() => {
@@ -1501,6 +1464,8 @@ export default function Home() {
   // Fetch restaurants from API with filters
   const fetchRestaurants = useCallback(
     async (filters = {}) => {
+      if (zoneLoading || effectiveZoneLoading) return;
+
       const requestSeq = ++restaurantsRequestSeqRef.current;
       try {
         const isCacheEmpty = !HOME_RESTAURANTS_CACHE || (Array.isArray(HOME_RESTAURANTS_CACHE) && HOME_RESTAURANTS_CACHE.length === 0);
@@ -1791,6 +1756,8 @@ export default function Home() {
       effectiveZoneId,
       orderType,
       isTakeawayPage,
+      zoneLoading,
+      effectiveZoneLoading,
     ],
   );
 
@@ -2336,23 +2303,7 @@ export default function Home() {
   return (
 
     <div className="relative min-h-screen bg-white dark:bg-[#0a0a0a] pb-16 md:pb-6 overflow-x-clip">
-      {shouldShowOutOfZoneHome && (
-        <div className="fixed inset-0 z-[90] pointer-events-none">
-          <div className="absolute inset-0 bg-slate-300/35 backdrop-blur-[1px]" />
-          <div className="absolute top-20 left-1/2 -translate-x-1/2 px-4">
-            <div className="rounded-xl border border-red-200 bg-red-50/95 text-red-700 px-4 py-2 shadow-sm text-sm sm:text-base font-semibold max-w-[calc(100vw-2rem)] text-center">
-              You are out of zone
-            </div>
-          </div>
-        </div>
-      )}
-
-      <div
-        className={
-          shouldShowOutOfZoneHome
-            ? "grayscale opacity-70 transition-all duration-300"
-            : "transition-all duration-300"
-        }>
+      <div className="transition-all duration-300">
         {/* Unified Background for Entire Page - Vibrant Food Theme */}
         <div className="absolute top-0 left-0 right-0 bottom-0 pointer-events-none overflow-hidden z-0">
           {/* Main Background */}

@@ -94,7 +94,7 @@ export default function CustomizationSettings() {
           const next = {};
           const data = res?.data?.data || {};
           for (const t of CUSTOMIZATION_TOGGLES) {
-            next[t.key] = data[t.key] !== false;
+            next[t.key] = data[t.key] !== undefined ? data[t.key] : t.defaultValue;
           }
           setSettings(next);
         }

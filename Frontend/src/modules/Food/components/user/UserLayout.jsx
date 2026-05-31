@@ -161,8 +161,9 @@ function LocationSelectorProvider({ children }) {
 
 function UserLayoutContent() {
   const location = useLocation()
-  const { location: geoLocation, loading: isGeoLoading } = useGeoLocation()
-  const { isOutOfService: isOutOfZone, loading: isZoneLoading, zoneStatus } = useZone(geoLocation)
+  const { location: activeLocation, loading: isGeoLoading } = useGeoLocation()
+  const { loading: isProfileLoading } = useProfile()
+  const { isOutOfService: isOutOfZone, loading: isZoneLoading, zoneStatus } = useZone(activeLocation)
   const { openLocationSelector } = useLocationSelector()
   const navigationType = useNavigationType()
   const [isLoginModalOpen, setIsLoginModalOpen] = useState(false)
@@ -198,6 +199,14 @@ function UserLayoutContent() {
                        normalizedPath.includes('privacy') || 
                        normalizedPath.includes('support');
 
+  const shouldBlockOutOfZone = 
+    !isAuthPage && 
+    !isPolicyPage &&
+    !normalizedPath.includes('profile') &&
+    !normalizedPath.includes('wallet') &&
+    !normalizedPath.includes('help') &&
+    !normalizedPath.includes('address');
+
   // Debounced loading state to prevent flickering and ensure smooth navigation transitions
   const { showGlobalLoader, setShowGlobalLoader } = useLocationSelector()
 
@@ -221,8 +230,8 @@ function UserLayoutContent() {
       return
     }
 
-    if (isZoneLoading || isGeoLoading) {
-      const hasLocationData = geoLocation?.latitude && geoLocation?.longitude;
+    if (isZoneLoading || isGeoLoading || isProfileLoading) {
+      const hasLocationData = activeLocation?.latitude && activeLocation?.longitude;
       const hasZoneData = zoneStatus && zoneStatus !== "loading";
       // ONLY show global overlay for truly manual location updates (user explicitly changed location)
       // Never block the page for silent background GPS refreshes
@@ -241,7 +250,7 @@ function UserLayoutContent() {
       }, 300)
       return () => clearTimeout(timer)
     }
-  }, [isZoneLoading, isGeoLoading, isAuthPage, isPolicyPage, geoLocation?.latitude, geoLocation?.longitude, zoneStatus])
+  }, [isZoneLoading, isGeoLoading, isProfileLoading, isAuthPage, isPolicyPage, activeLocation?.latitude, activeLocation?.longitude, zoneStatus])
 
   // Global Refresh Handler - Scroll to top ONLY on browser refresh
   useEffect(() => {
@@ -349,9 +358,9 @@ function UserLayoutContent() {
       
       {isInitialChecking && !location.pathname.includes('/search') ? (
         <AppShellSkeleton />
-      ) : (zoneStatus === "OUT_OF_SERVICE") && isMainPage ? (
+      ) : (zoneStatus === "OUT_OF_SERVICE" && !isZoneLoading && !isGeoLoading) && shouldBlockOutOfZone ? (
         <OutOfZoneScreen 
-          location={geoLocation} 
+          location={activeLocation} 
           handleLocationClick={openLocationSelector} 
         />
       ) : (

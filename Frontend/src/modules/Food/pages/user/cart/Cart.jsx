@@ -1407,6 +1407,11 @@ export default function Cart() {
           : `${address.street}, ${address.city}, ${address.state}${address.zipCode ? ` ${address.zipCode}` : ''}`
       }
       localStorage.setItem("userLocation", JSON.stringify(locationData))
+      try {
+        window.dispatchEvent(new CustomEvent("userLocationUpdated"))
+      } catch (evtErr) {
+        debugWarn("Failed to dispatch custom event:", evtErr)
+      }
       // User selected a saved address from Cart; prefer saved mode.
       try {
         localStorage.setItem("deliveryAddressMode", "saved")

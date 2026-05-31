@@ -2007,6 +2007,25 @@ export default function LocationSelectorOverlay({ isOpen, onClose }) {
         } catch {}
       }
 
+      // Update active location in localStorage to this newly saved address
+      try {
+        const locationData = {
+          label: addressToSave.label || "Home",
+          city: addressToSave.city,
+          state: addressToSave.state,
+          address: `${addressToSave.street}, ${addressToSave.city}`,
+          area: addressToSave.additionalDetails || "",
+          zipCode: addressToSave.zipCode,
+          latitude: addressToSave.latitude,
+          longitude: addressToSave.longitude,
+          formattedAddress: `${addressToSave.street}, ${addressToSave.city}, ${addressToSave.state}`
+        }
+        localStorage.setItem("userLocation", JSON.stringify(locationData))
+        window.dispatchEvent(new CustomEvent("userLocationUpdated"))
+      } catch (locationErr) {
+        debugError("Failed to update userLocation after save:", locationErr)
+      }
+
       // Reset form
       setAddressFormData({
         street: "",
@@ -2096,6 +2115,11 @@ export default function LocationSelectorOverlay({ isOpen, onClose }) {
         formattedAddress: `${address.street}, ${address.city}, ${address.state}`
       }
       localStorage.setItem("userLocation", JSON.stringify(locationData))
+      try {
+        window.dispatchEvent(new CustomEvent("userLocationUpdated"))
+      } catch (evtErr) {
+        debugWarn("Failed to dispatch custom event:", evtErr)
+      }
 
       // Update map position to show selected address
       setMapPosition([latitude, longitude])

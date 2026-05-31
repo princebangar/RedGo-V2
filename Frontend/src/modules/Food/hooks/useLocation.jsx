@@ -1,5 +1,6 @@
-import { useState, useEffect, useRef } from "react"
+import { useState, useEffect, useRef, useMemo } from "react"
 import { locationAPI, userAPI } from "@food/api"
+import { useProfile } from "@food/context/ProfileContext"
 import apiClient from "@food/api/axios"
 
 const debugLog = (...args) => {}
@@ -1917,8 +1918,92 @@ export function useLocation() {
     }
   }
 
+  const { getDefaultAddress } = useProfile()
+  const defaultSavedAddress = getDefaultAddress?.() || null
+
+  const defaultSavedAddressLocation = useMemo(() => {
+    if (!defaultSavedAddress) return null
+    const coordinates = defaultSavedAddress?.location?.coordinates
+    if (Array.isArray(coordinates) && coordinates.length >= 2) {
+      const lng = parseFloat(coordinates[0])
+      const lat = parseFloat(coordinates[1])
+      if (Number.isFinite(lat) && Number.isFinite(lng)) {
+        return { latitude: lat, longitude: lng }
+      }
+    }
+
+    const lat = parseFloat(defaultSavedAddress?.latitude || defaultSavedAddress?.lat)
+    const lng = parseFloat(defaultSavedAddress?.longitude || defaultSavedAddress?.lng)
+    if (Number.isFinite(lat) && Number.isFinite(lng)) {
+      return { latitude: lat, longitude: lng }
+    }
+
+    return null
+  }, [defaultSavedAddress])
+
+  // Listen to deliveryAddressMode changes using a local state
+  const [addressMode, setAddressMode] = useState(() => {
+    try {
+      return localStorage.getItem("deliveryAddressMode") || "saved"
+    } catch {
+      return "saved"
+    }
+  })
+
+  useEffect(() => {
+    const handleModeUpdate = () => {
+      try {
+        setAddressMode(localStorage.getItem("deliveryAddressMode") || "saved")
+      } catch {}
+    }
+    window.addEventListener("userLocationUpdated", handleModeUpdate)
+    window.addEventListener("deliveryAddressModeUpdated", handleModeUpdate)
+    return () => {
+      window.removeEventListener("userLocationUpdated", handleModeUpdate)
+      window.removeEventListener("deliveryAddressModeUpdated", handleModeUpdate)
+    }
+  }, [])
+
+  const effectiveLocation = useMemo(() => {
+    if (addressMode === "current") {
+      return location
+    }
+
+    if (
+      defaultSavedAddressLocation &&
+      Number.isFinite(defaultSavedAddressLocation.latitude) &&
+      Number.isFinite(defaultSavedAddressLocation.longitude)
+    ) {
+      const parts = [
+        defaultSavedAddress?.additionalDetails,
+        defaultSavedAddress?.street,
+        defaultSavedAddress?.city,
+        defaultSavedAddress?.state,
+        defaultSavedAddress?.zipCode,
+      ].filter(Boolean)
+
+      const resolvedAddress = parts.length > 0 ? parts.join(", ") : defaultSavedAddress?.formattedAddress || defaultSavedAddress?.address || ""
+
+      return {
+        ...(location || {}),
+        latitude: defaultSavedAddressLocation.latitude,
+        longitude: defaultSavedAddressLocation.longitude,
+        area: defaultSavedAddress?.additionalDetails || defaultSavedAddress?.street || defaultSavedAddress?.area || "",
+        city: defaultSavedAddress?.city || "",
+        state: defaultSavedAddress?.state || "",
+        address: resolvedAddress,
+        formattedAddress: resolvedAddress,
+        pincode: defaultSavedAddress?.zipCode || "",
+      }
+    }
+
+    return location
+  }, [location, defaultSavedAddressLocation, addressMode, defaultSavedAddress])
+
   return {
-    location,
+    location: effectiveLocation,
+    geoLocation: location,
+    effectiveLocation,
     loading,
     error,
     permissionGranted,

@@ -62,7 +62,7 @@ export function useZone(location) {
   
   const initialLat = roundCoord(location?.latitude, 6)
   const initialLng = roundCoord(location?.longitude, 6)
-  const prevCoordsRef = useRef({ latitude: initialLat, longitude: initialLng })
+  const prevCoordsRef = useRef({ latitude: null, longitude: null })
   const debounceTimerRef = useRef(null)
 
   // Detect zone when location is available

@@ -1841,19 +1841,23 @@ function RestaurantDetailsContent() {
       return next
     })
     
-    setHighlightedDishId(targetDishId)
-
     // Ensure we start at the top of the page on mount
     window.scrollTo({
       top: 0,
       behavior: "instant"
     })
 
+    // Delay applying the highlight slightly so the CSS transition can smoothly fade it in
+    const applyHighlightTimer = window.setTimeout(() => {
+      setHighlightedDishId(targetDishId)
+    }, 50)
+
     const highlightTimer = window.setTimeout(() => {
       setHighlightedDishId(null)
     }, 3000)
 
     return () => {
+      window.clearTimeout(applyHighlightTimer)
       window.clearTimeout(highlightTimer)
     }
   }, [loadingMenuItems, targetDishId])

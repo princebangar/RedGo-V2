@@ -23,9 +23,8 @@ const OutOfZoneScreen = ({ location, handleLocationClick }) => {
         <div className="flex items-start gap-3">
           {/* Left: Location Selector - Wrapped in a flex-1 div so the Link itself doesn't stretch across empty space */}
           <div className="flex-1 min-w-0">
-            <Link
-              to="/food/user/address-selector"
-              state={{ from: routerLocation.pathname }}
+            <div
+              onClick={handleLocationClick}
               className="inline-flex items-center gap-2 cursor-pointer group max-w-full no-underline"
             >
               <div className="p-1.5 rounded-full group-active:scale-95 transition-all shrink-0">
@@ -46,7 +45,7 @@ const OutOfZoneScreen = ({ location, handleLocationClick }) => {
                   {location?.city || "Pinpoint location"}
                 </span>
               </div>
-            </Link>
+            </div>
           </div>
 
           {/* Right: Wallet and Profile */}

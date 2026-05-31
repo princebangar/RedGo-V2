@@ -1,5 +1,5 @@
 import { useState, useMemo, useRef, useEffect, useCallback } from "react"
-import { useSearchParams, Link, useNavigate } from "react-router-dom"
+import { useSearchParams, Link, useNavigate, useNavigationType } from "react-router-dom"
 import { 
   ArrowLeft, Star, Clock, Search, SlidersHorizontal, 
   ChevronDown, Bookmark, BadgePercent, Mic, Grid2x2,
@@ -14,7 +14,9 @@ import { searchAPI } from "@/services/api"
 import { motion, AnimatePresence } from "framer-motion"
 import OptimizedImage from "@food/components/OptimizedImage"
 import { useVoiceSearch } from "@food/hooks/useVoiceSearch"
+// Force HMR reload
 import { RestaurantGridSkeleton } from "@food/components/ui/loading-skeletons"
+import CategoryPage from "../CategoryPage"
 
 // Helper to resolve media URLs consistently
 const getMediaUrl = (url) => {
@@ -68,17 +70,32 @@ export default function ProfessionalSearch() {
     fetchCategories()
   }, [])
 
-  // Auto-scroll to results when category/query updates
+  const navType = useNavigationType()
+  const prevQueryRef = useRef(query);
+  const prevCategoryRef = useRef(selectedCategoryId);
+  const hasInitialScrolledRef = useRef(false);
+
+  // Auto-scroll to results only when category/query ACTUALLY changes OR on fresh navigation (not BACK/FORWARD)
   useEffect(() => {
+    const queryChanged = prevQueryRef.current !== query;
+    const categoryChanged = prevCategoryRef.current !== selectedCategoryId;
+    const isFreshMount = !hasInitialScrolledRef.current;
+    
     if (!loading && (query || selectedCategoryId) && resultsRef.current) {
-      const timer = setTimeout(() => {
-        if (resultsRef.current) {
-          resultsRef.current.scrollIntoView({ behavior: "smooth", block: "start" });
-        }
-      }, 100);
-      return () => clearTimeout(timer);
+      if (queryChanged || categoryChanged || (isFreshMount && navType !== "POP")) {
+        prevQueryRef.current = query;
+        prevCategoryRef.current = selectedCategoryId;
+        hasInitialScrolledRef.current = true;
+        
+        const timer = setTimeout(() => {
+          if (resultsRef.current) {
+            resultsRef.current.scrollIntoView({ behavior: "smooth", block: "start" });
+          }
+        }, 100);
+        return () => clearTimeout(timer);
+      }
     }
-  }, [loading, selectedCategoryId, query])
+  }, [loading, selectedCategoryId, query, navType])
 
   const fetchCategories = async () => {
     try {
@@ -160,6 +177,9 @@ export default function ProfessionalSearch() {
         setSearchParams(p, { replace: true })
     }
   }
+
+  const selectedCategoryObj = categories.find(c => c._id === selectedCategoryId)
+  const selectedCategorySlug = selectedCategoryObj?.slug || selectedCategoryObj?._id || selectedCategoryObj?.name?.toLowerCase().replace(/\s+/g, '-')
 
   return (
     <div className="min-h-screen bg-slate-50 dark:bg-zinc-950">
@@ -257,7 +277,7 @@ export default function ProfessionalSearch() {
         )}
 
         {/* Loading Skeleton */}
-        {loading && (
+        {loading && !selectedCategorySlug && (
           <div className="space-y-6 mt-6 animate-in fade-in duration-200">
             <div className="flex items-center justify-between mb-5 px-1">
               <div className="h-4 w-32 bg-gray-100 dark:bg-zinc-800 rounded animate-pulse" />
@@ -286,8 +306,17 @@ export default function ProfessionalSearch() {
           </div>
         )}
 
-        {/* Search Results */}
-        {!loading && (query || selectedCategoryId) && (
+        {/* Search Results or Embedded Category Page */}
+        {selectedCategorySlug ? (
+           <div ref={resultsRef} className="mt-4 -mx-4 sm:mx-0">
+             <CategoryPage 
+               embeddedCategorySlug={selectedCategorySlug} 
+               hideHeader={true} 
+               hideCategoryCarousel={true}
+               hideFilters={true}
+             />
+           </div>
+        ) : !loading && query && (
           <div ref={resultsRef} className="space-y-8 animate-in fade-in slide-in-from-bottom-2 duration-300">
             
             {/* Dish Results Section */}
