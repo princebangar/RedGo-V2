@@ -108,7 +108,7 @@ import HomeHeader from "@food/components/user/home/HomeHeader";
 import QuickSection from "@food/components/user/home/QuickSection";
 import PromoRow from "@food/components/user/home/PromoRow";
 import FestBanner from "@food/components/user/home/FestBanner";
-import { clearCategoryCache } from "./CategoryPage";
+import { clearCategoryCache } from "../../utils/categoryCache";
 
 // Persistence for back-navigation and refresh speed
 const getSessionCache = (key) => {
@@ -2544,17 +2544,11 @@ export default function Home() {
                     id="categories-section"
                     className="px-4 py-2.5 space-y-3 bg-white dark:bg-[#0a0a0a]"
                   >
-                    <div className="flex items-center gap-2 min-w-0">
-                      <h2 className="text-lg sm:text-xl font-bold text-gray-900 dark:text-white min-w-0 flex-shrink leading-tight">What's on your mind today?</h2>
-                      <div className="h-[1px] bg-gray-100 dark:bg-gray-800 flex-1"></div>
-                      <Link to="/food/user/categories" state={{ from: '/food/user' }} className="text-sm font-bold text-gray-400 dark:text-gray-500 flex items-center gap-0.5 whitespace-nowrap shrink-0">
-                        View All <ArrowDownUp className="h-3 w-3 rotate-90" />
-                      </Link>
-                    </div>
+
 
                     {/* Categories Horizontal Slider */}
                     <div className="flex overflow-x-auto gap-1.5 pb-2 scrollbar-hide -mx-4 px-4 mask-edge-fade">
-                      {displayCategories.map((category, index) => (
+                      {displayCategories.slice(0, 13).map((category, index) => (
                         <Link
                           key={category.id || index}
                           to={`/food/user/category/${category.slug}`}
@@ -2589,6 +2583,22 @@ export default function Home() {
                           </span>
                         </Link>
                       ))}
+
+                      {/* See All Card */}
+                      {displayCategories.length > 13 && (
+                        <Link
+                          to="/food/user/categories"
+                          state={{ from: '/food/user' }}
+                          className="flex-shrink-0 flex flex-col items-center gap-2.5 group w-[92px]"
+                        >
+                          <div className="relative w-20 h-20 sm:w-24 sm:h-24 rounded-full overflow-hidden shadow-md border-2 border-red-100 dark:border-red-950/30 bg-red-50 dark:bg-red-950/20 flex items-center justify-center group-active:scale-95 transition-all duration-300">
+                            <UtensilsCrossed className="w-8 h-8 sm:w-10 sm:h-10 text-red-500" />
+                          </div>
+                          <span className="text-[10px] font-bold text-gray-600 dark:text-gray-300 text-center leading-tight flex items-center justify-center gap-1 w-full px-0.5 group-hover:text-red-500 transition-colors">
+                            See all <span className="text-[7px] text-red-500">▼</span>
+                          </span>
+                        </Link>
+                      )}
                     </div>
                   </div>
                 )}
@@ -2656,7 +2666,7 @@ export default function Home() {
 
                       {/* Categories Slider (Increased Icon Size) */}
                       <div className="flex overflow-x-auto gap-5 py-3 pb-2 scrollbar-hide px-4 mask-edge-fade">
-                        {displayCategories.map((category, index) => (
+                        {displayCategories.slice(0, 13).map((category, index) => (
                           <Link
                             key={`sticky-${category.id || index}`}
                             to={`/food/user/category/${category.slug}`}
@@ -2674,6 +2684,22 @@ export default function Home() {
                             </span>
                           </Link>
                         ))}
+
+                        {/* See All Sticky Card */}
+                        {displayCategories.length > 13 && (
+                          <Link
+                            to="/food/user/categories"
+                            state={{ from: '/food/user' }}
+                            className="flex-shrink-0 flex flex-col items-center gap-1.5 group w-[74px]"
+                          >
+                            <div className="w-18 h-18 rounded-full overflow-hidden border-2 border-red-100 dark:border-red-950/30 bg-red-50 dark:bg-red-950/20 flex items-center justify-center transition-transform group-active:scale-95">
+                              <UtensilsCrossed className="w-7 h-7 text-red-500" />
+                            </div>
+                            <span className="text-[9px] font-bold text-gray-700 dark:text-gray-300 text-center truncate w-full uppercase tracking-tighter flex items-center justify-center gap-0.5 group-hover:text-red-500 transition-colors">
+                              See all <span className="text-[7px] text-red-500">▼</span>
+                            </span>
+                          </Link>
+                        )}
                       </div>
 
 

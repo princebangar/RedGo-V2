@@ -16,6 +16,7 @@ import OptimizedImage from "@food/components/OptimizedImage"
 import { useVoiceSearch } from "@food/hooks/useVoiceSearch"
 // Force HMR reload
 import { RestaurantGridSkeleton } from "@food/components/ui/loading-skeletons"
+import { Suspense } from "react"
 import CategoryPage from "../CategoryPage"
 
 // Helper to resolve media URLs consistently
@@ -75,27 +76,26 @@ export default function ProfessionalSearch() {
   const prevCategoryRef = useRef(selectedCategoryId);
   const hasInitialScrolledRef = useRef(false);
 
-  // Auto-scroll to results only when category/query ACTUALLY changes OR on fresh navigation (not BACK/FORWARD)
+  // Auto-scroll to results only when query ACTUALLY changes OR on fresh navigation (not BACK/FORWARD)
   useEffect(() => {
     const queryChanged = prevQueryRef.current !== query;
-    const categoryChanged = prevCategoryRef.current !== selectedCategoryId;
     const isFreshMount = !hasInitialScrolledRef.current;
     
-    if (!loading && (query || selectedCategoryId) && resultsRef.current) {
-      if (queryChanged || categoryChanged || (isFreshMount && navType !== "POP")) {
+    if (!loading && query && resultsRef.current) {
+      if (queryChanged || (isFreshMount && navType !== "POP")) {
         prevQueryRef.current = query;
-        prevCategoryRef.current = selectedCategoryId;
         hasInitialScrolledRef.current = true;
         
         const timer = setTimeout(() => {
           if (resultsRef.current) {
-            resultsRef.current.scrollIntoView({ behavior: "smooth", block: "start" });
+            const topOffset = resultsRef.current.getBoundingClientRect().top + window.scrollY - 80;
+            window.scrollTo({ top: topOffset, behavior: 'smooth' });
           }
-        }, 100);
+        }, 50);
         return () => clearTimeout(timer);
       }
     }
-  }, [loading, selectedCategoryId, query, navType])
+  }, [loading, query, navType])
 
   const fetchCategories = async () => {
     try {
@@ -309,12 +309,14 @@ export default function ProfessionalSearch() {
         {/* Search Results or Embedded Category Page */}
         {selectedCategorySlug ? (
            <div ref={resultsRef} className="mt-4 -mx-4 sm:mx-0">
-             <CategoryPage 
-               embeddedCategorySlug={selectedCategorySlug} 
-               hideHeader={true} 
-               hideCategoryCarousel={true}
-               hideFilters={true}
-             />
+             <Suspense fallback={<div className="p-4"><RestaurantGridSkeleton count={4} /></div>}>
+               <CategoryPage 
+                 embeddedCategorySlug={selectedCategorySlug} 
+                 hideHeader={true} 
+                 hideCategoryCarousel={true}
+                 hideFilters={true}
+               />
+             </Suspense>
            </div>
         ) : !loading && query && (
           <div ref={resultsRef} className="space-y-8 animate-in fade-in slide-in-from-bottom-2 duration-300">

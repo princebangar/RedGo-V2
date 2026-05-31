@@ -1,6 +1,6 @@
 import { Link, useNavigate } from "react-router-dom"
 import { useState, useMemo, useCallback, useEffect, useRef } from "react"
-import { Star, Clock, MapPin, ArrowDownUp, Timer, ArrowRight, ChevronDown, Bookmark, Share2, Plus, Minus, X, UtensilsCrossed } from "lucide-react"
+import { Star, Clock, MapPin, ArrowDownUp, Timer, ArrowRight, ChevronDown, Bookmark, Share2, Plus, Minus, X, UtensilsCrossed, Wallet } from "lucide-react"
 import { motion, AnimatePresence } from "framer-motion"
 import { toast } from "sonner"
 import AnimatedPage from "@food/components/user/AnimatedPage"
@@ -11,7 +11,11 @@ import { useLocation } from "@food/hooks/useLocation"
 import { useZone } from "@food/hooks/useZone"
 import { useCart } from "@food/context/CartContext"
 import PageNavbar from "@food/components/user/PageNavbar"
+import { useProfile } from "@food/context/ProfileContext"
+import { Avatar, AvatarFallback, AvatarImage } from "@food/components/ui/avatar"
+import { getRestaurantAvailabilityStatus } from "@food/utils/restaurantAvailability"
 import under250Banner from "@food/assets/under250_banner.jpg"
+import homeBannerRed from "@food/assets/home-banner-red-clean.png"
 import AddToCartAnimation from "@food/components/user/AddToCartAnimation"
 import OptimizedImage from "@food/components/OptimizedImage"
 import api from "@food/api"
@@ -64,7 +68,32 @@ export default function Under250() {
   const initialFiltersRef = useRef(readUnder250Filters())
   const { location } = useLocation()
   const { zoneId, zoneStatus, isInService, isOutOfService } = useZone(location)
-  const { showGlobalLoader } = useLocationSelector()
+  const { showGlobalLoader, openLocationSelector } = useLocationSelector()
+  const { userProfile } = useProfile()
+
+  const displayArea = useMemo(() => {
+    let name = location?.area || "Select Location"
+    if (/^-?\d+(\.\d+)?$/.test(name.trim())) {
+      return "Current Location"
+    }
+    return name
+  }, [location?.area])
+
+  const displayCity = location?.city || "Indore"
+  const displayAddress = useMemo(() => {
+    let addr = location?.address || location?.formattedAddress || ""
+    if (displayCity) {
+      addr = addr.replace(new RegExp(`,?\\s*${displayCity}\\s*`, 'gi'), '').trim()
+    }
+    if (location?.area && location?.area.length > 3) {
+      addr = addr.replace(new RegExp(`^${location?.area},?\\s*`, 'i'), '').trim()
+    }
+    if (/^-?\d+\.\d+,\s*-?\\s*\d+\.\d+$/.test(addr.trim()) || !addr || addr === ",") {
+      return "Pinpoint location"
+    }
+    return addr
+  }, [location?.address, location?.formattedAddress, displayCity, location?.area])
+
   const navigate = useNavigate()
   const { addToCart, updateQuantity, removeFromCart, getCartItem, cart } = useCart()
   const [activeCategory, setActiveCategory] = useState(initialFiltersRef.current.activeCategory)
@@ -574,7 +603,7 @@ export default function Under250() {
       }
 
       // Update banner scroll state for navbar transparency
-      if (currentScrollY > 100) {
+      if (currentScrollY > 40) {
         setHasScrolledPastBanner(true)
       } else {
         setHasScrolledPastBanner(false)
@@ -585,31 +614,6 @@ export default function Under250() {
 
     window.addEventListener("scroll", handleScroll, { passive: true })
     return () => window.removeEventListener("scroll", handleScroll)
-  }, [])
-
-  useEffect(() => {
-    const handleBannerScroll = () => {
-      const bannerShell = bannerShellRef.current
-      const stickyHeader = stickyHeaderRef.current
-
-      if (!bannerShell) {
-        setHasScrolledPastBanner(false)
-        return
-      }
-
-      const bannerRect = bannerShell.getBoundingClientRect()
-      const stickyHeight = stickyHeader?.getBoundingClientRect().height || 0
-      setHasScrolledPastBanner(bannerRect.bottom <= stickyHeight)
-    }
-
-    handleBannerScroll()
-    window.addEventListener("scroll", handleBannerScroll, { passive: true })
-    window.addEventListener("resize", handleBannerScroll)
-
-    return () => {
-      window.removeEventListener("scroll", handleBannerScroll)
-      window.removeEventListener("resize", handleBannerScroll)
-    }
   }, [])
 
   // Helper function to update item quantity in bothlocal state and cart
@@ -721,6 +725,8 @@ export default function Under250() {
   }, [])
 
   const handleItemClick = (item, restaurant) => {
+    const availabilityStatus = getRestaurantAvailabilityStatus(restaurant)
+    const isRestaurantOffline = !availabilityStatus.isOpen
     // Add restaurant info to item for display
     const itemWithRestaurant = {
       ...item,
@@ -729,6 +735,7 @@ export default function Under250() {
       description: item.description || `${item.name} from ${restaurant.name}`,
       customisable: item.customisable || false,
       notEligibleForCoupons: item.notEligibleForCoupons || false,
+      isRestaurantOffline,
     }
     const existingQuantity = quantities[item.id] || 0
     setItemDetailQuantity(existingQuantity > 0 ? existingQuantity : 1)
@@ -843,20 +850,76 @@ export default function Under250() {
     <div className={`relative min-h-screen bg-white dark:bg-[#0a0a0a] ${shouldShowGrayscale ? 'grayscale opacity-75' : ''}`}>
       <div
         ref={stickyHeaderRef}
-        className={`fixed top-1.5 left-0 right-0 z-40 w-full transition-all duration-300 ${
-          hasScrolledPastBanner 
-            ? "bg-white shadow-sm border-b border-gray-200" 
-            : "bg-transparent shadow-none"
-        }`}
+        className="fixed top-0 left-0 right-0 z-40 w-full px-4 py-2 sm:py-3 rounded-b-[2rem] shadow-lg bg-gradient-to-b from-[#cb202d] to-[#990c19]"
       >
-        <div className="relative z-50">
-          <PageNavbar 
-            variant={hasScrolledPastBanner ? "reddish" : "transparent"} 
-            zIndex={20} 
-            showProfile={true} 
-            showLogo={false} 
-            showCart={false}
-          />
+        <div className="relative z-10 max-w-7xl mx-auto flex items-center justify-between">
+          {/* Left: Location Selector */}
+          <Button
+            variant="ghost"
+            onClick={openLocationSelector}
+            className="flex items-center gap-2 cursor-pointer group min-w-0 relative z-50 text-left no-underline h-auto px-0 py-0 hover:bg-transparent transition-colors"
+          >
+            <div className="bg-white/10 p-1.5 rounded-xl group-active:scale-95 transition-all text-white/90">
+              <MapPin className="h-4 w-4 text-white/90 fill-white/20" />
+            </div>
+            <div className="flex flex-col min-w-0">
+              <div className="flex items-center gap-1">
+                <span className="text-[15px] font-black text-white truncate max-w-[160px] sm:max-w-[220px] leading-none drop-shadow-sm">
+                  {displayArea}
+                </span>
+                <ChevronDown className="h-3 w-3 text-white/70" />
+              </div>
+              {(displayAddress || displayCity) && (
+                <span className="text-[10px] font-medium text-white/80 truncate max-w-[160px] sm:max-w-[220px] leading-tight mt-0.5 drop-shadow-md">
+                  {displayAddress}{displayAddress && displayCity ? ", " : ""}{displayCity}
+                </span>
+              )}
+            </div>
+          </Button>
+
+          {/* Right: Wallet & Profile Actions */}
+          <div className="flex items-center gap-3 flex-shrink-0">
+            {/* Wallet Button */}
+            <Link 
+              to="/food/user/wallet" 
+              state={{ from: "/food/user/under-250" }}
+              onClick={(e) => {
+                if (!isModuleAuthenticated('user')) {
+                  e.preventDefault();
+                  window.dispatchEvent(new CustomEvent('show-login-required'));
+                }
+              }}
+              className="p-1.5 active:scale-90 transition-all flex items-center justify-center text-white"
+            >
+              <Wallet className="h-[26px] w-[26px] antialiased" strokeWidth={2.2} />
+            </Link>
+
+            {/* Profile Avatar */}
+            <Link 
+              to="/food/user/profile" 
+              state={{ from: "/food/user/under-250" }}
+              onClick={(e) => {
+                if (!isModuleAuthenticated('user')) {
+                  e.preventDefault();
+                  window.dispatchEvent(new CustomEvent('show-login-required'));
+                }
+              }}
+              className="h-9 w-9 relative flex items-center justify-center rounded-full border-[1.5px] border-white ring-1 ring-red-500/80 cursor-pointer active:scale-95 transition-all overflow-hidden"
+            >
+              <Avatar className="h-full w-full bg-[#FFF5E6] dark:bg-gray-800">
+                {userProfile?.profileImage && (
+                  <AvatarImage 
+                    src={userProfile.profileImage} 
+                    alt="Profile" 
+                    className="object-cover"
+                  />
+                )}
+                <AvatarFallback className="bg-[#FFF5E6] dark:bg-gray-800 text-[20px] font-black text-[#DC2626] leading-none tracking-tighter antialiased">
+                  {userProfile?.name ? userProfile.name.charAt(0).toUpperCase() : "U"}
+                </AvatarFallback>
+              </Avatar>
+            </Link>
+          </div>
         </div>
       </div>
 
@@ -1003,8 +1066,10 @@ export default function Under250() {
         ) : (
           sortedAndFilteredRestaurants.map((restaurant) => {
             const restaurantSlug = restaurant.slug || restaurant.name.toLowerCase().replace(/\s+/g, "-")
+            const availabilityStatus = getRestaurantAvailabilityStatus(restaurant)
+            const isRestaurantOffline = !availabilityStatus.isOpen
             return (
-              <section key={restaurant.id} className="pt-4 sm:pt-6 md:pt-8 lg:pt-10">
+              <section key={restaurant.id} className={`pt-4 sm:pt-6 md:pt-8 lg:pt-10 ${isRestaurantOffline ? 'opacity-80' : ''}`}>
                 {/* Restaurant Header */}
                 <div className="flex items-start justify-between mb-3 md:mb-4 lg:mb-6">
                   <div className="flex-1">
@@ -1045,25 +1110,28 @@ export default function Under250() {
                         overflowY: "hidden",
                       }}
                     >
-                      {restaurant.menuItems.map((item, itemIndex) => {
+                       {restaurant.menuItems.map((item, itemIndex) => {
                         const quantity = quantities[item.id] || 0
+                        const isOffline = shouldShowGrayscale || isRestaurantOffline
                         return (
                           <motion.div
                             key={item.id}
-                            className="flex-shrink-0 w-[200px] sm:w-[220px] md:w-full bg-white dark:bg-[#1a1a1a] rounded-lg md:rounded-xl border border-gray-200 dark:border-gray-800 overflow-hidden cursor-pointer"
+                            className={`flex-shrink-0 w-[200px] sm:w-[220px] md:w-full bg-white dark:bg-[#1a1a1a] rounded-lg md:rounded-xl border border-gray-200 dark:border-gray-800 overflow-hidden cursor-pointer ${
+                              isOffline ? 'grayscale opacity-75' : ''
+                            }`}
                             onClick={() => handleItemClick(item, restaurant)}
                             initial={{ opacity: 0, y: 20 }}
                             whileInView={{ opacity: 1, y: 0 }}
                             viewport={{ once: true, margin: "-50px" }}
                             transition={{ duration: 0.4, delay: itemIndex * 0.05 }}
-                            whileHover={{ y: -8, scale: 1.02 }}
+                            whileHover={isOffline ? {} : { y: -8, scale: 1.02 }}
                             style={{ boxShadow: "0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06)" }}
                           >
                             {/* Item Image */}
                             <div className="relative w-full h-32 sm:h-36 md:h-40 lg:h-48 xl:h-52 overflow-hidden">
                               <motion.div
                                 className="absolute inset-0"
-                                whileHover={{ scale: 1.1 }}
+                                whileHover={isOffline ? {} : { scale: 1.1 }}
                                 transition={{ duration: 0.5, ease: "easeOut" }}
                               >
                                 <OptimizedImage
@@ -1077,12 +1145,14 @@ export default function Under250() {
                                 />
                               </motion.div>
                               {/* Gradient Overlay on Hover */}
-                              <motion.div
-                                className="absolute inset-0 bg-gradient-to-t from-black/30 via-transparent to-transparent"
-                                initial={{ opacity: 0 }}
-                                whileHover={{ opacity: 1 }}
-                                transition={{ duration: 0.3 }}
-                              />
+                              {!isOffline && (
+                                <motion.div
+                                  className="absolute inset-0 bg-gradient-to-t from-black/30 via-transparent to-transparent"
+                                  initial={{ opacity: 0 }}
+                                  whileHover={{ opacity: 1 }}
+                                  transition={{ duration: 0.3 }}
+                                />
+                              )}
                               {/* Veg Indicator */}
                               {item.isVeg && (
                                 <motion.div
@@ -1093,6 +1163,7 @@ export default function Under250() {
                                   <div className="h-2 w-2 md:h-2.5 md:w-2.5 lg:h-3 lg:w-3 rounded-full bg-green-600" />
                                 </motion.div>
                               )}
+
                             </div>
 
                             {/* Item Details */}
@@ -1103,7 +1174,7 @@ export default function Under250() {
                                     <div className="h-1.5 w-1.5 md:h-2 md:w-2 lg:h-2.5 lg:w-2.5 rounded-full bg-green-600" />
                                   </div>
                                 )}
-                                <span className="text-sm md:text-base lg:text-lg font-semibold text-gray-900 dark:text-white">
+                                <span className="text-sm md:text-base lg:text-lg font-semibold text-gray-900 dark:text-white truncate">
                                   1 x {item.name}
                                 </span>
                               </div>
@@ -1116,7 +1187,7 @@ export default function Under250() {
                                     <p className="text-xs md:text-sm lg:text-base text-gray-500 dark:text-gray-400">Best price</p>
                                   )}
                                 </div>
-                                {quantity > 0 ? (
+                                {quantity > 0 && !isRestaurantOffline ? (
                                   <Link to="/user/cart" onClick={(e) => e.stopPropagation()}>
                                     <Button
                                       variant={"ghost"}
@@ -1130,14 +1201,14 @@ export default function Under250() {
                                   <Button
                                     variant={"ghost"}
                                     size="sm"
-                                    disabled={shouldShowGrayscale}
-                                    className={`h-7 md:h-8 lg:h-9 px-3 md:px-4 lg:px-5 text-xs md:text-sm lg:text-base font-bold shadow-md transition-all active:scale-95 ${shouldShowGrayscale
+                                    disabled={isOffline}
+                                    className={`h-7 md:h-8 lg:h-9 px-3 md:px-4 lg:px-5 text-xs md:text-sm lg:text-base font-bold shadow-md transition-all active:scale-95 ${isOffline
                                       ? 'bg-gray-100 dark:bg-gray-800 text-gray-400 border-gray-300 dark:border-gray-700 cursor-not-allowed opacity-50'
                                       : 'bg-[#DC2626] text-white hover:bg-[#991B1B]'
                                       }`}
                                     onClick={(e) => {
                                       e.stopPropagation()
-                                      if (!shouldShowGrayscale) {
+                                      if (!isOffline) {
                                         handleItemClick(item, restaurant)
                                       }
                                     }}
@@ -1291,7 +1362,9 @@ export default function Under250() {
               </div>
 
               {/* Image Section */}
-              <div className="relative w-full h-64 md:h-80 lg:h-96 xl:h-[500px] overflow-hidden rounded-t-3xl">
+              <div className={`relative w-full h-64 md:h-80 lg:h-96 xl:h-[500px] overflow-hidden rounded-t-3xl ${
+                (shouldShowGrayscale || selectedItem.isRestaurantOffline) ? 'grayscale opacity-75' : ''
+              }`}>
                 <OptimizedImage
                   src={selectedItem.image}
                   alt={selectedItem.name}
@@ -1403,42 +1476,49 @@ export default function Under250() {
 
               {/* Bottom Action Bar */}
               <div className="border-t dark:border-gray-800 border-gray-200 px-4 md:px-6 lg:px-8 xl:px-10 py-4 md:py-5 lg:py-6 bg-white dark:bg-[#1a1a1a]">
+                {selectedItem.isRestaurantOffline && (
+                  <p className="text-sm font-semibold text-red-500 mb-3 text-center">
+                    Restaurant is currently closed and not accepting orders.
+                  </p>
+                )}
                 <div className="flex items-center gap-4 md:gap-5 lg:gap-6">
                   {/* Quantity Selector */}
-                  <div className={`flex items-center gap-3 md:gap-4 lg:gap-5 border-2 rounded-lg md:rounded-xl px-3 md:px-4 lg:px-5 h-[44px] md:h-[50px] lg:h-[56px] ${shouldShowGrayscale
-                    ? 'border-gray-300 dark:border-gray-700 opacity-50'
-                    : 'border-gray-300 dark:border-gray-700'
+                  <div className={`flex items-center gap-3 md:gap-4 lg:gap-5 border-2 rounded-lg md:rounded-xl px-3 md:px-4 lg:px-5 h-[44px] md:h-[50px] lg:h-[56px] ${
+                    (shouldShowGrayscale || selectedItem.isRestaurantOffline)
+                      ? 'border-gray-300 dark:border-gray-700 opacity-50'
+                      : 'border-gray-300 dark:border-gray-700'
                     }`}>
                     <button
                       onClick={(e) => {
-                        if (!shouldShowGrayscale) {
+                        if (!shouldShowGrayscale && !selectedItem.isRestaurantOffline) {
                           e.stopPropagation()
                           setItemDetailQuantity((prev) => Math.max(1, prev - 1))
                         }
                       }}
-                      disabled={itemDetailQuantity <= 1 || shouldShowGrayscale}
-                      className={`${shouldShowGrayscale
+                      disabled={itemDetailQuantity <= 1 || shouldShowGrayscale || selectedItem.isRestaurantOffline}
+                      className={`${(shouldShowGrayscale || selectedItem.isRestaurantOffline)
                         ? 'text-gray-300 dark:text-gray-600 cursor-not-allowed'
                         : 'text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200 disabled:text-gray-300 dark:disabled:text-gray-600 disabled:cursor-not-allowed'
                         }`}
                     >
                       <Minus className="h-5 w-5 md:h-6 md:w-6 lg:h-7 lg:w-7" />
                     </button>
-                    <span className={`text-lg md:text-xl lg:text-2xl font-semibold min-w-[2rem] md:min-w-[2.5rem] lg:min-w-[3rem] text-center ${shouldShowGrayscale
-                      ? 'text-gray-400 dark:text-gray-600'
-                      : 'text-gray-900 dark:text-white'
+                    <span className={`text-lg md:text-xl lg:text-2xl font-semibold min-w-[2rem] md:min-w-[2.5rem] lg:min-w-[3rem] text-center ${
+                      (shouldShowGrayscale || selectedItem.isRestaurantOffline)
+                        ? 'text-gray-400 dark:text-gray-600'
+                        : 'text-gray-900 dark:text-white'
                       }`}>
                       {itemDetailQuantity}
                     </span>
                     <button
                       onClick={(e) => {
-                        if (!shouldShowGrayscale) {
+                        if (!shouldShowGrayscale && !selectedItem.isRestaurantOffline) {
                           e.stopPropagation()
                           setItemDetailQuantity((prev) => prev + 1)
                         }
                       }}
-                      disabled={shouldShowGrayscale}
-                      className={shouldShowGrayscale
+                      disabled={shouldShowGrayscale || selectedItem.isRestaurantOffline}
+                      className={(shouldShowGrayscale || selectedItem.isRestaurantOffline)
                         ? 'text-gray-300 dark:text-gray-600 cursor-not-allowed'
                         : 'text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200'
                       }
@@ -1449,17 +1529,18 @@ export default function Under250() {
 
                   {/* Add Item Button */}
                   <Button
-                    className={`flex-1 h-[44px] md:h-[50px] lg:h-[56px] rounded-lg md:rounded-xl font-semibold flex items-center justify-center gap-2 text-sm md:text-base lg:text-lg ${shouldShowGrayscale
-                      ? 'bg-gray-300 dark:bg-gray-700 text-gray-500 dark:text-gray-600 cursor-not-allowed opacity-50'
-                      : 'bg-[#DC2626] hover:bg-[#991B1B] dark:bg-[#DC2626] dark:hover:bg-[#991B1B] text-white'
-                      }`}
+                    className={`flex-1 h-[44px] md:h-[50px] lg:h-[56px] rounded-lg md:rounded-xl font-semibold flex items-center justify-center gap-2 text-sm md:text-base lg:text-lg ${
+                      (shouldShowGrayscale || selectedItem.isRestaurantOffline)
+                        ? 'bg-gray-300 dark:bg-gray-700 text-gray-500 dark:text-gray-600 cursor-not-allowed opacity-50'
+                        : 'bg-[#DC2626] hover:bg-[#991B1B] dark:bg-[#DC2626] dark:hover:bg-[#991B1B] text-white'
+                        }`}
                     onClick={(e) => {
-                      if (!shouldShowGrayscale) {
+                      if (!shouldShowGrayscale && !selectedItem.isRestaurantOffline) {
                         updateItemQuantity(selectedItem, itemDetailQuantity, e)
                         closeItemDetail()
                       }
                     }}
-                    disabled={shouldShowGrayscale}
+                    disabled={shouldShowGrayscale || selectedItem.isRestaurantOffline}
                   >
                     <span>Add item</span>
                     <div className="flex items-center gap-1 md:gap-2">

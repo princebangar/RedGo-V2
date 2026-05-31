@@ -1581,8 +1581,23 @@ export const listRestaurantsUnderPriceLimit = async (query = {}, priceLimit = 25
         throw new ValidationError('Valid zoneId is required for Under 250 fetching');
     }
 
-    // 1. Find all eligible food items in one go
+    // 1. Find all approved restaurants in the specified zone first (Zone Filter first)
+    const restaurantsInZone = await FoodRestaurant.find({
+        zoneId: new mongoose.Types.ObjectId(zoneIdRaw),
+        status: 'approved'
+    })
+    .select('restaurantName slug area city rating totalRatings estimatedDeliveryTime estimatedDeliveryTimeMinutes profileImage coverImages menuImages location pureVegRestaurant isActive isAcceptingOrders openingTime closingTime openDays')
+    .lean();
+
+    if (restaurantsInZone.length === 0) {
+        return { restaurants: [], total: 0 };
+    }
+
+    const restaurantIds = restaurantsInZone.map(r => r._id);
+
+    // 2. Fetch only the eligible food items for these specific restaurants
     const eligibleItems = await FoodItem.find({
+        restaurantId: { $in: restaurantIds },
         price: { $lte: priceLimit },
         isAvailable: true,
         approvalStatus: 'approved'
@@ -1604,30 +1619,39 @@ export const listRestaurantsUnderPriceLimit = async (query = {}, priceLimit = 25
         });
     });
 
-    const eligibleRestaurantIds = Object.keys(restaurantItemsMap);
+    // 3. Filter restaurants that actually have eligible items
+    const eligibleRestaurants = restaurantsInZone.filter(r => {
+        const rid = String(r._id);
+        return restaurantItemsMap[rid] && restaurantItemsMap[rid].length > 0;
+    });
 
-    // 2. Fetch the restaurants (filtered by zone and status)
-    const filter = {
-        _id: { $in: eligibleRestaurantIds },
-        status: 'approved',
-        zoneId: new mongoose.Types.ObjectId(zoneIdRaw)
-    };
+    if (eligibleRestaurants.length === 0) {
+        return { restaurants: [], total: 0 };
+    }
 
-    const restaurantsRaw = await FoodRestaurant.find(filter)
-        .select('restaurantName slug area city rating totalRatings estimatedDeliveryTime estimatedDeliveryTimeMinutes profileImage coverImages menuImages location pureVegRestaurant')
-        .lean();
+    // 4. Fetch outlet timings only for the eligible restaurants
+    const outletTimingsRaw = await FoodRestaurantOutletTimings.find({
+        restaurantId: { $in: eligibleRestaurants.map(r => r._id) }
+    }).lean();
 
-    // 3. Assemble final list
-    const restaurants = restaurantsRaw.map(r => {
+    const timingsMap = {};
+    outletTimingsRaw.forEach(t => {
+        timingsMap[String(t.restaurantId)] = t.timings || [];
+    });
+
+    // 5. Assemble final list
+    const restaurants = eligibleRestaurants.map(r => {
         const rid = String(r._id);
         const items = restaurantItemsMap[rid] || [];
+        const timings = timingsMap[rid] || [];
         
         return {
             ...r,
             id: rid,
             restaurantId: rid,
             name: r.restaurantName,
-            menuItems: items
+            menuItems: items,
+            outletTimings: { timings }
         };
     });
 

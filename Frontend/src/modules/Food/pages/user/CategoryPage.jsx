@@ -22,6 +22,7 @@ import { useLocation } from "@food/hooks/useLocation"
 import { useZone } from "@food/hooks/useZone"
 import { useDelayedLoading } from "@food/hooks/useDelayedLoading"
 import { getMenuFromResponse } from "@food/utils/menuItems"
+import { CATEGORY_SESSION_CACHE, clearCategoryCache } from "../../utils/categoryCache"
 
 // Filter options
 const filterOptions = [
@@ -41,8 +42,6 @@ const debugWarn = (...args) => {};
 const debugError = (...args) => {};
 
 // In-memory cache to avoid localStorage quota limits and slow JSON parsing for large menus
-export const CATEGORY_SESSION_CACHE = new Map();
-export const clearCategoryCache = () => CATEGORY_SESSION_CACHE.clear();
 
 export default function CategoryPage({ embeddedCategorySlug = null, hideHeader = false, hideCategoryCarousel = false, hideFilters = false }) {
   const params = useParams()
@@ -1265,7 +1264,7 @@ export default function CategoryPage({ embeddedCategorySlug = null, hideHeader =
     if (!selectedButton || typeof selectedButton.scrollIntoView !== "function") return
 
     selectedButton.scrollIntoView({
-      behavior: "smooth",
+      behavior: "auto",
       inline: "center",
       block: "nearest",
     })
@@ -1437,6 +1436,7 @@ export default function CategoryPage({ embeddedCategorySlug = null, hideHeader =
 
   const handleCategorySelect = (category) => {
     const categorySlug = category.slug || category.id
+    setSelectedCategory(categorySlug.toLowerCase())
     // Only navigate — the URL-sync useEffect will update selectedCategory
     // This prevents a double state update that causes the skeleton to flash
     if (categorySlug === 'all') {
@@ -1450,16 +1450,29 @@ export default function CategoryPage({ embeddedCategorySlug = null, hideHeader =
   const shouldShowGrayscale = isOutOfService
   const isCategoryView = selectedCategory && selectedCategory !== 'all'
 
-  // Auto-scroll to Recommended section on fresh navigation
+  const lastScrolledCategoryRef = useRef(null)
+
+  // Auto-scroll to Recommended section on fresh navigation or category change
   useEffect(() => {
-    if (navType !== "POP" && !hasAutoScrolledRef.current && selectedCategory !== 'all' && filteredRecommended.length > 0 && recommendedSectionRef.current) {
-      hasAutoScrolledRef.current = true
-      setTimeout(() => {
-        if (recommendedSectionRef.current) {
-          const topOffset = recommendedSectionRef.current.getBoundingClientRect().top + window.scrollY - 80 // adjust for sticky headers
-          window.scrollTo({ top: topOffset, behavior: 'smooth' })
-        }
-      }, 100)
+    if (!embeddedCategorySlug) return;
+    if (selectedCategory !== 'all' && filteredRecommended.length > 0 && recommendedSectionRef.current) {
+      const categoryChanged = lastScrolledCategoryRef.current !== selectedCategory;
+      const isFreshMount = !hasAutoScrolledRef.current;
+
+      if (categoryChanged || (isFreshMount && navType !== "POP")) {
+        hasAutoScrolledRef.current = true
+        lastScrolledCategoryRef.current = selectedCategory
+        
+        // Wait a tiny bit for the layout/renders to settle and calculate the correct offset
+        const timer = setTimeout(() => {
+          if (recommendedSectionRef.current) {
+            const topOffset = recommendedSectionRef.current.getBoundingClientRect().top + window.scrollY - 80 // adjust for sticky headers
+            window.scrollTo({ top: topOffset, behavior: 'smooth' })
+          }
+        }, 80)
+        
+        return () => clearTimeout(timer)
+      }
     }
   }, [navType, selectedCategory, filteredRecommended.length])
 
