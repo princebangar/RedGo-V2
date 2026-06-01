@@ -10,6 +10,10 @@ import { adminAPI, uploadAPI, zoneAPI } from "@food/api"
 import { toast } from "sonner"
 import { Switch } from "@food/components/ui/switch"
 import { EMAIL_REGEX } from "@/shared/utils/emailValidation"
+import { MobileTimePicker } from "@mui/x-date-pickers/MobileTimePicker"
+import { LocalizationProvider } from "@mui/x-date-pickers/LocalizationProvider"
+import { AdapterDateFns } from "@mui/x-date-pickers/AdapterDateFns"
+
 const debugLog = (...args) => {}
 const debugWarn = (...args) => { console.warn(...args) }
 const debugError = (...args) => { console.error(...args) }
@@ -49,6 +53,68 @@ const timeStringToMinutes = (value = "") => {
   if (hours < 0 || hours > 23 || minutes < 0 || minutes > 59) return null
   return hours * 60 + minutes
 }
+
+const normalizeTimeValue = (value) => {
+  if (!value) return ""
+  const raw = String(value).trim()
+  if (!raw) return ""
+
+  const to24Hour = (h, m, period) => {
+    let hours = Number(h)
+    const minutes = Number(m)
+    if (!Number.isFinite(hours) || !Number.isFinite(minutes)) return ""
+    if (minutes < 0 || minutes > 59) return ""
+    const p = String(period || "").toUpperCase()
+    if (p === "AM") {
+      if (hours === 12) hours = 0
+    } else if (p === "PM") {
+      if (hours !== 12) hours += 12
+    }
+    if (hours < 0 || hours > 23) return ""
+    return `${String(hours).padStart(2, "0")}:${String(minutes).padStart(2, "0")}`
+  }
+
+  if (/^\d{2}:\d{2}$/.test(raw)) {
+    const [h, m] = raw.split(":").map(Number)
+    if (!Number.isFinite(h) || !Number.isFinite(m) || h < 0 || h > 23 || m < 0 || m > 59) {
+      return ""
+    }
+    return `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}`
+  }
+
+  if (/^\d{1}:\d{2}$/.test(raw)) {
+    const [h, m] = raw.split(":")
+    return to24Hour(h, m, "")
+  }
+
+  const ampm = raw.match(/^(\d{1,2}):(\d{2})\s*([AaPp][Mm])$/)
+  if (ampm) {
+    return to24Hour(ampm[1], ampm[2], ampm[3])
+  }
+
+  const parsed = new Date(raw)
+  if (!Number.isNaN(parsed.getTime())) {
+    return timeToString(parsed)
+  }
+  return ""
+}
+
+const stringToTime = (timeString) => {
+  const normalized = normalizeTimeValue(timeString)
+  if (!normalized || !normalized.includes(":")) {
+    return null
+  }
+  const [hours, minutes] = normalized.split(":").map(Number)
+  return new Date(2000, 0, 1, hours || 0, minutes || 0)
+}
+
+const timeToString = (date) => {
+  if (!date) return ""
+  const hours = date.getHours().toString().padStart(2, "0")
+  const minutes = date.getMinutes().toString().padStart(2, "0")
+  return `${hours}:${minutes}`
+}
+
 const getStoredFileLabel = (value) => {
   if (!value) return ""
   if (value instanceof File) return value.name
@@ -1207,58 +1273,109 @@ export default function AddRestaurant() {
 
         <div className="space-y-3">
           <Label className="text-xs text-gray-700">Outlet timings*</Label>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <div>
-              <Label className="text-xs text-gray-700 mb-1 block">Opening time</Label>
-              <Input
-                type="time"
-                value={step2.openingTime || ""}
-                onChange={(e) => {
-                  const nextOpening = e.target.value
-                  const closingMinutes = timeStringToMinutes(step2.closingTime)
-                  const openingMinutes = timeStringToMinutes(nextOpening)
-                  if (openingMinutes !== null && closingMinutes !== null) {
-                    if (openingMinutes === closingMinutes) {
-                      toast.error("Opening time and closing time cannot be same")
+          <LocalizationProvider dateAdapter={AdapterDateFns}>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div className="border border-gray-200 rounded-md px-3 py-2 bg-gray-50/60">
+                <div className="flex items-center gap-2 mb-2">
+                  <Clock className="w-4 h-4 text-gray-800" />
+                  <span className="text-xs font-medium text-gray-900">Opening time</span>
+                </div>
+                <MobileTimePicker
+                  ampm={true}
+                  value={stringToTime(step2.openingTime)}
+                  onChange={(newValue) => {
+                    if (!newValue) {
+                      setStep2({ ...step2, openingTime: "" })
                       return
                     }
-                    if (closingMinutes < openingMinutes) {
-                      toast.error("Closing time cannot be less than opening time")
+                    const nextOpening = timeToString(newValue)
+                    const closingMinutes = timeStringToMinutes(step2.closingTime)
+                    const openingMinutes = timeStringToMinutes(nextOpening)
+                    if (openingMinutes !== null && closingMinutes !== null) {
+                      if (openingMinutes === closingMinutes) {
+                        toast.error("Opening time and closing time cannot be same")
+                        return
+                      }
+                      if (closingMinutes < openingMinutes) {
+                        toast.error("Closing time cannot be less than opening time")
+                        return
+                      }
+                    }
+                    setStep2({ ...step2, openingTime: nextOpening })
+                  }}
+                  slotProps={{
+                    textField: {
+                      variant: "outlined",
+                      size: "small",
+                      placeholder: "Select time",
+                      sx: {
+                        "& .MuiOutlinedInput-root": {
+                          height: "36px",
+                          fontSize: "12px",
+                          backgroundColor: "white",
+                          "& fieldset": { borderColor: "#e5e7eb" },
+                          "&:hover fieldset": { borderColor: "#d1d5db" },
+                          "&.Mui-focused fieldset": { borderColor: "#000" },
+                        },
+                        "& .MuiInputBase-input": { padding: "8px 12px", fontSize: "12px" },
+                      },
+                    },
+                  }}
+                  format="hh:mm a"
+                />
+              </div>
+
+              <div className="border border-gray-200 rounded-md px-3 py-2 bg-gray-50/60">
+                <div className="flex items-center gap-2 mb-2">
+                  <Clock className="w-4 h-4 text-gray-800" />
+                  <span className="text-xs font-medium text-gray-900">Closing time</span>
+                </div>
+                <MobileTimePicker
+                  ampm={true}
+                  value={stringToTime(step2.closingTime)}
+                  onChange={(newValue) => {
+                    if (!newValue) {
+                      setStep2({ ...step2, closingTime: "" })
                       return
                     }
-                  }
-                  setStep2({ ...step2, openingTime: nextOpening })
-                }}
-                autoComplete="off"
-                className="bg-white text-sm"
-              />
+                    const nextClosing = timeToString(newValue)
+                    const openingMinutes = timeStringToMinutes(step2.openingTime)
+                    const closingMinutes = timeStringToMinutes(nextClosing)
+                    if (openingMinutes !== null && closingMinutes !== null) {
+                      if (openingMinutes === closingMinutes) {
+                        toast.error("Opening time and closing time cannot be same")
+                        return
+                      }
+                      if (closingMinutes < openingMinutes) {
+                        toast.error("Closing time cannot be less than opening time")
+                        return
+                      }
+                    }
+                    setStep2({ ...step2, closingTime: nextClosing })
+                  }}
+                  slotProps={{
+                    textField: {
+                      variant: "outlined",
+                      size: "small",
+                      placeholder: "Select time",
+                      sx: {
+                        "& .MuiOutlinedInput-root": {
+                          height: "36px",
+                          fontSize: "12px",
+                          backgroundColor: "white",
+                          "& fieldset": { borderColor: "#e5e7eb" },
+                          "&:hover fieldset": { borderColor: "#d1d5db" },
+                          "&.Mui-focused fieldset": { borderColor: "#000" },
+                        },
+                        "& .MuiInputBase-input": { padding: "8px 12px", fontSize: "12px" },
+                      },
+                    },
+                  }}
+                  format="hh:mm a"
+                />
+              </div>
             </div>
-            <div>
-              <Label className="text-xs text-gray-700 mb-1 block">Closing time</Label>
-              <Input
-                type="time"
-                value={step2.closingTime || ""}
-                onChange={(e) => {
-                  const nextClosing = e.target.value
-                  const openingMinutes = timeStringToMinutes(step2.openingTime)
-                  const closingMinutes = timeStringToMinutes(nextClosing)
-                  if (openingMinutes !== null && closingMinutes !== null) {
-                    if (openingMinutes === closingMinutes) {
-                      toast.error("Opening time and closing time cannot be same")
-                      return
-                    }
-                    if (closingMinutes < openingMinutes) {
-                      toast.error("Closing time cannot be less than opening time")
-                      return
-                    }
-                  }
-                  setStep2({ ...step2, closingTime: nextClosing })
-                }}
-                autoComplete="off"
-                className="bg-white text-sm"
-              />
-            </div>
-          </div>
+          </LocalizationProvider>
         </div>
 
         <div>

@@ -43,7 +43,7 @@ const debugError = (...args) => {};
 
 // In-memory cache to avoid localStorage quota limits and slow JSON parsing for large menus
 
-export default function CategoryPage({ embeddedCategorySlug = null, hideHeader = false, hideCategoryCarousel = false, hideFilters = false }) {
+export default function CategoryPage({ embeddedCategorySlug = null, hideHeader = false, hideCategoryCarousel = false, hideFilters = false, disableAutoScroll = false }) {
   const params = useParams()
   const category = embeddedCategorySlug || params.category
   const navigate = useNavigate()
@@ -657,40 +657,12 @@ export default function CategoryPage({ embeddedCategorySlug = null, hideHeader =
       return false
     }
 
-    // Check by category ID first (strict ObjectId matching)
     const targetIds = activeCategoryIds
-    if (targetIds.length > 0) {
-      for (const section of menu.sections) {
-        if (section.items && Array.isArray(section.items)) {
-          for (const item of section.items) {
-            if (item.categoryId && targetIds.includes(String(item.categoryId))) {
-              return true
-            }
-          }
-        }
-        if (section.subsections && Array.isArray(section.subsections)) {
-          for (const subsection of section.subsections) {
-            const subItems = Array.isArray(subsection?.items) ? subsection.items : []
-            for (const item of subItems) {
-              if (item.categoryId && targetIds.includes(String(item.categoryId))) {
-                return true
-              }
-            }
-          }
-        }
-      }
-      return false
-    }
-
-    // Fallback: name keyword matching if categories list is not loaded yet
     const keywords = getCategoryKeywords(categoryId)
-    if (keywords.length === 0) {
-      return false
-    }
 
     for (const section of menu.sections) {
       const sectionNameLower = (section.name || '').toLowerCase()
-      if (matchesCategoryText(sectionNameLower, keywords)) {
+      if (keywords.length > 0 && matchesCategoryText(sectionNameLower, keywords)) {
         return true
       }
 
@@ -699,9 +671,16 @@ export default function CategoryPage({ embeddedCategorySlug = null, hideHeader =
           const itemNameLower = (item.name || '').toLowerCase()
           const itemCategoryLower = (item.categoryName || item.category || '').toLowerCase()
 
+          // Match by category ID
+          if (targetIds.length > 0 && item.categoryId && targetIds.includes(String(item.categoryId))) {
+            return true
+          }
+
+          // Match by name or category keywords
           if (
-            matchesCategoryText(itemNameLower, keywords) ||
-            matchesCategoryText(itemCategoryLower, keywords)
+            keywords.length > 0 &&
+            (matchesCategoryText(itemNameLower, keywords) ||
+             matchesCategoryText(itemCategoryLower, keywords))
           ) {
             return true
           }
@@ -711,7 +690,7 @@ export default function CategoryPage({ embeddedCategorySlug = null, hideHeader =
       if (section.subsections && Array.isArray(section.subsections)) {
         for (const subsection of section.subsections) {
           const subsectionNameLower = (subsection?.name || "").toLowerCase()
-          if (matchesCategoryText(subsectionNameLower, keywords)) {
+          if (keywords.length > 0 && matchesCategoryText(subsectionNameLower, keywords)) {
             return true
           }
 
@@ -719,9 +698,17 @@ export default function CategoryPage({ embeddedCategorySlug = null, hideHeader =
           for (const item of subItems) {
             const itemNameLower = (item?.name || "").toLowerCase()
             const itemCategoryLower = (item?.categoryName || item?.category || "").toLowerCase()
+
+            // Match by category ID
+            if (targetIds.length > 0 && item.categoryId && targetIds.includes(String(item.categoryId))) {
+              return true
+            }
+
+            // Match by name or category keywords
             if (
-              matchesCategoryText(itemNameLower, keywords) ||
-              matchesCategoryText(itemCategoryLower, keywords)
+              keywords.length > 0 &&
+              (matchesCategoryText(itemNameLower, keywords) ||
+               matchesCategoryText(itemCategoryLower, keywords))
             ) {
               return true
             }
@@ -741,99 +728,52 @@ export default function CategoryPage({ embeddedCategorySlug = null, hideHeader =
 
     const matchingDishes = []
     const targetIds = activeCategoryIds
-
-    if (targetIds.length > 0) {
-      for (const section of menu.sections) {
-        if (section.items && Array.isArray(section.items)) {
-          for (const item of section.items) {
-            if (item.categoryId && targetIds.includes(String(item.categoryId))) {
-              const originalPrice = item.originalPrice || item.price || 0
-              const discountPercent = item.discountPercent || 0
-              const finalPrice = discountPercent > 0
-                ? Math.round(originalPrice * (1 - discountPercent / 100))
-                : originalPrice
-
-              const dishImage = normalizeImageUrl(item.image?.url || item.image || section.image?.url || section.image)
-
-              matchingDishes.push({
-                name: item.name,
-                price: finalPrice,
-                image: dishImage,
-                originalPrice: originalPrice,
-                itemId: item._id || item.id || `${item.name}-${finalPrice}`,
-                foodType: item.foodType,
-              })
-            }
-          }
-        }
-
-        if (section.subsections && Array.isArray(section.subsections)) {
-          for (const subsection of section.subsections) {
-            const subItems = Array.isArray(subsection?.items) ? subsection.items : []
-            for (const item of subItems) {
-              if (item.categoryId && targetIds.includes(String(item.categoryId))) {
-                const originalPrice = item?.originalPrice || item?.price || 0
-                const discountPercent = item?.discountPercent || 0
-                const finalPrice = discountPercent > 0
-                  ? Math.round(originalPrice * (1 - discountPercent / 100))
-                  : originalPrice
-
-                const dishImage = normalizeImageUrl(
-                  item?.image?.url || item?.image || subsection?.image?.url || subsection?.image || section?.image?.url || section?.image
-                )
-
-                matchingDishes.push({
-                  name: item?.name,
-                  price: finalPrice,
-                  image: dishImage,
-                  originalPrice: originalPrice,
-                  itemId: item?._id || item?.id || `${item?.name}-${finalPrice}`,
-                  foodType: item?.foodType,
-                })
-              }
-            }
-          }
-        }
-      }
-      return matchingDishes
-    }
-
-    // Fallback: name keyword matching if categories list is not loaded yet
     const keywords = getCategoryKeywords(categoryId)
-    if (keywords.length === 0) {
-      return []
+    const seenItemIds = new Set() // Prevent duplicate items
+
+    const addMatchingDish = (item, section, subsection = null) => {
+      const itemId = item._id || item.id || `${item.name}-${item.price}`
+      if (seenItemIds.has(String(itemId))) return
+      seenItemIds.add(String(itemId))
+
+      const originalPrice = item.originalPrice || item.price || 0
+      const discountPercent = item.discountPercent || 0
+      const finalPrice = discountPercent > 0
+        ? Math.round(originalPrice * (1 - discountPercent / 100))
+        : originalPrice
+
+      const dishImage = normalizeImageUrl(
+        item.image?.url || item.image || subsection?.image?.url || subsection?.image || section.image?.url || section.image
+      )
+
+      matchingDishes.push({
+        name: item.name,
+        price: finalPrice,
+        image: dishImage,
+        originalPrice: originalPrice,
+        itemId: itemId,
+        foodType: item.foodType,
+      })
     }
 
     for (const section of menu.sections) {
       const sectionNameLower = (section?.name || "").toLowerCase()
-      const sectionMatches = matchesCategoryText(sectionNameLower, keywords)
+      const sectionMatchesKeyword = keywords.length > 0 && matchesCategoryText(sectionNameLower, keywords)
 
       if (section.items && Array.isArray(section.items)) {
         for (const item of section.items) {
           const itemNameLower = (item.name || '').toLowerCase()
           const itemCategoryLower = (item.categoryName || item.category || '').toLowerCase()
 
-          const itemMatches =
+          const matchesId = targetIds.length > 0 && item.categoryId && targetIds.includes(String(item.categoryId))
+          const matchesKeyword = keywords.length > 0 && (
+            sectionMatchesKeyword ||
             matchesCategoryText(itemNameLower, keywords) ||
             matchesCategoryText(itemCategoryLower, keywords)
+          )
 
-          if (sectionMatches || itemMatches) {
-            const originalPrice = item.originalPrice || item.price || 0
-            const discountPercent = item.discountPercent || 0
-            const finalPrice = discountPercent > 0
-              ? Math.round(originalPrice * (1 - discountPercent / 100))
-              : originalPrice
-
-            const dishImage = normalizeImageUrl(item.image?.url || item.image || section.image?.url || section.image)
-
-            matchingDishes.push({
-              name: item.name,
-              price: finalPrice,
-              image: dishImage,
-              originalPrice: originalPrice,
-              itemId: item._id || item.id || `${item.name}-${finalPrice}`,
-              foodType: item.foodType,
-            })
+          if (matchesId || matchesKeyword) {
+            addMatchingDish(item, section)
           }
         }
       }
@@ -841,35 +781,23 @@ export default function CategoryPage({ embeddedCategorySlug = null, hideHeader =
       if (section.subsections && Array.isArray(section.subsections)) {
         for (const subsection of section.subsections) {
           const subsectionNameLower = (subsection?.name || "").toLowerCase()
-          const subsectionMatches = matchesCategoryText(subsectionNameLower, keywords)
+          const subsectionMatchesKeyword = keywords.length > 0 && matchesCategoryText(subsectionNameLower, keywords)
           const subItems = Array.isArray(subsection?.items) ? subsection.items : []
 
           for (const item of subItems) {
             const itemNameLower = (item?.name || "").toLowerCase()
             const itemCategoryLower = (item?.categoryName || item?.category || "").toLowerCase()
-            const itemMatches =
+
+            const matchesId = targetIds.length > 0 && item.categoryId && targetIds.includes(String(item.categoryId))
+            const matchesKeyword = keywords.length > 0 && (
+              sectionMatchesKeyword ||
+              subsectionMatchesKeyword ||
               matchesCategoryText(itemNameLower, keywords) ||
               matchesCategoryText(itemCategoryLower, keywords)
+            )
 
-            if (sectionMatches || subsectionMatches || itemMatches) {
-              const originalPrice = item?.originalPrice || item?.price || 0
-              const discountPercent = item?.discountPercent || 0
-              const finalPrice = discountPercent > 0
-                ? Math.round(originalPrice * (1 - discountPercent / 100))
-                : originalPrice
-
-              const dishImage = normalizeImageUrl(
-                item?.image?.url || item?.image || subsection?.image?.url || subsection?.image || section?.image?.url || section?.image
-              )
-
-              matchingDishes.push({
-                name: item?.name,
-                price: finalPrice,
-                image: dishImage,
-                originalPrice: originalPrice,
-                itemId: item?._id || item?.id || `${item?.name}-${finalPrice}`,
-                foodType: item?.foodType,
-              })
+            if (matchesId || matchesKeyword) {
+              addMatchingDish(item, section, subsection)
             }
           }
         }
@@ -1454,6 +1382,7 @@ export default function CategoryPage({ embeddedCategorySlug = null, hideHeader =
 
   // Auto-scroll to Recommended section on fresh navigation or category change
   useEffect(() => {
+    if (disableAutoScroll) return;
     if (!embeddedCategorySlug) return;
     if (selectedCategory !== 'all' && filteredRecommended.length > 0 && recommendedSectionRef.current) {
       const categoryChanged = lastScrolledCategoryRef.current !== selectedCategory;
@@ -1474,7 +1403,7 @@ export default function CategoryPage({ embeddedCategorySlug = null, hideHeader =
         return () => clearTimeout(timer)
       }
     }
-  }, [navType, selectedCategory, filteredRecommended.length])
+  }, [navType, selectedCategory, filteredRecommended.length, disableAutoScroll])
 
   return (
     <div className={`min-h-screen bg-white dark:bg-[#0a0a0a] ${shouldShowGrayscale ? 'grayscale opacity-75' : ''}`}>

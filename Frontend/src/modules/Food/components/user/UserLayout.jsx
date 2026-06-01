@@ -269,7 +269,7 @@ function UserLayoutContent() {
     const rootPaths = ["/", "/user", "/food", "/dining", "/user/dining", "/takeaway", "/user/takeaway"];
     const isAtRoot = rootPaths.includes(location.pathname);
     
-    if (navigationType !== 'POP' && !isAtRoot) {
+    if (navigationType !== 'POP' && !isAtRoot && !location.pathname.includes('/search')) {
       window.scrollTo({ top: 0, left: 0, behavior: 'instant' });
     }
   }, [location.pathname, location.search, location.hash, navigationType]);

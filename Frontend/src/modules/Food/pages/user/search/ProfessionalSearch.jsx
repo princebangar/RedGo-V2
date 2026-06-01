@@ -97,6 +97,19 @@ export default function ProfessionalSearch() {
     }
   }, [loading, query, navType])
 
+  // Auto-scroll to results when category changes
+  useEffect(() => {
+    if (selectedCategoryId) {
+      const timer = setTimeout(() => {
+        if (resultsRef.current) {
+          const topOffset = resultsRef.current.getBoundingClientRect().top + window.scrollY - 80;
+          window.scrollTo({ top: topOffset, behavior: 'smooth' });
+        }
+      }, 80);
+      return () => clearTimeout(timer);
+    }
+  }, [selectedCategoryId])
+
   const fetchCategories = async () => {
     try {
       const res = await searchAPI.getAdminCategories({ zoneId })
@@ -167,14 +180,14 @@ export default function ProfessionalSearch() {
   }
 
   const handleCategoryClick = (id) => {
-    const newCat = selectedCategoryId === id ? null : id
-    setSelectedCategoryId(newCat)
-    if (newCat) {
-        setSearchParams({ ...Object.fromEntries(searchParams), cat: newCat }, { replace: true })
+    if (selectedCategoryId === id) {
+      if (resultsRef.current) {
+        const topOffset = resultsRef.current.getBoundingClientRect().top + window.scrollY - 80;
+        window.scrollTo({ top: topOffset, behavior: 'smooth' });
+      }
     } else {
-        const p = Object.fromEntries(searchParams)
-        delete p.cat
-        setSearchParams(p, { replace: true })
+      setSelectedCategoryId(id)
+      setSearchParams({ ...Object.fromEntries(searchParams), cat: id }, { replace: true })
     }
   }
 
@@ -249,15 +262,15 @@ export default function ProfessionalSearch() {
                   <button 
                     key={cat._id} 
                     onClick={() => handleCategoryClick(cat._id)}
-                    className={`flex flex-col items-center group transition-all active:scale-90 ${selectedCategoryId === cat._id ? 'scale-105' : ''}`}
+                    className="flex flex-col items-center group active:scale-95"
                   >
-                    <div className={`relative w-15 h-15 sm:w-16 sm:h-16 rounded-[22px] mb-2 shadow-sm border-2 transition-all duration-300 ${selectedCategoryId === cat._id ? 'border-[#DC2626] shadow-lg shadow-[#DC2626]/10 transform -translate-y-1' : 'border-gray-50 dark:border-zinc-800 bg-white dark:bg-zinc-900 group-hover:border-gray-200'}`}>
+                    <div className={`relative w-15 h-15 sm:w-16 sm:h-16 rounded-[22px] mb-2 shadow-sm border-2 transition-colors duration-150 ${selectedCategoryId === cat._id ? 'border-[#DC2626] shadow-md shadow-[#DC2626]/5' : 'border-gray-50 dark:border-zinc-800 bg-white dark:bg-zinc-900 group-hover:border-gray-200'}`}>
                       <div className="absolute inset-0 rounded-[20px] overflow-hidden">
                         {cat.image ? (
                           <OptimizedImage 
                             src={getMediaUrl(cat.image)} 
                             alt={cat.name} 
-                            className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-115" 
+                            className="w-full h-full object-cover" 
                           />
                         ) : (
                           <div className="w-full h-full flex items-center justify-center bg-gray-50">
@@ -266,7 +279,7 @@ export default function ProfessionalSearch() {
                         )}
                       </div>
                     </div>
-                    <span className={`text-[10px] sm:text-[11px] font-bold text-center line-clamp-1 transition-colors ${selectedCategoryId === cat._id ? 'text-[#DC2626]' : 'text-gray-500 dark:text-zinc-400 group-hover:text-gray-800'}`}>
+                    <span className={`text-[10px] sm:text-[11px] font-bold text-center line-clamp-1 transition-colors duration-150 ${selectedCategoryId === cat._id ? 'text-[#DC2626]' : 'text-gray-500 dark:text-zinc-400 group-hover:text-gray-800'}`}>
                       {cat.name}
                     </span>
                   </button>
@@ -308,13 +321,15 @@ export default function ProfessionalSearch() {
 
         {/* Search Results or Embedded Category Page */}
         {selectedCategorySlug ? (
-           <div ref={resultsRef} className="mt-4 -mx-4 sm:mx-0">
+           <div ref={resultsRef} className="mt-4 -mx-4 sm:mx-0 min-h-[85vh]">
              <Suspense fallback={<div className="p-4"><RestaurantGridSkeleton count={4} /></div>}>
                <CategoryPage 
+                 key={selectedCategorySlug}
                  embeddedCategorySlug={selectedCategorySlug} 
                  hideHeader={true} 
                  hideCategoryCarousel={true}
                  hideFilters={true}
+                 disableAutoScroll={true}
                />
              </Suspense>
            </div>
