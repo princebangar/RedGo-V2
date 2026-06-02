@@ -26,11 +26,20 @@ export const config = {
     otpRateWindow: Number(process.env.OTP_RATE_WINDOW || (process.env.NODE_ENV === 'production' ? 600 : 60)),
     useDefaultOtp: process.env.USE_DEFAULT_OTP === 'true',
 
+    // MSG91
+    msg91AuthKey: process.env.MSG91_AUTH_KEY,
+    msg91SenderId: process.env.MSG91_SENDER_ID,
+    msg91TemplateId: process.env.MSG91_TEMPLATE_ID,
+
     // SMS India Hub
     smsIndiaHubUsername: process.env.SMS_INDIA_HUB_USERNAME,
     smsApiKey: process.env.SMS_INDIA_HUB_API_KEY,
     smsSenderId: process.env.SMS_INDIA_HUB_SENDER_ID,
     smsDltTemplateId: process.env.SMS_INDIA_HUB_DLT_TEMPLATE_ID,
+
+    // Service Toggles
+    smsHubEnabled: process.env.SMS_HUB_ENABLED === 'true',
+    msg91Enabled: process.env.MSG91_ENABLED === 'true',
 
     // Rate limiting
     rateLimitWindowMinutes: Number(process.env.RATE_LIMIT_WINDOW || 15),

@@ -69,6 +69,54 @@ const sendSmsViaIndiaHub = async (phone, otp) => {
     }
 };
 
+/**
+ * Sends SMS via MSG91 OTP API
+ * @param {string} phone - 10-digit mobile number (will be prefixed with 91)
+ * @param {string} otp
+ */
+const sendSmsViaMsg91 = async (phone, otp) => {
+    try {
+        // Normalize phone: strip non-digits, ensure 91 country code prefix
+        const digits = String(phone || '').replace(/\D/g, '');
+        const msisdn = digits.startsWith('91') ? digits : `91${digits}`;
+
+        logger.info(`[SMS] Sending OTP to ${msisdn} via MSG91 OTP API...`);
+
+        const response = await fetch('https://control.msg91.com/api/v5/otp', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'authkey': config.msg91AuthKey
+            },
+            body: JSON.stringify({
+                template_id: config.msg91TemplateId,
+                mobile: msisdn,
+                otp: otp
+            })
+        });
+
+        const resultText = await response.text();
+        logger.info(`[SMS] MSG91 raw response for ${msisdn}: ${resultText}`);
+
+        let parsed = null;
+        try { parsed = JSON.parse(resultText); } catch (_) { /* plain text response */ }
+
+        if (parsed && parsed.type === 'error') {
+            const errMsg = `MSG91 ERROR for ${phone}: ${parsed.message || resultText}`;
+            logger.error(errMsg);
+            // eslint-disable-next-line no-console
+            console.error(`❌ [SMS ERROR] ${errMsg}`);
+        } else if (!response.ok) {
+            logger.error(`MSG91 API HTTP error for ${phone}: ${response.status} – ${resultText}`);
+        } else {
+            logger.info(`✅ MSG91 SMS sent successfully to ${msisdn}`);
+        }
+    } catch (error) {
+        logger.error(`Error sending SMS via MSG91 to ${phone}: ${error.message}`);
+        // Do NOT throw — OTP is already stored in DB; SMS failure should not block the flow
+    }
+};
+
 const normalizePhoneForOtp = (phone) => {
     return String(phone || '').replace(/\D/g, '');
 };
@@ -149,7 +197,13 @@ export const createOrUpdateOtp = async (phone) => {
 
     // Only send SMS if not in default OTP mode
     if (!config.useDefaultOtp) {
-        await sendSmsViaIndiaHub(phone, otp);
+        if (config.msg91Enabled) {
+            await sendSmsViaMsg91(phone, otp);
+        } else if (config.smsHubEnabled) {
+            await sendSmsViaIndiaHub(phone, otp);
+        } else {
+            logger.warn('No SMS provider is enabled (MSG91_ENABLED and SMS_HUB_ENABLED are both false/missing).');
+        }
     }
 
     return otp;
