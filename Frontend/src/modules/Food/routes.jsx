@@ -9,6 +9,16 @@ import { registerWebPushForCurrentModule } from "@food/utils/firebaseMessaging"
 import { isModuleAuthenticated } from "@food/utils/auth"
 import { useRestaurantNotifications } from "@food/hooks/useRestaurantNotifications"
 import { AppShellSkeleton } from "./components/ui/loading-skeletons"
+import { Loader2 } from "lucide-react"
+
+const PageLoader = () => (
+  <div className="fixed inset-0 z-[9999] flex flex-col items-center justify-center p-6 bg-white dark:bg-[#0a0a0a]">
+    <Loader2 className="h-10 w-10 animate-spin text-[#CB202D]" />
+    <p className="mt-4 text-gray-500 font-bold uppercase tracking-widest text-[10px]">
+      Loading...
+    </p>
+  </div>
+)
 
 // Lazy Loading Components
 const UserRouter = lazy(() => import("@food/components/user/UserRouter"))
@@ -35,7 +45,7 @@ const UserRouterWrapper = () => {
                        location.pathname.includes('cancellation');
 
   return (
-    <Suspense fallback={isPolicyPage ? <div className="flex h-screen items-center justify-center"><Loader /></div> : <AppShellSkeleton />}>
+    <Suspense fallback={isPolicyPage ? <PageLoader /> : <AppShellSkeleton />}>
       <UserRouter />
     </Suspense>
   )
@@ -140,16 +150,17 @@ export default function App() {
     
     // Safety Net: Aggressively check local storage every 2 seconds if active token gets deleted
     const safetyInterval = setInterval(() => {
-      // Don't kick users out of auth pages!
+      // Don't kick users out of auth pages or public legal pages!
       const isRestaurantAuth = location.pathname.includes('/login') || location.pathname.includes('/otp') || location.pathname.includes('/signup') || location.pathname.includes('/auth') || location.pathname.includes('/forgot-password')
       const isDeliveryAuth = location.pathname.includes('/login') || location.pathname.includes('/otp') || location.pathname.includes('/signup') || location.pathname.includes('/auth')
+      const isPublicLegalPage = location.pathname.includes('/privacy') || location.pathname.includes('/terms') || location.pathname.includes('/help-content') || location.pathname.includes('/help/content') || location.pathname.includes('/help-centre/support')
       
-      if (location.pathname.startsWith('/food/restaurant') && !isRestaurantAuth) {
+      if (location.pathname.startsWith('/food/restaurant') && !isRestaurantAuth && !isPublicLegalPage) {
         if (!localStorage.getItem('restaurant_accessToken')) {
           navigate('/food/restaurant/login', { replace: true })
         }
       }
-      if (location.pathname.startsWith('/food/delivery') && !isDeliveryAuth) {
+      if (location.pathname.startsWith('/food/delivery') && !isDeliveryAuth && !isPublicLegalPage) {
         if (!localStorage.getItem('delivery_accessToken')) {
           navigate('/food/delivery/login', { replace: true })
         }

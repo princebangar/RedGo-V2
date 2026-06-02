@@ -97,6 +97,16 @@ const Wallet = lazy(() => import("@food/pages/user/Wallet"))
 const SubmitComplaint = lazy(() => import("@food/pages/user/complaints/SubmitComplaint"))
 
 import { AppShellSkeleton } from "@food/components/ui/loading-skeletons"
+import { Loader2 } from "lucide-react"
+
+const PageLoader = () => (
+  <div className="fixed inset-0 z-[9999] flex flex-col items-center justify-center p-6 bg-white dark:bg-[#0a0a0a]">
+    <Loader2 className="h-10 w-10 animate-spin text-[#CB202D]" />
+    <p className="mt-4 text-gray-500 font-bold uppercase tracking-widest text-[10px]">
+      Loading...
+    </p>
+  </div>
+)
 
 const RequireInitialAuth = ({ children }) => {
   const location = useLocation();
@@ -115,9 +125,17 @@ const RequireInitialAuth = ({ children }) => {
     return children;
   }
 
+  const isPolicyPage = 
+    currentPath.includes('terms') || 
+    currentPath.includes('privacy') || 
+    currentPath.includes('support') ||
+    currentPath.includes('refund') ||
+    currentPath.includes('shipping') ||
+    currentPath.includes('cancellation');
+
   // If user has NO explicit auth status and NO token, it means they are a first time visitor
   // or a user who has completely logged out. Force them to the login screen first.
-  if (authStatus === null && !token) {
+  if (authStatus === null && !token && !isPolicyPage) {
     return <Navigate to="/user/auth/login" replace />;
   }
 
@@ -134,13 +152,13 @@ export default function UserRouter() {
           {/* ========================================== */}
           
           {/* Public Legal Policies & Support */}
-          <Route path="profile/terms" element={<Suspense fallback={<Loader />}><Terms /></Suspense>} />
-          <Route path="profile/privacy" element={<Suspense fallback={<Loader />}><Privacy /></Suspense>} />
-          <Route path="profile/refund" element={<Suspense fallback={<Loader />}><Refund /></Suspense>} />
-          <Route path="profile/shipping" element={<Suspense fallback={<Loader />}><Shipping /></Suspense>} />
-          <Route path="profile/cancellation" element={<Suspense fallback={<Loader />}><Cancellation /></Suspense>} />
-          <Route path="profile/support" element={<Suspense fallback={<Loader />}><Support /></Suspense>} />
-          <Route path="profile/support-info" element={<Suspense fallback={<Loader />}><UserCMSHelpSupportPage /></Suspense>} />
+          <Route path="profile/terms" element={<Suspense fallback={<PageLoader />}><Terms /></Suspense>} />
+          <Route path="profile/privacy" element={<Suspense fallback={<PageLoader />}><Privacy /></Suspense>} />
+          <Route path="profile/refund" element={<Suspense fallback={<PageLoader />}><Refund /></Suspense>} />
+          <Route path="profile/shipping" element={<Suspense fallback={<PageLoader />}><Shipping /></Suspense>} />
+          <Route path="profile/cancellation" element={<Suspense fallback={<PageLoader />}><Cancellation /></Suspense>} />
+          <Route path="profile/support" element={<Suspense fallback={<PageLoader />}><Support /></Suspense>} />
+          <Route path="profile/support-info" element={<Suspense fallback={<PageLoader />}><UserCMSHelpSupportPage /></Suspense>} />
           
           {/* Help Center */}
           <Route path="help" element={<Help />} />

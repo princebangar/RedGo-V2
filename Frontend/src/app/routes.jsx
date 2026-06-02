@@ -47,16 +47,16 @@ const FoodAppWrapper = () => {
                      location.pathname === '/food/' ||
                      location.pathname.startsWith('/food/user'));
 
-  if (isUserPath && authStatus === null && !token) {
-    return <Navigate to="/user/auth/login" replace />;
-  }
-
   const isPolicyPage = location.pathname.includes('terms') || 
                        location.pathname.includes('privacy') || 
                        location.pathname.includes('support') ||
                        location.pathname.includes('refund') ||
                        location.pathname.includes('shipping') ||
                        location.pathname.includes('cancellation');
+
+  if (isUserPath && authStatus === null && !token && !isPolicyPage) {
+    return <Navigate to="/user/auth/login" replace />;
+  }
 
   const isOnboarding = location.pathname.startsWith('/food/restaurant/onboarding');
 
