@@ -118,7 +118,8 @@ const sendSmsViaMsg91 = async (phone, otp) => {
 };
 
 const normalizePhoneForOtp = (phone) => {
-    return String(phone || '').replace(/\D/g, '');
+    const digits = String(phone || '').replace(/\D/g, '');
+    return digits.slice(-10); // Always normalize to 10 digits to prevent duplicate checks
 };
 
 export const createOrUpdateOtp = async (phone) => {
@@ -143,8 +144,10 @@ export const createOrUpdateOtp = async (phone) => {
         const isInWindow = now - existing.lastRequestAt < windowMs;
 
         if (isInWindow) {
-            // Bypass rate limit in dev mode completely
-            if (!config.useDefaultOtp && existing.requestCount >= (config.otpRateLimit || 3)) {
+            // Relax rate limit in local development to avoid blocking testing flows
+            const isDev = config.nodeEnv === 'development';
+            const limit = isDev ? 5 : (config.otpRateLimit || 3);
+            if (!config.useDefaultOtp && existing.requestCount >= limit) {
                 logger.warn(`Rate limit exceeded for phone ${normalizedPhone}`);
                 throw new ValidationError(`Too many OTP requests. Please try again after ${Math.ceil(windowMs / 60000)} minutes.`);
             }

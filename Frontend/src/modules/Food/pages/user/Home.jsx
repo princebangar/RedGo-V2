@@ -2284,7 +2284,7 @@ export default function Home() {
             ))
           )}
 
-          {displayCategories.length > 12 && !showCategorySkeleton && (
+          {displayCategories.length > 0 && !showCategorySkeleton && (
             <div
               className="flex-shrink-0 flex flex-col items-center gap-2 cursor-pointer group"
               onClick={() => navigate("/food/user/categories")}
@@ -2548,7 +2548,7 @@ export default function Home() {
 
                     {/* Categories Horizontal Slider */}
                     <div className="flex overflow-x-auto gap-1.5 pb-2 scrollbar-hide -mx-4 px-4 mask-edge-fade">
-                      {displayCategories.slice(0, 13).map((category, index) => (
+                      {displayCategories.slice(0, 12).map((category, index) => (
                         <Link
                           key={category.id || index}
                           to={`/food/user/category/${category.slug}`}
@@ -2585,7 +2585,7 @@ export default function Home() {
                       ))}
 
                       {/* See All Card */}
-                      {displayCategories.length > 13 && (
+                      {displayCategories.length > 0 && (
                         <Link
                           to="/food/user/categories"
                           state={{ from: '/food/user' }}
@@ -2666,7 +2666,7 @@ export default function Home() {
 
                       {/* Categories Slider (Increased Icon Size) */}
                       <div className="flex overflow-x-auto gap-5 py-3 pb-2 scrollbar-hide px-4 mask-edge-fade">
-                        {displayCategories.slice(0, 13).map((category, index) => (
+                        {displayCategories.slice(0, 12).map((category, index) => (
                           <Link
                             key={`sticky-${category.id || index}`}
                             to={`/food/user/category/${category.slug}`}
@@ -2686,7 +2686,7 @@ export default function Home() {
                         ))}
 
                         {/* See All Sticky Card */}
-                        {displayCategories.length > 13 && (
+                        {displayCategories.length > 0 && (
                           <Link
                             to="/food/user/categories"
                             state={{ from: '/food/user' }}
