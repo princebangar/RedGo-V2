@@ -16,8 +16,8 @@ import OptimizedImage from "@food/components/OptimizedImage"
 import { useVoiceSearch } from "@food/hooks/useVoiceSearch"
 // Force HMR reload
 import { RestaurantGridSkeleton } from "@food/components/ui/loading-skeletons"
-import { Suspense } from "react"
-import CategoryPage from "../CategoryPage"
+import { Suspense, lazy } from "react"
+const CategoryPage = lazy(() => import("../CategoryPage"))
 
 // Helper to resolve media URLs consistently
 const getMediaUrl = (url) => {

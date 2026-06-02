@@ -4,8 +4,9 @@ import UserLayout from "./UserLayout"
 import Loader from "@food/components/Loader"
 import ProtectedRoute from "@food/components/ProtectedRoute"
 import AuthRedirect from "@food/components/AuthRedirect"
-import SearchResults from "@food/pages/user/search/ProfessionalSearch"
 import Home from "@food/pages/user/Home"
+
+const SearchResults = lazy(() => import("@food/pages/user/search/ProfessionalSearch"))
 
 // Lazy Loading Pages
 
