@@ -417,7 +417,6 @@ export async function createOrder(userId, dto) {
   }
 
   const dispatchableStatuses = [
-    "confirmed",
     "preparing",
     "ready_for_pickup",
     "ready",
@@ -500,7 +499,6 @@ export async function verifyPayment(userId, dto) {
 
   const settings = await getDispatchSettings();
   const dispatchableStatuses = [
-    "confirmed",
     "preparing",
     "ready_for_pickup",
     "ready",
@@ -738,7 +736,7 @@ export async function cancelOrder(orderId, userId, reason, refundDestination = "
   });
   if (!order) throw new NotFoundError("Order not found");
 
-  const allowed = ["created"];
+  const allowed = ["created", "confirmed"];
   if (!allowed.includes(order.orderStatus))
     throw new ValidationError("Order cannot be cancelled");
 
@@ -1158,10 +1156,11 @@ export async function updateOrderStatusRestaurant(
   try {
     const io = getIO();
     if (io) {
-      // On accept (confirmed or preparing) -> request delivery partners via central logic
+      // Restaurant accept moves the order into preparing. Delivery dispatch must
+      // not start from the initial user-placed "confirmed" state.
       if (
-        (String(orderStatus) === "preparing" || String(orderStatus) === "confirmed") && 
-        (String(from) !== "preparing" && String(from) !== "confirmed")
+        String(orderStatus) === "preparing" &&
+        String(from) !== "preparing"
       ) {
         console.log(
           `[DEBUG] Order ${order._id.toString()} status changed to '${orderStatus}'. Triggering central delivery dispatch.`,
@@ -1279,9 +1278,8 @@ export async function resendDeliveryNotificationRestaurant(orderId, restaurantId
 
     if (!order) throw new NotFoundError('Order not found');
 
-    // Allow resend for fresh confirmed orders too, because this route is often
-    // used right after restaurant confirmation when the first rider alert was missed.
-    const activeStatuses = ['confirmed', 'preparing', 'ready_for_pickup', 'ready'];
+    // Delivery resend is allowed only after restaurant acceptance.
+    const activeStatuses = ['preparing', 'ready_for_pickup', 'ready'];
     if (!activeStatuses.includes(order.orderStatus)) {
         throw new ValidationError(`Cannot resend notification for order in status: ${order.orderStatus}`);
     }

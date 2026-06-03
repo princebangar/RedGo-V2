@@ -1108,7 +1108,6 @@ export default function OrdersMain() {
   // New order popup states
   const [showNewOrderPopup, setShowNewOrderPopup] = useState(false);
   const [popupOrder, setPopupOrder] = useState(null); // Store order for popup (from Socket.IO or API)
-  const [isMuted, setIsMuted] = useState(false);
   const [prepTime, setPrepTime] = useState(11);
   const [countdown, setCountdown] = useState(240); // 4 minutes in seconds
   const [isDetailsExpanded, setIsDetailsExpanded] = useState(true);
@@ -1131,7 +1130,7 @@ export default function OrdersMain() {
   });
   const [isReverifying, setIsReverifying] = useState(false);
   const showNewOrderPopupRef = useRef(showNewOrderPopup);
-  const isMutedRef = useRef(isMuted);
+  const isMutedRef = useRef(false);
   const newOrderRef = useRef(null);
 
   // Pending counts for tabs
@@ -1289,7 +1288,8 @@ export default function OrdersMain() {
   };
 
   // Restaurant notifications hook for real-time orders
-  const { newOrder, clearNewOrder, isConnected, stopSound } = useRestaurantNotifications();
+  const { newOrder, clearNewOrder, isConnected, stopSound, isMuted, setMuted } = useRestaurantNotifications();
+  const lastOrderToastRef = useRef({ key: "", at: 0 });
 
   const rejectReasons = [
     "Restaurant is too busy",
@@ -1521,6 +1521,17 @@ export default function OrdersMain() {
       if (!isSameOrder) return;
 
       const cancelledStatus = normalizeOrderStatusValue(payloadStatus);
+      const toastKey =
+        `${payload?.orderMongoId || payload?.orderId || payload?._id || payload?.id || activePopupOrder?.orderMongoId || activePopupOrder?.orderId || activePopupOrder?._id || activePopupOrder?.id || "unknown"}:${cancelledStatus}`;
+      const now = Date.now();
+      if (
+        lastOrderToastRef.current.key === toastKey &&
+        now - lastOrderToastRef.current.at < 5000
+      ) {
+        return;
+      }
+      lastOrderToastRef.current = { key: toastKey, at: now };
+
       setPopupOrder((prev) => {
         const base = prev || activePopupOrder || {};
         return {
@@ -1530,12 +1541,6 @@ export default function OrdersMain() {
         };
       });
       clearNewOrder();
-
-      if (isUserCancelledStatus(cancelledStatus)) {
-        toast.info("Order canceled by user");
-      } else {
-        toast.info("Order cancelled");
-      }
     };
 
     window.addEventListener(
@@ -1572,10 +1577,9 @@ export default function OrdersMain() {
   // Ensure audio stops when user comes to the page
   useEffect(() => {
     const handleVisibilityChange = () => {
-      if (typeof document !== "undefined" && document.visibilityState === "visible") {
-        if (stopSound) {
-          stopSound();
-        }
+      if (typeof document === "undefined") return;
+      if (document.visibilityState === "hidden" && newOrderRef.current && !isMutedRef.current) {
+        // Keep the active alert running in background as well.
       }
     };
     document.addEventListener("visibilitychange", handleVisibilityChange);
@@ -1665,7 +1669,7 @@ export default function OrdersMain() {
 
     // Check once on mount, and then every minute
     checkOrdersToPopup();
-    const intervalId = setInterval(checkOrdersToPopup, 60000);
+    const intervalId = setInterval(checkOrdersToPopup, 8000);
 
     return () => clearInterval(intervalId);
   }, []);
@@ -1690,6 +1694,9 @@ export default function OrdersMain() {
       
       if (orderId && !isAcceptingOrder) {
         debugLog("?? Timer expired. Auto-rejecting order:", orderId);
+        if (stopSound) {
+          stopSound();
+        }
         restaurantAPI.rejectOrder(orderId, "No response from restaurant (Auto-rejected)")
           .then(() => {
             toast.info("Order auto-rejected due to no response");
@@ -1841,21 +1848,8 @@ export default function OrdersMain() {
     // Ensure this order can't re-trigger fallback popup by using a different id key.
     markOrderAsShown(orderToAccept);
 
-    // Accept order via API if we have a real order
+    // Accept order only from the explicit popup payload.
     let orderId = resolveOrderActionId(orderToAccept);
-    if (!orderId) {
-      try {
-        const latest = await restaurantAPI.getOrders({ page: 1, limit: 20 });
-        const orders = latest?.data?.data?.orders || [];
-        const target = orders.find((o) => {
-          const s = String(o?.status || o?.orderStatus || "").toLowerCase();
-          return s === "confirmed" || s === "created";
-        });
-        orderId = resolveOrderActionId(target);
-      } catch (_) {
-        // keep empty orderId and show existing error below
-      }
-    }
 
     if (orderId) {
       try {
@@ -1914,6 +1908,10 @@ export default function OrdersMain() {
     // Use popupOrder (from Socket.IO or API fallback) or newOrder (from hook)
     const orderToReject = popupOrder || newOrder;
 
+    if (stopSound) {
+      stopSound();
+    }
+
     // Reject order via API if we have a real order
     if (orderToReject?.orderMongoId || orderToReject?.orderId) {
       try {
@@ -1928,9 +1926,6 @@ export default function OrdersMain() {
       }
     }
 
-    if (stopSound) {
-      stopSound();
-    }
     setShowRejectPopup(false);
     setShowNewOrderPopup(false);
     setPopupOrder(null);
@@ -1980,10 +1975,8 @@ export default function OrdersMain() {
 
   // Toggle mute
   const toggleMute = () => {
-    setIsMuted(!isMuted);
-    if (stopSound && !isMuted) {
-      stopSound();
-    }
+    const nextMuted = !isMuted;
+    if (setMuted) setMuted(nextMuted);
   };
 
   // Handle PDF download

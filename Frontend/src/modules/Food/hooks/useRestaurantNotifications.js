@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, useCallback } from 'react';
 import io from 'socket.io-client';
 import { API_BASE_URL } from '@food/api/config';
 import { restaurantAPI } from '@food/api';
@@ -81,8 +81,10 @@ export const useRestaurantNotifications = () => {
   const [newOrder, setNewOrder] = useState(null);
   const [newReservation, setNewReservation] = useState(null);
   const [isConnected, setIsConnected] = useState(false);
+  const [isMuted, setIsMuted] = useState(false);
   const audioRef = useRef(null);
   const activeOrderRef = useRef(null);
+  const isMutedRef = useRef(false);
   const alertLoopTimerRef = useRef(null);
   const alertLoopStartedAtRef = useRef(0);
   const userInteractedRef = useRef(false); // Track user interaction for autoplay policy
@@ -152,7 +154,6 @@ export const useRestaurantNotifications = () => {
             requireInteraction: true,
             silent: false,
             vibrate: [200, 100, 200, 100, 300],
-            icon: '/favicon.ico',
             data: notificationOptions.data,
           });
           return;
@@ -164,7 +165,6 @@ export const useRestaurantNotifications = () => {
         tag: notificationOptions.tag,
         requireInteraction: true,
         silent: false,
-        icon: '/favicon.ico',
         data: notificationOptions.data,
       });
     } catch (error) {
@@ -186,6 +186,18 @@ export const useRestaurantNotifications = () => {
     }
   };
 
+  const setMuted = useCallback((nextMuted) => {
+    const muted = Boolean(nextMuted);
+    isMutedRef.current = muted;
+    setIsMuted(muted);
+    if (muted) {
+      stopAlertLoop();
+    } else if (activeOrderRef.current) {
+      playNotificationSound(activeOrderRef.current);
+      startAlertLoop();
+    }
+  }, []);
+
   const startAlertLoop = () => {
     stopAlertLoop();
     alertLoopStartedAtRef.current = Date.now();
@@ -197,9 +209,7 @@ export const useRestaurantNotifications = () => {
         return;
       }
 
-      // Only re-alert if the tab is hidden. 
-      // If the user has the tab open, they are seeing the orders.
-      if (typeof document !== 'undefined' && document.visibilityState === 'hidden') {
+      if (!isMutedRef.current) {
         playNotificationSound(activeOrderRef.current);
       }
     }, ALERT_LOOP_INTERVAL_MS);
@@ -230,11 +240,9 @@ export const useRestaurantNotifications = () => {
 
     activeOrderRef.current = orderData || { id: Date.now() };
 
-    // Play sound immediately if:
-    // 1. It's a real-time socket event (we want to know even if on the page)
-    // 2. OR the tab is hidden (so the poll successfully alerts the user)
+    // Play sound immediately on every new alert unless muted.
     const isTabHidden = typeof document !== 'undefined' && document.visibilityState === 'hidden';
-    if (isSocket || isTabHidden) {
+    if (!isMutedRef.current) {
       playNotificationSound(orderData);
     }
 
@@ -247,7 +255,7 @@ export const useRestaurantNotifications = () => {
 
   const handleIncomingReservationAlert = (bookingData) => {
     // Basic alert logic for reservations
-    playNotificationSound(bookingData);
+    if (!isMutedRef.current) playNotificationSound(bookingData);
     if (typeof document !== 'undefined' && document.visibilityState === 'hidden') {
        // Optional: show background notification for reservation
     }
@@ -378,13 +386,8 @@ export const useRestaurantNotifications = () => {
   useEffect(() => {
     const onVisibilityChange = () => {
       if (typeof document === 'undefined') return;
-      
-      if (document.visibilityState === 'visible') {
-        // Stop any repeating alert loops once the user "sees" the page
-        stopAlertLoop();
-      } else if (document.visibilityState === 'hidden' && activeOrderRef.current) {
-        // Trigger one-shot alert when tab is hidden to ensure user didn't miss it
-        playNotificationSound(activeOrderRef.current);
+
+      if (document.visibilityState === 'hidden' && activeOrderRef.current && !isMutedRef.current) {
         showBackgroundOrderNotification(activeOrderRef.current);
       }
     };
@@ -790,6 +793,7 @@ export const useRestaurantNotifications = () => {
 
   const playNotificationSound = async (orderData = {}) => {
     try {
+      if (isMutedRef.current) return;
       const usedNativeBridge = await triggerWebViewNativeNotification(orderData);
       if (typeof navigator !== 'undefined' && typeof navigator.vibrate === 'function') {
         navigator.vibrate([200, 100, 200, 100, 300]);
@@ -810,6 +814,7 @@ export const useRestaurantNotifications = () => {
             try {
               const fallbackAudio = new Audio(resolveAudioSource(alertSound, `restaurant-alert-${Date.now()}`));
               fallbackAudio.volume = 1;
+              fallbackAudio.muted = false;
               fallbackAudio.play().catch(() => {});
             } catch (fallbackError) {
               debugWarn('Fallback audio playback failed:', fallbackError);
@@ -839,6 +844,8 @@ export const useRestaurantNotifications = () => {
       setNewReservation(null);
     },
     isConnected,
+    isMuted,
+    setMuted,
     playNotificationSound,
     stopSound: stopAlertLoop
   };

@@ -428,13 +428,13 @@ const transformOrderForTracking = (apiOrder, previousOrder = null, explicitResta
 
 /**
  * Backend uses `orderStatus` (created, confirmed, preparing, ready_for_pickup, picked_up, delivered, cancelled_*).
- * This page used to read legacy `status` only — so UI never updated. Map canonical + legacy values to tracking steps.
+ * In this flow `confirmed` means the user placed the order and it is waiting for restaurant acceptance.
+ * `preparing` is the first true restaurant-accepted state.
  */
 function mapBackendOrderStatusToUi(raw) {
   const s = String(raw || "").toLowerCase()
-  if (!s || s === "pending" || s === "created") return "placed"
-  if (s === "confirmed" || s === "accepted") return "confirmed"
-  if (s === "preparing" || s === "processed") return "preparing"
+  if (!s || s === "pending" || s === "created" || s === "confirmed") return "placed"
+  if (s === "accepted" || s === "preparing" || s === "processed") return "preparing"
   if (s === "ready" || s === "ready_for_pickup" || s === "reached_pickup" || s === "order_confirmed") return "ready"
   if (s === "picked_up" || s === "out_for_delivery" || s === "en_route_to_delivery") return "on_way"
   if (s === "reached_drop" || s === "at_drop" || s === "at_delivery") return "at_drop"
@@ -855,7 +855,6 @@ export default function OrderTracking() {
   const isAdminAccepted = useMemo(() => {
     const status = order?.status
     return [
-      "confirmed",
       "preparing",
       "ready",
       "ready_for_pickup",
@@ -875,14 +874,13 @@ export default function OrderTracking() {
 
   const acceptedAtMs = useMemo(() => {
     const timestamp =
-      order?.tracking?.confirmed?.timestamp ||
       order?.tracking?.preparing?.timestamp ||
       order?.updatedAt ||
       order?.createdAt
 
     const parsed = timestamp ? new Date(timestamp).getTime() : NaN
     return Number.isFinite(parsed) ? parsed : null
-  }, [order?.tracking?.confirmed?.timestamp, order?.tracking?.preparing?.timestamp, order?.updatedAt, order?.createdAt])
+  }, [order?.tracking?.preparing?.timestamp, order?.updatedAt, order?.createdAt])
 
   const editWindowRemainingMs = useMemo(() => {
     if (!isAdminAccepted || !acceptedAtMs) return 0
@@ -1396,8 +1394,8 @@ export default function OrderTracking() {
       iconType: 'food'
     },
     confirmed: {
-      title: "Order Confirmed",
-      subtitle: "Restaurant has accepted your order",
+      title: "Order Placed",
+      subtitle: "Waiting for restaurant to accept",
       color: "bg-green-600",
       iconType: 'food'
     },
@@ -1491,7 +1489,7 @@ export default function OrderTracking() {
                 transition={{ delay: 0.9 }}
                 className="text-2xl font-bold text-gray-900 dark:text-gray-100 mt-6"
               >
-                {isScheduledOrder ? "Order Scheduled!" : "Order Confirmed!"}
+                {isScheduledOrder ? "Order Scheduled!" : "Order Placed!"}
               </motion.h1>
               <motion.p
                 initial={{ opacity: 0, y: 20 }}
@@ -1501,7 +1499,7 @@ export default function OrderTracking() {
               >
                 {isScheduledOrder
                   ? `Scheduled for ${scheduledDateFormatted}`
-                  : "Your order has been placed successfully"}
+                  : "Waiting for the restaurant to accept your order"}
               </motion.p>
               <motion.div
                 initial={{ opacity: 0 }}
@@ -2050,7 +2048,7 @@ export default function OrderTracking() {
           >
             <Button
               variant="outline"
-              className="w-full text-red-600 border-red-100 hover:bg-red-50 h-12 rounded-xl font-semibold"
+              className="w-full h-12 rounded-xl font-semibold bg-red-600 text-white border-red-600 shadow-sm hover:bg-red-700 hover:text-white hover:border-red-700"
               onClick={handleCancelOrder}
             >
               Cancel Order

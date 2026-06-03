@@ -233,7 +233,6 @@ export async function tryAutoAssign(orderId, options = {}) {
   const lockTimeout = 55000; // 55 seconds lock interval
 
   const dispatchableStatuses = new Set([
-    'confirmed',
     'preparing',
     'ready_for_pickup',
     'ready',
@@ -452,7 +451,7 @@ export async function resendDeliveryNotificationRestaurant(orderId, restaurantId
 
   if (!order) throw new NotFoundError('Order not found');
 
-  const activeStatuses = ['confirmed', 'preparing', 'ready_for_pickup', 'ready'];
+  const activeStatuses = ['preparing', 'ready_for_pickup', 'ready'];
   if (!activeStatuses.includes(order.orderStatus)) {
     throw new ValidationError(`Cannot resend notification for order in status: ${order.orderStatus}`);
   }

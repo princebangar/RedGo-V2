@@ -283,7 +283,7 @@ export async function getCurrentTripDelivery(deliveryPartnerId) {
     'dispatch.deliveryPartnerId': partnerId,
     'dispatch.status': 'accepted',
     orderStatus: {
-      $in: ['confirmed', 'preparing', 'ready_for_pickup', 'picked_up'],
+      $in: ['preparing', 'ready_for_pickup', 'picked_up'],
     },
   })
     .populate({
@@ -337,7 +337,7 @@ export async function listOrdersAvailableDelivery(deliveryPartnerId, query) {
         $or: [
           {
             'dispatch.status': 'unassigned',
-            orderStatus: { $in: ['confirmed', 'preparing', 'ready_for_pickup'] },
+            orderStatus: { $in: ['preparing', 'ready_for_pickup'] },
           },
           activeOwnOrderFilter,
         ],
@@ -414,7 +414,7 @@ export async function acceptOrderDelivery(orderId, deliveryPartnerId) {
   }
 
   const now = new Date();
-  const acceptedStatuses = ['confirmed', 'preparing', 'ready_for_pickup', 'picked_up'];
+  const acceptedStatuses = ['preparing', 'ready_for_pickup', 'picked_up'];
   const cancellableStatuses = [
     'cancelled_by_user',
     'cancelled_by_restaurant',

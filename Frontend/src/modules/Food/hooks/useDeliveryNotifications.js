@@ -2,8 +2,8 @@ import { useEffect, useRef, useState, useCallback } from 'react';
 import io from 'socket.io-client';
 import { API_BASE_URL } from '@food/api/config';
 import { deliveryAPI } from '@food/api';
-const alertSound = '/alert.mp3';
-const originalSound = '/original.mp3';
+const alertSound = '/restaurant_alert.mp3';
+const originalSound = '/restaurant_alert.mp3';
 import { dispatchNotificationInboxRefresh } from '@food/hooks/useNotificationInbox';
 
 const shouldLogDeliverySocket = () => {
@@ -236,6 +236,11 @@ export const useDeliveryNotifications = () => {
       alertLoopTimerRef.current = null;
     }
     alertLoopStartedAtRef.current = 0;
+
+    if (audioRef.current) {
+      audioRef.current.pause();
+      audioRef.current.currentTime = 0;
+    }
   }, []);
 
   const startAlertLoop = useCallback((playSoundFn) => {
@@ -1060,6 +1065,7 @@ export const useDeliveryNotifications = () => {
     clearClaimedOrderId,
     isConnected,
     playNotificationSound,
+    stopSound: stopAlertLoop,
     emitLocation
   };
 };

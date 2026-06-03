@@ -69,7 +69,7 @@ export default function DeliveryHomeV2({ tab = 'feed' }) {
   const { isOnline, toggleOnline, riderLocation, activeOrder, tripStatus, setRiderLocation, setActiveOrder, updateTripStatus, clearActiveOrder } = useDeliveryStore();
   const { isWithinRange, distanceToTarget } = useProximityCheck();
   const { acceptOrder, reachPickup, pickUpOrder, reachDrop, completeDelivery, resetTrip } = useOrderManager();
-  const { newOrder, clearNewOrder, orderStatusUpdate, clearOrderStatusUpdate, claimedOrderId, clearClaimedOrderId, adminNotification, clearAdminNotification, isConnected: isSocketConnected, emitLocation } = useDeliveryNotifications();
+  const { newOrder, clearNewOrder, orderStatusUpdate, clearOrderStatusUpdate, claimedOrderId, clearClaimedOrderId, adminNotification, clearAdminNotification, isConnected: isSocketConnected, emitLocation, stopSound } = useDeliveryNotifications();
   const companyName = useCompanyName();
   const { items: broadcastItems, unreadCount: notificationUnreadCount, markAsRead: markBroadcastAsRead, dismissAll: dismissAllBroadcast } = useNotificationInbox("delivery", { limit: 20 });
 
@@ -624,7 +624,7 @@ export default function DeliveryHomeV2({ tab = 'feed' }) {
           const orderStatus = String(order?.orderStatus || order?.status || '').toLowerCase();
           return (
             ['unassigned', 'assigned'].includes(dispatchStatus) &&
-            ['confirmed', 'preparing', 'ready_for_pickup'].includes(orderStatus)
+            ['preparing', 'ready_for_pickup'].includes(orderStatus)
           );
         });
 
@@ -970,6 +970,7 @@ export default function DeliveryHomeV2({ tab = 'feed' }) {
                   <NewOrderModal 
                     order={incomingOrder} 
                     onAccept={async (o) => {
+                      stopSound?.();
                       try {
                         await acceptOrder(o);
                         // Only dismiss the modal on successful accept
@@ -992,7 +993,29 @@ export default function DeliveryHomeV2({ tab = 'feed' }) {
                         // For other errors (network, etc.), keep showing the modal so they can retry
                       }
                     }}
-                    onReject={() => { setIncomingOrder(null); clearNewOrder(); }}
+                    onReject={async () => {
+                      const orderToReject = incomingOrder;
+                      const orderId =
+                        orderToReject?._id ||
+                        orderToReject?.id ||
+                        orderToReject?.orderMongoId ||
+                        orderToReject?.orderId ||
+                        orderToReject?.order_id;
+
+                      stopSound?.();
+                      setIncomingOrder(null);
+                      clearNewOrder();
+
+                      if (!orderId) return;
+
+                      try {
+                        await deliveryAPI.rejectOrder(orderId, {
+                          reason: "Rejected by delivery partner",
+                        });
+                      } catch (error) {
+                        console.warn('[DeliveryHomeV2] Reject order failed:', error?.message || error);
+                      }
+                    }}
                     onMinimize={() => setIsModalMinimized(true)}
                   />
                 )}
