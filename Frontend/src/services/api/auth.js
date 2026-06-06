@@ -12,6 +12,7 @@ const AUTH = {
   ADMIN_LOGIN: "/food/auth/admin/login",
   RESTAURANT_REQUEST_OTP: "/food/auth/restaurant/request-otp",
   RESTAURANT_VERIFY_OTP: "/food/auth/restaurant/verify-otp",
+  RESTAURANT_REAPPLY: "/food/auth/restaurant/reapply",
   DELIVERY_REQUEST_OTP: "/food/auth/delivery/request-otp",
   DELIVERY_VERIFY_OTP: "/food/auth/delivery/verify-otp",
   REFRESH_TOKEN: "/food/auth/refresh-token",
@@ -297,6 +298,14 @@ export function verifyRestaurantOtp(phone, otp, fcmToken = null, platform = "web
     ...(fcmToken ? { fcmToken, platform } : {}),
     ...(confirmAction ? { confirmAction } : {}),
   });
+}
+
+export function reapplyRestaurant(phone) {
+  const normalized = normalizePhone(phone);
+  if (!normalized) {
+    return Promise.reject(new Error("Phone number is required"));
+  }
+  return apiClient.post(AUTH.RESTAURANT_REAPPLY, { phone: normalized });
 }
 
 /**

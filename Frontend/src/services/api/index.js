@@ -929,6 +929,10 @@ export const restaurantAPI = {
       return Promise.reject(new Error("Phone and OTP are required"));
     return authService.verifyRestaurantOtp(phone, otp, fcmToken, platform, confirmAction);
   },
+  reapply: (phone) => {
+    if (!phone) return Promise.reject(new Error("Phone is required"));
+    return authService.reapplyRestaurant(phone);
+  },
   getMe: () => authService.getMe("restaurant"),
   /** Restaurant dashboard: fetch current restaurant profile (deduped + short-cached). */
   getCurrentRestaurant: () => getRestaurantCurrentOnce(),

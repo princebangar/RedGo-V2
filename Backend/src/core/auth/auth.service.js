@@ -504,7 +504,9 @@ export const verifyRestaurantOtpAndLogin = async (phone, otp, fcmToken, platform
   if (restaurant.status && restaurant.status !== "approved") {
     const message = restaurant.status === "pending"
       ? "Your restaurant registration is pending approval."
-      : "Your restaurant registration has been rejected. Please contact support.";
+      : (restaurant.rejectionReason 
+          ? `Your restaurant registration has been rejected. Reason: ${restaurant.rejectionReason}`
+          : "Your restaurant registration has been rejected. Please contact support.");
     
     console.warn(`⚠️ [Auth-Restaurant] Login blocked for ${phone}: status=${restaurant.status}, message=${message}`);
     throw new AuthError(message);
@@ -529,6 +531,44 @@ export const verifyRestaurantOtpAndLogin = async (phone, otp, fcmToken, platform
     user: sanitizeRestaurantForAuthResponse(restaurant?.toObject?.() || restaurant),
     needsRegistration: false,
   };
+};
+
+export const reapplyRestaurant = async (phone) => {
+  if (!phone) {
+    throw new ValidationError("Phone is required");
+  }
+
+  const digits = String(phone || "").replace(/\D/g, "");
+  const last10 = digits.slice(-10);
+  const phoneCandidates = [phone, digits, last10].filter(Boolean);
+  const phoneOrFields = (field) => [
+    { [field]: { $in: phoneCandidates } },
+    ...(last10 ? [{ [field]: { $regex: new RegExp(last10 + "$") } }] : []),
+  ];
+
+  const matchingRestaurants = await FoodRestaurant.find({
+    status: "rejected",
+    $or: [
+      ...phoneOrFields("ownerPhone"),
+      ...phoneOrFields("primaryContactNumber"),
+    ],
+  });
+
+  if (!matchingRestaurants || matchingRestaurants.length === 0) {
+    throw new ValidationError("No rejected restaurant found with this phone number");
+  }
+
+  const deleteResult = await FoodRestaurant.deleteMany({
+    status: "rejected",
+    $or: [
+      ...phoneOrFields("ownerPhone"),
+      ...phoneOrFields("primaryContactNumber"),
+    ],
+  });
+
+  logger.info({ phone, deletedCount: deleteResult.deletedCount }, `Rejected restaurant account(s) permanently deleted for reapply`);
+
+  return { success: true };
 };
 
 export const requestDeliveryOtp = async (phone) => {

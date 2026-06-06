@@ -260,9 +260,11 @@ async function playPushSound(payload = {}) {
     });
     const usedNativeBridge = await triggerWebViewNativeNotification(payload);
 
-    if (typeof navigator !== "undefined" && typeof navigator.vibrate === "function") {
-      pushDebugLog(PUSH_DEBUG_PREFIX, "Triggering vibration");
-      navigator.vibrate([200, 100, 200, 100, 300]);
+    if (typeof window !== "undefined" && window.__userHasInteracted && typeof navigator !== "undefined" && typeof navigator.vibrate === "function") {
+      try {
+        pushDebugLog(PUSH_DEBUG_PREFIX, "Triggering vibration");
+        navigator.vibrate([200, 100, 200, 100, 300]);
+      } catch (_) {}
     }
 
     if (usedNativeBridge) {

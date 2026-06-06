@@ -1159,9 +1159,11 @@ export default function OrderTracking() {
             : undefined
         });
 
-        // Optional: Vibrate device if supported
-        if (navigator.vibrate) {
-          navigator.vibrate([200, 100, 200]);
+        // Optional: Vibrate device if supported and user has interacted
+        if (typeof window !== 'undefined' && window.__userHasInteracted && navigator.vibrate) {
+          try {
+            navigator.vibrate([200, 100, 200]);
+          } catch (_) {}
         }
       }
     };

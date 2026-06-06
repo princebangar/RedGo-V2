@@ -22,6 +22,22 @@ if (savedTheme === 'dark') {
   document.documentElement.classList.remove('dark')
 }
 
+// Track user interaction for navigator.vibrate / audio autoplay
+if (typeof window !== 'undefined') {
+  window.__userHasInteracted = false
+  const handleInteraction = () => {
+    window.__userHasInteracted = true
+    window.removeEventListener('pointerdown', handleInteraction)
+    window.removeEventListener('keydown', handleInteraction)
+    window.removeEventListener('touchstart', handleInteraction)
+    window.removeEventListener('click', handleInteraction)
+  }
+  window.addEventListener('pointerdown', handleInteraction, { passive: true })
+  window.addEventListener('keydown', handleInteraction, { passive: true })
+  window.addEventListener('touchstart', handleInteraction, { passive: true })
+  window.addEventListener('click', handleInteraction, { passive: true })
+}
+
 function isNativeLikeShell() {
   if (typeof window === 'undefined') return false
 

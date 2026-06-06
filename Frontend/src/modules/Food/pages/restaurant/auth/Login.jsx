@@ -299,11 +299,15 @@ export default function RestaurantLogin() {
           const pendingPhone = authData?.phone || authData?.email || contactInfo
           setRestaurantPendingPhone(pendingPhone)
           
+          const isRejected = /rejected/i.test(message)
+          localStorage.setItem("restaurant_pendingStatus", isRejected ? "rejected" : "pending")
+          localStorage.setItem("restaurant_pendingMessage", message)
+          
           navigate("/food/restaurant/pending-verification", {
             replace: true,
             state: { 
               phone: pendingPhone || "",
-              isRejected: /rejected/i.test(message),
+              isRejected: isRejected,
               message: message 
             },
           })

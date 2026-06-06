@@ -6,6 +6,7 @@ import {
     refreshTokenController,
     requestRestaurantOtpController,
     verifyRestaurantOtpController,
+    reapplyRestaurantController,
     requestDeliveryOtpController,
     verifyDeliveryOtpController,
     logoutController,
@@ -32,6 +33,7 @@ router.post('/user/verify-otp', authRateLimiter, verifyUserOtpController);
 // Restaurant OTP login
 router.post('/restaurant/request-otp', authRateLimiter, requestRestaurantOtpController);
 router.post('/restaurant/verify-otp', authRateLimiter, verifyRestaurantOtpController);
+router.post('/restaurant/reapply', authRateLimiter, reapplyRestaurantController);
 
 // Delivery partner OTP login
 router.post('/delivery/request-otp', authRateLimiter, requestDeliveryOtpController);

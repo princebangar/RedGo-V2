@@ -86,8 +86,10 @@ export default function OrdersPage({ statusKey = "all" }) {
         notificationAudioRef.current.load()
       }
 
-      if (typeof navigator !== "undefined" && typeof navigator.vibrate === "function") {
-        navigator.vibrate([200, 100, 200, 100, 300])
+      if (typeof window !== "undefined" && window.__userHasInteracted && typeof navigator !== "undefined" && typeof navigator.vibrate === "function") {
+        try {
+          navigator.vibrate([200, 100, 200, 100, 300])
+        } catch (_) {}
       }
 
       notificationAudioRef.current.muted = false

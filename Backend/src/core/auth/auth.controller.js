@@ -5,6 +5,7 @@ import {
   refreshAccessToken,
   requestRestaurantOtp,
   verifyRestaurantOtpAndLogin,
+  reapplyRestaurant,
   requestDeliveryOtp,
   verifyDeliveryOtpAndLogin,
   logout,
@@ -103,6 +104,16 @@ export const verifyRestaurantOtpController = async (req, res, next) => {
     const { phone, otp, fcmToken, platform, confirmAction } = validateRestaurantOtpVerifyDto(req.body);
     const result = await verifyRestaurantOtpAndLogin(phone, otp, fcmToken, platform, confirmAction);
     return sendResponse(res, 200, "Login successful", result);
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const reapplyRestaurantController = async (req, res, next) => {
+  try {
+    const { phone } = validateRestaurantOtpRequestDto(req.body);
+    const result = await reapplyRestaurant(phone);
+    return sendResponse(res, 200, "Restaurant re-apply request processed successfully", result);
   } catch (error) {
     next(error);
   }
