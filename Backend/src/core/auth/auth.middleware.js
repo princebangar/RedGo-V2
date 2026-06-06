@@ -2,6 +2,7 @@ import { verifyAccessToken } from './token.util.js';
 import { sendError } from '../../utils/response.js';
 import { FoodUser } from '../users/user.model.js';
 import { FoodRefreshToken } from '../refreshTokens/refreshToken.model.js';
+import { FoodRestaurant } from '../../modules/food/restaurant/models/restaurant.model.js';
 import mongoose from 'mongoose';
 
 export const requireAdmin = (req, res, next) => {
@@ -45,6 +46,33 @@ export const authMiddleware = (req, res, next) => {
                 }).catch(() => sendError(res, 401, 'Authentication failed'));
                 return;
             }
+
+            if (decoded.role === 'RESTAURANT') {
+                // Enforce approved/onboarding status checks
+                FoodRestaurant.findById(decoded.userId).select('status').lean().then((doc) => {
+                    if (!doc) {
+                        return sendError(res, 401, 'Restaurant account not found');
+                    }
+                    if (doc.status === 'banned' || doc.status === 'deleted') {
+                        return sendError(res, 401, 'Restaurant account is disabled');
+                    }
+                    if (doc.status !== 'approved') {
+                        const url = req.originalUrl || '';
+                        const isAllowedRoute =
+                            url.endsWith('/current') ||
+                            url.includes('/profile') ||
+                            url.endsWith('/me') ||
+                            url.includes('/delete-account');
+
+                        if (!isAllowedRoute) {
+                            return sendError(res, 403, 'Restaurant is not approved yet');
+                        }
+                    }
+                    next();
+                }).catch(() => sendError(res, 401, 'Authentication failed'));
+                return;
+            }
+
             return next();
         }).catch(() => sendError(res, 401, 'Authentication failed'));
         return;

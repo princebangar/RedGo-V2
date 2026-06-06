@@ -19,11 +19,9 @@ const formatTime12Hour = (timeStr) => {
 
 
 export default function JoiningRequest() {
-  const [activeTab, setActiveTab] = useState("pending")
   const [searchQuery, setSearchQuery] = useState("")
   const [sortConfig, setSortConfig] = useState({ key: "createdAt", direction: "desc" })
   const [pendingRequests, setPendingRequests] = useState([])
-  const [rejectedRequests, setRejectedRequests] = useState([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
   const [processing, setProcessing] = useState(false)
@@ -45,18 +43,8 @@ export default function JoiningRequest() {
 
   // Fetch restaurant join requests
   useEffect(() => {
-    // On first render, fetch once for initial tab (usually "pending")
-    if (!hasFetchedOnceRef.current) {
-      hasFetchedOnceRef.current = true
-      fetchRequests()
-      return
-    }
-
-    // On subsequent tab changes, refetch only when switching away from "pending"
-    if (activeTab !== "pending") {
-      fetchRequests()
-    }
-  }, [activeTab])
+    fetchRequests()
+  }, [])
 
   const fetchRequests = async () => {
     try {
@@ -65,25 +53,17 @@ export default function JoiningRequest() {
 
       const response = await adminAPI.getPendingRestaurants()
       const list = response?.data?.data || []
-      if (activeTab === "pending") {
-        setPendingRequests(list.filter((r) => r.status === "pending"))
-      } else {
-        setRejectedRequests(list.filter((r) => r.status === "rejected"))
-      }
+      setPendingRequests(list.filter((r) => String(r.status || "").toLowerCase() === "pending"))
     } catch (err) {
       debugError("Error fetching restaurant requests:", err)
       setError(err.message || "Failed to fetch restaurant requests")
-      if (activeTab === "pending") {
-        setPendingRequests([])
-      } else {
-        setRejectedRequests([])
-      }
+      setPendingRequests([])
     } finally {
       setLoading(false)
     }
   }
 
-  const currentRequests = activeTab === "pending" ? pendingRequests : rejectedRequests
+  const currentRequests = pendingRequests
 
   // Get unique zones and business models for filter options
   const filterOptions = useMemo(() => {
@@ -331,30 +311,6 @@ export default function JoiningRequest() {
             <h1 className="text-2xl font-bold text-slate-900">New Restaurant Join Request</h1>
           </div>
 
-          {/* Tabs */}
-          <div className="flex items-center gap-2 border-b border-slate-200 mb-6">
-            <button
-              onClick={() => setActiveTab("pending")}
-              className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${
-                activeTab === "pending"
-                  ? "border-blue-600 text-blue-600"
-                  : "border-transparent text-slate-600 hover:text-slate-900"
-              }`}
-            >
-              Pending Requests
-            </button>
-            <button
-              onClick={() => setActiveTab("rejected")}
-              className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${
-                activeTab === "rejected"
-                  ? "border-blue-600 text-blue-600"
-                  : "border-transparent text-slate-600 hover:text-slate-900"
-              }`}
-            >
-              Rejected Request
-            </button>
-          </div>
-
           <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-4">
             <div className="flex items-center gap-3">
               <div className="relative flex-1 sm:flex-initial min-w-[250px]">
@@ -496,8 +452,8 @@ export default function JoiningRequest() {
                         <span className="text-sm text-slate-700">{request.zone || "—"}</span>
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap">
-                        <span className={`px-3 py-1 rounded-full text-xs font-medium ${
-                          request.status === "Pending"
+                        <span className={`px-3 py-1 rounded-full text-xs font-medium capitalize ${
+                          String(request.status || "").toLowerCase() === "pending"
                             ? "bg-blue-100 text-blue-700"
                             : "bg-red-100 text-red-700"
                         }`}>
@@ -755,7 +711,7 @@ export default function JoiningRequest() {
                 const hasAddress = addressParts.length > 0 || r?.location || r?.onboarding?.step1?.location
                 const openingTime = r?.openingTime || r?.deliveryTimings?.openingTime || r?.onboarding?.step2?.deliveryTimings?.openingTime
                 const closingTime = r?.closingTime || r?.deliveryTimings?.closingTime || r?.onboarding?.step2?.deliveryTimings?.closingTime
-                const approvalStatus = r?.status || (r?.isActive !== false ? "approved" : "pending")
+                const approvalStatus = String(r?.status || "").toLowerCase() || (r?.isActive !== false ? "approved" : "pending")
                 const hasFlatDocs = r?.panNumber || r?.panImage || r?.fssaiNumber || r?.accountNumber
                 const menuImgList = Array.isArray(r?.menuImages) ? r.menuImages : (r?.onboarding?.step2?.menuImageUrls || [])
                 return (

@@ -247,7 +247,7 @@ export default function RestaurantOTP() {
       } else {
         isSuccessRef.current = true
         const accessToken = data.accessToken
-        const restaurant = data.restaurant
+        const restaurant = data.restaurant || data.user
 
         setRestaurantAuthData("restaurant", accessToken, restaurant, data?.refreshToken)
         window.dispatchEvent(new Event("restaurantAuthChanged"))
@@ -290,15 +290,23 @@ export default function RestaurantOTP() {
         setBlockTimer(totalSeconds);
         sessionStorage.setItem(getBlockKey(), (Date.now() + (totalSeconds * 1000)).toString());
       } else {
-        if (/pending approval|rejected/i.test(message)) {
+        if (/pending approval|rejected|disabled|banned/i.test(message)) {
           const pendingPhone = authData?.phone || authData?.email || contactInfo
           setRestaurantPendingPhone(pendingPhone)
+          
+          const isRejected = /rejected/i.test(message)
+          const isDisabled = /disabled|banned/i.test(message)
+          const statusVal = isDisabled ? "banned" : (isRejected ? "rejected" : "pending")
+          
+          localStorage.setItem("restaurant_pendingStatus", statusVal)
+          localStorage.setItem("restaurant_pendingMessage", message)
           
           navigate("/food/restaurant/pending-verification", {
             replace: true,
             state: { 
               phone: pendingPhone || "",
-              isRejected: /rejected/i.test(message),
+              isRejected: isRejected,
+              isDisabled: isDisabled,
               message: message 
             },
           })

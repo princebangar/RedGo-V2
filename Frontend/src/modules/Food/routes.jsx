@@ -84,17 +84,31 @@ function RestaurantGlobalNotificationListener() {
     location.pathname === "/food/restaurant/signup-email" ||
     location.pathname === "/food/restaurant/forgot-password" ||
     location.pathname === "/food/restaurant/otp" ||
-    location.pathname === "/food/restaurant/auth/google-callback"
+    location.pathname === "/food/restaurant/auth/google-callback" ||
+    location.pathname.includes("/onboarding") ||
+    location.pathname.includes("/pending-verification")
   const isOrderManagedRoute =
     location.pathname === "/food/restaurant" ||
     location.pathname === "/food/restaurant/orders" ||
     location.pathname.startsWith("/food/restaurant/orders/")
 
+  let isApproved = false
+  if (isModuleAuthenticated("restaurant")) {
+    const userStr = localStorage.getItem("restaurant_user")
+    if (userStr) {
+      try {
+        const user = JSON.parse(userStr)
+        isApproved = String(user?.status || "").toLowerCase() === "approved"
+      } catch (e) {}
+    }
+  }
+
   const shouldListen =
     isRestaurantRoute &&
     !isRestaurantAuthRoute &&
     !isOrderManagedRoute &&
-    isModuleAuthenticated("restaurant")
+    isModuleAuthenticated("restaurant") &&
+    isApproved
 
   if (!shouldListen) {
     return null

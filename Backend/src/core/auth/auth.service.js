@@ -500,14 +500,8 @@ export const verifyRestaurantOtpAndLogin = async (phone, otp, fcmToken, platform
     }
   }
 
-  // If restaurant approval status is used, only allow login for approved restaurants.
-  if (restaurant.status && restaurant.status !== "approved") {
-    const message = restaurant.status === "pending"
-      ? "Your restaurant registration is pending approval."
-      : (restaurant.rejectionReason 
-          ? `Your restaurant registration has been rejected. Reason: ${restaurant.rejectionReason}`
-          : "Your restaurant registration has been rejected. Please contact support.");
-    
+  if (restaurant.status && (restaurant.status === "banned" || restaurant.status === "deleted")) {
+    const message = "Your restaurant has been disabled. Reason: Disabled by admin";
     console.warn(`⚠️ [Auth-Restaurant] Login blocked for ${phone}: status=${restaurant.status}, message=${message}`);
     throw new AuthError(message);
   }
@@ -537,37 +531,7 @@ export const reapplyRestaurant = async (phone) => {
   if (!phone) {
     throw new ValidationError("Phone is required");
   }
-
-  const digits = String(phone || "").replace(/\D/g, "");
-  const last10 = digits.slice(-10);
-  const phoneCandidates = [phone, digits, last10].filter(Boolean);
-  const phoneOrFields = (field) => [
-    { [field]: { $in: phoneCandidates } },
-    ...(last10 ? [{ [field]: { $regex: new RegExp(last10 + "$") } }] : []),
-  ];
-
-  const matchingRestaurants = await FoodRestaurant.find({
-    status: "rejected",
-    $or: [
-      ...phoneOrFields("ownerPhone"),
-      ...phoneOrFields("primaryContactNumber"),
-    ],
-  });
-
-  if (!matchingRestaurants || matchingRestaurants.length === 0) {
-    throw new ValidationError("No rejected restaurant found with this phone number");
-  }
-
-  const deleteResult = await FoodRestaurant.deleteMany({
-    status: "rejected",
-    $or: [
-      ...phoneOrFields("ownerPhone"),
-      ...phoneOrFields("primaryContactNumber"),
-    ],
-  });
-
-  logger.info({ phone, deletedCount: deleteResult.deletedCount }, `Rejected restaurant account(s) permanently deleted for reapply`);
-
+  // Deletion logic removed to preserve onboarding/profile details for re-apply edit flow
   return { success: true };
 };
 

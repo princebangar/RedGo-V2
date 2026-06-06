@@ -9,16 +9,20 @@ import {
   clearRestaurantPendingPhone,
   getModuleToken,
   getRestaurantPendingPhone,
+  clearModuleAuth,
 } from "@food/utils/auth"
+import { clearOnboardingFromLocalStorage } from "@food/utils/onboardingUtils"
 
 export default function VerificationPending() {
   const companyName = useCompanyName()
   const navigate = useNavigate()
   const location = useLocation()
   const [checkingStatus, setCheckingStatus] = useState(true)
-  const [reapplying, setReapplying] = useState(false)
 
   const [localStatus, setLocalStatus] = useState(() => {
+    if (location.state?.isDisabled) {
+      return "banned"
+    }
     if (location.state?.isRejected !== undefined) {
       return location.state.isRejected ? "rejected" : "pending"
     }
@@ -41,9 +45,17 @@ export default function VerificationPending() {
   }, [location.state?.phone])
 
   const parsedMessage = useMemo(() => {
+    if (localStatus === "banned") {
+      return {
+        text: "Your restaurant has been disabled.",
+        reason: "Disabled by admin"
+      }
+    }
+
     if (!localMessage) {
       return { text: "Your restaurant registration has been rejected. Please contact support.", reason: "" }
     }
+
     const parts = localMessage.split(/Reason:\s*/i)
     if (parts.length > 1) {
       return {
@@ -51,11 +63,20 @@ export default function VerificationPending() {
         reason: parts[1].trim()
       }
     }
+    const colonParts = localMessage.split(/:\s*/)
+    if (colonParts.length > 1 && colonParts[0].toLowerCase().includes("rejected")) {
+      return {
+        text: colonParts[0].trim() + ".",
+        reason: colonParts[1].trim()
+      }
+    }
     return {
       text: localMessage,
       reason: ""
     }
-  }, [localMessage])
+  }, [localMessage, localStatus])
+
+  const isDisabledByAdmin = localStatus === "banned"
 
   useEffect(() => {
     let cancelled = false
@@ -79,16 +100,35 @@ export default function VerificationPending() {
 
         const status = String(restaurant?.status || "").toLowerCase()
 
+        // Sync back to stored user status to keep ProtectedRoute up-to-date
+        const storedUser = localStorage.getItem("restaurant_user")
+        if (storedUser) {
+          try {
+            const parsed = JSON.parse(storedUser)
+            parsed.status = status
+            if (restaurant?.rejectionReason) {
+              parsed.rejectionReason = restaurant.rejectionReason
+            }
+            localStorage.setItem("restaurant_user", JSON.stringify(parsed))
+          } catch (e) {}
+        }
+
         if (status === "approved") {
           clearRestaurantPendingPhone()
           localStorage.removeItem("restaurant_pendingStatus")
           localStorage.removeItem("restaurant_pendingMessage")
           navigate("/food/restaurant", { replace: true })
           return
+        } else if (status === "banned") {
+          setLocalStatus("banned")
+          const msg = "Your restaurant has been disabled. Reason: Disabled by admin"
+          setLocalMessage(msg)
+          localStorage.setItem("restaurant_pendingStatus", "banned")
+          localStorage.setItem("restaurant_pendingMessage", msg)
         } else if (status === "rejected") {
           setLocalStatus("rejected")
-          const msg = restaurant.rejectionReason 
-            ? `Your restaurant registration was rejected: ${restaurant.rejectionReason}`
+          const msg = restaurant.rejectionReason
+            ? `Your restaurant registration has been rejected. Reason: ${restaurant.rejectionReason}`
             : "Your restaurant registration has been rejected. Please contact support."
           setLocalMessage(msg)
           localStorage.setItem("restaurant_pendingStatus", "rejected")
@@ -123,16 +163,19 @@ export default function VerificationPending() {
   }, [navigate])
 
   return (
-    <div className="min-h-screen bg-[#f8fafc] px-6 py-10">
+    <div className={`min-h-screen px-6 py-10 transition-all duration-300 ${isDisabledByAdmin
+        ? "bg-gradient-to-br from-[#FFF5F5] via-[#FFEBEB] to-[#FEF2F2]"
+        : "bg-gradient-to-br from-slate-50 via-slate-100 to-zinc-100"
+      }`}>
       <div className="mx-auto flex min-h-[calc(100vh-80px)] max-w-md flex-col justify-center">
         <div className="rounded-[28px] border border-slate-200 bg-white p-8 shadow-[0_24px_70px_rgba(15,23,42,0.08)]">
           <div className="mb-6 flex items-center justify-center">
-            {localStatus === "rejected" ? (
+            {localStatus === "rejected" || localStatus === "banned" ? (
               <div className="flex items-center justify-center my-2 select-none">
                 {/* Normal parent container to prevent clipping of absolute children */}
                 <div className="relative flex items-center" style={{ height: "36px" }}>
                   {/* The red arrow banner */}
-                  <div 
+                  <div
                     className="bg-[#E51A21] text-white pl-8 pr-10 py-1.5 rounded-l-md font-black uppercase tracking-widest text-[13px] flex items-center justify-center shadow-[0_4px_10px_rgba(229,26,33,0.3)]"
                     style={{
                       clipPath: "polygon(0% 0%, 82% 0%, 100% 50%, 82% 100%, 0% 100%)",
@@ -140,11 +183,13 @@ export default function VerificationPending() {
                       fontFamily: "'Outfit', 'Poppins', sans-serif"
                     }}
                   >
-                    <span className="font-extrabold tracking-[0.2em] text-[13px] leading-none">REJECTED</span>
+                    <span className="font-extrabold tracking-[0.2em] text-[13px] leading-none">
+                      {isDisabledByAdmin ? "DISABLED" : "REJECTED"}
+                    </span>
                   </div>
 
                   {/* Diamond shape on the left - overlaps without clipping! */}
-                  <div 
+                  <div
                     className="absolute left-[-16px] top-1/2 -translate-y-1/2 w-8 h-8 bg-[#E51A21] border-[3px] border-white rotate-45 flex items-center justify-center shadow-lg"
                     style={{
                       zIndex: 10
@@ -163,15 +208,15 @@ export default function VerificationPending() {
           </div>
 
           <div className="mb-6 text-center">
-            {localStatus === "rejected" ? (
+            {localStatus === "rejected" || localStatus === "banned" ? (
               <>
                 <h1 className="text-xl font-extrabold text-slate-950">
-                  Registration Rejected
+                  {isDisabledByAdmin ? "Restaurant Disabled" : "Registration Rejected"}
                 </h1>
                 <p className="mt-3 text-sm leading-6 text-slate-600">
-                  {parsedMessage.text}
+                  {isDisabledByAdmin ? "Your restaurant has been disabled." : parsedMessage.text}
                 </p>
-                {parsedMessage.reason && (
+                {parsedMessage.reason && !isDisabledByAdmin && (
                   <div className="mt-4 text-sm font-semibold text-left p-3.5 rounded-2xl border border-red-100 bg-red-50/50">
                     <span className="text-red-600 block text-xs uppercase tracking-widest font-extrabold mb-1">
                       Reason for Rejection:
@@ -204,12 +249,16 @@ export default function VerificationPending() {
 
           <div className="mb-6 rounded-2xl border border-slate-200 bg-slate-50 p-4">
             <div className="flex items-start gap-3">
-              {localStatus === "rejected" ? (
+              {localStatus === "rejected" || localStatus === "banned" ? (
                 <>
                   <AlertTriangle className="mt-0.5 h-5 w-5 text-red-600" />
                   <div className="text-sm text-slate-700">
                     <p className="font-semibold text-slate-900">What to do next</p>
-                    <p className="mt-1">Please review the reason above or reach out to support. You can register a new account if you need to submit new details.</p>
+                    <p className="mt-1">
+                      {isDisabledByAdmin
+                        ? "Please reach out to support for more details or assistance regarding your account status."
+                        : "Please review the reason above or reach out to support. You can register a new account if you need to submit new details."}
+                    </p>
                     {pendingPhone ? (
                       <p className="mt-2 text-slate-500">
                         Registered phone: <span className="font-medium text-slate-700">{pendingPhone}</span>
@@ -235,46 +284,69 @@ export default function VerificationPending() {
           </div>
 
           <div className="space-y-3">
-            <Button
-              className="h-12 w-full rounded-xl bg-gradient-to-br from-[#B80B3D] to-[#66001D] text-base font-semibold hover:bg-blue-700"
-              onClick={async () => {
-                if (localStatus === "rejected") {
-                  if (!pendingPhone) {
-                    toast.error("No phone number found to re-apply")
-                    return
-                  }
-                  setReapplying(true)
-                  try {
-                    await restaurantAPI.reapply(pendingPhone)
-                    toast.success("Re-applied successfully. You can now register a new restaurant.")
+            {isDisabledByAdmin ? (
+              <>
+                <Button
+                  className="h-12 w-full rounded-xl text-base font-semibold bg-gradient-to-r from-blue-500 via-blue-600 to-blue-700 hover:from-blue-600 hover:via-blue-700 hover:to-blue-800 text-white shadow-lg shadow-blue-500/20 border border-blue-500/20 active:scale-[0.98] transition-all duration-300"
+                  onClick={() => navigate("/food/restaurant/help-content")}
+                >
+                  Contact Support
+                </Button>
+                <Button
+                  variant="outline"
+                  className="h-12 w-full rounded-xl text-base font-semibold border border-slate-200 bg-white text-slate-700 hover:bg-slate-50 hover:text-slate-900 active:scale-[0.98] transition-all duration-300"
+                  onClick={() => {
+                    clearModuleAuth("restaurant")
                     clearRestaurantPendingPhone()
                     localStorage.removeItem("restaurant_pendingStatus")
                     localStorage.removeItem("restaurant_pendingMessage")
                     navigate("/food/restaurant/login", { replace: true })
-                  } catch (err) {
-                    const msg = err?.response?.data?.error || err?.response?.data?.message || err?.message || "Failed to re-apply. Please try again."
-                    toast.error(msg)
-                  } finally {
-                    setReapplying(false)
-                  }
-                } else {
+                  }}
+                >
+                  Back to login
+                </Button>
+              </>
+            ) : localStatus === "rejected" ? (
+              <>
+                <Button
+                  className="h-12 w-full rounded-xl text-base font-semibold transition-all duration-300 bg-gradient-to-br from-[#B80B3D] to-[#66001D] hover:opacity-90 text-white active:scale-[0.98]"
+                  onClick={() => {
+                    clearOnboardingFromLocalStorage()
+                    localStorage.removeItem("restaurant_pendingStatus")
+                    localStorage.removeItem("restaurant_pendingMessage")
+                    navigate("/food/restaurant/onboarding?step=1", { replace: true })
+                  }}
+                >
+                  Re-apply
+                </Button>
+                <Button
+                  variant="outline"
+                  className="h-12 w-full rounded-xl text-base font-semibold border border-slate-200 bg-white text-slate-700 hover:bg-slate-50 hover:text-slate-900 active:scale-[0.98] transition-all duration-300"
+                  onClick={() => {
+                    clearModuleAuth("restaurant")
+                    clearRestaurantPendingPhone()
+                    localStorage.removeItem("restaurant_pendingStatus")
+                    localStorage.removeItem("restaurant_pendingMessage")
+                    navigate("/food/restaurant/login", { replace: true })
+                  }}
+                >
+                  Back to login
+                </Button>
+              </>
+            ) : (
+              <Button
+                className="h-12 w-full rounded-xl text-base font-semibold transition-all duration-300 bg-gradient-to-br from-[#B80B3D] to-[#66001D] hover:opacity-90 text-white active:scale-[0.98]"
+                onClick={() => {
+                  clearModuleAuth("restaurant")
                   clearRestaurantPendingPhone()
                   localStorage.removeItem("restaurant_pendingStatus")
                   localStorage.removeItem("restaurant_pendingMessage")
                   navigate("/food/restaurant/login", { replace: true })
-                }
-              }}
-              disabled={reapplying}
-            >
-              {reapplying ? (
-                <div className="flex items-center justify-center gap-2">
-                  <Loader2 className="h-5 w-5 animate-spin" />
-                  <span>Processing...</span>
-                </div>
-              ) : (
-                localStatus === "rejected" ? "Re-apply" : "Back to login"
-              )}
-            </Button>
+                }}
+              >
+                Back to login
+              </Button>
+            )}
           </div>
         </div>
       </div>

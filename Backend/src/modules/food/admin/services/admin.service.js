@@ -359,7 +359,7 @@ export async function getRestaurants(query) {
     const skip = (page - 1) * limit;
     const status = query.status;
     const filter = {};
-    if (status && ['pending', 'approved', 'rejected'].includes(status)) {
+    if (status && ['pending', 'approved', 'rejected', 'banned'].includes(status)) {
         filter.status = status;
     }
     const [restaurants, total] = await Promise.all([
@@ -2626,7 +2626,7 @@ export async function updateRestaurantStatus(id, body = {}) {
     if (!id || !mongoose.Types.ObjectId.isValid(id)) return null;
     const raw = body.status !== undefined ? body.status : body.isActive;
     const isActive = parseBooleanLike(raw, 'status');
-    const status = isActive ? 'approved' : 'rejected';
+    const status = isActive ? 'approved' : 'banned';
 
     return FoodRestaurant.findByIdAndUpdate(
         id,
@@ -2634,8 +2634,10 @@ export async function updateRestaurantStatus(id, body = {}) {
             $set: {
                 status,
                 approvedAt: isActive ? new Date() : undefined,
-                rejectedAt: isActive ? undefined : new Date(),
-                rejectionReason: isActive ? undefined : 'Disabled by admin'
+                rejectedAt: isActive ? undefined : new Date()
+            },
+            $unset: {
+                rejectionReason: 1
             }
         },
         { new: true, runValidators: false }

@@ -268,6 +268,10 @@ export const useRestaurantNotifications = () => {
         const response = await restaurantAPI.getCurrentRestaurant();
         if (response.data?.success && response.data.data?.restaurant) {
           const restaurant = response.data.data.restaurant;
+          if (restaurant.status !== "approved") {
+            debugWarn("Restaurant is not approved yet. Skipping notification initialization.", restaurant.status);
+            return;
+          }
           const id = restaurant._id?.toString() || restaurant.restaurantId;
           setRestaurantId(id);
         }

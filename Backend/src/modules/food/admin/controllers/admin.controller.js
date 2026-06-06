@@ -1,6 +1,8 @@
 import mongoose from 'mongoose';
 import * as adminService from '../services/admin.service.js';
 import { FoodRestaurant } from '../../restaurant/models/restaurant.model.js';
+import { invalidateCache } from '../../../../middleware/cache.js';
+import { FoodRefreshToken } from '../../../../core/refreshTokens/refreshToken.model.js';
 import { validateCategoryListQuery, validateCategoryRejectDto, validateCategoryUpsertDto } from '../validators/category.validator.js';
 import { validateCreateOfferDto, validateUpdateOfferCartVisibilityDto } from '../validators/offer.validator.js';
 import { validateAddDeliveryBonusDto } from '../validators/deliveryBonus.validator.js';
@@ -300,6 +302,7 @@ export async function updateRestaurantMenuById(req, res, next) {
         if (!menu) {
             return res.status(404).json({ success: false, message: 'Restaurant not found' });
         }
+        await invalidateCache('restaurant_menu:*');
         res.status(200).json({ success: true, message: 'Menu updated successfully', data: { menu } });
     } catch (error) {
         next(error);
@@ -316,6 +319,10 @@ export async function updateRestaurantById(req, res, next) {
         if (!updated) {
             return res.status(404).json({ success: false, message: 'Restaurant not found' });
         }
+        await invalidateCache('restaurants:*');
+        await invalidateCache('restaurant_detail:*');
+        await invalidateCache('under_250:*');
+        await invalidateCache('offers:*');
         res.status(200).json({ success: true, message: 'Restaurant updated successfully', data: { restaurant: updated } });
     } catch (error) {
         next(error);
@@ -332,6 +339,18 @@ export async function updateRestaurantStatus(req, res, next) {
         if (!updated) {
             return res.status(404).json({ success: false, message: 'Restaurant not found' });
         }
+        
+        // If restaurant is being disabled/banned/rejected, delete their active refresh tokens to force logout.
+        const statusVal = req.body.status;
+        const isActiveVal = req.body.isActive;
+        if (statusVal === false || isActiveVal === false || statusVal === 'rejected' || statusVal === 'deleted') {
+            await FoodRefreshToken.deleteMany({ userId: id });
+        }
+
+        await invalidateCache('restaurants:*');
+        await invalidateCache('restaurant_detail:*');
+        await invalidateCache('under_250:*');
+        await invalidateCache('offers:*');
         res.status(200).json({ success: true, message: 'Restaurant status updated successfully', data: { restaurant: updated } });
     } catch (error) {
         next(error);
@@ -348,6 +367,9 @@ export async function updateRestaurantLocation(req, res, next) {
         if (!updated) {
             return res.status(404).json({ success: false, message: 'Restaurant not found' });
         }
+        await invalidateCache('restaurants:*');
+        await invalidateCache('restaurant_detail:*');
+        await invalidateCache('under_250:*');
         res.status(200).json({ success: true, message: 'Restaurant location updated successfully', data: { restaurant: updated } });
     } catch (error) {
         next(error);
@@ -1027,6 +1049,10 @@ export async function approveRestaurant(req, res, next) {
                 message: 'Restaurant not found'
             });
         }
+        await invalidateCache('restaurants:*');
+        await invalidateCache('restaurant_detail:*');
+        await invalidateCache('under_250:*');
+        await invalidateCache('offers:*');
         res.status(200).json({
             success: true,
             message: 'Restaurant approved successfully',
@@ -1040,6 +1066,7 @@ export async function approveRestaurant(req, res, next) {
 export async function createRestaurant(req, res, next) {
     try {
         const restaurant = await adminService.createRestaurantByAdmin(req.body || {});
+        await invalidateCache('restaurants:*');
         res.status(201).json({
             success: true,
             message: 'Restaurant created successfully',
@@ -1067,6 +1094,14 @@ export async function rejectRestaurant(req, res, next) {
                 message: 'Restaurant not found'
             });
         }
+        
+        // Banned/rejected restaurant - force logout
+        await FoodRefreshToken.deleteMany({ userId: id });
+
+        await invalidateCache('restaurants:*');
+        await invalidateCache('restaurant_detail:*');
+        await invalidateCache('under_250:*');
+        await invalidateCache('offers:*');
         res.status(200).json({
             success: true,
             message: 'Restaurant rejected successfully',
@@ -1093,6 +1128,15 @@ export async function deleteRestaurant(req, res, next) {
                 message: 'Restaurant not found'
             });
         }
+
+        // Deleted restaurant - force logout
+        await FoodRefreshToken.deleteMany({ userId: id });
+
+        await invalidateCache('restaurants:*');
+        await invalidateCache('restaurant_detail:*');
+        await invalidateCache('under_250:*');
+        await invalidateCache('offers:*');
+        await invalidateCache('restaurant_menu:*');
         res.status(200).json({
             success: true,
             message: 'Restaurant and all associated data deleted successfully',

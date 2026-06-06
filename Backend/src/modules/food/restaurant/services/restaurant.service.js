@@ -190,6 +190,7 @@ const toRestaurantProfile = (doc) => {
         },
         isAcceptingOrders: doc.isAcceptingOrders !== false,
         status: doc.status || null,
+        rejectionReason: doc.rejectionReason || null,
         createdAt: doc.createdAt,
         updatedAt: doc.updatedAt,
         rating: normalizeRatingValue(doc.rating),
@@ -351,11 +352,11 @@ export const registerRestaurant = async (payload, files) => {
                 ? new mongoose.Types.ObjectId(String(zoneId).trim())
                 : undefined,
             // Store unified location object (geo + address).
-            location: {
+            location: latNum !== null && lngNum !== null ? {
                 type: 'Point',
-                coordinates: latNum !== null && lngNum !== null ? [lngNum, latNum] : undefined,
-                latitude: latNum ?? undefined,
-                longitude: lngNum ?? undefined,
+                coordinates: [lngNum, latNum],
+                latitude: latNum,
+                longitude: lngNum,
                 formattedAddress: typeof formattedAddress === 'string' ? formattedAddress.trim() : '',
                 address: typeof formattedAddress === 'string' ? formattedAddress.trim() : '',
                 addressLine1: addressLine1 || '',
@@ -365,7 +366,7 @@ export const registerRestaurant = async (payload, files) => {
                 state: state || '',
                 pincode: pincode || '',
                 landmark: landmark || ''
-            },
+            } : null,
             cuisines: cuisines || [],
             openingTime: normalizedOpeningTime || undefined,
             closingTime: normalizedClosingTime || undefined,
@@ -469,6 +470,7 @@ export const getCurrentRestaurantProfile = async (restaurantId) => {
                 'rating',
                 'totalRatings',
                 'status',
+                'rejectionReason',
                 'createdAt',
                 'updatedAt'
             ].join(' ')
@@ -881,21 +883,26 @@ export const updateRestaurantProfile = async (restaurantId, body = {}) => {
         // Optional geo coords for server-side distance filtering.
         const lat = toFiniteNumber(loc.latitude);
         const lng = toFiniteNumber(loc.longitude);
-        update.location = {
-            type: 'Point',
-            coordinates: lat !== null && lng !== null ? [lng, lat] : undefined,
-            latitude: lat ?? undefined,
-            longitude: lng ?? undefined,
-            formattedAddress,
-            address: formattedAddress,
-            addressLine1: toStr(loc.addressLine1),
-            addressLine2: toStr(loc.addressLine2),
-            area: toStr(loc.area),
-            city: toStr(loc.city),
-            state: toStr(loc.state),
-            pincode: toStr(loc.pincode),
-            landmark: toStr(loc.landmark)
-        };
+        if (lat !== null && lng !== null) {
+            update.location = {
+                type: 'Point',
+                coordinates: [lng, lat],
+                latitude: lat,
+                longitude: lng,
+                formattedAddress,
+                address: formattedAddress,
+                addressLine1: toStr(loc.addressLine1),
+                addressLine2: toStr(loc.addressLine2),
+                area: toStr(loc.area),
+                city: toStr(loc.city),
+                state: toStr(loc.state),
+                pincode: toStr(loc.pincode),
+                landmark: toStr(loc.landmark)
+            };
+        } else {
+            // Drop location Point representation if coordinates are missing to prevent MongoDB 2dsphere indexing errors
+            update.location = null;
+        }
     }
 
     if (body.openingTime !== undefined) {

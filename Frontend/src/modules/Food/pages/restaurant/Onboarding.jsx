@@ -911,11 +911,11 @@ export default function RestaurantOnboarding() {
 
           setStep1(prev => ({
             ...prev,
-            restaurantName: s1.restaurantName || apiData.name || "",
+            restaurantName: s1.restaurantName || apiData.name || apiData.restaurantName || "",
             pureVegRestaurant: typeof s1.pureVegRestaurant === 'boolean' ? s1.pureVegRestaurant : (apiData.pureVegRestaurant ?? null),
             ownerName: s1.ownerName || apiData.ownerName || "",
-            ownerEmail: s1.ownerEmail || apiData.email || "",
-            ownerPhone: s1.ownerPhone || apiData.phone || "",
+            ownerEmail: s1.ownerEmail || apiData.ownerEmail || apiData.email || "",
+            ownerPhone: s1.ownerPhone || apiData.ownerPhone || apiData.phone || "",
             primaryContactNumber: s1.primaryContactNumber || apiData.primaryContactNumber || "",
             zoneId: s1.zoneId || apiData.zoneId || "",
             location: {
@@ -942,6 +942,7 @@ export default function RestaurantOnboarding() {
             openingTime: normalizeTimeValue(s2.openingTime || apiData.openingTime),
             closingTime: normalizeTimeValue(s2.closingTime || apiData.closingTime),
             openDays: s2.openDays || apiData.openDays || [],
+            isTakeawayEnabled: s2.isTakeawayEnabled || apiData.takeawaySettings?.isEnabled || false,
           }))
 
           setStep3(prev => ({
@@ -1468,7 +1469,7 @@ export default function RestaurantOnboarding() {
           await clearAllFilesFromDB()
 
           toast.success("Profile updated successfully", { duration: 4000 })
-          navigate("/food/restaurant/explore", { replace: true })
+          navigate("/food/restaurant/pending-verification", { replace: true })
           return
         }
 

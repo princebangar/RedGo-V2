@@ -700,6 +700,22 @@ async function attachForegroundListener(firebaseAppInstance) {
 export async function registerWebPushForCurrentModule(pathname = window.location.pathname) {
   const moduleName = normalizeModuleFromPath(pathname);
   if (moduleName === "admin") return;
+
+  if (moduleName === "restaurant") {
+    const userStr = localStorage.getItem("restaurant_user");
+    if (userStr) {
+      try {
+        const user = JSON.parse(userStr);
+        if (user && user.status !== "approved") {
+          pushDebugLog(PUSH_DEBUG_PREFIX, "Skipping FCM registration because restaurant is not approved yet", { status: user.status });
+          return;
+        }
+      } catch (e) {
+        // ignore
+      }
+    }
+  }
+
   initPushNotificationClient();
 
   const accessToken = localStorage.getItem(`${moduleName}_accessToken`);
