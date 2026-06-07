@@ -51,7 +51,13 @@ export const exportReportsToExcel = (data, headers, filename = "report") => {
 
 export const exportReportsToPDF = (data, headers, filename = "report", title = "Report") => {
   const headerRow = headers.map(h => typeof h === 'string' ? h : h.label)
-  
+  const escapeHtml = (unsafe) => String(unsafe)
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#039;");
+
   let htmlContent = `
     <!DOCTYPE html>
     <html>
@@ -78,8 +84,9 @@ export const exportReportsToPDF = (data, headers, filename = "report", title = "
         <tbody>
           ${data.map(item => {
             const cells = headers.map(header => {
-              const value = item[header.key] || item[header] || ""
-              return `<td>${String(value)}</td>`
+              const raw = (item && (item[header.key] !== undefined ? item[header.key] : item[header])) ?? ""
+              const normalized = (raw === null || raw === undefined || String(raw).trim() === "") ? "0" : raw
+              return `<td>${escapeHtml(String(normalized))}</td>`
             })
             return `<tr>${cells.join("")}</tr>`
           }).join("")}
@@ -177,7 +184,18 @@ export const exportTransactionReportToExcel = (transactions, filename = "transac
 
 export const exportTransactionReportToPDF = (transactions, filename = "transaction_report") => {
   const headers = ["SI", "Order ID", "Restaurant", "Customer Name", "Total Item Amount", "Coupon Discount", "VAT/Tax", "Delivery Charge", "Platform Fee", "Order Amount"]
-  
+  const escapeHtml = (unsafe) => String(unsafe)
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#039;");
+
+  const fmtNum = (v) => {
+    const n = Number(v)
+    return Number.isFinite(n) ? `₹${n.toFixed(2)}` : '0'
+  }
+
   let htmlContent = `
     <!DOCTYPE html>
     <html>
@@ -202,20 +220,30 @@ export const exportTransactionReportToPDF = (transactions, filename = "transacti
           </tr>
         </thead>
         <tbody>
-          ${transactions.map((transaction, index) => `
+          ${transactions.map((transaction, index) => {
+            const orderId = transaction.orderId || '0'
+            const restaurant = transaction.restaurant || '0'
+            const customerName = transaction.customerName || '0'
+            const totalItemAmount = fmtNum(transaction.totalItemAmount)
+            const couponDiscount = fmtNum(transaction.couponDiscount)
+            const vatTax = fmtNum(transaction.vatTax)
+            const deliveryCharge = fmtNum(transaction.deliveryCharge)
+            const platformFee = fmtNum(transaction.platformFee || 0)
+            const orderAmount = fmtNum(transaction.orderAmount)
+            return `
             <tr>
               <td>${index + 1}</td>
-              <td>${transaction.orderId}</td>
-              <td>${transaction.restaurant}</td>
-              <td>${transaction.customerName}</td>
-              <td>₹${transaction.totalItemAmount.toFixed(2)}</td>
-              <td>₹${transaction.couponDiscount.toFixed(2)}</td>
-              <td>₹${transaction.vatTax.toFixed(2)}</td>
-              <td>₹${transaction.deliveryCharge.toFixed(2)}</td>
-              <td>₹${Number(transaction.platformFee || 0).toFixed(2)}</td>
-              <td>₹${transaction.orderAmount.toFixed(2)}</td>
+              <td>${escapeHtml(String(orderId))}</td>
+              <td>${escapeHtml(String(restaurant))}</td>
+              <td>${escapeHtml(String(customerName))}</td>
+              <td>${totalItemAmount}</td>
+              <td>${couponDiscount}</td>
+              <td>${vatTax}</td>
+              <td>${deliveryCharge}</td>
+              <td>${platformFee}</td>
+              <td>${orderAmount}</td>
             </tr>
-          `).join("")}
+          `}).join("")}
         </tbody>
       </table>
     </body>

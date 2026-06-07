@@ -2,6 +2,8 @@ const debugLog = (...args) => {}
 const debugWarn = (...args) => {}
 const debugError = (...args) => {}
 
+const formatMoney = (value) => `Rs. ${Number(value || 0).toFixed(2)}`
+
 // Export utility functions for orders
 export const exportToCSV = (orders, filename = "orders") => {
   // Detect order structure
@@ -34,7 +36,7 @@ export const exportToCSV = (orders, filename = "orders") => {
       order.customerName,
       order.customerPhone,
       order.restaurant,
-      order.total || `?${(order.totalAmount || 0).toFixed(2)}`,
+      order.total || formatMoney(order.totalAmount || 0),
       order.paymentStatus || "",
       order.orderStatus || "",
       order.deliveryType || ""
@@ -103,7 +105,7 @@ export const exportToExcel = (orders, filename = "orders") => {
         order.deliveryBoyName || 'N/A',
         order.deliveryBoyNumber || 'N/A',
         order.status || 'N/A',
-        totalAmount > 0 ? `?${totalAmount.toFixed(2)}` : 'N/A',
+        totalAmount > 0 ? formatMoney(totalAmount) : 'N/A',
         paymentStatus
       ]
     })
@@ -116,7 +118,7 @@ export const exportToExcel = (orders, filename = "orders") => {
       order.customerName || 'N/A',
       order.customerPhone || 'N/A',
       order.restaurant || 'N/A',
-      order.total || `?${(order.totalAmount || 0).toFixed(2)}`,
+      order.total || formatMoney(order.totalAmount || 0),
       order.paymentStatus || 'N/A',
       order.orderStatus || 'N/A',
       order.deliveryType || 'N/A'
@@ -270,7 +272,7 @@ export const exportToPDF = async (orders, filename = "orders") => {
           order.deliveryBoyName || 'N/A',
           order.deliveryBoyNumber || 'N/A',
           order.status || 'N/A',
-          totalAmount > 0 ? `₹${totalAmount.toFixed(2)}` : 'N/A',
+          totalAmount > 0 ? formatMoney(totalAmount) : 'N/A',
           paymentStatus
         ]
       })
@@ -289,7 +291,7 @@ export const exportToPDF = async (orders, filename = "orders") => {
           order.customerName || 'N/A',
           order.customerPhone || 'N/A',
           order.restaurant || 'N/A',
-          amount ? `₹${Number(amount).toFixed(2)}` : 'N/A',
+          amount ? formatMoney(amount) : 'N/A',
           order.paymentStatus || 'N/A',
           order.orderStatus || 'N/A',
           order.deliveryType || 'N/A'
@@ -346,5 +348,4 @@ export const exportToJSON = (orders, filename = "orders") => {
   link.click()
   document.body.removeChild(link)
 }
-
 

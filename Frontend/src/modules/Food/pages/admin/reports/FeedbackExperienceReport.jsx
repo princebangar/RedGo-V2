@@ -26,6 +26,8 @@ export default function FeedbackExperienceReport() {
   })
   const [isFilterOpen, setIsFilterOpen] = useState(true)
 
+  const today = new Date().toISOString().split("T")[0]
+
   // Fetch feedback experiences
   useEffect(() => {
     fetchFeedbackExperiences()
@@ -52,7 +54,7 @@ export default function FeedbackExperienceReport() {
           userEmail: fb.userEmail || 'N/A',
           userPhone: fb.userPhone || 'N/A',
           restaurantName: fb.restaurantId?.restaurantName || 'N/A',
-          rating: fb.rating * 2, // Convert 1-5 back to 1-10 for UI
+          rating: fb.rating, // keep 1-5 scale for UI
           experience: fb.comment || 'N/A',
           module: fb.module,
           createdAt: fb.createdAt
@@ -149,10 +151,11 @@ export default function FeedbackExperienceReport() {
   }
 
   const getRatingColor = (rating) => {
-    if (rating <= 2) return 'bg-red-100 text-red-700'
-    if (rating <= 4) return 'bg-orange-100 text-orange-700'
-    if (rating <= 6) return 'bg-yellow-100 text-yellow-700'
-    if (rating <= 8) return 'bg-blue-100 text-blue-700'
+    // Rating is 1-5 scale. Map colors accordingly.
+    if (rating <= 1) return 'bg-red-100 text-red-700'
+    if (rating <= 2) return 'bg-orange-100 text-orange-700'
+    if (rating <= 3) return 'bg-yellow-100 text-yellow-700'
+    if (rating <= 4) return 'bg-blue-100 text-blue-700'
     return 'bg-green-100 text-green-700'
   }
 
@@ -209,7 +212,8 @@ export default function FeedbackExperienceReport() {
                     <input
                       type="date"
                       value={filters.fromDate}
-                      onChange={(e) => setFilters(prev => ({ ...prev, fromDate: e.target.value }))}
+                      max={today}
+                      onChange={(e) => setFilters(prev => ({ ...prev, fromDate: e.target.value > today ? today : e.target.value }))}
                       className="w-full pl-10 pr-4 py-2.5 text-sm rounded-lg border border-slate-300 bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                     />
                   </div>
@@ -224,7 +228,8 @@ export default function FeedbackExperienceReport() {
                     <input
                       type="date"
                       value={filters.toDate}
-                      onChange={(e) => setFilters(prev => ({ ...prev, toDate: e.target.value }))}
+                      max={today}
+                      onChange={(e) => setFilters(prev => ({ ...prev, toDate: e.target.value > today ? today : e.target.value }))}
                       className="w-full pl-10 pr-4 py-2.5 text-sm rounded-lg border border-slate-300 bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                     />
                   </div>
@@ -242,8 +247,8 @@ export default function FeedbackExperienceReport() {
                     className="w-full px-4 py-2.5 pr-8 text-sm rounded-lg border border-slate-300 bg-white text-slate-700 appearance-none cursor-pointer focus:outline-none focus:ring-2 focus:ring-blue-500"
                   >
                     <option value="">All Ratings</option>
-                    {[0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map(r => (
-                      <option key={r} value={r}>{r}/10</option>
+                    {[0, 1, 2, 3, 4, 5].map(r => (
+                      <option key={r} value={r}>{r}/5</option>
                     ))}
                   </select>
                   <ChevronDown className="absolute right-2 bottom-2.5 w-4 h-4 text-slate-500 pointer-events-none" />
@@ -335,7 +340,7 @@ export default function FeedbackExperienceReport() {
                 <div>
                   <p className="text-sm font-medium text-slate-600 mb-1">Average Rating</p>
                   <p className="text-2xl font-bold text-slate-900">
-                    {statistics.averageRating ? statistics.averageRating.toFixed(1) : '0.0'}/10
+                    {statistics.averageRating ? statistics.averageRating.toFixed(1) : '0.0'}/5
                   </p>
                 </div>
                 <div className="w-12 h-12 rounded-lg bg-yellow-100 flex items-center justify-center">
@@ -348,7 +353,7 @@ export default function FeedbackExperienceReport() {
               <div className="flex items-center justify-between">
                 <div>
                   <p className="text-sm font-medium text-slate-600 mb-1">Min Rating</p>
-                  <p className="text-2xl font-bold text-slate-900">{statistics.minRating || 0}/10</p>
+                  <p className="text-2xl font-bold text-slate-900">{statistics.minRating || 0}/5</p>
                 </div>
                 <div className="w-12 h-12 rounded-lg bg-red-100 flex items-center justify-center">
                   <Star className="w-6 h-6 text-red-600" />
@@ -360,7 +365,7 @@ export default function FeedbackExperienceReport() {
               <div className="flex items-center justify-between">
                 <div>
                   <p className="text-sm font-medium text-slate-600 mb-1">Max Rating</p>
-                  <p className="text-2xl font-bold text-slate-900">{statistics.maxRating || 0}/10</p>
+                  <p className="text-2xl font-bold text-slate-900">{statistics.maxRating || 0}/5</p>
                 </div>
                 <div className="w-12 h-12 rounded-lg bg-green-100 flex items-center justify-center">
                   <Star className="w-6 h-6 text-green-600" />
@@ -455,9 +460,9 @@ export default function FeedbackExperienceReport() {
                           </div>
                         </td>
                         <td className="px-4 py-3 whitespace-nowrap">
-                          <span className={`px-3 py-1 rounded-full text-xs font-medium ${getRatingColor(feedback.rating)}`}>
-                            {feedback.rating}/10
-                          </span>
+                                <span className={`px-3 py-1 rounded-full text-xs font-medium ${getRatingColor(feedback.rating)}`}>
+                                  {feedback.rating}/5
+                                </span>
                         </td>
                         <td className="px-4 py-3 whitespace-nowrap">
                           <span className="text-sm text-slate-700">{getExperienceLabel(feedback.experience)}</span>

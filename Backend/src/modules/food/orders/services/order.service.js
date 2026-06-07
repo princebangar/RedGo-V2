@@ -1388,6 +1388,10 @@ export async function listOrdersAdmin(query) {
     typeof query.startDate === "string" ? query.startDate.trim() : "";
   const endDateRaw =
     typeof query.endDate === "string" ? query.endDate.trim() : "";
+  const minAmountRaw =
+    typeof query.minAmount === "string" ? query.minAmount.trim() : "";
+  const maxAmountRaw =
+    typeof query.maxAmount === "string" ? query.maxAmount.trim() : "";
 
   if (rawStatus && rawStatus !== "all") {
     switch (rawStatus) {
@@ -1462,6 +1466,23 @@ export async function listOrdersAdmin(query) {
     }
     if (Object.keys(createdAt).length > 0) {
       filter.createdAt = createdAt;
+    }
+  }
+
+  // Amount range filtering with validation to ensure non-negative values
+  if (minAmountRaw) {
+    const minAmount = parseFloat(minAmountRaw);
+    if (Number.isFinite(minAmount) && minAmount >= 0) {
+      filter["pricing.total"] = filter["pricing.total"] || {};
+      filter["pricing.total"].$gte = minAmount;
+    }
+  }
+
+  if (maxAmountRaw) {
+    const maxAmount = parseFloat(maxAmountRaw);
+    if (Number.isFinite(maxAmount) && maxAmount >= 0) {
+      filter["pricing.total"] = filter["pricing.total"] || {};
+      filter["pricing.total"].$lte = maxAmount;
     }
   }
 

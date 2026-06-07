@@ -37,6 +37,7 @@ export default function JoiningRequest() {
     dateFrom: "",
     dateTo: ""
   })
+  const today = new Date().toISOString().slice(0, 10)
 
   // Track first render to avoid duplicate fetch in React StrictMode
   const hasFetchedOnceRef = useRef(false)
@@ -469,7 +470,7 @@ export default function JoiningRequest() {
                           >
                             <Eye className="w-4 h-4" />
                           </button>
-                          {activeTab === "pending" && (
+                          {String(request.status || "").toLowerCase() === "pending" && (
                             <>
                               <button
                                 onClick={() => handleApprove(request)}
@@ -552,7 +553,15 @@ export default function JoiningRequest() {
                     <input
                       type="date"
                       value={filters.dateFrom}
-                      onChange={(e) => setFilters({ ...filters, dateFrom: e.target.value })}
+                      max={today}
+                      onChange={(e) => {
+                        const selected = e.target.value > today ? today : e.target.value
+                        setFilters({
+                          ...filters,
+                          dateFrom: selected,
+                          dateTo: filters.dateTo && filters.dateTo < selected ? selected : filters.dateTo
+                        })
+                      }}
                       className="w-full px-4 py-2.5 text-sm rounded-lg border border-slate-300 bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                     />
                   </div>
@@ -563,7 +572,11 @@ export default function JoiningRequest() {
                     <input
                       type="date"
                       value={filters.dateTo}
-                      onChange={(e) => setFilters({ ...filters, dateTo: e.target.value })}
+                      max={today}
+                      onChange={(e) => {
+                        const selected = e.target.value > today ? today : e.target.value
+                        setFilters({ ...filters, dateTo: selected })
+                      }}
                       min={filters.dateFrom}
                       className="w-full px-4 py-2.5 text-sm rounded-lg border border-slate-300 bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                     />

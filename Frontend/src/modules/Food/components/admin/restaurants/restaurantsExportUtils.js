@@ -20,7 +20,7 @@ export const exportRestaurantsToExcel = (restaurants, filename = "restaurants") 
     restaurant.ownerPhone || "N/A",
     restaurant.zone || "N/A",
     restaurant.cuisine || "N/A",
-    restaurant.status ? "Active" : "Inactive",
+    restaurant.isActive !== false ? "Active" : "Inactive",
     restaurant.rating || 0
   ])
   
@@ -61,7 +61,7 @@ export const exportRestaurantsToPDF = (restaurants, filename = "restaurants") =>
     restaurant.ownerPhone || "N/A",
     restaurant.zone || "N/A",
     restaurant.cuisine || "N/A",
-    restaurant.status ? "Active" : "Inactive",
+    restaurant.isActive !== false ? "Active" : "Inactive",
     restaurant.rating || 0
   ])
   

@@ -310,12 +310,10 @@ export default function OrderInvoice() {
                   <span>GST:</span>
                   <span>₹{order.tax.toFixed(2)}</span>
                 </div>
-                {order.discount > 0 && (
-                  <div className="total-row flex justify-between text-xs sm:text-sm sm:text-base py-1 sm:py-2 text-green-600 dark:text-green-400">
-                    <span>Discount:</span>
-                    <span>-₹{order.discount.toFixed(2)}</span>
-                  </div>
-                )}
+                <div className="total-row flex justify-between text-xs sm:text-sm sm:text-base py-1 sm:py-2 text-green-600 dark:text-green-400">
+                  <span>Discount:</span>
+                  <span>{order.discount > 0 ? '' : ''}₹{Math.abs(order.discount).toFixed(2)}</span>
+                </div>
                 <div className="grand-total flex justify-between text-base sm:text-lg md:text-xl md:text-2xl pt-2 sm:pt-3 mt-2 sm:mt-3 border-t-2 border-[#DC2626] dark:text-gray-100">
                   <span>Total:</span>
                   <span>₹{order.total.toFixed(2)}</span>

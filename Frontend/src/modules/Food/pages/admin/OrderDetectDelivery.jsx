@@ -334,7 +334,6 @@ export default function OrderDetectDelivery() {
     handleExport,
     handleViewOrder,
     handlePrintOrder,
-    toggleColumn,
   } = useGenericTableManagement(
     orders,
     "Order Detect Delivery",
@@ -366,6 +365,13 @@ export default function OrderDetectDelivery() {
       status: true,
       actions: true,
     })
+  }
+
+  const handleToggleColumn = (columnKey) => {
+    setVisibleColumns((prev) => ({
+      ...prev,
+      [columnKey]: !prev[columnKey],
+    }))
   }
 
   // Loading state
@@ -521,7 +527,7 @@ export default function OrderDetectDelivery() {
         isOpen={isSettingsOpen}
         onOpenChange={setIsSettingsOpen}
         visibleColumns={visibleColumns}
-        toggleColumn={toggleColumn}
+        toggleColumn={handleToggleColumn}
         resetColumns={resetColumns}
         columnsConfig={{
           si: "Serial Number",
@@ -555,5 +561,3 @@ export default function OrderDetectDelivery() {
     </div>
   )
 }
-
-

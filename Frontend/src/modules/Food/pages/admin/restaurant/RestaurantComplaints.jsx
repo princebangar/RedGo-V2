@@ -299,7 +299,7 @@ export default function RestaurantComplaints() {
 
       {/* Update Modal */}
       <Dialog open={!!editingComplaint} onOpenChange={(open) => !open && setEditingComplaint(null)}>
-        <DialogContent>
+        <DialogContent className="max-w-lg p-6">
           <DialogHeader>
             <DialogTitle>Update Complaint</DialogTitle>
             <DialogDescription>
@@ -330,7 +330,7 @@ export default function RestaurantComplaints() {
               />
             </div>
           </div>
-          <DialogFooter>
+          <DialogFooter className="flex flex-col gap-3 sm:flex-row sm:justify-end">
             <button onClick={() => setEditingComplaint(null)} className="px-4 py-2 border rounded-md">Cancel</button>
             <button onClick={handleUpdateComplaint} className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700">Save Changes</button>
           </DialogFooter>

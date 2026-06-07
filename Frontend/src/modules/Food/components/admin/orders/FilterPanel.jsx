@@ -3,6 +3,20 @@ import { X } from "lucide-react"
 export default function FilterPanel({ isOpen, onClose, filters, setFilters, onApply, onReset, restaurants = [] }) {
   if (!isOpen) return null
 
+  const today = new Date().toISOString().split("T")[0]
+
+  const sanitizeAmountInput = (value) => {
+    if (value === "") return ""
+    const parsed = Number(value)
+    if (!Number.isFinite(parsed)) return ""
+    return String(Math.max(0, parsed))
+  }
+
+  const clampDateValue = (value) => {
+    if (!value) return ""
+    return value > today ? today : value
+  }
+
   return (
     <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4" onClick={onClose}>
       <div 
@@ -73,7 +87,8 @@ export default function FilterPanel({ isOpen, onClose, filters, setFilters, onAp
               <input
                 type="number"
                 value={filters.minAmount || ""}
-                onChange={(e) => setFilters(prev => ({ ...prev, minAmount: e.target.value }))}
+                min="0"
+                onChange={(e) => setFilters(prev => ({ ...prev, minAmount: sanitizeAmountInput(e.target.value) }))}
                 placeholder="0"
                 className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500"
               />
@@ -85,7 +100,8 @@ export default function FilterPanel({ isOpen, onClose, filters, setFilters, onAp
               <input
                 type="number"
                 value={filters.maxAmount || ""}
-                onChange={(e) => setFilters(prev => ({ ...prev, maxAmount: e.target.value }))}
+                min="0"
+                onChange={(e) => setFilters(prev => ({ ...prev, maxAmount: sanitizeAmountInput(e.target.value) }))}
                 placeholder="10000"
                 className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500"
               />
@@ -101,7 +117,20 @@ export default function FilterPanel({ isOpen, onClose, filters, setFilters, onAp
               <input
                 type="date"
                 value={filters.fromDate || ""}
-                onChange={(e) => setFilters(prev => ({ ...prev, fromDate: e.target.value }))}
+                max={filters.toDate ? clampDateValue(filters.toDate) : today}
+                onChange={(e) =>
+                  setFilters((prev) => {
+                    const nextFromDate = clampDateValue(e.target.value)
+                    const nextToDate =
+                      prev.toDate && prev.toDate < nextFromDate ? nextFromDate : prev.toDate
+
+                    return {
+                      ...prev,
+                      fromDate: nextFromDate,
+                      toDate: nextToDate,
+                    }
+                  })
+                }
                 className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500"
               />
             </div>
@@ -112,7 +141,14 @@ export default function FilterPanel({ isOpen, onClose, filters, setFilters, onAp
               <input
                 type="date"
                 value={filters.toDate || ""}
-                onChange={(e) => setFilters(prev => ({ ...prev, toDate: e.target.value }))}
+                min={filters.fromDate || undefined}
+                max={today}
+                onChange={(e) =>
+                  setFilters((prev) => ({
+                    ...prev,
+                    toDate: clampDateValue(e.target.value),
+                  }))
+                }
                 className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500"
               />
             </div>

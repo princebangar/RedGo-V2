@@ -1,9 +1,120 @@
 import { useState, useMemo } from "react"
 import { exportToExcel, exportToPDF } from "./ordersExportUtils"
-const debugLog = (...args) => {}
-const debugWarn = (...args) => {}
 const debugError = (...args) => {}
 
+const toNumber = (value) => {
+  const parsed = Number(value)
+  return Number.isFinite(parsed) ? parsed : 0
+}
+
+const formatMoney = (value) => `Rs. ${toNumber(value).toFixed(2)}`
+
+const formatOrderDate = (value) => {
+  const date = value ? new Date(value) : null
+  if (!date || Number.isNaN(date.getTime())) return new Date().toLocaleDateString()
+  return date.toLocaleDateString("en-GB", {
+    day: "2-digit",
+    month: "short",
+    year: "numeric",
+  }).toUpperCase()
+}
+
+const formatOrderTime = (value) => {
+  const date = value ? new Date(value) : null
+  if (!date || Number.isNaN(date.getTime())) return ""
+  return date.toLocaleTimeString("en-US", {
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: true,
+  }).toUpperCase()
+}
+
+const getOriginalOrder = (order) => order?.originalOrder || order || {}
+
+const getOrderAmount = (order) => {
+  const originalOrder = getOriginalOrder(order)
+  return toNumber(
+    originalOrder.pricing?.total ??
+      originalOrder.totalAmount ??
+      originalOrder.total ??
+      order.totalAmount ??
+      order.total ??
+      0
+  )
+}
+
+const getPaymentStatus = (order) => {
+  const originalOrder = getOriginalOrder(order)
+  return String(
+    originalOrder.payment?.status ??
+      originalOrder.paymentStatus ??
+      order.paymentStatus ??
+      ""
+  ).toLowerCase()
+}
+
+const getDeliveryType = (order) => {
+  const originalOrder = getOriginalOrder(order)
+  return String(originalOrder.deliveryType ?? order.deliveryType ?? "").toLowerCase()
+}
+
+const getRestaurantName = (order) =>
+  String(order.restaurantName ?? order.restaurant ?? getOriginalOrder(order).restaurantName ?? "").trim()
+
+const parseFilterDate = (value) => {
+  if (!value) return null
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) return null
+  return date
+}
+
+const getOrderCreatedAt = (order) => {
+  const originalOrder = getOriginalOrder(order)
+  const createdAt = originalOrder.createdAt ?? order.createdAt
+  const date = createdAt ? new Date(createdAt) : null
+  return date && !Number.isNaN(date.getTime()) ? date : null
+}
+
+const buildInvoiceModel = (order) => {
+  const originalOrder = getOriginalOrder(order)
+  const items = Array.isArray(originalOrder.items)
+    ? originalOrder.items
+    : Array.isArray(order.items)
+      ? order.items
+      : []
+
+  const subtotal = items.reduce((sum, item) => {
+    const quantity = toNumber(item?.quantity || 1)
+    const unitPrice = toNumber(item?.price ?? item?.unitPrice)
+    return sum + quantity * unitPrice
+  }, 0)
+
+  const deliveryFee = toNumber(originalOrder.pricing?.deliveryFee ?? originalOrder.deliveryCharge ?? originalOrder.deliveryFee)
+  const taxAmount = toNumber(originalOrder.pricing?.tax ?? originalOrder.taxAmount ?? originalOrder.tax)
+  const discountAmount = toNumber(originalOrder.pricing?.discount ?? originalOrder.discountAmount ?? originalOrder.couponDiscount)
+  const totalAmount = getOrderAmount(order)
+  const createdAt = getOrderCreatedAt(order)
+
+  return {
+    orderId: order.orderId || originalOrder.orderId || originalOrder.id || "N/A",
+    orderDate: formatOrderDate(createdAt),
+    orderTime: formatOrderTime(createdAt),
+    customerName: order.userName || originalOrder.customerName || originalOrder.userName || "N/A",
+    customerPhone: order.userNumber || originalOrder.customerPhone || originalOrder.userNumber || originalOrder.deliveryAddress?.phone || "N/A",
+    restaurantName: getRestaurantName(order) || "N/A",
+    deliveryPartnerName: order.deliveryBoyName || originalOrder.deliveryPartnerName || originalOrder.deliveryBoyName || originalOrder.deliveryPartnerId?.name || originalOrder.dispatch?.deliveryPartnerId?.name || "Not assigned",
+    deliveryPartnerPhone: order.deliveryBoyNumber || originalOrder.deliveryPartnerPhone || originalOrder.deliveryBoyNumber || originalOrder.deliveryPartnerId?.phone || originalOrder.dispatch?.deliveryPartnerId?.phone || "N/A",
+    status: order.status || originalOrder.orderStatus || originalOrder.status || "N/A",
+    paymentStatus: originalOrder.payment?.status || originalOrder.paymentStatus || "N/A",
+    paymentType: originalOrder.payment?.method || originalOrder.paymentType || originalOrder.paymentMethod || "N/A",
+    items,
+    subtotal,
+    deliveryFee,
+    taxAmount,
+    discountAmount,
+    totalAmount,
+  }
+}
 
 export function useGenericTableManagement(data, title, searchFields = []) {
   const [searchQuery, setSearchQuery] = useState("")
@@ -11,45 +122,76 @@ export function useGenericTableManagement(data, title, searchFields = []) {
   const [isSettingsOpen, setIsSettingsOpen] = useState(false)
   const [isViewOrderOpen, setIsViewOrderOpen] = useState(false)
   const [selectedOrder, setSelectedOrder] = useState(null)
-  const [filters, setFilters] = useState({})
+  const [filters, setFilters] = useState({
+    paymentStatus: "",
+    deliveryType: "",
+    minAmount: "",
+    maxAmount: "",
+    fromDate: "",
+    toDate: "",
+    restaurant: "",
+  })
   const [visibleColumns, setVisibleColumns] = useState({})
 
-  // Apply search
   const filteredData = useMemo(() => {
     let result = [...data]
 
-    // Apply search query
     if (searchQuery.trim() && searchFields.length > 0) {
       const query = searchQuery.toLowerCase().trim()
-      result = result.filter(item => 
-        searchFields.some(field => {
+      result = result.filter((item) =>
+        searchFields.some((field) => {
           const value = item[field]
           return value && value.toString().toLowerCase().includes(query)
         })
       )
     }
 
-    // Apply filters
-    Object.entries(filters).forEach(([key, value]) => {
-      if (value && value !== "") {
-        result = result.filter(item => {
-          const itemValue = item[key]
-          if (typeof value === 'string') {
-            return itemValue === value || itemValue?.toString().toLowerCase() === value.toLowerCase()
-          }
-          return itemValue === value
-        })
-      }
-    })
+    if (filters.paymentStatus) {
+      result = result.filter((item) => getPaymentStatus(item) === filters.paymentStatus.toLowerCase())
+    }
+
+    if (filters.deliveryType) {
+      result = result.filter((item) => getDeliveryType(item) === filters.deliveryType.toLowerCase())
+    }
+
+    if (filters.minAmount !== "") {
+      const minAmount = toNumber(filters.minAmount)
+      result = result.filter((item) => getOrderAmount(item) >= minAmount)
+    }
+
+    if (filters.maxAmount !== "") {
+      const maxAmount = toNumber(filters.maxAmount)
+      result = result.filter((item) => getOrderAmount(item) <= maxAmount)
+    }
+
+    if (filters.restaurant) {
+      result = result.filter((item) => getRestaurantName(item) === filters.restaurant)
+    }
+
+    const fromDate = parseFilterDate(filters.fromDate)
+    if (fromDate) {
+      result = result.filter((item) => {
+        const orderDate = getOrderCreatedAt(item)
+        return orderDate ? orderDate >= fromDate : false
+      })
+    }
+
+    const toDate = parseFilterDate(filters.toDate)
+    if (toDate) {
+      toDate.setHours(23, 59, 59, 999)
+      result = result.filter((item) => {
+        const orderDate = getOrderCreatedAt(item)
+        return orderDate ? orderDate <= toDate : false
+      })
+    }
 
     return result
   }, [data, searchQuery, filters, searchFields])
 
   const count = filteredData.length
 
-  // Count active filters
   const activeFiltersCount = useMemo(() => {
-    return Object.values(filters).filter(value => value !== "" && value !== null && value !== undefined).length
+    return Object.values(filters).filter((value) => value !== "" && value !== null && value !== undefined).length
   }, [filters])
 
   const handleApplyFilters = () => {
@@ -57,7 +199,15 @@ export function useGenericTableManagement(data, title, searchFields = []) {
   }
 
   const handleResetFilters = () => {
-    setFilters({})
+    setFilters({
+      paymentStatus: "",
+      deliveryType: "",
+      minAmount: "",
+      maxAmount: "",
+      fromDate: "",
+      toDate: "",
+      restaurant: "",
+    })
   }
 
   const handleExport = async (format) => {
@@ -81,138 +231,149 @@ export function useGenericTableManagement(data, title, searchFields = []) {
 
   const handlePrintOrder = async (order) => {
     try {
-      // Dynamic import of jsPDF and autoTable for instant PDF download
-      const { default: jsPDF } = await import('jspdf')
-      const { default: autoTable } = await import('jspdf-autotable')
-      
-      const doc = new jsPDF({
-        orientation: 'portrait',
-        unit: 'mm',
-        format: 'a4'
-      })
+      const { default: jsPDF } = await import("jspdf")
+      const { default: autoTable } = await import("jspdf-autotable")
+      const invoice = buildInvoiceModel(order)
 
-      // Add title
+      const doc = new jsPDF({
+        orientation: "portrait",
+        unit: "mm",
+        format: "a4",
+      })
+      const pageWidth = doc.internal.pageSize.getWidth()
+
       doc.setFontSize(18)
       doc.setTextColor(30, 30, 30)
-      doc.text('Order Invoice', 105, 20, { align: 'center' })
-      
-      // Order ID
+      doc.text("Order Invoice", 105, 20, { align: "center" })
+
       doc.setFontSize(12)
       doc.setTextColor(100, 100, 100)
-      const orderId = order.orderId || order.id || order.subscriptionId || 'N/A'
-      doc.text(`Order ID: ${orderId}`, 105, 28, { align: 'center' })
-      
-      // Date
+      doc.text(`Order ID: ${invoice.orderId}`, 105, 28, { align: "center" })
       doc.setFontSize(10)
-      const orderDate = order.date && order.time ? `${order.date}, ${order.time}` : (order.date || new Date().toLocaleDateString())
-      doc.text(`Date: ${orderDate}`, 105, 34, { align: 'center' })
-      
+      doc.text(`Date: ${invoice.orderDate}${invoice.orderTime ? `, ${invoice.orderTime}` : ""}`, 105, 34, { align: "center" })
+
       let startY = 45
-      
-      // Customer Information
-      if (order.customerName || order.customerPhone) {
-        doc.setFontSize(12)
-        doc.setTextColor(30, 30, 30)
-        doc.text('Customer Information', 14, startY)
-        startY += 8
-        
-        doc.setFontSize(10)
-        doc.setTextColor(60, 60, 60)
-        if (order.customerName) {
-          doc.text(`Name: ${order.customerName}`, 14, startY)
-          startY += 6
-        }
-        if (order.customerPhone) {
-          doc.text(`Phone: ${order.customerPhone}`, 14, startY)
-          startY += 6
-        }
-        startY += 5
-      }
-      
-      // Restaurant Information
-      if (order.restaurant) {
-        doc.setFontSize(12)
-        doc.setTextColor(30, 30, 30)
-        doc.text('Restaurant', 14, startY)
-        startY += 8
-        
-        doc.setFontSize(10)
-        doc.setTextColor(60, 60, 60)
-        doc.text(order.restaurant, 14, startY)
-        startY += 10
-      }
-      
-      // Order Items Table
-      if (order.items && Array.isArray(order.items) && order.items.length > 0) {
-        const tableData = order.items.map((item) => [
-          item.quantity || 1,
-          item.name || item.itemName || item.title || 'Unknown Item',
-          `?${(item.price || 0).toFixed(2)}`,
-          `?${((item.quantity || 1) * (item.price || 0)).toFixed(2)}`
-        ])
-        
-        autoTable(doc, {
-          startY: startY,
-          head: [['Qty', 'Item Name', 'Price', 'Total']],
-          body: tableData,
-          theme: 'striped',
-          headStyles: {
-            fillColor: [59, 130, 246],
-            textColor: 255,
-            fontStyle: 'bold',
-            fontSize: 10
-          },
-          bodyStyles: {
-            fontSize: 9,
-            textColor: [30, 30, 30]
-          },
-          alternateRowStyles: {
-            fillColor: [245, 247, 250]
-          },
-          styles: {
-            cellPadding: 4,
-            lineColor: [200, 200, 200],
-            lineWidth: 0.5
-          },
-          columnStyles: {
-            0: { cellWidth: 20, halign: 'center' },
-            1: { cellWidth: 80 },
-            2: { cellWidth: 35, halign: 'right' },
-            3: { cellWidth: 35, halign: 'right', fontStyle: 'bold' }
-          },
-          margin: { left: 14, right: 14 }
-        })
-        
-        startY = doc.lastAutoTable.finalY + 10
-      }
-      
-      // Total Amount
-      if (order.totalAmount) {
-        doc.setFontSize(14)
-        doc.setTextColor(30, 30, 30)
-        doc.setFont(undefined, 'bold')
-        const totalAmount = typeof order.totalAmount === 'number' ? order.totalAmount.toFixed(2) : order.totalAmount
-        doc.text(`Total Amount: ?${totalAmount}`, 14, startY)
-        startY += 8
-      }
-      
-      // Payment Status
-      if (order.paymentStatus) {
-        doc.setFontSize(10)
-        doc.setTextColor(100, 100, 100)
-        doc.setFont(undefined, 'normal')
-        doc.text(`Payment Status: ${order.paymentStatus}`, 14, startY)
-        startY += 6
-      }
-      
-      // Order Status
-      if (order.orderStatus) {
-        doc.setFontSize(10)
-        doc.text(`Order Status: ${order.orderStatus}`, 14, startY)
-      }
-      
-      // Save the PDF instantly
-      const filename = `Invoice_${orderId}_${new Date().toISOString().split("T")[0]}.pdf`
+
+      const infoRows = [
+        ["Customer", invoice.customerName],
+        ["Phone", invoice.customerPhone],
+        ["Restaurant", invoice.restaurantName],
+        ["Delivery Boy", invoice.deliveryPartnerName],
+        ["Delivery Phone", invoice.deliveryPartnerPhone],
+        ["Payment Status", invoice.paymentStatus],
+        ["Payment Type", invoice.paymentType],
+        ["Order Status", invoice.status],
+      ]
+
+      autoTable(doc, {
+        startY,
+        body: infoRows,
+        theme: "grid",
+        styles: {
+          fontSize: 9,
+          cellPadding: 3,
+          textColor: [30, 30, 30],
+        },
+        columnStyles: {
+          0: { cellWidth: 42, fontStyle: "bold", fillColor: [248, 250, 252] },
+          1: { cellWidth: 134 },
+        },
+        margin: { left: 14, right: 14 },
+      })
+
+      startY = (doc.lastAutoTable?.finalY || startY) + 8
+
+      const tableData =
+        invoice.items.length > 0
+          ? invoice.items.map((item) => {
+              const quantity = toNumber(item?.quantity || 1)
+              const itemName = item?.name || item?.itemName || item?.title || "Item"
+              const itemPrice = toNumber(item?.price ?? item?.unitPrice)
+              return [
+                quantity,
+                itemName,
+                formatMoney(itemPrice),
+                formatMoney(quantity * itemPrice),
+              ]
+            })
+          : [[1, "Order Total", formatMoney(invoice.totalAmount), formatMoney(invoice.totalAmount)]]
+
+      autoTable(doc, {
+        startY,
+        head: [["Qty", "Item Name", "Price", "Total"]],
+        body: tableData,
+        theme: "striped",
+        headStyles: {
+          fillColor: [59, 130, 246],
+          textColor: 255,
+          fontStyle: "bold",
+          fontSize: 10,
+        },
+        bodyStyles: {
+          fontSize: 9,
+          textColor: [30, 30, 30],
+        },
+        alternateRowStyles: {
+          fillColor: [245, 247, 250],
+        },
+        styles: {
+          cellPadding: 4,
+          lineColor: [200, 200, 200],
+          lineWidth: 0.5,
+        },
+        columnStyles: {
+          0: { cellWidth: 20, halign: "center" },
+          1: { cellWidth: 80 },
+          2: { cellWidth: 35, halign: "right" },
+          3: { cellWidth: 35, halign: "right", fontStyle: "bold" },
+        },
+        margin: { left: 14, right: 14 },
+      })
+
+      startY = (doc.lastAutoTable?.finalY || startY) + 10
+
+      const summaryRows = [
+        ["Subtotal", formatMoney(invoice.subtotal || invoice.totalAmount)],
+        ["Delivery Fee", formatMoney(invoice.deliveryFee)],
+        ["Tax", formatMoney(invoice.taxAmount)],
+        ["Discount", `- ${formatMoney(invoice.discountAmount)}`],
+        ["Grand Total", formatMoney(invoice.totalAmount)],
+      ]
+
+      const summaryBoxWidth = 76
+      const summaryBoxX = pageWidth - 14 - summaryBoxWidth
+      const summaryBoxY = startY - 4
+      const summaryBoxHeight = 40
+
+      doc.setFillColor(248, 250, 252)
+      doc.setDrawColor(226, 232, 240)
+      doc.roundedRect(summaryBoxX, summaryBoxY, summaryBoxWidth, summaryBoxHeight, 2, 2, "FD")
+
+      autoTable(doc, {
+        startY,
+        body: summaryRows,
+        theme: "plain",
+        styles: {
+          fontSize: 10,
+          textColor: [30, 30, 30],
+          cellPadding: { top: 1.8, right: 0, bottom: 1.8, left: 0 },
+          valign: "middle",
+        },
+        columnStyles: {
+          0: { cellWidth: 34, fontStyle: "bold", halign: "left" },
+          1: { cellWidth: 34, halign: "right" },
+        },
+        margin: { left: summaryBoxX + 4, right: 14 },
+        tableWidth: 68,
+        didParseCell: (hookData) => {
+          if (hookData.row.index === summaryRows.length - 1) {
+            hookData.cell.styles.fontStyle = "bold"
+            hookData.cell.styles.fontSize = 11
+          }
+        },
+      })
+
+      const filename = `Invoice_${invoice.orderId}_${new Date().toISOString().split("T")[0]}.pdf`
       doc.save(filename)
     } catch (error) {
       debugError("Error generating PDF invoice:", error)
@@ -221,9 +382,9 @@ export function useGenericTableManagement(data, title, searchFields = []) {
   }
 
   const toggleColumn = (columnKey) => {
-    setVisibleColumns(prev => ({
+    setVisibleColumns((prev) => ({
       ...prev,
-      [columnKey]: !prev[columnKey]
+      [columnKey]: !prev[columnKey],
     }))
   }
 
@@ -256,4 +417,3 @@ export function useGenericTableManagement(data, title, searchFields = []) {
     resetColumns,
   }
 }
-
