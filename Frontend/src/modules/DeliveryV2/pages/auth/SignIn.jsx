@@ -126,14 +126,18 @@ export default function DeliverySignIn() {
     return () => clearInterval(timer)
   }, [blockTimer])
 
-  // Focus first OTP field
+  // Focus first OTP field + open mobile keyboard automatically
   useEffect(() => {
     if (isOtpStep && !showNameInput && !pendingMessage) {
       const timer = setTimeout(() => {
-        if (inputRefs.current[0]) {
-          inputRefs.current[0].focus()
+        const el = inputRefs.current[0]
+        if (el) {
+          el.focus()
+          // In mobile WebView the soft keyboard often won't open on a
+          // programmatic focus alone, so also trigger a click to force it.
+          el.click()
         }
-      }, 150)
+      }, 250)
       return () => clearTimeout(timer)
     }
   }, [isOtpStep, showNameInput, pendingMessage])
@@ -922,17 +926,19 @@ export default function DeliverySignIn() {
             </AnimatePresence>
           </div>
 
-          {/* Footer Info */}
-          <div className="mt-8 text-center">
-            <p className="text-[11px] text-gray-400/80 font-medium leading-relaxed max-w-[320px] mx-auto">
-              By continuing, you agree to our <br />
-              <Link to="/food/delivery/terms" className="text-gray-400 hover:text-[#0E4B9C] transition-colors uppercase tracking-wider font-semibold">TERMS</Link>
-              <span className="mx-2 text-gray-400/80 font-bold">•</span>
-              <Link to="/food/delivery/privacy" className="text-gray-400 hover:text-[#0E4B9C] transition-colors uppercase tracking-wider font-semibold">PRIVACY</Link>
-              <span className="mx-2 text-gray-400/80 font-bold">•</span>
-              <Link to="/food/delivery/help/content" className="text-gray-400 hover:text-[#0E4B9C] transition-colors uppercase tracking-wider font-semibold">SUPPORT</Link>
-            </p>
-          </div>
+          {/* Footer Info - only on login step, not OTP */}
+          {!isOtpStep && (
+            <div className="mt-8 text-center">
+              <p className="text-[11px] text-gray-400/80 font-medium leading-relaxed max-w-[320px] mx-auto">
+                By continuing, you agree to our <br />
+                <Link to="/food/delivery/terms" className="text-gray-400 hover:text-[#0E4B9C] transition-colors uppercase tracking-wider font-semibold">TERMS</Link>
+                <span className="mx-2 text-gray-400/80 font-bold">•</span>
+                <Link to="/food/delivery/privacy" className="text-gray-400 hover:text-[#0E4B9C] transition-colors uppercase tracking-wider font-semibold">PRIVACY</Link>
+                <span className="mx-2 text-gray-400/80 font-bold">•</span>
+                <Link to="/food/delivery/help/content" className="text-gray-400 hover:text-[#0E4B9C] transition-colors uppercase tracking-wider font-semibold">SUPPORT</Link>
+              </p>
+            </div>
+          )}
 
         </div>
       </div>

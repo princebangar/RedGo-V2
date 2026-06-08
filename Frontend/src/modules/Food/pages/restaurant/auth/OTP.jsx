@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from "react"
-import { useNavigate, Link, useLocation } from "react-router-dom"
+import { useNavigate, useLocation } from "react-router-dom"
 import { motion, AnimatePresence } from "framer-motion"
 import { ArrowLeft, Timer, RefreshCw, Loader2, Pencil, X, ShieldCheck } from "lucide-react"
 import { toast } from "sonner"
@@ -517,18 +517,6 @@ export default function RestaurantOTP() {
                 </motion.div>
               )}
             </form>
-          </div>
-
-          {/* Footer Info */}
-          <div className="mt-8 text-center">
-            <p className="text-[11px] text-gray-400/80 font-medium leading-relaxed max-w-[320px] mx-auto">
-              By continuing, you agree to our <br />
-              <Link to="/food/restaurant/terms" className="text-gray-400 hover:text-[#B80B3D] transition-colors uppercase tracking-wider font-semibold">TERMS</Link>
-              <span className="mx-2 text-gray-400/80 font-bold">•</span>
-              <Link to="/food/restaurant/privacy" className="text-gray-400 hover:text-[#B80B3D] transition-colors uppercase tracking-wider font-semibold">PRIVACY</Link>
-              <span className="mx-2 text-gray-400/80 font-bold">•</span>
-              <Link to="/food/restaurant/help-content" className="text-gray-400 hover:text-[#B80B3D] transition-colors uppercase tracking-wider font-semibold">SUPPORT</Link>
-            </p>
           </div>
 
         </div>

@@ -429,8 +429,14 @@ export default function UnifiedOTPFastLogin() {
   useEffect(() => {
     if (step === 2) {
       setTimeout(() => {
-        document.getElementById("otp-0")?.focus();
-      }, 100);
+        const el = document.getElementById("otp-0");
+        if (el) {
+          el.focus();
+          // In mobile WebView the soft keyboard often won't open on a
+          // programmatic focus alone, so also trigger a click to force it.
+          el.click();
+        }
+      }, 250);
     }
   }, [step]);
 
@@ -527,7 +533,7 @@ export default function UnifiedOTPFastLogin() {
 
       {/* Main Content */}
       <div className="flex-1 flex flex-col items-center justify-center px-6 py-13 pb-40 relative z-10">
-        <div className="w-full max-w-sm flex flex-col">
+        <div className={`w-full max-w-sm flex flex-col ${step === 2 ? "relative -top-16" : ""}`}>
 
           {/* Main Title (Design Reference: Log In text) */}
           <div className="mb-10 mt-8 text-center flex flex-col items-center">
@@ -704,8 +710,8 @@ export default function UnifiedOTPFastLogin() {
             </AnimatePresence>
           </div>
 
-          {/* Skip Now Button */}
-          {blockTimer <= 0 && (
+          {/* Skip Now Button - only on login step, not OTP */}
+          {step === 1 && blockTimer <= 0 && (
             <div className="mt-5 flex justify-center w-full">
               <button
                 type="button"
@@ -722,17 +728,19 @@ export default function UnifiedOTPFastLogin() {
             </div>
           )}
 
-          {/* Footer Info */}
-          <div className="mt-8 text-center">
-            <p className="text-[11px] text-gray-400/80 font-medium leading-relaxed max-w-[320px] mx-auto">
-              By continuing, you agree to our <br />
-              <Link to="/user/profile/terms" state={{ from: "/user/auth/login" }} className="text-gray-400 hover:text-[#B80B3D] transition-colors uppercase tracking-wider font-semibold">TERMS</Link>
-              <span className="mx-2 text-gray-400/80 font-bold">•</span>
-              <Link to="/user/profile/privacy" state={{ from: "/user/auth/login" }} className="text-gray-400 hover:text-[#B80B3D] transition-colors uppercase tracking-wider font-semibold">PRIVACY</Link>
-              <span className="mx-2 text-gray-400/80 font-bold">•</span>
-              <Link to="/user/profile/support-info" state={{ from: "/user/auth/login" }} className="text-gray-400 hover:text-[#B80B3D] transition-colors uppercase tracking-wider font-semibold">SUPPORT</Link>
-            </p>
-          </div>
+          {/* Footer Info - only on login step, not OTP */}
+          {step === 1 && (
+            <div className="mt-8 text-center">
+              <p className="text-[11px] text-gray-400/80 font-medium leading-relaxed max-w-[320px] mx-auto">
+                By continuing, you agree to our <br />
+                <Link to="/user/profile/terms" state={{ from: "/user/auth/login" }} className="text-gray-400 hover:text-[#B80B3D] transition-colors uppercase tracking-wider font-semibold">TERMS</Link>
+                <span className="mx-2 text-gray-400/80 font-bold">•</span>
+                <Link to="/user/profile/privacy" state={{ from: "/user/auth/login" }} className="text-gray-400 hover:text-[#B80B3D] transition-colors uppercase tracking-wider font-semibold">PRIVACY</Link>
+                <span className="mx-2 text-gray-400/80 font-bold">•</span>
+                <Link to="/user/profile/support-info" state={{ from: "/user/auth/login" }} className="text-gray-400 hover:text-[#B80B3D] transition-colors uppercase tracking-wider font-semibold">SUPPORT</Link>
+              </p>
+            </div>
+          )}
 
         </div>
       </div>

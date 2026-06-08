@@ -80,9 +80,18 @@ export default function OTP() {
   }, [navigate])
 
   useEffect(() => {
-    // Focus first input on mount
-    if (inputRefs.current[0] && !showNameInput) {
-      inputRefs.current[0].focus()
+    // Focus first input on mount + open mobile keyboard automatically
+    if (!showNameInput) {
+      const timer = setTimeout(() => {
+        const el = inputRefs.current[0]
+        if (el) {
+          el.focus()
+          // In mobile WebView the soft keyboard often won't open on a
+          // programmatic focus alone, so also trigger a click to force it.
+          el.click()
+        }
+      }, 250)
+      return () => clearTimeout(timer)
     }
   }, [showNameInput])
 

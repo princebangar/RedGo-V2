@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from "react"
-import { useNavigate, Link, useLocation } from "react-router-dom"
+import { useNavigate, useLocation } from "react-router-dom"
 import { motion, AnimatePresence } from "framer-motion"
 import { ArrowLeft, Loader2, Pencil, X, ShieldCheck } from "lucide-react"
 import { toast } from "sonner"
@@ -832,18 +832,6 @@ export default function DeliveryOTP() {
                 </button>
               </div>
             )}
-          </div>
-
-          {/* Footer Info */}
-          <div className="mt-8 text-center">
-            <p className="text-[11px] text-gray-400/80 font-medium leading-relaxed max-w-[320px] mx-auto">
-              By continuing, you agree to our <br />
-              <Link to="/food/delivery/terms" className="text-gray-400 hover:text-[#0E4B9C] transition-colors uppercase tracking-wider font-semibold">TERMS</Link>
-              <span className="mx-2 text-gray-400/80 font-bold">•</span>
-              <Link to="/food/delivery/privacy" className="text-gray-400 hover:text-[#0E4B9C] transition-colors uppercase tracking-wider font-semibold">PRIVACY</Link>
-              <span className="mx-2 text-gray-400/80 font-bold">•</span>
-              <Link to="/food/delivery/help/content" className="text-gray-400 hover:text-[#0E4B9C] transition-colors uppercase tracking-wider font-semibold">SUPPORT</Link>
-            </p>
           </div>
 
         </div>

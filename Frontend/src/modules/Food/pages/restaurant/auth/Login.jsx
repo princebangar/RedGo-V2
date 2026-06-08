@@ -135,14 +135,18 @@ export default function RestaurantLogin() {
     return () => clearInterval(timer)
   }, [blockTimer])
 
-  // Autofocus first OTP box
+  // Autofocus first OTP box + open mobile keyboard automatically
   useEffect(() => {
     if (isOtpStep) {
       const timer = setTimeout(() => {
-        if (inputRefs.current[0]) {
-          inputRefs.current[0].focus()
+        const el = inputRefs.current[0]
+        if (el) {
+          el.focus()
+          // In mobile WebView the soft keyboard often won't open on a
+          // programmatic focus alone, so also trigger a click to force it.
+          el.click()
         }
-      }, 150)
+      }, 250)
       return () => clearTimeout(timer)
     }
   }, [isOtpStep])
@@ -647,17 +651,19 @@ export default function RestaurantLogin() {
             </AnimatePresence>
           </div>
 
-          {/* Footer Info */}
-          <div className="mt-8 text-center">
-            <p className="text-[11px] text-gray-400/80 font-medium leading-relaxed max-w-[320px] mx-auto">
-              By continuing, you agree to our <br />
-              <Link to="/food/restaurant/terms" className="text-gray-400 hover:text-[#B80B3D] transition-colors uppercase tracking-wider font-semibold">TERMS</Link>
-              <span className="mx-2 text-gray-400/80 font-bold">•</span>
-              <Link to="/food/restaurant/privacy" className="text-gray-400 hover:text-[#B80B3D] transition-colors uppercase tracking-wider font-semibold">PRIVACY</Link>
-              <span className="mx-2 text-gray-400/80 font-bold">•</span>
-              <Link to="/food/restaurant/help-content" className="text-gray-400 hover:text-[#B80B3D] transition-colors uppercase tracking-wider font-semibold">SUPPORT</Link>
-            </p>
-          </div>
+          {/* Footer Info - only on login step, not OTP */}
+          {!isOtpStep && (
+            <div className="mt-8 text-center">
+              <p className="text-[11px] text-gray-400/80 font-medium leading-relaxed max-w-[320px] mx-auto">
+                By continuing, you agree to our <br />
+                <Link to="/food/restaurant/terms" className="text-gray-400 hover:text-[#B80B3D] transition-colors uppercase tracking-wider font-semibold">TERMS</Link>
+                <span className="mx-2 text-gray-400/80 font-bold">•</span>
+                <Link to="/food/restaurant/privacy" className="text-gray-400 hover:text-[#B80B3D] transition-colors uppercase tracking-wider font-semibold">PRIVACY</Link>
+                <span className="mx-2 text-gray-400/80 font-bold">•</span>
+                <Link to="/food/restaurant/help-content" className="text-gray-400 hover:text-[#B80B3D] transition-colors uppercase tracking-wider font-semibold">SUPPORT</Link>
+              </p>
+            </div>
+          )}
 
         </div>
       </div>
