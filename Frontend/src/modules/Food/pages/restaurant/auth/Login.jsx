@@ -41,6 +41,12 @@ export default function RestaurantLogin() {
   const inputRefs = useRef([])
   const hasSubmittedRef = useRef(false)
   const isSuccessRef = useRef(false)
+  // iOS only opens the soft-keyboard from a focus() that happens *inside* a
+  // user gesture. This hidden input is focused synchronously on the "Log in"
+  // tap so the keyboard opens, then focus is transferred to the OTP boxes once
+  // they mount (focus transfer keeps the keyboard up on iOS).
+  const focusKeeperRef = useRef(null)
+  const keyboardPrimedRef = useRef(false)
 
   const getBlockKey = (phoneStr) => {
     const clean = phoneStr?.replace(/\D/g, "") || ""
@@ -138,7 +144,7 @@ export default function RestaurantLogin() {
   // Autofocus first OTP box + open mobile keyboard automatically
   useEffect(() => {
     if (isOtpStep) {
-      const timer = setTimeout(() => {
+      const focusFirst = () => {
         const el = inputRefs.current[0]
         if (el) {
           el.focus()
@@ -146,7 +152,15 @@ export default function RestaurantLogin() {
           // programmatic focus alone, so also trigger a click to force it.
           el.click()
         }
-      }, 250)
+      }
+      // If the keyboard was primed on the "Log in" tap (iOS), transfer focus
+      // ASAP so the already-open keyboard stays up instead of closing.
+      if (keyboardPrimedRef.current) {
+        keyboardPrimedRef.current = false
+        requestAnimationFrame(focusFirst)
+        return
+      }
+      const timer = setTimeout(focusFirst, 250)
       return () => clearTimeout(timer)
     }
   }, [isOtpStep])
@@ -165,6 +179,12 @@ export default function RestaurantLogin() {
       return
     }
     if (submitting.current) return
+    // Prime the keyboard inside the tap gesture so iOS keeps it open while we
+    // navigate to the OTP step (Android focuses fine on mount).
+    if (focusKeeperRef.current) {
+      focusKeeperRef.current.focus()
+      keyboardPrimedRef.current = true
+    }
     submitting.current = true
     setLoading(true)
 
@@ -431,8 +451,18 @@ export default function RestaurantLogin() {
 
   const isOtpComplete = otp.every((digit) => digit !== "")
 
+  // When an input is focused the mobile soft-keyboard opens and shrinks the
+  // viewport. Scroll the focused field into the centre of the remaining space
+  // so the submit button / logo never get hidden behind the keyboard.
+  const handleInputFocusScroll = (e) => {
+    const el = e.currentTarget
+    setTimeout(() => {
+      el?.scrollIntoView({ behavior: "smooth", block: "center" })
+    }, 300)
+  }
+
   return (
-    <div className="min-h-screen bg-white dark:bg-[#0a0a0a] flex flex-col relative overflow-hidden font-['Poppins']">
+    <div className="min-h-[100dvh] bg-white dark:bg-[#0a0a0a] flex flex-col relative overflow-hidden font-['Poppins']">
       <style>
         {`
           @keyframes floatDish1 {
@@ -488,10 +518,21 @@ export default function RestaurantLogin() {
         />
       </div>
 
+      {/* Hidden keyboard-keeper: focused on the "Log in" tap so iOS keeps the
+          soft-keyboard open while transitioning to the OTP step. */}
+      <input
+        ref={focusKeeperRef}
+        type="tel"
+        inputMode="numeric"
+        tabIndex={-1}
+        aria-hidden="true"
+        className="absolute opacity-0 w-px h-px -z-10 pointer-events-none"
+      />
+
       {/* Main Content */}
-      <div className="flex-1 flex flex-col items-center justify-center px-6 py-12 pb-24 relative z-10">
-        <div className="w-full max-w-sm flex flex-col relative -top-10">
-          
+      <div className="flex-1 flex flex-col items-center justify-center px-6 py-12 pb-24 relative z-10 overflow-y-auto">
+        <div className="w-full max-w-sm flex flex-col relative -top-10 my-auto">
+
           {/* Logo & Header */}
           <div className="mb-5 text-center flex flex-col items-center">
             <img
@@ -542,6 +583,7 @@ export default function RestaurantLogin() {
                       type="tel"
                       required
                       autoFocus
+                      onFocus={handleInputFocusScroll}
                       value={phone}
                       onChange={(e) => setPhone(e.target.value.replace(/\D/g, "").slice(0, 10))}
                       maxLength={10}
