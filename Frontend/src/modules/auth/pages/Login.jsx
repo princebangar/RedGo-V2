@@ -568,7 +568,8 @@ export default function UnifiedOTPFastLogin() {
         type="tel"
         inputMode="numeric"
         tabIndex={-1}
-        aria-hidden="true"
+        aria-label="Keyboard focus keeper"
+        readOnly
         className="absolute opacity-0 w-px h-px -z-10 pointer-events-none"
       />
 
