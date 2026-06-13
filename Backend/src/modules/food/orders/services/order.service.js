@@ -1054,15 +1054,40 @@ export async function updateOrderStatusRestaurant(
   let title = `Order ${order._id.toString()} updated`;
   let body = `Status changed to ${String(orderStatus).replace(/_/g, " ")}`;
 
+  // Fetch restaurant name for rich notifications
+  let restaurantNameStr = "the restaurant";
+  try {
+    const restaurantDoc = await FoodRestaurant.findById(order.restaurantId).select("restaurantName").lean();
+    if (restaurantDoc?.restaurantName) restaurantNameStr = restaurantDoc.restaurantName;
+  } catch (_) {}
+
+  const isTakeawayOrder = order.orderType === "takeaway";
+  const orderDisplayId = order.order_id || order._id.toString();
+
   if (orderStatus === "confirmed") {
-    title = "Order Accepted! 🧑‍🍳";
-    body = "The restaurant has accepted your order and is starting to prepare it.";
+    if (isTakeawayOrder) {
+      title = "Order Accepted! ✅ Get Ready to Pick Up";
+      body = `Great news! ${restaurantNameStr} has accepted your takeaway order #${orderDisplayId}. Your food will be ready for pickup in approximately 20–30 minutes. We'll notify you the moment it's ready! 🍱`;
+    } else {
+      title = "Order Accepted! 🧑‍🍳";
+      body = `${restaurantNameStr} has accepted your order #${orderDisplayId} and is starting to prepare it. Estimated delivery time: 30–45 minutes.`;
+    }
   } else if (orderStatus === "preparing") {
-    title = "Food is being prepared! 🍳";
-    body = "Your food is currently being prepared by the restaurant.";
+    if (isTakeawayOrder) {
+      title = "Your Food is Being Prepared! 🍳";
+      body = `${restaurantNameStr} is now preparing your takeaway order #${orderDisplayId}. We'll ping you as soon as it's ready for pickup!`;
+    } else {
+      title = "Food is being prepared! 🍳";
+      body = "Your food is currently being prepared by the restaurant.";
+    }
   } else if (orderStatus === "ready_for_pickup") {
-    title = "Food is ready! 🛍️";
-    body = "Your order is ready and waiting to be picked up.";
+    if (isTakeawayOrder) {
+      title = "🎉 Your Order is Ready for Pickup!";
+      body = `Your takeaway order #${orderDisplayId} from ${restaurantNameStr} is ready! Please head to the restaurant and show your Order ID at the counter. Fresh food awaits you — don't keep it waiting! 🍽️`;
+    } else {
+      title = "Food is ready! 🛍️";
+      body = `Your order #${orderDisplayId} is packed and ready. Your delivery partner will pick it up shortly!`;
+    }
   } else if (String(orderStatus).includes("cancel")) {
     const isOnlinePaid = order.payment.method === "razorpay" && (order.payment.status === "paid" || order.payment.status === "refunded");
     const refundDetail = isOnlinePaid ? ` Your refund of ₹${order.pricing.total} is being processed and will be credited to your original payment method within 5-7 working days.` : "";
@@ -1153,14 +1178,17 @@ export async function updateOrderStatusRestaurant(
   }
 
   // Real-time: delivery request / ready notifications.
+  // NOTE: Takeaway orders never need delivery dispatch — guard all delivery logic.
   try {
     const io = getIO();
     if (io) {
       // Restaurant accept moves the order into preparing. Delivery dispatch must
       // not start from the initial user-placed "confirmed" state.
+      // TAKEAWAY GUARD: Skip auto-assign entirely for takeaway orders.
       if (
         String(orderStatus) === "preparing" &&
-        String(from) !== "preparing"
+        String(from) !== "preparing" &&
+        order.orderType !== "takeaway"
       ) {
         console.log(
           `[DEBUG] Order ${order._id.toString()} status changed to '${orderStatus}'. Triggering central delivery dispatch.`,
@@ -1175,26 +1203,31 @@ export async function updateOrderStatusRestaurant(
         }
       }
 
-            // When ready for pickup -> ping assigned delivery partner.
-            if (String(orderStatus) === 'ready_for_pickup' && String(from) !== 'ready_for_pickup') {
-                console.log(`[DEBUG] Order ${order._id.toString()} changed to 'ready_for_pickup'.`);
-                const assignedId = order.dispatch?.deliveryPartnerId?.toString?.() || order.dispatch?.deliveryPartnerId;
-                if (assignedId) {
-                    console.log(`[DEBUG] Notifying assigned partner ${assignedId} that order is ready.`);
-                    const restaurant = await FoodRestaurant.findById(order.restaurantId).select('restaurantName location addressLine1 area city state').lean();
-                    const payload = buildDeliverySocketPayload(order, restaurant);
-                    logger.info(
-                      `[DeliveryDispatch] Emitting order_ready to ${rooms.delivery(assignedId)} for order ${order._id.toString()}`,
-                    );
-                    io.to(rooms.delivery(assignedId)).emit('order_ready', payload);
-                } else {
-                    console.log(`[DEBUG] Order ${order._id.toString()} is ready but no partner assigned.`);
-                }
-            }
-        }
-    } catch (err) {
-        console.error('[DEBUG] Error in delivery notification logic:', err);
+      // When ready for pickup -> ping assigned delivery partner.
+      // TAKEAWAY GUARD: No delivery partner involved in takeaway orders.
+      if (
+        String(orderStatus) === 'ready_for_pickup' &&
+        String(from) !== 'ready_for_pickup' &&
+        order.orderType !== 'takeaway'
+      ) {
+          console.log(`[DEBUG] Order ${order._id.toString()} changed to 'ready_for_pickup'.`);
+          const assignedId = order.dispatch?.deliveryPartnerId?.toString?.() || order.dispatch?.deliveryPartnerId;
+          if (assignedId) {
+              console.log(`[DEBUG] Notifying assigned partner ${assignedId} that order is ready.`);
+              const restaurant = await FoodRestaurant.findById(order.restaurantId).select('restaurantName location addressLine1 area city state').lean();
+              const payload = buildDeliverySocketPayload(order, restaurant);
+              logger.info(
+                `[DeliveryDispatch] Emitting order_ready to ${rooms.delivery(assignedId)} for order ${order._id.toString()}`,
+              );
+              io.to(rooms.delivery(assignedId)).emit('order_ready', payload);
+          } else {
+              console.log(`[DEBUG] Order ${order._id.toString()} is ready (delivery) but no partner assigned.`);
+          }
+      }
     }
+  } catch (err) {
+      console.error('[DEBUG] Error in delivery notification logic:', err);
+  }
 
     enqueueOrderEvent('restaurant_order_status_updated', {
         orderMongoId: order._id?.toString?.(),

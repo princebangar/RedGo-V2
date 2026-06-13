@@ -3358,9 +3358,10 @@ export default function Cart() {
                           color: 'bg-orange-50 text-#991B1B dark:bg-orange-900/40 dark:text-orange-400',
                           selectedColor: 'bg-[#DC2626] text-white',
                           disabled: !isPaymentMethodEnabled("cash"),
-                          disabledText: 'COD Disabled'
+                          disabledText: 'COD Disabled',
+                          hideWhenDisabled: true
                         }
-                      ].map((option) => (
+                      ].filter(option => !option.hideWhenDisabled || !option.disabled).map((option) => (
                         <button
                           key={option.id}
                           onClick={() => {

@@ -35,6 +35,9 @@ import {
   MessageCircle,
   Send,
   Mail,
+  Info,
+  Phone,
+  Store,
 } from "lucide-react"
 import { Button } from "@food/components/ui/button"
 import { Badge } from "@food/components/ui/badge"
@@ -55,9 +58,10 @@ import {
   getFoodVariants,
   hasFoodVariants,
 } from "@food/utils/foodVariants"
-import fssaiLogo from "@food/assets/fssai.png"
 import { RestaurantDetailSkeleton } from "@food/components/ui/loading-skeletons"
 import OptimizedImage from "@food/components/OptimizedImage"
+
+const fssaiLogo = "/fssai.png?v=3"
 
 
 
@@ -98,7 +102,7 @@ function RestaurantDetailsContent() {
   const { slug } = useParams()
   const navigate = useNavigate()
   const goBack = useAppBackNavigation()
-  const [searchParams] = useSearchParams()
+  const [searchParams, setSearchParams] = useSearchParams()
   const showOnlyUnder250 = searchParams.get('under250') === 'true'
   const targetDishId = useMemo(() => String(searchParams.get('dish') || '').trim(), [searchParams])
   const { addToCart, updateQuantity, removeFromCart, getCartItem, cart, itemCount } = useCart()
@@ -144,6 +148,18 @@ function RestaurantDetailsContent() {
   const [searchQuery, setSearchQuery] = useState("")
   const [availabilityTick, setAvailabilityTick] = useState(Date.now())
   const [showMenuOptionsSheet, setShowMenuOptionsSheet] = useState(false)
+  const showMoreInfo = searchParams.get('info') === 'true'
+  const setShowMoreInfo = (val) => {
+    setSearchParams((prev) => {
+      const next = new URLSearchParams(prev)
+      if (val) {
+        next.set('info', 'true')
+      } else {
+        next.delete('info')
+      }
+      return next
+    })
+  }
   const [showShareModal, setShowShareModal] = useState(false)
   const [sharePayload, setSharePayload] = useState(null)
   const [expandedAddButtons, setExpandedAddButtons] = useState(new Set())
@@ -619,6 +635,13 @@ function RestaurantDetailsContent() {
             menuSections: [],
             // Onboarding data including FSSAI license
             onboarding: actualRestaurant?.onboarding || apiRestaurant?.onboarding || null,
+            ownerName: actualRestaurant?.ownerName || apiRestaurant?.ownerName || actualRestaurant?.onboarding?.step1?.ownerName || apiRestaurant?.onboarding?.step1?.ownerName || null,
+            fssaiNumber: actualRestaurant?.fssaiNumber || apiRestaurant?.fssaiNumber || actualRestaurant?.onboarding?.step3?.fssai?.registrationNumber || apiRestaurant?.onboarding?.step3?.fssai?.registrationNumber || null,
+            gstNumber: actualRestaurant?.gstNumber || apiRestaurant?.gstNumber || actualRestaurant?.onboarding?.step3?.gst?.gstNumber || apiRestaurant?.onboarding?.step3?.gst?.gstNumber || null,
+            gstRegistered: typeof actualRestaurant?.gstRegistered === 'boolean' ? actualRestaurant.gstRegistered : (typeof apiRestaurant?.gstRegistered === 'boolean' ? apiRestaurant.gstRegistered : (actualRestaurant?.onboarding?.step3?.gst?.isRegistered || apiRestaurant?.onboarding?.step3?.gst?.isRegistered || false)),
+            phone: actualRestaurant?.primaryContactNumber || actualRestaurant?.ownerPhone || apiRestaurant?.primaryContactNumber || apiRestaurant?.ownerPhone || actualRestaurant?.phone || apiRestaurant?.phone || "",
+            diningSettings: actualRestaurant?.diningSettings || apiRestaurant?.diningSettings || null,
+            takeawaySettings: actualRestaurant?.takeawaySettings || apiRestaurant?.takeawaySettings || null,
             // Availability fields for grayscale styling
             isActive: actualRestaurant?.isActive !== false, // Default to true if not specified
             isAcceptingOrders: actualRestaurant?.isAcceptingOrders !== false, // Default to true if not specified
@@ -1961,6 +1984,186 @@ function RestaurantDetailsContent() {
   const availabilityStatus = getRestaurantAvailabilityStatus(restaurant, new Date(availabilityTick))
   const isRestaurantOffline = !availabilityStatus.isOpen
   const shouldShowGrayscale = isOutOfService || isRestaurantOffline
+
+  if (showMoreInfo) {
+    const ownerName = restaurant?.ownerName || "";
+    const gstNumber = typeof restaurant?.gstNumber === "string" ? restaurant.gstNumber.trim() : "";
+    const fssaiNumber = restaurant?.fssaiNumber || "";
+    const address = restaurant?.location || "";
+    const phone = restaurant?.phone || "";
+
+    const maskGST = (gst) => {
+      if (!gst) return "";
+      const trimmed = gst.trim();
+      if (trimmed.length < 15) return trimmed;
+      return trimmed.substring(0, 2) + "X".repeat(10) + trimmed.substring(12);
+    };
+
+    const formatTimeLabel = (timeValue) => {
+      if (!timeValue) return "";
+      const parts = timeValue.split(":");
+      if (parts.length < 2) return timeValue;
+      let hour = parseInt(parts[0], 10);
+      const minute = parseInt(parts[1], 10);
+      if (isNaN(hour) || isNaN(minute)) return timeValue;
+      const period = hour >= 12 ? "pm" : "am";
+      const hour12 = hour % 12 || 12;
+      const formattedMin = String(minute).padStart(2, "0");
+      return `${hour12}:${formattedMin} ${period}`;
+    };
+
+    const getProvidesText = () => {
+      const isDiningEnabled = restaurant?.diningSettings?.isEnabled === true;
+      const isTakeawayEnabled = restaurant?.takeawaySettings?.isEnabled === true;
+
+      const services = ["delivery"];
+      if (isDiningEnabled) services.push("dining");
+      if (isTakeawayEnabled) services.push("takeaway");
+
+      if (services.length === 1) {
+        return "Provides delivery";
+      } else if (services.length === 2) {
+        return `Provides both ${services[0]} & ${services[1]}`;
+      } else {
+        return `Provides ${services[0]}, ${services[1]} & ${services[2]}`;
+      }
+    };
+
+    return (
+      <AnimatedPage
+        className="min-h-screen bg-gray-50 dark:bg-[#0f0f0f] flex flex-col transition-all duration-300"
+      >
+        {/* Header - Back arrow */}
+        <div className="px-4 sm:px-6 md:px-8 lg:px-10 xl:px-12 pt-4 pb-4 bg-gray-50 dark:bg-[#0f0f0f]">
+          <div className="max-w-xl mx-auto flex items-center">
+            <Button
+              variant="outline"
+              size="icon"
+              className="rounded-full h-10 w-10 border-gray-200 dark:border-gray-800 shadow-sm bg-white dark:bg-[#1a1a1a]"
+              onClick={() => setShowMoreInfo(false)}
+            >
+              <ArrowLeft className="h-5 w-5 text-gray-900 dark:text-white" />
+            </Button>
+          </div>
+        </div>
+
+        {/* Content Section */}
+        <div className="flex-1 max-w-xl mx-auto w-full px-4 sm:px-6 pt-2 pb-12">
+          {/* Card 1: Restaurant Info & Call Button & Timings */}
+          <div className="bg-white dark:bg-[#1a1a1a] rounded-2xl p-5 border border-gray-100 dark:border-gray-800 shadow-sm">
+            <h1 className="text-xl sm:text-2xl font-bold text-gray-900 dark:text-white">
+              {restaurant?.name || "Restaurant Name"}
+            </h1>
+            
+            <p className="text-sm text-gray-500 dark:text-gray-400 mt-2 pb-4 border-b border-gray-100 dark:border-gray-800 leading-relaxed">
+              {address}
+            </p>
+
+            {phone && (
+              <div className="pt-4 pb-4 flex items-center gap-3.5">
+                <a
+                  href={`tel:${phone}`}
+                  className="inline-flex items-center justify-center h-12 w-12 rounded-full border border-red-200 bg-red-50 text-[#DC2626] dark:bg-red-900/20 dark:border-red-900/30 hover:bg-red-100 dark:hover:bg-red-900/40 transition-all duration-200 active:scale-95 shadow-sm shrink-0"
+                  title={`Call ${restaurant?.name}`}
+                >
+                  <Phone className="h-5 w-5" />
+                </a>
+                <div className="flex flex-col min-w-0">
+                  <span className="text-sm font-semibold text-gray-800 dark:text-gray-200">
+                    Contact to restaurant
+                  </span>
+                  <span className="text-xs text-gray-500 dark:text-gray-400 mt-0.5 leading-relaxed">
+                    Contact restaurant directly for any inquiries, order updates, or support
+                  </span>
+                </div>
+              </div>
+            )}
+
+            {/* Separator line & Timings / Provisions */}
+            <div className="pt-4 border-t border-gray-100 dark:border-gray-800 space-y-3">
+              {/* Timing info */}
+              <div className="flex items-center gap-2.5 text-sm">
+                <Clock className="h-4 w-4 text-gray-500 dark:text-gray-400 mt-0.5" />
+                {availabilityStatus?.isOpen ? (
+                  <div className="text-gray-700 dark:text-gray-300">
+                    <span className="text-green-600 dark:text-green-500 font-semibold">Open now</span>
+                    {availabilityStatus?.closingTime && (
+                      <span> • Closes {formatTimeLabel(availabilityStatus.closingTime)}</span>
+                    )}
+                  </div>
+                ) : (
+                  <div className="text-gray-700 dark:text-gray-300">
+                    <span className="text-red-600 dark:text-red-500 font-semibold">Closed now</span>
+                    {availabilityStatus?.openingTime && (
+                      <span> • Opens at {formatTimeLabel(availabilityStatus.openingTime)}</span>
+                    )}
+                  </div>
+                )}
+              </div>
+
+              {/* Service info */}
+              <div className="flex items-center gap-2.5 text-sm text-gray-700 dark:text-gray-300">
+                <Store className="h-4 w-4 text-gray-500 dark:text-gray-400 mt-0.5" />
+                <span>{getProvidesText()}</span>
+              </div>
+            </div>
+          </div>
+
+          {/* Card 2: Legal Details Card */}
+          <div className="bg-white dark:bg-[#1a1a1a] rounded-2xl p-5 border border-gray-100 dark:border-gray-800 shadow-sm mt-4 space-y-4">
+            {/* Legal Name */}
+            <div className="pb-3 border-b border-gray-100 dark:border-gray-800 last:border-b-0 last:pb-0">
+              <p className="text-xs uppercase tracking-wider text-gray-400 dark:text-gray-500 font-medium">
+                Legal Name
+              </p>
+              <p className="text-base font-semibold text-gray-900 dark:text-white mt-1">
+                {ownerName || "Not Provided"}
+              </p>
+            </div>
+
+            {/* GST Number - only if provided in onboarding */}
+            {gstNumber && (
+              <div className="pb-3 border-b border-gray-100 dark:border-gray-800 last:border-b-0 last:pb-0">
+                <p className="text-xs uppercase tracking-wider text-gray-400 dark:text-gray-500 font-medium">
+                  GST Number
+                </p>
+                <p className="text-base font-semibold text-gray-900 dark:text-white mt-1 tracking-wide">
+                  {maskGST(gstNumber)}
+                </p>
+              </div>
+            )}
+
+            {/* FSSAI Lic No */}
+            {fssaiNumber && (
+              <div className="pt-1">
+                <img
+                  src={fssaiLogo}
+                  alt="FSSAI"
+                  loading="eager"
+                  fetchPriority="high"
+                  decoding="sync"
+                  className="h-8 w-auto object-contain opacity-80"
+                />
+                <p className="text-sm text-gray-500 dark:text-gray-400 mt-1.5 font-medium">
+                  Lic. No. {fssaiNumber}
+                </p>
+              </div>
+            )}
+          </div>
+
+          {/* Go back to menu button */}
+          <div className="mt-8">
+            <button
+              onClick={() => setShowMoreInfo(false)}
+              className="w-full bg-[#DC2626] hover:bg-[#B91C1C] text-white py-3.5 rounded-xl font-bold text-base transition-all duration-200 active:scale-[0.98] shadow-md shadow-red-500/10 flex items-center justify-center"
+            >
+              Go back to menu
+            </button>
+          </div>
+        </div>
+      </AnimatedPage>
+    )
+  }
 
   return (
     <AnimatedPage
@@ -3699,6 +3902,18 @@ function RestaurantDetailsContent() {
                         <span className="text-base text-gray-900 dark:text-white">Share this restaurant</span>
                       </button>
 
+                      {/* See more about this restaurant */}
+                      <button
+                        className="w-full flex items-center gap-4 px-2 py-3 hover:bg-gray-50 dark:hover:bg-gray-800 rounded-lg transition-colors text-left"
+                        onClick={() => {
+                          setShowMenuOptionsSheet(false)
+                          setShowMoreInfo(true)
+                        }}
+                      >
+                        <Info className="h-5 w-5 text-gray-700 dark:text-gray-300" />
+                        <span className="text-base text-gray-900 dark:text-white">See more about this restaurant</span>
+                      </button>
+
                     </div>
 
                     {/* Disclaimer Text */}
@@ -3715,6 +3930,9 @@ function RestaurantDetailsContent() {
                           <img
                             src={fssaiLogo}
                             alt="FSSAI"
+                            loading="eager"
+                            fetchPriority="high"
+                            decoding="sync"
                             className="h-full w-auto object-contain"
                           />
                         </div>
