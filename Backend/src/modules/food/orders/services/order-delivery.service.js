@@ -321,6 +321,7 @@ export async function listOrdersAvailableDelivery(deliveryPartnerId, query) {
   };
 
   const activeOwnOrderFilter = {
+    orderType: 'delivery',
     'dispatch.deliveryPartnerId': new mongoose.Types.ObjectId(deliveryPartnerId),
     orderStatus: {
       $nin: [
@@ -334,6 +335,7 @@ export async function listOrdersAvailableDelivery(deliveryPartnerId, query) {
 
   const filter = partnerCapacity.hasCapacity
     ? {
+        orderType: 'delivery',
         $or: [
           {
             'dispatch.status': 'unassigned',
@@ -433,6 +435,7 @@ export async function acceptOrderDelivery(orderId, deliveryPartnerId) {
   const order = await FoodOrder.findOneAndUpdate(
     {
       ...identity,
+      orderType: 'delivery',
       orderStatus: { $in: acceptedStatuses },
       $or: [
         { 'dispatch.status': 'unassigned' },

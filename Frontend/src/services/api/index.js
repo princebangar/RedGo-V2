@@ -1229,20 +1229,22 @@ export const restaurantAPI = {
 
           // Normalize backend order fields to match existing restaurant UI expectations.
           // UI historically uses: order.status, order.address, order.total, order.paymentMethod
-          const normalizeStatus = (s) => {
+          const normalizeStatus = (s, orderType) => {
             const v = String(s || "").toLowerCase();
             // Backend: created -> treat as confirmed/new in UI
             if (v === "created") return "confirmed";
             // Backend: ready_for_pickup -> ready
             if (v === "ready_for_pickup") return "ready";
-            // Backend: picked_up -> out_for_delivery (restaurant handed over)
-            if (v === "picked_up") return "out_for_delivery";
+            // Backend: picked_up for takeaway = completed (terminal). For delivery = out_for_delivery
+            if (v === "picked_up") {
+              return orderType === "takeaway" ? "completed" : "out_for_delivery";
+            }
             if (v.includes("cancel")) return "cancelled";
             return v || "confirmed";
           };
 
           const rows = rowsRaw.map((o) => {
-            const status = normalizeStatus(o.orderStatus || o.status);
+            const status = normalizeStatus(o.orderStatus || o.status, o.orderType);
             const address = o.deliveryAddress || o.address;
             const total = o.pricing?.total ?? o.total ?? 0;
             const paymentMethod = o.payment?.method || o.paymentMethod || null;
@@ -1296,15 +1298,23 @@ export const restaurantAPI = {
       { contextModule: "restaurant" },
     );
   },
+  completeTakeawayOrder: (orderId, otp) => {
+    return apiClient.post(
+      `/food/restaurant/orders/${String(orderId)}/complete-takeaway`,
+      { otp },
+      { contextModule: "restaurant" },
+    );
+  },
   /**
    * Accept an incoming order (restaurant).
    * UI expects this to move order into "preparing" bucket.
    * Backend supports PATCH /food/restaurant/orders/:orderId/status with { orderStatus }.
    */
-  acceptOrder: async (orderId, _prepTimeMins = null) => {
+  acceptOrder: async (orderId, prepTimeMins = null) => {
     try {
       return await restaurantAPI.updateOrderStatus(orderId, {
         orderStatus: "preparing",
+        preparationTime: prepTimeMins,
       });
     } catch (error) {
       const statusCode = Number(error?.response?.status || 0);
@@ -1312,6 +1322,7 @@ export const restaurantAPI = {
         // Compatibility fallback: some backends treat "confirmed" as accept action.
         return restaurantAPI.updateOrderStatus(orderId, {
           orderStatus: "confirmed",
+          preparationTime: prepTimeMins,
         });
       }
       throw error;

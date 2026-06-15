@@ -20,7 +20,10 @@ import {
   CircleSlash,
   Loader2,
   Clock,
-  Calendar
+  Calendar,
+  ShoppingBag,
+  Users,
+  Navigation
 } from "lucide-react"
 import AnimatedPage from "@food/components/user/AnimatedPage"
 import { Card, CardContent } from "@food/components/ui/card"
@@ -40,6 +43,8 @@ import { orderAPI, restaurantAPI } from "@food/api"
 import { useCompanyName } from "@food/hooks/useCompanyName"
 import { useUserNotifications } from "@food/hooks/useUserNotifications"
 import { RESTAURANT_PIN_SVG, CUSTOMER_PIN_SVG, RIDER_BIKE_SVG } from "@food/constants/mapIcons"
+import burgerImg from "@food/assets/takeaway_burger.png"
+
 
 // Fallback definitions in case imports fail at runtime or are shadowed
 const DEFAULT_CUSTOMER_PIN = `<svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 24 24" fill="#10B981"><path d="M12 2C8.13 2 5 5.13 5 9c0 4.17 4.42 9.92 6.24 12.11.4.48 1.08.48 1.52 0C14.58 18.92 19 13.17 19 9c0-3.87-3.13-7-7-7zm0 9.5c-1.38 0-2.5-1.12-2.5-2.5S10.62 6.5 12 6.5 14.5 7.62 14.5 9 13.38 11.5 12 11.5z"/><circle cx="12" cy="9" r="3" fill="#FFFFFF"/></svg>`;
@@ -86,6 +91,403 @@ const AnimatedCheckmark = ({ delay = 0 }) => (
     />
   </motion.svg>
 )
+
+// Premium Takeaway Animation Component for Self-Pickup
+// Premium Takeaway Animation Component for Self-Pickup
+const TakeawayAnimation = memo(({ order }) => {
+  const [transparentBurger, setTransparentBurger] = useState(null);
+  const uiStatus = mapOrderToTrackingUiStatus(order);
+  const isReady = uiStatus === 'ready';
+
+  useEffect(() => {
+    if (!burgerImg) return;
+    const img = new Image();
+    img.src = burgerImg;
+    img.onload = () => {
+      const canvas = document.createElement('canvas');
+      canvas.width = img.naturalWidth;
+      canvas.height = img.naturalHeight;
+      const ctx = canvas.getContext('2d');
+      ctx.drawImage(img, 0, 0);
+      const imgData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+      const data = imgData.data;
+      for (let i = 0; i < data.length; i += 4) {
+        const r = data[i];
+        const g = data[i+1];
+        const b = data[i+2];
+        const minVal = Math.min(r, g, b);
+        if (minVal > 238) {
+          data[i+3] = 0;
+        }
+      }
+      ctx.putImageData(imgData, 0, 0);
+      setTransparentBurger(canvas.toDataURL());
+    };
+    img.onerror = () => {
+      setTransparentBurger(burgerImg);
+    };
+  }, []);
+
+  return (
+    <div className="relative w-full h-[240px] bg-gradient-to-br from-[#F59E0B] via-[#FBBF24] to-[#D97706] dark:from-[#78350F] dark:via-[#92400E] dark:to-[#451A03] border-b border-amber-500/20 flex flex-col items-center justify-center overflow-hidden">
+      {/* Grid Overlay */}
+      <div className="absolute inset-0 opacity-15 select-none pointer-events-none" style={{ backgroundImage: 'radial-gradient(circle, rgba(255,255,255,0.4) 1px, transparent 1px)', backgroundSize: '16px 16px' }} />
+
+      {/* Radial Glows */}
+      <div className="absolute top-1/4 left-1/4 w-60 h-60 rounded-full bg-white/20 dark:bg-yellow-400/5 blur-3xl animate-pulse select-none pointer-events-none" style={{ animationDuration: '4s' }} />
+      <div className="absolute bottom-1/4 right-1/4 w-72 h-72 rounded-full bg-orange-400/10 dark:bg-orange-500/5 blur-3xl animate-pulse select-none pointer-events-none" style={{ animationDuration: '6s', animationDelay: '1s' }} />
+      
+      {/* Drifting Bokeh Circles */}
+      <div className="absolute w-2 h-2 rounded-full bg-white/30 blur-[1px] animate-float-bokeh-1 select-none pointer-events-none" />
+      <div className="absolute w-3 h-3 rounded-full bg-amber-300/40 blur-[2px] animate-float-bokeh-2 select-none pointer-events-none" />
+      <div className="absolute w-1.5 h-1.5 rounded-full bg-orange-300/30 blur-[1px] animate-float-bokeh-3 select-none pointer-events-none" />
+      <div className="absolute w-2.5 h-2.5 rounded-full bg-yellow-200/40 blur-[1.5px] animate-float-bokeh-4 select-none pointer-events-none" />
+
+      {/* Top Typography section in Redgo-Takeaway-Self-Pickup theme */}
+      <div className="text-center px-4 mt-1.5 select-none pointer-events-none flex flex-col items-center z-10">
+        <h3 className="text-[#7C2D12] dark:text-[#FEF3C7] font-black text-[13px] sm:text-base tracking-widest mb-0.5 select-none uppercase drop-shadow-[0_1px_2px_rgba(255,255,255,0.3)] dark:drop-shadow-md">
+          ORDER, EAT, ENJOY!
+        </h3>
+        <p className="text-[#9A3412] dark:text-[#FCD34D] font-bold text-[11px] sm:text-[13px] select-none italic tracking-wide opacity-95">
+          With Takeaway Self PickUp
+        </p>
+      </div>
+
+      {/* Spatial Canvas Container */}
+      <div className="relative w-[300px] h-[120px] mt-1 z-10 flex items-center justify-between">
+        
+        {/* SVG Bezier curve trajectory line */}
+        <svg className="absolute inset-0 w-full h-full pointer-events-none select-none" style={{ zIndex: 5 }}>
+          {/* Dotted path */}
+          <path 
+            d="M 47,60 Q 152,-15 257,74" 
+            fill="none" 
+            className="stroke-[#9A3412]/30 dark:stroke-[#FCD34D]/25"
+            strokeWidth="2.5" 
+            strokeLinecap="round"
+            strokeDasharray="6,6" 
+          />
+          {/* Pulsing glow line */}
+          <path 
+            d="M 47,60 Q 152,-15 257,74" 
+            fill="none" 
+            stroke="url(#takeaway-path-grad)" 
+            strokeWidth="3" 
+            strokeLinecap="round"
+            strokeDasharray="30,240"
+            className="animate-route-pulse"
+          />
+          <defs>
+            <linearGradient id="takeaway-path-grad" x1="0%" y1="0%" x2="100%" y2="0%">
+              <stop offset="0%" stopColor="#EA580C" stopOpacity="0" className="dark:stop-color-[#F59E0B]" />
+              <stop offset="50%" stopColor="#EA580C" stopOpacity="1" className="dark:stop-color-[#F59E0B]" />
+              <stop offset="100%" stopColor="#EA580C" stopOpacity="0" className="dark:stop-color-[#F59E0B]" />
+            </linearGradient>
+          </defs>
+        </svg>
+
+        {/* Android Phone Frame Mockup (Left) */}
+        <div className="absolute left-[15px] bottom-[5px] w-[64px] h-[110px] bg-slate-950 rounded-[15px] border-[2.5px] border-slate-800 shadow-[0_8px_20px_-5px_rgba(0,0,0,0.3),0_0_12px_rgba(217,119,6,0.2)] flex flex-col items-center justify-between p-1 overflow-hidden animate-phone-float z-10">
+          {/* Speaker Notch */}
+          <div className="w-7 h-1.5 bg-slate-800 rounded-b-md absolute top-0 left-1/2 -translate-x-1/2 z-20 flex items-center justify-center">
+            <div className="w-3.5 h-[0.5px] bg-slate-700 rounded-full" />
+          </div>
+          
+          {/* Internal screen */}
+          <div className="relative w-full h-full rounded-[10px] bg-gradient-to-b from-[#451A03] to-[#090514] flex flex-col items-center justify-center overflow-hidden pt-2.5">
+            {/* Screen grid pattern */}
+            <div className="absolute inset-0 opacity-10" style={{ backgroundImage: 'radial-gradient(circle, #fff 0.5px, transparent 0.5px)', backgroundSize: '6px 6px' }} />
+            
+            {/* Glow circle */}
+            <div className="absolute w-10 h-10 rounded-full bg-green-500/15 blur-xl animate-pulse" />
+            
+            <div className="relative z-10 flex flex-col items-center justify-center scale-90">
+              {/* Confirmed Animation Details badge */}
+              <div className="relative w-8 h-8 rounded-full bg-emerald-500/25 border border-emerald-400/40 flex items-center justify-center text-emerald-400 shadow-[0_0_10px_rgba(16,185,129,0.3)] animate-pulse">
+                <Check className="w-4.5 h-4.5 stroke-[2.5]" />
+                
+                {/* Ripple */}
+                <div className="absolute inset-0 rounded-full border border-emerald-400/50 animate-ping opacity-60" style={{ animationDuration: '1.8s' }} />
+              </div>
+              
+              <span className="text-[6.5px] text-emerald-400 font-extrabold uppercase tracking-widest mt-1 select-none animate-pulse">
+                {isReady ? "Ready" : "Booked"}
+              </span>
+              <span className="text-[4.5px] text-slate-400 font-medium tracking-normal mt-0.5 select-none uppercase">
+                {isReady ? "For PickUp" : "Self PickUp"}
+              </span>
+            </div>
+          </div>
+        </div>
+
+        {/* Takeaway Cart/Bag Container (Right) */}
+        <div className="absolute right-[15px] bottom-[10px] w-[56px] h-[56px] flex flex-col items-center justify-center z-10">
+          {/* Base shadow */}
+          <div className="absolute bottom-[-2px] w-10 h-1 bg-black/35 blur-[2px] rounded-full scale-x-95 animate-shadow-shrink" />
+          
+          {/* Bag with squash/stretch */}
+          <div className="relative w-12 h-12 flex items-center justify-center animate-bag-receive">
+            <svg className="w-10 h-10 text-[#9A3412] dark:text-[#FCD34D] fill-[#9A3412]/10 dark:fill-[#FCD34D]/10 drop-shadow-lg filter drop-shadow-[0_3px_8px_rgba(217,119,6,0.25)]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 10.5V6a3.75 3.75 0 10-7.5 0v4.5m11.356-1.993l1.263 12c.07.665-.45 1.243-1.119 1.243H4.25a1.125 1.125 0 01-1.12-1.243l1.264-12A1.125 1.125 0 015.513 7.5h12.974c.576 0 1.059.435 1.119 1.007z" />
+            </svg>
+            
+            {/* Sparkles particles shooting out on burger arrival */}
+            <div className="absolute inset-0 w-full h-full pointer-events-none overflow-visible z-20">
+              <span className="absolute top-1 left-2.5 w-1.5 h-1.5 rounded-full bg-yellow-400 animate-sparkle-1" />
+              <span className="absolute top-1 right-2.5 w-2 h-2 bg-white rotate-45 animate-sparkle-2" />
+              <span className="absolute top-0 left-1/2 -translate-x-1/2 w-1.5 h-1.5 bg-yellow-500 rotate-12 animate-sparkle-3" />
+              <span className="absolute bottom-3 right-1 w-1.5 h-1.5 rounded-full bg-white animate-sparkle-4" />
+            </div>
+          </div>
+        </div>
+
+        {/* Flying Burger Item */}
+        <img 
+          src={transparentBurger || burgerImg} 
+          className="absolute left-[27px] top-[40px] w-10 h-10 object-contain pointer-events-none animate-burger-pack z-20 drop-shadow-[0_6px_12px_rgba(0,0,0,0.3)]" 
+          alt="Burger"
+        />
+
+      </div>
+
+      {/* Ready for pickup banner — only shown when restaurant marks ready */}
+      {isReady && (
+        <div className="w-full flex justify-center mt-4 z-10 select-none pointer-events-none">
+          <p className="text-[#047857] dark:text-[#34D399] font-black text-[12px] sm:text-[13px] tracking-widest animate-bounce drop-shadow-sm">
+            🎉 READY FOR PICK UP!
+          </p>
+        </div>
+      )}
+
+      {/* Embedded CSS Animations */}
+      <style>{`
+        @keyframes float-bokeh-1 {
+          0%, 100% { transform: translate(40px, 90px) translateY(0) scale(1); opacity: 0.3; }
+          50% { transform: translate(60px, 45px) translateY(-10px) scale(1.2); opacity: 0.6; }
+        }
+        @keyframes float-bokeh-2 {
+          0%, 100% { transform: translate(220px, 60px) translateY(0) scale(1.2); opacity: 0.2; }
+          50% { transform: translate(200px, 100px) translateY(-15px) scale(0.8); opacity: 0.5; }
+        }
+        @keyframes float-bokeh-3 {
+          0%, 100% { transform: translate(140px, 120px) translateY(0); opacity: 0.4; }
+          50% { transform: translate(160px, 75px) translateY(-8px); opacity: 0.7; }
+        }
+        @keyframes float-bokeh-4 {
+          0%, 100% { transform: translate(280px, 35px) translateY(0); opacity: 0.3; }
+          50% { transform: translate(260px, 75px) translateY(-20px); opacity: 0.6; }
+        }
+        @keyframes route-pulse {
+          0% { stroke-dashoffset: 270; }
+          100% { stroke-dashoffset: 0; }
+        }
+        @keyframes phone-float {
+          0%, 100% { transform: translateY(0); }
+          50% { transform: translateY(-4px); }
+        }
+        @keyframes burger-pack {
+          0% {
+            transform: translate(0, 0) scale(0.1) rotate(0deg);
+            opacity: 0;
+          }
+          10% {
+            transform: translate(0, -25px) scale(1.1) rotate(0deg);
+            opacity: 1;
+          }
+          30% {
+            transform: translate(0, -30px) scale(1.0) rotate(5deg);
+            opacity: 1;
+          }
+          52% {
+            transform: translate(105px, -65px) scale(1.0) rotate(90deg);
+            opacity: 1;
+          }
+          68% {
+            transform: translate(188px, -10px) scale(0.7) rotate(165deg);
+            opacity: 0.95;
+          }
+          74% {
+            transform: translate(210px, 14px) scale(0.2) rotate(180deg);
+            opacity: 0;
+          }
+          100% {
+            transform: translate(0, 0) scale(0.1) rotate(0deg);
+            opacity: 0;
+          }
+        }
+        @keyframes bag-receive {
+          0%, 60%, 100% {
+            transform: scale(1) rotate(0deg);
+          }
+          68% {
+            transform: scale(1.25, 0.75);
+          }
+          75% {
+            transform: scale(0.85, 1.25) translateY(-10px) rotate(-3deg);
+          }
+          85% {
+            transform: scale(1.08, 0.92) rotate(2deg);
+          }
+          92% {
+            transform: scale(1) rotate(0deg);
+          }
+        }
+        @keyframes shadow-shrink {
+          0%, 60%, 100% { transform: scaleX(0.95); opacity: 0.45; }
+          68% { transform: scaleX(1.2); opacity: 0.55; }
+          75% { transform: scaleX(0.7); opacity: 0.2; }
+          85% { transform: scaleX(1.05); opacity: 0.48; }
+          92% { transform: scaleX(0.95); opacity: 0.45; }
+        }
+        @keyframes sparkle-1 {
+          0%, 73%, 86%, 100% { transform: translate(0, 0) scale(0); opacity: 0; }
+          75% { transform: translate(-15px, -15px) scale(1); opacity: 1; }
+          84% { transform: translate(-30px, -25px) scale(0.3); opacity: 0; }
+        }
+        @keyframes sparkle-2 {
+          0%, 73%, 86%, 100% { transform: translate(0, 0) scale(0); opacity: 0; }
+          75% { transform: translate(15px, -18px) scale(1.2); opacity: 1; }
+          84% { transform: translate(30px, -30px) scale(0.3); opacity: 0; }
+        }
+        @keyframes sparkle-3 {
+          0%, 73%, 86%, 100% { transform: translate(0, 0) scale(0); opacity: 0; }
+          76% { transform: translate(-4px, -24px) scale(1); opacity: 1; }
+          85% { transform: translate(-8px, -38px) scale(0.3); opacity: 0; }
+        }
+        @keyframes sparkle-4 {
+          0%, 73%, 86%, 100% { transform: translate(0, 0) scale(0); opacity: 0; }
+          76% { transform: translate(12px, -8px) scale(1); opacity: 1; }
+          85% { transform: translate(22px, -12px) scale(0.3); opacity: 0; }
+        }
+        
+        .animate-float-bokeh-1 { animation: float-bokeh-1 8s infinite ease-in-out; }
+        .animate-float-bokeh-2 { animation: float-bokeh-2 10s infinite ease-in-out; }
+        .animate-float-bokeh-3 { animation: float-bokeh-3 9s infinite ease-in-out; }
+        .animate-float-bokeh-4 { animation: float-bokeh-4 11s infinite ease-in-out; }
+        
+        .animate-route-pulse { animation: route-pulse 3.5s infinite linear; }
+        .animate-phone-float { animation: phone-float 4s infinite ease-in-out; }
+        
+        .animate-burger-pack {
+          animation: burger-pack 3.5s infinite ease-in-out;
+        }
+        .animate-bag-receive {
+          animation: bag-receive 3.5s infinite ease-in-out;
+          transform-origin: bottom center;
+        }
+        .animate-shadow-shrink {
+          animation: shadow-shrink 3.5s infinite ease-in-out;
+          transform-origin: center center;
+        }
+        .animate-sparkle-1 { animation: sparkle-1 3.5s infinite ease-out; }
+        .animate-sparkle-2 { animation: sparkle-2 3.5s infinite ease-out; }
+        .animate-sparkle-3 { animation: sparkle-3 3.5s infinite ease-out; }
+        .animate-sparkle-4 { animation: sparkle-4 3.5s infinite ease-out; }
+      `}</style>
+    </div>
+  );
+});
+
+// Premium Dining Animation Component for Table Service
+const DiningAnimation = memo(({ order }) => {
+  return (
+    <div className="relative w-full h-[300px] bg-gradient-to-br from-[#FFF5F5] to-[#FFE3E3] dark:from-[#170a0c] dark:to-[#261216] border-b border-gray-100 dark:border-gray-900/50 flex flex-col items-center justify-center overflow-hidden">
+      {/* Glow effect */}
+      <div className="absolute w-[200px] h-[200px] rounded-full bg-red-500/10 dark:bg-red-500/5 blur-3xl animate-pulse" />
+      
+      {/* Spatial Canvas */}
+      <div className="relative flex items-center justify-center w-64 h-40">
+        
+        {/* Radar Rings */}
+        <div className="absolute inset-0 rounded-full border-2 border-red-500/5 animate-ping" style={{ animationDuration: '4s' }} />
+        <div className="absolute inset-8 rounded-full border border-red-500/10 animate-pulse" />
+        
+        {/* Rising Steam Lines */}
+        <div className="absolute -top-6 left-[48%] flex gap-1.5 opacity-80 z-10">
+          <span className="w-1 h-5 bg-red-400/30 dark:bg-red-400/20 rounded-full animate-steam" style={{ animationDelay: '0.2s' }} />
+          <span className="w-1 h-7 bg-red-400/40 dark:bg-red-400/30 rounded-full animate-steam" style={{ animationDelay: '0.5s' }} />
+          <span className="w-1 h-4 bg-red-400/30 dark:bg-red-400/20 rounded-full animate-steam" style={{ animationDelay: '0.8s' }} />
+        </div>
+
+        {/* Fork, Plate/Cloche, Knife Table Setting */}
+        <div className="flex items-center gap-6 z-10">
+          {/* Fork */}
+          <div className="animate-fork-bounce">
+            <svg className="w-6 h-12 text-red-500/70 dark:text-red-400/50" fill="none" stroke="currentColor" strokeWidth="2.5" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" d="M4 3v7a6 6 0 006 6v5m0-18v18m4-18v7a6 6 0 01-6 6" />
+            </svg>
+          </div>
+
+          {/* Plate and Cloche Serving Dome */}
+          <div className="relative flex flex-col items-center">
+            {/* Cloche Dome */}
+            <div className="animate-cloche-float mb-0.5">
+              <svg className="w-20 h-16 text-[#DC2626] dark:text-[#E11D48] fill-red-500/10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M12 3v2M4 19h16M12 5a8 8 0 00-8 8h16a8 8 0 00-8-8zM12 5c-1 0-2 1-2 2h4c0-1-1-2-2-2z" />
+              </svg>
+            </div>
+            
+            {/* Plate Base */}
+            <div className="w-24 h-2 bg-gradient-to-r from-red-400 to-[#B80B3D] dark:from-red-900 dark:to-rose-950 rounded-full shadow-md shadow-red-500/20" />
+          </div>
+
+          {/* Knife */}
+          <div className="animate-knife-bounce">
+            <svg className="w-6 h-12 text-red-500/70 dark:text-red-400/50" fill="none" stroke="currentColor" strokeWidth="2.5" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" d="M18 3v18M18 3c-3 0-6 3-6 7v6h6V3z" />
+            </svg>
+          </div>
+        </div>
+
+      </div>
+
+      {/* Text Indicators */}
+      <div className="text-center px-4 mt-2 select-none pointer-events-none">
+        <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-red-100/80 dark:bg-red-950/30 text-red-700 dark:text-red-400 text-[10px] font-black uppercase tracking-wider mb-2">
+          Dining - Table Service
+        </span>
+        <h4 className="text-base font-bold text-gray-900 dark:text-gray-100 leading-tight">
+          Food will be served at your table
+        </h4>
+        <p className="text-xs text-gray-500 dark:text-gray-400 mt-1 max-w-xs leading-normal">
+          Sit back and relax. Our server will bring your fresh hot meal directly to you shortly.
+        </p>
+      </div>
+
+      {/* Embedded CSS Animations */}
+      <style>{`
+        @keyframes steam {
+          0% { transform: translateY(0) scaleX(1); opacity: 0; }
+          15% { opacity: 0.6; }
+          50% { transform: translateY(-12px) scaleX(1.2); opacity: 0.3; }
+          100% { transform: translateY(-24px) scaleX(0.8); opacity: 0; }
+        }
+        @keyframes cloche-float {
+          0%, 100% { transform: translateY(0) rotate(0deg); }
+          50% { transform: translateY(-8px) rotate(2deg); }
+        }
+        @keyframes item-bounce {
+          0%, 100% { transform: translateY(0); }
+          50% { transform: translateY(-4px); }
+        }
+        .animate-steam {
+          animation: steam 2s infinite ease-out;
+        }
+        .animate-cloche-float {
+          animation: cloche-float 3s infinite ease-in-out;
+        }
+        .animate-fork-bounce {
+          animation: item-bounce 3s infinite ease-in-out;
+          animation-delay: 0.2s;
+        }
+        .animate-knife-bounce {
+          animation: item-bounce 3s infinite ease-in-out;
+          animation-delay: 0.4s;
+        }
+      `}</style>
+    </div>
+  );
+});
 
 // Real Delivery Map Component with User Live Location
 const DeliveryMap = memo(({ orderId, order, isVisible, fallbackCustomerCoords = null, userLiveCoords = null, userLocationAccuracy = null, onEtaUpdate = null }) => {
@@ -149,13 +551,16 @@ const DeliveryMap = memo(({ orderId, order, isVisible, fallbackCustomerCoords = 
   } : null, [order?.deliveryPartner]);
 
   const effectiveCustomerCoords = useMemo(() => {
+    if (order?.orderType === 'takeaway' && userLiveCoords && Number.isFinite(userLiveCoords.lat) && Number.isFinite(userLiveCoords.lng)) {
+      return userLiveCoords;
+    }
     if (customerCoords) return customerCoords;
     if (userLiveCoords && Number.isFinite(userLiveCoords.lat) && Number.isFinite(userLiveCoords.lng)) {
       return userLiveCoords;
     }
     if (restaurantCoords) return restaurantCoords;
     return null;
-  }, [customerCoords, userLiveCoords, restaurantCoords]);
+  }, [order?.orderType, customerCoords, userLiveCoords, restaurantCoords]);
 
   const effectiveRestaurantCoords = useMemo(() => {
     if (restaurantCoords) return restaurantCoords;
@@ -328,7 +733,15 @@ const transformOrderForTracking = (apiOrder, previousOrder = null, explicitResta
     id: apiOrder?.orderId || apiOrder?._id,
     mongoId: apiOrder?._id || null,
     orderId: apiOrder?.orderId || apiOrder?._id,
-    restaurant: apiOrder?.restaurantName || previousOrder?.restaurant || 'Restaurant',
+    restaurant: 
+      apiOrder?.restaurantId?.restaurantName || 
+      apiOrder?.restaurantId?.name || 
+      apiOrder?.restaurantName || 
+      (typeof apiOrder?.restaurant === 'string' ? apiOrder.restaurant : null) ||
+      apiOrder?.restaurant?.restaurantName || 
+      apiOrder?.restaurant?.name || 
+      previousOrder?.restaurant || 
+      'Restaurant',
     restaurantPhone:
       apiOrder?.restaurantPhone ||
       apiOrder?.restaurantId?.phone ||
@@ -378,6 +791,8 @@ const transformOrderForTracking = (apiOrder, previousOrder = null, explicitResta
     deliveryState: apiOrder?.deliveryState || previousOrder?.deliveryState || null,
     scheduledAt: apiOrder?.scheduledAt || previousOrder?.scheduledAt || null,
     createdAt: apiOrder?.createdAt || previousOrder?.createdAt || null,
+    preparationTime: apiOrder?.preparationTime || previousOrder?.preparationTime || 0,
+    acceptedAt: apiOrder?.acceptedAt || previousOrder?.acceptedAt || null,
     totalAmount: apiOrder?.pricing?.total || apiOrder?.totalAmount || previousOrder?.totalAmount || 0,
     deliveryFee: apiOrder?.pricing?.deliveryFee || apiOrder?.deliveryFee || previousOrder?.deliveryFee || 0,
     gst: apiOrder?.pricing?.tax || apiOrder?.pricing?.gst || apiOrder?.gst || apiOrder?.tax || previousOrder?.gst || 0,
@@ -387,6 +802,7 @@ const transformOrderForTracking = (apiOrder, previousOrder = null, explicitResta
     subtotal: apiOrder?.pricing?.subtotal || apiOrder?.subtotal || 0,
     paymentMethod: apiOrder?.paymentMethod || apiOrder?.payment?.method || previousOrder?.paymentMethod || null,
     payment: apiOrder?.payment || previousOrder?.payment || null,
+    orderType: apiOrder?.orderType || previousOrder?.orderType || 'delivery',
     // Preserve delivery OTP code received via socket event.
     // API responses intentionally strip the secret code for security,
     // so without preserving it the UI would lose the OTP on each poll refresh.
@@ -499,6 +915,17 @@ export default function OrderTracking() {
   const [orderStatus, setOrderStatus] = useState('placed')
   const [estimatedTime, setEstimatedTime] = useState(29)
   const [isRefreshing, setIsRefreshing] = useState(false)
+
+  const orderRef = useRef(order)
+  const estimatedTimeRef = useRef(estimatedTime)
+
+  useEffect(() => {
+    orderRef.current = order
+  }, [order])
+
+  useEffect(() => {
+    estimatedTimeRef.current = estimatedTime
+  }, [estimatedTime])
   const [showCancelDialog, setShowCancelDialog] = useState(false)
   const [showOrderDetails, setShowOrderDetails] = useState(false)
   const [cancellationReason, setCancellationReason] = useState("")
@@ -517,12 +944,25 @@ export default function OrderTracking() {
   const [restaurantFeedbackText, setRestaurantFeedbackText] = useState("")
   const [deliveryFeedbackText, setDeliveryFeedbackText] = useState("")
   const [submittingRating, setSubmittingRating] = useState(false)
+  const [isLocalRated, setIsLocalRated] = useState(false)
+
+  // Sync with localStorage on load/change
+  useEffect(() => {
+    const key = `rated_order_${orderId}`;
+    if (localStorage.getItem(key) === 'true') {
+      setIsLocalRated(true);
+    }
+  }, [orderId]);
 
   // Check if order is already rated
-  const hasRestaurantRating = Number.isFinite(Number(order?.ratings?.restaurant?.rating || order?.restaurantRating))
+  const resRatingVal = Number(order?.ratings?.restaurant?.rating || order?.restaurantRating || 0)
+  const delRatingVal = Number(order?.ratings?.deliveryPartner?.rating || order?.deliveryPartnerRating || 0)
+
+  const hasRestaurantRating = resRatingVal > 0
   const hasDeliveryPartner = !!(order?.deliveryPartnerId || order?.deliveryPartnerName)
-  const hasDeliveryRating = Number.isFinite(Number(order?.ratings?.deliveryPartner?.rating || order?.deliveryPartnerRating))
+  const hasDeliveryRating = delRatingVal > 0
   const isOrderRated = hasRestaurantRating && (!hasDeliveryPartner || hasDeliveryRating)
+
 
   const handleOpenRating = () => {
     setSelectedRestaurantRating(order?.ratings?.restaurant?.rating || order?.restaurantRating || null)
@@ -550,15 +990,41 @@ export default function OrderTracking() {
       })
       
       const updatedOrderData = response?.data?.data?.order || response?.data?.order
-      if (updatedOrderData) {
-        setOrder(prev => ({
+      
+      // Save rating state locally to prevent duplicate rating clicks/popups
+      const oId = order.mongoId || order._id || order.id || orderId;
+      localStorage.setItem(`rated_order_${oId}`, "true");
+      setIsLocalRated(true);
+
+      setOrder(prev => {
+        const prevRatings = prev?.ratings || {};
+        const newRestRating = selectedRestaurantRating;
+        const newDelivRating = selectedDeliveryRating;
+        const apiRatings = updatedOrderData?.ratings || {};
+        
+        return {
           ...prev,
-          ...updatedOrderData,
-          ratings: updatedOrderData.ratings,
-          restaurantRating: updatedOrderData.ratings?.restaurant?.rating,
-          deliveryPartnerRating: updatedOrderData.ratings?.deliveryPartner?.rating
-        }))
-      }
+          ...(updatedOrderData || {}),
+          ratings: {
+            ...prevRatings,
+            ...apiRatings,
+            restaurant: {
+              ...(prevRatings.restaurant || {}),
+              ...(apiRatings.restaurant || {}),
+              rating: newRestRating,
+              comment: restaurantFeedbackText || prevRatings.restaurant?.comment || ""
+            },
+            deliveryPartner: {
+              ...(prevRatings.deliveryPartner || {}),
+              ...(apiRatings.deliveryPartner || {}),
+              rating: newDelivRating,
+              comment: deliveryFeedbackText || prevRatings.deliveryPartner?.comment || ""
+            }
+          },
+          restaurantRating: newRestRating,
+          deliveryPartnerRating: newDelivRating
+        };
+      });
 
       toast.success("Thanks for your feedback!")
       setShowRatingModal(false)
@@ -653,13 +1119,19 @@ export default function OrderTracking() {
     return () => window.removeEventListener('deliveryDropOtp', handleDeliveryDropOtp)
   }, [orderId, order])
 
-  // --- Start: Sync arrival time with Home Page logic ---
-  const getTimeRemaining = useCallback((orderData) => {
+  // --- Start: Sync arrival time and status ---
+  const getDeliveryTargetTime = useCallback((orderData) => {
     if (!orderData) return null;
+
+    // If preparationTime is set by the restaurant, use acceptedAt + preparationTime
+    if (orderData.preparationTime && orderData.acceptedAt) {
+      const acceptTime = new Date(orderData.acceptedAt);
+      return new Date(acceptTime.getTime() + orderData.preparationTime * 60000);
+    }
 
     // Use scheduled time if available, fallback to creation time
     const orderTime = new Date(
-      orderData.scheduledAt || orderData.createdAt || orderData.orderDate || orderData.created_at || orderData.date || Date.now(),
+      orderData.scheduledAt || orderData.createdAt || orderData.orderDate || orderData.created_at || orderData.date || Date.now()
     );
 
     // For non-scheduled orders, we add the estimated delivery time to the creation time.
@@ -669,29 +1141,39 @@ export default function OrderTracking() {
       ? 0 
       : (orderData.estimatedDeliveryTime || orderData.estimatedTime || orderData.estimated_delivery_time || 35);
 
-    const deliveryTime = new Date(orderTime.getTime() + estimatedMinutes * 60000);
-    return Math.max(0, Math.floor((deliveryTime - new Date()) / 60000));
+    return new Date(orderTime.getTime() + estimatedMinutes * 60000);
   }, []);
 
-  // Sync estimatedTime state with order data and periodic updates
+  // Single clock source for estimatedTime and orderStatus sync
   useEffect(() => {
     if (!order) return;
 
-    const tick = () => {
-      const remaining = getTimeRemaining(order);
-      // Only prefer static calculation if no realtime ETA is provided by the map/driver
-      // But user said "should be same" as Home page, which uses static calculation.
-      // So we use static calculation as the base/sync source.
-      if (remaining !== null) {
-        setEstimatedTime(remaining);
+    const targetTime = getDeliveryTargetTime(order);
+
+    const updateTimerAndStatus = () => {
+      const actualStatus = mapOrderToTrackingUiStatus(order);
+      let diffMs = 0;
+      if (targetTime) {
+        diffMs = targetTime.getTime() - Date.now();
+      }
+
+      if (diffMs <= 0) {
+        setEstimatedTime(0);
+        // Do NOT auto-set to 'ready' — that status must come from the restaurant
+        setOrderStatus(actualStatus);
+      } else {
+        const mins = Math.ceil(diffMs / 60000);
+        setEstimatedTime(mins);
+        setOrderStatus(actualStatus);
       }
     };
 
-    tick();
-    const interval = setInterval(tick, 30000); // 30s sync matches home page logic
+    updateTimerAndStatus();
+    const interval = setInterval(updateTimerAndStatus, 1000); // Check every second for instant response
+
     return () => clearInterval(interval);
-  }, [order, getTimeRemaining]);
-  // --- End: Sync arrival time ---
+  }, [order, getDeliveryTargetTime]);
+  // --- End: Sync arrival time and status ---
 
   // --------------------------------------------------------------------------
   // DATA FETCHING & POLLING STABILITY (FIXED FOR HAMMERING)
@@ -862,15 +1344,7 @@ export default function OrderTracking() {
     ].includes(status)
   }, [order?.status])
 
-  // Single source of truth: backend order.status (+ deliveryState phase for live ride)
-  useEffect(() => {
-    if (!order) return
-    setOrderStatus(mapOrderToTrackingUiStatus(order))
-  }, [
-    order?.status,
-    order?.deliveryState?.currentPhase,
-    order?.deliveryState?.status,
-  ])
+  // Single source of truth is now handled by the unified sync clock useEffect above.
 
   const acceptedAtMs = useMemo(() => {
     const timestamp =
@@ -934,6 +1408,89 @@ export default function OrderTracking() {
       // Last-ditch fallback
       window.location.assign(`tel:${cleanPhone}`);
     }
+  };
+
+  const handleOpenDirections = async (e) => {
+    if (e && e.stopPropagation) e.stopPropagation();
+
+    let lat = null;
+    let lng = null;
+
+    // Helper to extract coords
+    const extractCoords = (obj) => {
+      if (!obj) return null;
+      // If array [lng, lat]
+      if (Array.isArray(obj) && obj.length >= 2) {
+        return { lat: Number(obj[1]), lng: Number(obj[0]) };
+      }
+      // If array nested in coordinates
+      if (obj.coordinates && Array.isArray(obj.coordinates) && obj.coordinates.length >= 2) {
+        return { lat: Number(obj.coordinates[1]), lng: Number(obj.coordinates[0]) };
+      }
+      // If object with lat/lng or latitude/longitude
+      const latVal = obj.lat || obj.latitude;
+      const lngVal = obj.lng || obj.longitude;
+      if (latVal != null && lngVal != null) {
+        return { lat: Number(latVal), lng: Number(lngVal) };
+      }
+      return null;
+    };
+
+    // Try multiple sources on order
+    let resolved = extractCoords(order?.restaurantLocation) || 
+                   extractCoords(order?.restaurantId?.location) ||
+                   extractCoords(order?.restaurant?.location);
+
+    if (resolved) {
+      lat = resolved.lat;
+      lng = resolved.lng;
+    }
+
+    // Fallbacks on order object properties
+    if (lat === null || lng === null) {
+      const loc = order?.restaurantId?.location || order?.restaurant?.location;
+      if (loc && Number.isFinite(Number(loc.latitude)) && Number.isFinite(Number(loc.longitude))) {
+        lat = Number(loc.latitude);
+        lng = Number(loc.longitude);
+      } else if (loc && Number.isFinite(Number(loc.lat)) && Number.isFinite(Number(loc.lng))) {
+        lat = Number(loc.lat);
+        lng = Number(loc.lng);
+      }
+    }
+
+    // Dynamic fetch from restaurant API if coords are still missing
+    if (lat === null || lng === null) {
+      const restId = order?.restaurantId?._id || order?.restaurantId?.id || (typeof order?.restaurantId === 'string' ? order.restaurantId : null);
+      if (restId) {
+        try {
+          const restaurantResponse = await restaurantAPI.getRestaurantById(restId);
+          if (restaurantResponse?.data?.success && restaurantResponse.data.data?.restaurant) {
+            const restaurant = restaurantResponse.data.data.restaurant;
+            const fetched = extractCoords(restaurant.location);
+            if (fetched) {
+              lat = fetched.lat;
+              lng = fetched.lng;
+            }
+          }
+        } catch (err) {
+          debugError('Failed to fetch restaurant details in handleOpenDirections:', err);
+        }
+      }
+    }
+
+    let mapsUrl = '';
+    if (lat !== null && lng !== null && Number.isFinite(Number(lat)) && Number.isFinite(Number(lng))) {
+      const name = order?.restaurant || 'Restaurant';
+      mapsUrl = `https://maps.google.com/?q=${lat},${lng}+(${encodeURIComponent(name)})`;
+    } else {
+      // Build a highly specific query: "Restaurant Name Restaurant Address"
+      const name = order?.restaurant || 'Restaurant';
+      const address = order?.restaurantAddress || '';
+      const query = address ? `${name} ${address}` : name;
+      mapsUrl = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(query)}`;
+    }
+    
+    window.open(mapsUrl, '_blank');
   };
 
   const handleCallRider = (e) => {
@@ -1099,13 +1656,7 @@ export default function OrderTracking() {
     return () => clearTimeout(timer1)
   }, [confirmed])
 
-  // Countdown timer
-  useEffect(() => {
-    const timer = setInterval(() => {
-      setEstimatedTime((prev) => Math.max(0, prev - 1))
-    }, 60000)
-    return () => clearInterval(timer)
-  }, [])
+  // Countdown timer is now handled by the unified sync clock useEffect above.
 
   // Listen for order status updates from socket (e.g., "Delivery partner on the way")
   useEffect(() => {
@@ -1127,7 +1678,15 @@ export default function OrderTracking() {
           orderStatus: payload.orderStatus || status,
           deliveryState: payload.deliveryState,
         });
-        setOrderStatus(next);
+        const currentOrder = orderRef.current;
+        const currentEstTime = estimatedTimeRef.current;
+        if ((currentOrder?.orderType === 'takeaway' || currentOrder?.orderType === 'dining') && 
+            currentEstTime <= 0 && 
+            ['placed', 'preparing'].includes(next)) {
+          setOrderStatus('ready');
+        } else {
+          setOrderStatus(next);
+        }
 
         // Pull latest order state without refresh spam on bursty socket events.
         const now = Date.now();
@@ -1403,7 +1962,13 @@ export default function OrderTracking() {
     },
     preparing: {
       title: "Food is being prepared",
-      subtitle: typeof estimatedTime === 'number' ? `Arriving in ${estimatedTime} mins` : "Cooking your meal",
+      subtitle: (order?.orderType === "takeaway" || order?.orderType === "dining")
+        ? (typeof estimatedTime === 'number' 
+            ? (estimatedTime <= 0 ? "Waiting for restaurant to mark ready" : `Ready for pickup in ${estimatedTime} mins`) 
+            : "Cooking your meal")
+        : (typeof estimatedTime === 'number' 
+            ? (estimatedTime <= 0 ? "Arriving soon" : `Arriving in ${estimatedTime} mins`) 
+            : "Cooking your meal"),
       color: "bg-green-600",
       iconType: 'food'
     },
@@ -1420,14 +1985,16 @@ export default function OrderTracking() {
       iconType: 'rider'
     },
     ready: {
-      title: "Handover in progress",
-      subtitle: "Rider is picking up your order",
+      title: (order?.orderType === "takeaway" || order?.orderType === "dining") ? "Ready for pickup" : "Handover in progress",
+      subtitle: (order?.orderType === "takeaway" || order?.orderType === "dining") ? "Please collect your order from the restaurant" : "Rider is picking up your order",
       color: "bg-green-600",
-      iconType: 'rider'
+      iconType: (order?.orderType === "takeaway" || order?.orderType === "dining") ? 'delivered' : 'rider'
     },
     on_way: {
       title: "Out for delivery",
-      subtitle: typeof estimatedTime === 'number' ? `Arriving in ${estimatedTime} mins` : "Rider is out for delivery",
+      subtitle: typeof estimatedTime === 'number' 
+        ? (estimatedTime <= 0 ? "Arriving soon" : `Arriving in ${estimatedTime} mins`) 
+        : "Rider is out for delivery",
       color: "bg-green-600",
       iconType: 'rider'
     },
@@ -1438,13 +2005,17 @@ export default function OrderTracking() {
       iconType: 'rider'
     },
     delivered: {
-      title: "Order delivered",
-      subtitle: "Enjoy your meal!",
+      title: order?.orderType === "takeaway" ? "Picked UP" : "Order delivered",
+      subtitle: order?.orderType === "takeaway" ? "Thank you for ordering!" : "Enjoy your meal!",
       color: "bg-green-600",
       iconType: 'delivered'
     },
     cancelled: {
-      title: "Order cancelled",
+      title: order?.orderType === "takeaway"
+        ? "Takeaway order cancelled"
+        : order?.orderType === "dining"
+          ? "Dining order cancelled"
+          : "Order cancelled",
       subtitle: order?.cancellationReason || "This order has been cancelled",
       color: "bg-red-600",
       iconType: 'cancelled'
@@ -1618,39 +2189,39 @@ export default function OrderTracking() {
               animate={{ scale: 1, opacity: 1 }}
               transition={{ delay: 0.2 }}
             >
-              <span className="text-sm">{currentStatus.subtitle}</span>
-              {orderStatus === 'preparing' && (
-                <>
-                  <span className="w-1 h-1 rounded-full bg-white" />
-                  <span className="text-sm text-orange-200">On time</span>
-                </>
-              )}
+              <span className="text-sm font-medium">{currentStatus.subtitle}</span>
               <motion.button
                 onClick={handleRefresh}
-                className="ml-1"
+                className="ml-1 flex items-center justify-center"
                 animate={{ rotate: isRefreshing ? 360 : 0 }}
                 transition={{ duration: 0.5 }}
               >
-              <RefreshCw className="w-4 h-4" />
-            </motion.button>
-          </motion.div>
+                <RefreshCw className="w-4 h-4" />
+              </motion.button>
+            </motion.div>
         </div>
       )}
       </motion.div>
 
-      {/* Map Section */}
+      {/* Map Section, Takeaway, or Dining Animation */}
       {!isDeliveredOrder && orderStatus !== 'cancelled' && !(isScheduledOrder && ['placed', 'confirmed'].includes(orderStatus)) && (
-        <MapErrorBoundary>
-          <DeliveryMap
-            orderId={orderId}
-            order={order}
-            isVisible={order !== null}
-            fallbackCustomerCoords={fallbackCustomerCoords}
-            userLiveCoords={userLiveCoords}
-            userLocationAccuracy={userLiveLocation?.accuracy ?? null}
-            onEtaUpdate={handleEtaUpdate}
-          />
-        </MapErrorBoundary>
+        order?.orderType === 'takeaway' ? (
+          <TakeawayAnimation order={order} />
+        ) : order?.orderType === 'dining' ? (
+          <DiningAnimation order={order} />
+        ) : (
+          <MapErrorBoundary>
+            <DeliveryMap
+              orderId={orderId}
+              order={order}
+              isVisible={order !== null}
+              fallbackCustomerCoords={fallbackCustomerCoords}
+              userLiveCoords={userLiveCoords}
+              userLocationAccuracy={userLiveLocation?.accuracy ?? null}
+              onEtaUpdate={handleEtaUpdate}
+            />
+          </MapErrorBoundary>
+        )
       )}
 
       {/* Scrollable Content */}
@@ -1659,81 +2230,128 @@ export default function OrderTracking() {
 
         {customerDeliveryOtp && orderStatus !== 'delivered' && orderStatus !== 'cancelled' && (
           <motion.div
-            className="bg-blue-50 dark:bg-blue-900/10 rounded-xl p-4 shadow-sm border border-blue-100 dark:border-blue-900/30"
+            className={`rounded-xl p-4 shadow-sm border ${
+              order?.orderType === 'takeaway'
+                ? 'bg-emerald-50 dark:bg-emerald-950/20 border-emerald-100 dark:border-emerald-900/30'
+                : 'bg-blue-50 dark:bg-blue-900/10 border-blue-100 dark:border-blue-900/30'
+            }`}
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: 0.28 }}
           >
-            <p className="text-xs font-semibold text-blue-700 dark:text-blue-400 uppercase tracking-wide">Delivery OTP</p>
-            <p className="text-2xl font-extrabold text-blue-900 dark:text-blue-200 mt-1 tracking-widest">{customerDeliveryOtp}</p>
-            <p className="text-xs text-blue-700 dark:text-blue-400 mt-1">Share this 4-digit OTP with your delivery partner at drop-off.</p>
+            <p className={`text-xs font-semibold uppercase tracking-wide ${
+              order?.orderType === 'takeaway' ? 'text-emerald-700 dark:text-emerald-400' : 'text-blue-700 dark:text-blue-400'
+            }`}>
+              {order?.orderType === 'takeaway' ? 'Takeaway OTP' : 'Delivery OTP'}
+            </p>
+            <p className={`text-2xl font-extrabold mt-1 tracking-widest ${
+              order?.orderType === 'takeaway' ? 'text-emerald-900 dark:text-emerald-250' : 'text-blue-900 dark:text-blue-200'
+            }`}>
+              {customerDeliveryOtp}
+            </p>
+            <p className={`text-xs mt-1 ${
+              order?.orderType === 'takeaway' ? 'text-emerald-700 dark:text-emerald-400' : 'text-blue-700 dark:text-blue-400'
+            }`}>
+              {order?.orderType === 'takeaway'
+                ? 'Share this 4-digit OTP with the restaurant at the counter to verify and complete your pick-up.'
+                : 'Share this 4-digit OTP with your delivery partner at drop-off.'}
+            </p>
+          </motion.div>
+        )}
+
+        {/* Takeaway / Self Pickup Card */}
+        {order?.orderType === 'takeaway' && orderStatus !== 'ready' && orderStatus !== 'delivered' && orderStatus !== 'cancelled' && (
+          <motion.div
+            className="bg-orange-50 dark:bg-orange-950/20 border border-orange-100 dark:border-orange-900/30 rounded-xl p-4 shadow-sm flex items-start gap-3"
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.25 }}
+          >
+            <div className="w-10 h-10 rounded-full bg-orange-100 dark:bg-orange-900/40 flex items-center justify-center shrink-0">
+              <ShoppingBag className="w-5 h-5 text-orange-600 dark:text-orange-400" />
+            </div>
+            <div className="flex-1">
+              <h4 className="font-bold text-gray-900 dark:text-gray-100 text-sm">Takeaway / Self Pickup</h4>
+              <p className="text-xs text-gray-600 dark:text-gray-400 mt-1 leading-relaxed">
+                {orderStatus === 'preparing'
+                  ? "Your order is being prepared. We'll notify you when it's ready."
+                  : "Waiting for the restaurant to accept and prepare your order."}
+              </p>
+            </div>
           </motion.div>
         )}
 
         {/* Dynamic Status Card */}
-        <motion.div
-          className="bg-white dark:bg-[#1a1a1a] rounded-xl p-3 sm:p-4 shadow-sm"
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.3 }}
-        >
-          {isScheduledOrder && ['placed', 'confirmed'].includes(orderStatus) ? (
-            <div className="flex items-center gap-4">
-              <div className="w-14 h-14 rounded-full flex items-center justify-center overflow-hidden flex-shrink-0 shadow-sm border border-blue-100 bg-blue-50">
-                <Clock className="w-7 h-7 text-blue-600" />
+        {['at_pickup', 'ready', 'on_way', 'at_drop', 'delivered'].includes(orderStatus) && (
+          <motion.div
+            className="bg-white dark:bg-[#1a1a1a] rounded-xl p-3 sm:p-4 shadow-sm"
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.3 }}
+          >
+            {isScheduledOrder && ['placed', 'confirmed'].includes(orderStatus) ? (
+              <div className="flex items-center gap-4">
+                <div className="w-14 h-14 rounded-full flex items-center justify-center overflow-hidden flex-shrink-0 shadow-sm border border-blue-100 bg-blue-50">
+                  <Clock className="w-7 h-7 text-blue-600" />
+                </div>
+                <div className="flex-1">
+                  <p className="font-semibold text-gray-900 dark:text-gray-100 leading-tight">Order Scheduled</p>
+                  <p className="text-sm text-gray-500 dark:text-gray-400 mt-1 leading-snug">
+                    {scheduledDateFormatted}
+                  </p>
+                  <p className="text-xs text-blue-600 dark:text-blue-400 mt-1">
+                    We'll notify you when the restaurant starts preparing
+                  </p>
+                </div>
               </div>
-              <div className="flex-1">
-                <p className="font-semibold text-gray-900 dark:text-gray-100 leading-tight">Order Scheduled</p>
-                <p className="text-sm text-gray-500 dark:text-gray-400 mt-1 leading-snug">
-                  {scheduledDateFormatted}
-                </p>
-                <p className="text-xs text-blue-600 dark:text-blue-400 mt-1">
-                  We'll notify you when the restaurant starts preparing
-                </p>
+            ) : (
+              <div className="flex items-center gap-4">
+                <div className={`w-14 h-14 rounded-full flex items-center justify-center overflow-hidden flex-shrink-0 shadow-sm border border-gray-100 dark:border-gray-800 ${
+                  currentStatus.iconType === 'rider' ? 'bg-blue-50 dark:bg-blue-900/20' : 
+                  currentStatus.iconType === 'cancelled' ? 'bg-red-50 dark:bg-red-900/20' : 
+                  currentStatus.iconType === 'delivered' ? 'bg-green-50 dark:bg-green-900/20' : 
+                  'bg-orange-50 dark:bg-orange-900/20'
+                }`}>
+                  {currentStatus.iconType === 'rider' ? (
+                    <div 
+                      dangerouslySetInnerHTML={{ __html: RIDER_BIKE_SVG.replace(/width="\d+"/, 'width="100%"').replace(/height="\d+"/, 'height="100%"') }} 
+                      className="w-full h-full" 
+                    />
+                  ) : currentStatus.iconType === 'cancelled' ? (
+                    <div className="w-full h-full flex items-center justify-center p-2 text-red-500">
+                      <X className="w-full h-full" />
+                    </div>
+                  ) : currentStatus.iconType === 'delivered' ? (
+                    <div className="w-full h-full flex items-center justify-center p-2 text-green-500">
+                      <Check className="w-full h-full" />
+                    </div>
+                  ) : (
+                    <div className="w-full h-full flex items-center justify-center p-2 text-orange-500">
+                      <Receipt className="w-full h-full" />
+                    </div>
+                  )}
+                </div>
+                <div className="flex-1">
+                  <p className="font-semibold text-gray-900 dark:text-gray-100 leading-tight">{currentStatus.title}</p>
+                  <p className="text-sm text-gray-500 dark:text-gray-400 mt-1 leading-snug">{currentStatus.subtitle}</p>
+                </div>
               </div>
-            </div>
-          ) : (
-            <div className="flex items-center gap-4">
-              <div className={`w-14 h-14 rounded-full flex items-center justify-center overflow-hidden flex-shrink-0 shadow-sm border border-gray-100 dark:border-gray-800 ${
-                currentStatus.iconType === 'rider' ? 'bg-blue-50 dark:bg-blue-900/20' : 
-                currentStatus.iconType === 'cancelled' ? 'bg-red-50 dark:bg-red-900/20' : 
-                currentStatus.iconType === 'delivered' ? 'bg-green-50 dark:bg-green-900/20' : 
-                'bg-orange-50 dark:bg-orange-900/20'
-              }`}>
-                {currentStatus.iconType === 'rider' ? (
-                  <div 
-                    dangerouslySetInnerHTML={{ __html: RIDER_BIKE_SVG.replace(/width="\d+"/, 'width="100%"').replace(/height="\d+"/, 'height="100%"') }} 
-                    className="w-full h-full" 
-                  />
-                ) : currentStatus.iconType === 'cancelled' ? (
-                  <div className="w-full h-full flex items-center justify-center p-2 text-red-500">
-                    <X className="w-full h-full" />
-                  </div>
-                ) : currentStatus.iconType === 'delivered' ? (
-                  <div className="w-full h-full flex items-center justify-center p-2 text-green-500">
-                    <Check className="w-full h-full" />
-                  </div>
-                ) : (
-                  <div className="w-full h-full flex items-center justify-center p-2 text-orange-500">
-                    <Receipt className="w-full h-full" />
-                  </div>
-                )}
-              </div>
-              <div className="flex-1">
-                <p className="font-semibold text-gray-900 dark:text-gray-100 leading-tight">{currentStatus.title}</p>
-                <p className="text-sm text-gray-500 dark:text-gray-400 mt-1 leading-snug">{currentStatus.subtitle}</p>
-              </div>
-            </div>
-          )}
-        </motion.div>
+            )}
+          </motion.div>
+        )}
 
         {/* Rating Logic: Show rating card after delivery */}
         {orderStatus === 'delivered' && !isOrderRated && (
           <motion.div
-            className="bg-white dark:bg-[#1a1a1a] rounded-xl p-6 shadow-sm border-2 border-[#DC2626]/10 relative overflow-hidden group"
+            className={`bg-white dark:bg-[#1a1a1a] rounded-xl p-6 shadow-sm border-2 border-[#DC2626]/10 relative overflow-hidden group transition-all duration-200 ${
+              isLocalRated 
+                ? "cursor-default opacity-95" 
+                : "cursor-pointer hover:bg-gray-50/80 dark:hover:bg-gray-800/20"
+            }`}
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: 0.45 }}
+            onClick={isLocalRated ? undefined : handleOpenRating}
           >
             {/* Background pattern decoration */}
             <div className="absolute -top-4 -right-4 w-24 h-24 bg-[#DC2626]/5 rounded-full blur-2xl group-hover:bg-[#DC2626]/10 transition-colors" />
@@ -1742,16 +2360,30 @@ export default function OrderTracking() {
               <div className="w-16 h-16 bg-[#DC2626]/10 dark:bg-[#DC2626]/20 rounded-full flex items-center justify-center mb-4 transition-transform group-hover:scale-110 duration-300">
                 <Star className="w-8 h-8 text-[#DC2626] fill-[#DC2626]" />
               </div>
-              <h3 className="text-xl font-bold text-gray-900 dark:text-gray-100">Enjoyed your food?</h3>
+              <h3 className="text-xl font-bold text-gray-900 dark:text-gray-100">
+                {isLocalRated ? "Feedback Received" : "Enjoyed your food?"}
+              </h3>
               <p className="text-sm text-gray-500 dark:text-gray-400 mt-2 mb-6 max-w-[280px]">
-                Rate your experience with <span className="font-semibold text-gray-700 dark:text-gray-300">{order?.restaurant}</span> and help us improve!
+                {isLocalRated 
+                  ? "Thank you for rating your experience! Your feedback has been submitted." 
+                  : `Rate your experience with ${order?.restaurant || "The Restaurant"} and help us improve!`}
               </p>
               
               <Button 
-                onClick={handleOpenRating}
-                className="w-full max-w-[200px] bg-[#DC2626] hover:bg-[#991B1B] text-white font-bold h-12 rounded-xl border-none shadow-lg shadow-[#DC2626]/20"
+                disabled={isLocalRated}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  if (!isLocalRated) {
+                    handleOpenRating();
+                  }
+                }}
+                className={`w-full max-w-[200px] font-bold h-12 rounded-xl border-none shadow-lg transition-all duration-150 ${
+                  isLocalRated
+                    ? "bg-gray-300 dark:bg-gray-700 text-gray-500 dark:text-gray-400 cursor-not-allowed shadow-none"
+                    : "bg-[#DC2626] hover:bg-[#991B1B] text-white shadow-[#DC2626]/20"
+                }`}
               >
-                Rate Order
+                {isLocalRated ? "Submitted" : "Give Rating"}
               </Button>
             </div>
           </motion.div>
@@ -1760,7 +2392,7 @@ export default function OrderTracking() {
         {/* Rating Summary: Show what the user rated */}
         {orderStatus === 'delivered' && isOrderRated && (
           <motion.div
-            className="bg-white dark:bg-[#1a1a1a] rounded-xl p-5 shadow-sm border border-gray-100 dark:border-gray-800"
+            className="bg-white dark:bg-[#1a1a1a] rounded-xl p-5 shadow-sm border border-gray-100 dark:border-gray-800 transition-all duration-200"
             initial={{ opacity: 0, y: 10 }}
             animate={{ opacity: 1, y: 0 }}
           >
@@ -1770,17 +2402,17 @@ export default function OrderTracking() {
                 Your Feedback
               </h3>
               <button 
-                onClick={handleOpenRating}
-                className="text-[10px] font-bold text-[#DC2626] dark:text-orange-400 uppercase tracking-widest hover:opacity-80 transition-opacity"
+                disabled
+                className="text-[10px] font-bold text-gray-400 dark:text-gray-500 uppercase tracking-widest cursor-not-allowed opacity-50"
               >
-                Edit Rating
+                Rating Submitted
               </button>
             </div>
             
             <div className="space-y-4">
               <div className="flex items-center justify-between">
                 <div className="flex flex-col">
-                  <span className="text-xs font-semibold text-gray-700 dark:text-gray-300">Food & Restaurant</span>
+                  <span className="text-xs font-semibold text-gray-700 dark:text-gray-300">{order?.restaurant || "Food & Restaurant"}</span>
                   {order?.ratings?.restaurant?.comment && (
                     <span className="text-[10px] text-gray-500 dark:text-gray-400 italic mt-0.5 line-clamp-1">"{order.ratings.restaurant.comment}"</span>
                   )}
@@ -1871,7 +2503,7 @@ export default function OrderTracking() {
         )}
 
         {/* Delivery Partner Safety */}
-        {orderStatus !== 'delivered' && orderStatus !== 'cancelled' && (
+        {orderStatus !== 'delivered' && orderStatus !== 'cancelled' && order?.orderType !== 'takeaway' && order?.orderType !== 'dining' && (
           <motion.button
             className="w-full bg-white dark:bg-[#1a1a1a] rounded-xl p-4 shadow-sm flex items-center gap-3"
             initial={{ opacity: 0, y: 20 }}
@@ -1889,7 +2521,7 @@ export default function OrderTracking() {
         )}
 
         {/* Delivery Details Banner */}
-        {orderStatus !== 'delivered' && orderStatus !== 'cancelled' && (
+        {orderStatus !== 'delivered' && orderStatus !== 'cancelled' && order?.orderType !== 'takeaway' && order?.orderType !== 'dining' && (
           <motion.div
             className="bg-yellow-50 dark:bg-yellow-900/10 rounded-xl p-4 text-center border dark:border-yellow-900/30"
             initial={{ opacity: 0, y: 20 }}
@@ -1903,92 +2535,106 @@ export default function OrderTracking() {
         )}
 
         {/* Contact & Address Section */}
-        <motion.div
-          className="bg-white dark:bg-[#1a1a1a] rounded-xl shadow-sm overflow-hidden"
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.7 }}
-        >
-          <SectionItem
-            icon={User}
-            title={
-              order?.userName ||
-              order?.userId?.fullName ||
-              order?.userId?.name ||
-              profile?.fullName ||
-              profile?.name ||
-              'Customer'
-            }
-            subtitle={
-              order?.userPhone ||
-              order?.userId?.phone ||
-              profile?.phone ||
-              defaultAddress?.phone ||
-              'Phone number not available'
-            }
-            showArrow={false}
-          />
-          <SectionItem
-            iconNode={
-              <div
-                dangerouslySetInnerHTML={{ __html: SAFE_CUSTOMER_PIN }}
-                className="w-6 h-6 [&_svg]:w-full [&_svg]:h-full [&_svg]:block"
-              />
-            }
-            title="Delivery at Location"
-            subtitle={(() => {
-              // Priority 1: Use order address formattedAddress (live location address)
-              if (order?.address?.formattedAddress && order.address.formattedAddress !== "Select location") {
-                return order.address.formattedAddress
-              }
-
-              // Priority 2: Build full address from order address parts
-              if (order?.address) {
-                const orderAddressParts = []
-                if (order.address.street) orderAddressParts.push(order.address.street)
-                if (order.address.additionalDetails) orderAddressParts.push(order.address.additionalDetails)
-                if (order.address.city) orderAddressParts.push(order.address.city)
-                if (order.address.state) orderAddressParts.push(order.address.state)
-                if (order.address.zipCode) orderAddressParts.push(order.address.zipCode)
-                if (orderAddressParts.length > 0) {
-                  return orderAddressParts.join(', ')
-                }
-              }
-
-              // Priority 3: Use defaultAddress formattedAddress (live location address)
-              if (defaultAddress?.formattedAddress && defaultAddress.formattedAddress !== "Select location") {
-                return defaultAddress.formattedAddress
-              }
-
-              // Priority 4: Build full address from defaultAddress parts
-              if (defaultAddress) {
-                const defaultAddressParts = []
-                if (defaultAddress.street) defaultAddressParts.push(defaultAddress.street)
-                if (defaultAddress.additionalDetails) defaultAddressParts.push(defaultAddress.additionalDetails)
-                if (defaultAddress.city) defaultAddressParts.push(defaultAddress.city)
-                if (defaultAddress.state) defaultAddressParts.push(defaultAddress.state)
-                if (defaultAddress.zipCode) defaultAddressParts.push(defaultAddress.zipCode)
-                if (defaultAddressParts.length > 0) {
-                  return defaultAddressParts.join(', ')
-                }
-              }
-
-              return 'Add delivery address'
-            })()}
-            showArrow={false}
-          />
-          {!isAdminAccepted && orderStatus !== 'cancelled' && orderStatus !== 'delivered' && (
+        {order?.orderType !== 'takeaway' && (
+          <motion.div
+            className="bg-white dark:bg-[#1a1a1a] rounded-xl shadow-sm overflow-hidden"
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.7 }}
+          >
             <SectionItem
-              icon={MessageSquare}
-              title={order?.note ? "Edit delivery instructions" : "Add delivery instructions"}
-              subtitle={order?.note ? order.note.substring(0, 35) + (order.note.length > 35 ? "..." : "") : ""}
-              onClick={() => {
-                setDeliveryInstructions(order?.note || "");
-                setIsInstructionsModalOpen(true);
-              }}
+              icon={User}
+              title={
+                order?.userName ||
+                order?.userId?.fullName ||
+                order?.userId?.name ||
+                profile?.fullName ||
+                profile?.name ||
+                'Customer'
+              }
+              subtitle={
+                order?.userPhone ||
+                order?.userId?.phone ||
+                profile?.phone ||
+                defaultAddress?.phone ||
+                'Phone number not available'
+              }
+              showArrow={false}
             />
-          )}
-        </motion.div>
+            <SectionItem
+              iconNode={
+                order?.orderType === 'dining' ? (
+                  <Users className="w-5 h-5 text-blue-600" />
+                ) : (
+                  <div
+                    dangerouslySetInnerHTML={{ __html: SAFE_CUSTOMER_PIN }}
+                    className="w-6 h-6 [&_svg]:w-full [&_svg]:h-full [&_svg]:block"
+                  />
+                )
+              }
+              title={
+                order?.orderType === 'dining'
+                  ? "Dining / Table Service"
+                  : "Delivery at Location"
+              }
+              subtitle={(() => {
+                if (order?.orderType === 'dining') {
+                  return `Enjoy your food in the restaurant. Table service.`
+                }
+
+                // Priority 1: Use order address formattedAddress (live location address)
+                if (order?.address?.formattedAddress && order.address.formattedAddress !== "Select location") {
+                  return order.address.formattedAddress
+                }
+
+                // Priority 2: Build full address from order address parts
+                if (order?.address) {
+                  const orderAddressParts = []
+                  if (order.address.street) orderAddressParts.push(order.address.street)
+                  if (order.address.additionalDetails) orderAddressParts.push(order.address.additionalDetails)
+                  if (order.address.city) orderAddressParts.push(order.address.city)
+                  if (order.address.state) orderAddressParts.push(order.address.state)
+                  if (order.address.zipCode) orderAddressParts.push(order.address.zipCode)
+                  if (orderAddressParts.length > 0) {
+                    return orderAddressParts.join(', ')
+                  }
+                }
+
+                // Priority 3: Use defaultAddress formattedAddress (live location address)
+                if (defaultAddress?.formattedAddress && defaultAddress.formattedAddress !== "Select location") {
+                  return defaultAddress.formattedAddress
+                }
+
+                // Priority 4: Build full address from defaultAddress parts
+                if (defaultAddress) {
+                  const defaultAddressParts = []
+                  if (defaultAddress.street) defaultAddressParts.push(defaultAddress.street)
+                  if (defaultAddress.additionalDetails) defaultAddressParts.push(defaultAddress.additionalDetails)
+                  if (defaultAddress.city) defaultAddressParts.push(defaultAddress.city)
+                  if (defaultAddress.state) defaultAddressParts.push(defaultAddress.state)
+                  if (defaultAddress.zipCode) defaultAddressParts.push(defaultAddress.zipCode)
+                  if (defaultAddressParts.length > 0) {
+                    return defaultAddressParts.join(', ')
+                  }
+                }
+
+                return 'Add delivery address'
+              })()}
+              showArrow={false}
+            />
+            {!isAdminAccepted && orderStatus !== 'cancelled' && orderStatus !== 'delivered' && order?.orderType !== 'dining' && (
+              <SectionItem
+                icon={MessageSquare}
+                title={order?.note ? "Edit delivery instructions" : "Add delivery instructions"}
+                subtitle={order?.note ? order.note.substring(0, 35) + (order.note.length > 35 ? "..." : "") : ""}
+                onClick={() => {
+                  setDeliveryInstructions(order?.note || "");
+                  setIsInstructionsModalOpen(true);
+                }}
+              />
+            )}
+          </motion.div>
+        )}
 
         {/* Restaurant Section */}
         <motion.div
@@ -2008,13 +2654,24 @@ export default function OrderTracking() {
               <p className="font-semibold text-gray-900 dark:text-gray-100">{order.restaurant}</p>
               <p className="text-sm text-gray-500 dark:text-gray-400">{order.restaurantAddress || 'Restaurant location'}</p>
             </div>
-            <motion.button
-              className="w-10 h-10 rounded-full bg-orange-50 flex items-center justify-center"
-              onClick={handleCallRestaurant}
-              whileTap={{ scale: 0.9 }}
-            >
-              <Phone className="w-5 h-5 text-[#DC2626]" />
-            </motion.button>
+            <div className="flex flex-col gap-2 shrink-0">
+              <motion.button
+                className="w-10 h-10 rounded-full bg-orange-50 flex items-center justify-center shadow-sm"
+                onClick={handleOpenDirections}
+                whileTap={{ scale: 0.9 }}
+                title="Get Directions"
+              >
+                <Navigation className="w-5 h-5 text-[#DC2626]" />
+              </motion.button>
+              <motion.button
+                className="w-10 h-10 rounded-full bg-orange-50 flex items-center justify-center shadow-sm"
+                onClick={handleCallRestaurant}
+                whileTap={{ scale: 0.9 }}
+                title="Call Restaurant"
+              >
+                <Phone className="w-5 h-5 text-[#DC2626]" />
+              </motion.button>
+            </div>
           </div>
 
           {/* Order Items */}
@@ -2184,7 +2841,7 @@ export default function OrderTracking() {
                 <div>
                   <p className="text-xs text-gray-500 uppercase tracking-wider">Status</p>
                   <span className="text-sm font-bold text-green-600 uppercase">
-                    {order?.status?.replace('_', ' ')}
+                    {order?.status === 'placed' ? 'order placed' : order?.status?.replace('_', ' ')}
                   </span>
                 </div>
               </div>
@@ -2250,10 +2907,12 @@ export default function OrderTracking() {
                 </div>
               )}
 
-              <div className="flex justify-between items-center text-sm">
-                <span className="text-gray-600">Delivery Fee</span>
-                <span className="text-gray-900 font-medium">₹{Number(order?.deliveryFee || 0).toFixed(2)}</span>
-              </div>
+              {order?.orderType !== "takeaway" && order?.orderType !== "dining" && (
+                <div className="flex justify-between items-center text-sm">
+                  <span className="text-gray-600">Delivery Fee</span>
+                  <span className="text-gray-900 font-medium">₹{Number(order?.deliveryFee || 0).toFixed(2)}</span>
+                </div>
+              )}
 
               <div className="flex justify-between items-center text-sm">
                 <span className="text-gray-600">GST</span>
@@ -2268,7 +2927,16 @@ export default function OrderTracking() {
               )}
 
               <div className="pt-2 border-t border-gray-200 dark:border-gray-800 flex justify-between items-center">
-                <span className="text-base font-bold text-gray-900 dark:text-white">Total Amount</span>
+                <span className="text-base font-bold text-gray-900 dark:text-white flex items-center">
+                  Paid
+                  {(() => {
+                    const method = String(order?.payment?.method || order?.paymentMethod || "online").toLowerCase();
+                    if (method === "cash" || method === "cod") {
+                      return <span className="text-gray-500 dark:text-gray-400 font-bold ml-1.5">(COD)</span>;
+                    }
+                    return <span className="text-green-600 dark:text-green-400 font-bold ml-1.5">(Online)</span>;
+                  })()}
+                </span>
                 <span className="text-lg font-bold text-gray-900 dark:text-white">₹{Number(order?.totalAmount || 0).toFixed(2)}</span>
               </div>
             </div>

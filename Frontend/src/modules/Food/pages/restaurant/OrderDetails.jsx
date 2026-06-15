@@ -180,6 +180,16 @@ export default function OrderDetails() {
             order.outletName
           ) || "Restaurant"
 
+          const restLoc = order.restaurantId?.location || order.restaurant?.location || {};
+          const resolvedRestaurantAddress =
+            order.restaurantAddress ||
+            order.restaurant_address ||
+            restLoc.formattedAddress ||
+            restLoc.address ||
+            restLoc.addressLine1 ||
+            [order.restaurantId?.area || restLoc.area, order.restaurantId?.city || restLoc.city].filter(Boolean).join(", ") ||
+            "Restaurant Address";
+
           const rawPaymentStatus = String(
             order.payment?.status || order.paymentStatus || ""
           ).toLowerCase()
@@ -212,12 +222,13 @@ export default function OrderDetails() {
             date: new Date(order.createdAt).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' }),
             time: new Date(order.createdAt).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true }),
             restaurant: restaurantName,
-            address: fullAddress,
+            address: resolvedRestaurantAddress,
+            orderType: order.orderType || 'delivery',
             customer: {
               name: customerName,
               orderCount: order.userId?.orderCount || 1,
-              location: fullAddress,
-              distance: order.deliveryDistance ? `${order.deliveryDistance} km` : ''
+              location: order.orderType === 'takeaway' ? 'Self-Pickup Order' : fullAddress,
+              distance: order.orderType === 'takeaway' ? '' : (order.deliveryDistance ? `${order.deliveryDistance} km` : '')
             },
             items: order.items?.map(item => ({
               name: item.name,
@@ -763,8 +774,9 @@ export default function OrderDetails() {
                 {orderData.status}
               </span>
               <span className="text-xs text-gray-500">{orderData.date}, {orderData.time}</span>
-              {/* Resend button for order details */}
               {(orderData.status === "PREPARING" || orderData.status === "READY" || orderData.status === "CONFIRMED") && 
+                orderData.orderType !== "takeaway" &&
+                orderData.orderType !== "dining" &&
                 orderData.dispatchStatus !== "accepted" && (
                 <div className="mt-2">
                   <ResendNotificationButton 
@@ -777,7 +789,7 @@ export default function OrderDetails() {
           </div>
 
           {/* Order ID */}
-          <div className="flex items-center gap-2 mb-2">
+          <div className="flex items-center gap-2 mb-2 flex-wrap">
             <span className="text-base font-bold text-gray-900">ID: {orderData.id}</span>
             <button
               onClick={handleCopyOrderId}
@@ -786,6 +798,17 @@ export default function OrderDetails() {
             >
               <Copy className="w-4 h-4 text-gray-500" />
             </button>
+            {orderData.orderType && (
+              <span className={`px-2 py-0.5 text-xs font-bold rounded-full uppercase tracking-wider ${
+                orderData.orderType === 'takeaway' 
+                  ? 'bg-orange-100 text-orange-700' 
+                  : orderData.orderType === 'dining'
+                  ? 'bg-blue-100 text-blue-700'
+                  : 'bg-green-100 text-green-700'
+              }`}>
+                {orderData.orderType === 'takeaway' ? 'Takeaway' : orderData.orderType === 'dining' ? 'Dining' : 'Delivery'}
+              </span>
+            )}
           </div>
 
           {/* Restaurant Info */}
@@ -828,16 +851,16 @@ export default function OrderDetails() {
                 <p className="text-xs text-gray-500 mt-0.5">{orderData.customer.orderCount} order with you</p>
               </div>
 
-              <hr className="border-gray-200 my-3" />
-              
             </div>
-               <div className="flex items-center gap-3">
-              <MapPin className="w-5 h-5 text-gray-600" />
-              <div className="flex-1">
-                <p className="text-sm text-gray-900">{orderData.customer.location}</p>
+            {orderData.orderType !== 'takeaway' && (
+              <div className="flex items-center gap-3">
+                <MapPin className="w-5 h-5 text-gray-600" />
+                <div className="flex-1">
+                  <p className="text-sm text-gray-900">{orderData.customer.location}</p>
+                </div>
+                <p className="text-sm text-gray-600">{orderData.customer.distance}</p>
               </div>
-              <p className="text-sm text-gray-600">{orderData.customer.distance}</p>
-            </div>
+            )}
           </div>
 
         </div>

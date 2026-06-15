@@ -181,6 +181,7 @@ export const useDeliveryNotifications = () => {
   const userInteractedRef = useRef(false);
   const lastAlertAtByOrderRef = useRef(new Map());
   const lastBrowserNotificationAtByOrderRef = useRef(new Map());
+  const processedOrderIdsRef = useRef(new Set());
   
   // Step 2: All state hooks (unconditional)
   const [newOrder, setNewOrder] = useState(null);
@@ -209,6 +210,20 @@ export const useDeliveryNotifications = () => {
       ''
     ).trim()
   );
+
+  const isProcessedOrder = useCallback((orderData) => {
+    if (!orderData) return false;
+    const ids = [
+      orderData.orderMongoId,
+      orderData.orderId,
+      orderData._id,
+      orderData.id,
+      orderData.mongoId,
+      orderData.order_id,
+      orderData.order_mongo_id
+    ].filter(Boolean);
+    return ids.some(id => processedOrderIdsRef.current.has(String(id).trim()));
+  }, []);
 
   const shouldProcessOrderAlert = (orderData = {}) => {
     const key = getOrderAlertKey(orderData);
@@ -363,6 +378,9 @@ export const useDeliveryNotifications = () => {
   }, []);
 
   const handleIncomingOrderAlert = useCallback((orderData = {}) => {
+    if (isProcessedOrder(orderData)) {
+      return;
+    }
     if (!shouldProcessOrderAlert(orderData)) {
       return;
     }
@@ -374,7 +392,7 @@ export const useDeliveryNotifications = () => {
     if (typeof document !== 'undefined' && document.visibilityState === 'hidden') {
       showBackgroundOrderNotification(orderData);
     }
-  }, [playNotificationSound, showBackgroundOrderNotification, startAlertLoop]);
+  }, [isProcessedOrder, playNotificationSound, showBackgroundOrderNotification, startAlertLoop]);
 
   const recoverDeliveryState = useCallback(async () => {
     if (!deliveryPartnerId) return;
@@ -423,7 +441,7 @@ export const useDeliveryNotifications = () => {
         );
       });
 
-      if (recoverableOrder && !activeOrderRef.current) {
+      if (recoverableOrder && !activeOrderRef.current && !isProcessedOrder(recoverableOrder)) {
         debugLog('Recovered available delivery order after reconnect/focus:', recoverableOrder);
         setNewOrder(recoverableOrder);
         handleIncomingOrderAlert(recoverableOrder);
@@ -431,7 +449,7 @@ export const useDeliveryNotifications = () => {
     } catch (error) {
       debugWarn('Delivery recovery sync failed:', error?.message || error);
     }
-  }, [deliveryPartnerId, handleIncomingOrderAlert]);
+  }, [deliveryPartnerId, handleIncomingOrderAlert, isProcessedOrder]);
 
   const joinDeliveryRoomIfPossible = useCallback(() => {
     if (!socketRef.current?.connected || !deliveryPartnerId) {
@@ -1025,11 +1043,28 @@ export const useDeliveryNotifications = () => {
   }, [deliveryPartnerId, joinDeliveryRoomIfPossible, recoverDeliveryState]);
 
   // Helper functions
-  const clearNewOrder = () => {
+  const clearNewOrder = useCallback((orderOrId) => {
+    const target = orderOrId || newOrder || activeOrderRef.current;
+    if (target) {
+      if (typeof target === 'object') {
+        const ids = [
+          target.orderMongoId,
+          target.orderId,
+          target._id,
+          target.id,
+          target.mongoId,
+          target.order_id,
+          target.order_mongo_id
+        ].filter(Boolean);
+        ids.forEach(id => processedOrderIdsRef.current.add(String(id).trim()));
+      } else {
+        processedOrderIdsRef.current.add(String(target).trim());
+      }
+    }
     stopAlertLoop();
     activeOrderRef.current = null;
     setNewOrder(null);
-  };
+  }, [newOrder, stopAlertLoop]);
 
   const clearClaimedOrderId = () => setClaimedOrderId(null);
 

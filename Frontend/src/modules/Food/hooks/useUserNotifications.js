@@ -161,17 +161,21 @@ export const useUserNotifications = () => {
             orderMongoId: payload?.orderMongoId,
             orderId,
             otp,
-            message
+            message,
+            orderType: payload?.orderType || 'delivery'
           }
         })
       );
-      const title = orderId ? `Order ${orderId}` : 'Delivery OTP';
+      const isTakeaway = payload?.orderType === 'takeaway';
+      const title = orderId 
+        ? `Order #${orderId} — ${isTakeaway ? 'Takeaway OTP' : 'Delivery OTP'}` 
+        : (isTakeaway ? 'Takeaway OTP' : 'Delivery OTP');
       const parts = [message, otp ? `OTP: ${otp}` : ''].filter(Boolean);
 
       toast.dismiss(DROP_OTP_TOAST_ID);
       toast.message(title, {
         id: DROP_OTP_TOAST_ID,
-        description: parts.join(' — ') || 'Handover OTP from your delivery partner.',
+        description: parts.join(' — ') || (isTakeaway ? 'Verification OTP for your takeaway pickup.' : 'Handover OTP from your delivery partner.'),
         duration: 12_000
       });
     });

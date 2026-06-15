@@ -53,6 +53,11 @@ const parseTimeToMinutes = (timeValue) => {
 }
 
 const getTodayTiming = (restaurant, dayName) => {
+  if (Array.isArray(restaurant?.outletTimings)) {
+    const exact = restaurant.outletTimings.find((entry) => normalizeDay(entry?.day) === dayName)
+    if (exact) return exact
+  }
+
   const outletTimingsArray = restaurant?.outletTimings?.timings
   if (Array.isArray(outletTimingsArray)) {
     const exact = outletTimingsArray.find((entry) => normalizeDay(entry?.day) === dayName)

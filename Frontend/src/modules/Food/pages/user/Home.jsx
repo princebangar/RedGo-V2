@@ -1684,6 +1684,7 @@ export default function Home() {
                   ? restaurant.cuisines
                   : [],
                 rating: Number(restaurant.rating) || 0,
+                totalRatings: Number(restaurant.totalRatings) || 0,
                 deliveryTime:
                   (orderType === "takeaway" || isTakeawayPage)
                     ? (restaurant.preparationTime || "20-25 mins")
@@ -2480,6 +2481,19 @@ export default function Home() {
                       >
                         <Search className="h-5 w-5 text-white" strokeWidth={2.5} />
                       </button>
+                      <Link
+                        to="/food/user/cart"
+                        state={{ from: routerLocation.pathname }}
+                        className="p-2.5 bg-white/20 dark:bg-black/20 backdrop-blur-md rounded-full active:scale-95 transition-all relative flex items-center justify-center"
+                        title="Cart"
+                      >
+                        <ShoppingCart className="h-5 w-5 text-white" strokeWidth={2.5} />
+                        {cartCount > 0 && (
+                          <span className="absolute -top-1 -right-1 bg-[#DC2626] text-white text-[9px] font-bold h-4.5 w-4.5 rounded-full flex items-center justify-center border-2 border-white dark:border-[#1a1a1a]">
+                            {cartCount > 99 ? "99+" : cartCount}
+                          </span>
+                        )}
+                      </Link>
                       <Link 
                         to="/food/user/profile" 
                         onClick={(e) => {
@@ -2958,7 +2972,6 @@ export default function Home() {
                     restaurant?._id ||
                     `restaurant-${index}`,
                   );
-
                 const restaurantSlug =
                   typeof restaurant?.slug === "string" &&
                     restaurant.slug.trim()
@@ -2967,7 +2980,6 @@ export default function Home() {
                 const availability = getRestaurantAvailabilityStatus(
                   restaurant,
                   new Date(availabilityTick),
-                  { ignoreOperationalStatus: true },
                 );
                 // Direct favorite check - isFavorite is already memoized in context
                 const favorite = isFavorite(restaurantSlug);
@@ -3090,8 +3102,14 @@ export default function Home() {
                                     </span>
                                   </div>
                                   {Number(restaurant.rating) > 0 && (
-                                    <span className="text-[9px] font-bold text-gray-400 tracking-tight">
-                                      By {Math.floor(Math.random() * 5 + 1)}K+
+                                    <span className="text-[10px] font-medium text-gray-500 dark:text-gray-400 mt-0.5 whitespace-nowrap">
+                                      {(() => {
+                                        const count = Number(restaurant.totalRatings) || 0;
+                                        if (count === 1) return "1 rating";
+                                        if (count < 100) return `${count} ratings`;
+                                        if (count < 1000) return `${Math.floor(count / 100) * 100}+ ratings`;
+                                        return `${(count / 1000).toFixed(1)}K+ ratings`;
+                                      })()}
                                     </span>
                                   )}
                                 </div>
@@ -3106,10 +3124,28 @@ export default function Home() {
                                       <span>{availability.closingCountdownLabel}</span>
                                     </div>
                                   )}
-                                {!availability.isOpen && availability.openingTime && (
-                                  <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-gray-100 dark:bg-gray-800 text-gray-500 border border-gray-200 dark:border-gray-700 text-[10px] font-black uppercase tracking-widest">
-                                    <Clock className="h-3 w-3 flex-shrink-0" />
-                                    <span>Opens at {availability.openingTime}</span>
+                                {!availability.isOpen && (
+                                  <div className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-widest transition-all duration-300 ${
+                                    availability.reason === "inactive" || availability.reason === "not-accepting-orders"
+                                      ? "bg-red-50 dark:bg-red-950/20 text-red-600 dark:text-red-400 border border-red-100 dark:border-red-900/30"
+                                      : "bg-gray-100 dark:bg-gray-800 text-gray-500 dark:text-gray-400 border border-gray-200 dark:border-gray-700"
+                                  }`}>
+                                    {availability.reason === "inactive" || availability.reason === "not-accepting-orders" ? (
+                                      <>
+                                        <AlertCircle className="h-3.5 w-3.5 flex-shrink-0 text-red-500 dark:text-red-400" strokeWidth={3} />
+                                        <span>Offline</span>
+                                      </>
+                                    ) : availability.openingTime ? (
+                                      <>
+                                        <Clock className="h-3.5 w-3.5 flex-shrink-0 text-gray-500 dark:text-gray-400" strokeWidth={3} />
+                                        <span>Opens at {availability.openingTime}</span>
+                                      </>
+                                    ) : (
+                                      <>
+                                        <AlertCircle className="h-3.5 w-3.5 flex-shrink-0 text-gray-500 dark:text-gray-400" strokeWidth={3} />
+                                        <span>Closed</span>
+                                      </>
+                                    )}
                                   </div>
                                 )}
                               </div>

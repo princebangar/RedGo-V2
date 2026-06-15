@@ -107,6 +107,9 @@ const filterOptions = {
     { id: "not-delivered", label: "Order not delivered", key: "complaints" }
   ],
   "Order type": [
+    { id: "takeaway", label: "Takeaway", key: "orderType" },
+    { id: "dining", label: "Dining", key: "orderType" },
+    { id: "home-delivery", label: "Home delivery", key: "orderType" },
     { id: "self-delivery", label: "Self delivery", key: "orderType" },
     { id: "food-rescue", label: "Food rescue", key: "orderType" },
     { id: "large-order", label: "Large order", key: "orderType" },
@@ -178,11 +181,12 @@ export default function AllOrdersPage() {
     
     // Format address (backend: deliveryAddress)
     const addr = order.deliveryAddress || order.address || null
-    const address =
-      addr?.formattedAddress ||
-      addr?.address ||
-      (addr?.street ? `${addr.street}, ${addr.city || ""}`.trim() : "") ||
-      "Address not available"
+    const address = order.orderType === "takeaway"
+      ? "Self-Pickup Order"
+      : (addr?.formattedAddress ||
+         addr?.address ||
+         (addr?.street ? `${addr.street}, ${addr.city || ""}`.trim() : "") ||
+         "Address not available")
     
     // Get restaurant name
     const restaurantName = restaurantData?.name || order.restaurantId?.name || 'Restaurant'
@@ -221,8 +225,13 @@ export default function AllOrdersPage() {
     // Determine tags based on order properties
     const tags = []
     if (order.scheduledAt) tags.push('SCHEDULED')
-    if (order.sendCutlery) tags.push('CUTLERY')
-    tags.push('HOME DELIVERY')
+    if (order.orderType === 'takeaway') {
+      tags.push('TAKEAWAY')
+    } else if (order.orderType === 'dining') {
+      tags.push('DINING')
+    } else {
+      tags.push('HOME DELIVERY')
+    }
     // Check if all items are veg
     const allVeg = items.every(item => item.isVeg !== false)
     if (allVeg && items.length > 0) tags.push('VEG ONLY')
@@ -240,7 +249,8 @@ export default function AllOrdersPage() {
       reason,
       tags: tags.length > 0 ? tags : undefined,
       createdAt: order.createdAt,
-      mongoId: order._id?.toString()
+      mongoId: order._id?.toString(),
+      orderType: order.orderType || 'delivery'
     }
   }, [restaurantData])
 
@@ -631,11 +641,18 @@ export default function AllOrdersPage() {
                 <span className={`px-2.5 py-1 rounded text-xs font-bold ${getStatusColor(order.status)}`}>
                   {order.status}
                 </span>
-                {order.tags && order.tags.map((tag, idx) => (
-                  <span key={idx} className="px-2.5 py-1 rounded text-xs font-bold bg-green-600 text-white">
-                    {tag}
-                  </span>
-                ))}
+                {order.tags && order.tags.map((tag, idx) => {
+                  let badgeColor = "bg-green-600 text-white";
+                  if (tag === "TAKEAWAY") badgeColor = "bg-orange-600 text-white";
+                  else if (tag === "DINING") badgeColor = "bg-blue-600 text-white";
+                  else if (tag === "HOME DELIVERY") badgeColor = "bg-slate-600 text-white";
+
+                  return (
+                    <span key={idx} className={`px-2.5 py-1 rounded text-xs font-bold ${badgeColor}`}>
+                      {tag}
+                    </span>
+                  );
+                })}
               </div>
               <div className="flex items-center gap-2">
                 <span className="text-xs text-gray-500">{order.date}, {order.time}</span>

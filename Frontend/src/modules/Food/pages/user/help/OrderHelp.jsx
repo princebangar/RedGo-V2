@@ -157,6 +157,8 @@ export default function OrderHelp() {
 
   const getStatusLabel = (status) => {
     switch (status) {
+      case "placed":
+        return "Order Placed"
       case "confirmed":
         return "Confirmed"
       case "preparing":

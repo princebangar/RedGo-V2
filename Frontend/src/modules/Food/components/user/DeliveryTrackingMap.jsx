@@ -83,6 +83,7 @@ const DeliveryTrackingMap = ({
   order = null,
   onEtaUpdate = null
 }) => {
+  const isTakeaway = order?.orderType === 'takeaway';
   const [map, setMap] = useState(null);
   const [riderLocation, setRiderLocation] = useState(null);
   const [currentEta, setCurrentEta] = useState(null);
@@ -330,8 +331,8 @@ const DeliveryTrackingMap = ({
     if (!fullRoutePath || fullRoutePath.length < 2) {
       return { traveledPath: [], remainingPath: [] };
     }
-    if (!displayRiderLocation || !isLoaded || !window.google?.maps?.geometry) {
-      // No rider yet: show everything as remaining
+    if (isTakeaway || !displayRiderLocation || !isLoaded || !window.google?.maps?.geometry) {
+      // No rider yet or takeaway: show everything as remaining
       return { traveledPath: [], remainingPath: fullRoutePath };
     }
 
@@ -482,7 +483,7 @@ const DeliveryTrackingMap = ({
         </OverlayView>
 
         {/* ── RIDER MARKER ── */}
-        {displayRiderLocation && (
+        {displayRiderLocation && !isTakeaway && (
           <OverlayView
             position={displayRiderLocation}
             mapPaneName={OverlayView.MARKER_LAYER}
@@ -508,7 +509,7 @@ const DeliveryTrackingMap = ({
 
       {/* LIVE ARRIVAL BADGE */}
       <AnimatePresence>
-        {riderLocation && currentEta && (
+        {riderLocation && currentEta && !isTakeaway && (
           <motion.div
             initial={{ x: -20, opacity: 0 }}
             animate={{ x: 0, opacity: 1 }}

@@ -1842,6 +1842,7 @@ export default function Cart() {
         // `useZone()` can return `null`. Zod expects string/undefined, not null.
         zoneId: zoneId || undefined,
         scheduledAt: isScheduled ? new Date(`${scheduledDate}T${scheduledTime}:00`).toISOString() : undefined,
+        orderType: orderType || "delivery",
       };
       // Log final order details (including paymentMethod for COD debugging)
       debugLog('?? FINAL: Sending order to backend with:', {
@@ -2307,26 +2308,14 @@ export default function Cart() {
                 </button>
               </div>
 
-
-              {/* Note & Cutlery */}
-              <div className="bg-white dark:bg-[#1a1a1a] px-4 md:px-6 py-4 rounded-2xl shadow-sm border border-slate-100 dark:border-gray-800 flex flex-col sm:flex-row gap-3">
-                <div className="flex-1 flex flex-col gap-2">
-                  <button
-                    onClick={() => setShowRestaurantNoteInput(!showRestaurantNoteInput)}
-                    className="flex-1 flex items-center gap-2 px-3 md:px-4 py-2 md:py-3 border border-gray-200 dark:border-gray-700 rounded-lg md:rounded-xl text-sm md:text-base text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800"
-                  >
-                    <Utensils className="h-4 w-4 md:h-5 md:w-5" />
-                    <span className="truncate">{restaurantNote || "Add note for restaurant"}</span>
-                  </button>
-                </div>
+              {/* Note for restaurant */}
+              <div className="bg-white dark:bg-[#1a1a1a] px-4 md:px-6 py-4 rounded-2xl shadow-sm border border-slate-100 dark:border-gray-800">
                 <button
-                  onClick={() => setSendCutlery(!sendCutlery)}
-                  className={`flex items-center gap-2 px-3 md:px-4 py-2 md:py-3 border rounded-lg md:rounded-xl text-sm md:text-base h-full ${sendCutlery ? 'border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-300' : 'border-[#DC2626] dark:border-[#DC2626]/50 text-[#DC2626] dark:text-[#DC2626] bg-[#DC262605] dark:bg-[#DC262610]'}`}
+                  onClick={() => setShowRestaurantNoteInput(!showRestaurantNoteInput)}
+                  className="w-full flex items-center gap-2 px-3 md:px-4 py-2 md:py-3 border border-gray-200 dark:border-gray-700 rounded-lg md:rounded-xl text-sm md:text-base text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800"
                 >
                   <Utensils className="h-4 w-4 md:h-5 md:w-5" />
-                  <span className="whitespace-nowrap">
-                    {sendCutlery ? "Send cutlery" : "Don't send"}
-                  </span>
+                  <span className="truncate">{restaurantNote || "Add note for restaurant"}</span>
                 </button>
               </div>
 
@@ -3225,16 +3214,29 @@ export default function Cart() {
                 >
                   <div className="flex items-center justify-center gap-2 mb-2">
                     <div className="w-5 h-5 text-red-500 dark:text-red-400">
-                      <svg viewBox="0 0 24 24" fill="currentColor">
-                        <path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zm0 9.5c-1.38 0-2.5-1.12-2.5-2.5s1.12-2.5 2.5-2.5 2.5 1.12 2.5 2.5-1.12 2.5-2.5 2.5z" />
-                      </svg>
+                      {orderType === "takeaway" ? (
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="w-5 h-5">
+                          <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" />
+                          <polyline points="9 22 9 12 15 12 15 22" />
+                        </svg>
+                      ) : (
+                        <svg viewBox="0 0 24 24" fill="currentColor">
+                          <path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zm0 9.5c-1.38 0-2.5-1.12-2.5-2.5s1.12-2.5 2.5-2.5 2.5 1.12 2.5 2.5-1.12 2.5-2.5 2.5z" />
+                        </svg>
+                      )}
                     </div>
                     <h2 className="text-2xl font-bold text-gray-900 dark:text-white">
-                      {defaultAddress?.city || "Your Location"}
+                      {orderType === "takeaway"
+                        ? (restaurantData?.name || "Restaurant")
+                        : (defaultAddress?.city || "Your Location")}
                     </h2>
                   </div>
-                  <p className="text-gray-500 dark:text-gray-400 text-base">
-                    {defaultAddress ? (formatFullAddress(defaultAddress) || defaultAddress?.formattedAddress || defaultAddress?.address || "Delivery Address") : "Delivery Address"}
+                  <p className="text-gray-500 dark:text-gray-400 text-base max-w-sm mx-auto">
+                    {orderType === "takeaway"
+                      ? (restaurantData?.location
+                          ? (restaurantData.location.addressLine1 || restaurantData.location.formattedAddress || restaurantData.location.address || `${restaurantData.location.city || ''}${restaurantData.location.area ? ', ' + restaurantData.location.area : ''}`)
+                          : (restaurantData?.address || restaurantData?.formattedAddress || "Self-Pickup from Restaurant"))
+                      : (defaultAddress ? (formatFullAddress(defaultAddress) || defaultAddress?.formattedAddress || defaultAddress?.address || "Delivery Address") : "Delivery Address")}
                   </p>
                 </div>
 
@@ -3244,7 +3246,11 @@ export default function Cart() {
                   style={{ animation: 'slideUp 0.5s ease-out 0.8s both' }}
                 >
                   <h3 className="text-3xl font-bold text-[#DC2626] dark:text-[#a65d8a] mb-2">Order Placed!</h3>
-                  <p className="text-gray-600 dark:text-gray-300">Your delicious food is on its way</p>
+                  <p className="text-gray-600 dark:text-gray-300">
+                    {orderType === "takeaway"
+                      ? "Your delicious food is being prepared for pickup"
+                      : "Your delicious food is on its way"}
+                  </p>
                   {orderSuccessSavingsAmount > 0 && (
                     <p className="mt-2 text-sm text-[#DC2626] dark:text-[#a65d8a]">
                       You save approx {RUPEE_SYMBOL}{orderSuccessSavingsAmount.toFixed(0)} on this order

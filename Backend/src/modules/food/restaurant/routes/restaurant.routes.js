@@ -200,6 +200,7 @@ router.get('/orders', authMiddleware, requireRestaurant, orderController.listOrd
 router.get('/orders/:orderId', authMiddleware, requireRestaurant, orderController.getOrderByIdRestaurantController);
 router.patch('/orders/:orderId/status', authMiddleware, requireRestaurant, orderController.updateOrderStatusRestaurantController);
 router.post('/orders/:orderId/resend-notification', authMiddleware, requireRestaurant, orderController.resendDeliveryNotificationRestaurantController);
+router.post('/orders/:orderId/complete-takeaway', authMiddleware, requireRestaurant, orderController.completeTakeawayOrderRestaurantController);
 
 // Complaints (restaurant dashboard)
 router.get('/complaints', authMiddleware, requireRestaurant, getRestaurantComplaintsController);

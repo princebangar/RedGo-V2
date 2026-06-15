@@ -1,11 +1,10 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, memo } from "react";
 import { useNavigate } from "react-router-dom";
 import {
   checkOnboardingStatus,
   isRestaurantOnboardingComplete,
 } from "@food/utils/onboardingUtils";
 import { motion, AnimatePresence } from "framer-motion";
-import Lenis from "lenis";
 import {
   Printer,
   Volume2,
@@ -23,6 +22,8 @@ import {
   MessageSquare,
   FileText,
   Search,
+  ShoppingBag,
+  MapPin,
 } from "lucide-react";
 import { toast } from "sonner";
 import BottomNavOrders from "@food/components/restaurant/BottomNavOrders";
@@ -46,11 +47,25 @@ const filterTabs = [
   { id: "ready", label: "Ready" },
   { id: "out-for-delivery", label: "Out for delivery" },
   { id: "scheduled", label: "Scheduled" },
-  { id: "table-booking", label: "Table Booking" },
   { id: "completed", label: "Completed" },
   { id: "cancelled", label: "Cancelled" },
 ];
 
+// Active statuses come first (group 0), terminal statuses come after (group 1)
+const allOrdersStatusGroup = {
+  pending: 0,
+  confirmed: 0,
+  preparing: 0,
+  ready: 0,
+  out_for_delivery: 0,
+  scheduled: 0,
+  delivered: 1,
+  completed: 1,
+  picked_up: 1,
+  cancelled: 1,
+};
+
+// Within active group: lower priority number = higher urgency
 const allOrdersStatusPriority = {
   pending: 0,
   confirmed: 1,
@@ -60,6 +75,7 @@ const allOrdersStatusPriority = {
   scheduled: 5,
   delivered: 6,
   completed: 6,
+  picked_up: 6,
   cancelled: 7,
 };
 
@@ -70,12 +86,20 @@ const getAllOrdersTimestamp = (order) =>
   order?.createdAt ||
   new Date().toISOString();
 
-const transformOrderForList = (order) => ({
+const TERMINAL_STATUSES = new Set(["delivered", "completed", "picked_up", "cancelled"]);
+
+const transformOrderForList = (order) => {
+  const isTerminal = TERMINAL_STATUSES.has(order.status);
+  return {
   orderId: order.orderId || order._id,
   mongoId: order._id,
   status: order.status || "pending",
   customerName: order.userId?.name || order.customerName || "Customer",
-  type: "Home Delivery",
+  type: order.orderType === "takeaway"
+    ? "Takeaway"
+    : order.orderType === "dining"
+      ? "Dining"
+      : "Home Delivery",
   tableOrToken: null,
   timePlaced: new Date(getAllOrdersTimestamp(order)).toLocaleDateString(
     "en-US",
@@ -97,12 +121,19 @@ const transformOrderForList = (order) => ({
   dispatchStatus: order.dispatch?.status || null,
   preparingTimestamp: order.tracking?.preparing?.timestamp
     ? new Date(order.tracking.preparing.timestamp)
-    : new Date(order.createdAt || Date.now()),
-  initialETA: order.estimatedDeliveryTime || 30,
-  sortTimestamp: new Date(getAllOrdersTimestamp(order)).getTime(),
+    : (order.acceptedAt 
+       ? new Date(order.acceptedAt) 
+       : new Date(order.createdAt || Date.now())),
+  initialETA: order.preparationTime || order.estimatedDeliveryTime || 30,
+  // For active orders: sort by creation time (newest first within same status)
+  // For terminal orders: sort by the most recent event (cancelledAt/deliveredAt/updatedAt)
+  sortTimestamp: isTerminal
+    ? new Date(getAllOrdersTimestamp(order)).getTime()
+    : new Date(order.createdAt || Date.now()).getTime(),
   scheduledAt: order.scheduledAt || null,
   restaurantNote: order.restaurantNote || null,
-});
+  };
+};
 
 // Completed Orders List Component
 function CompletedOrders({ onSelectOrder, refreshToken = 0 }) {
@@ -129,7 +160,11 @@ function CompletedOrders({ onSelectOrder, refreshToken = 0 }) {
             mongoId: order._id,
             status: order.status || "delivered",
             customerName: order.userId?.name || order.customerName || "Customer",
-            type: "Home Delivery",
+            type: order.orderType === "takeaway"
+              ? "Takeaway"
+              : order.orderType === "dining"
+                ? "Dining"
+                : "Home Delivery",
             tableOrToken: null,
             timePlaced: new Date(order.createdAt).toLocaleTimeString("en-US", {
               hour: "2-digit",
@@ -270,7 +305,7 @@ function CompletedOrders({ onSelectOrder, refreshToken = 0 }) {
                       <div className="flex flex-col items-end gap-1">
                         <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[9px] font-bold border border-emerald-200 bg-emerald-50 text-emerald-600">
                           <span className="h-1 w-1 rounded-full bg-emerald-500" />
-                          Delivered
+                          {order.type === "Takeaway" ? "Picked Up" : "Delivered"}
                         </span>
                         <span className="text-[9px] text-gray-400 font-medium">
                           {deliveredDate}
@@ -335,7 +370,11 @@ function CancelledOrders({ onSelectOrder, refreshToken = 0 }) {
             mongoId: order._id,
             status: order.status || "cancelled",
             customerName: order.userId?.name || order.customerName || "Customer",
-            type: "Home Delivery",
+            type: order.orderType === "takeaway"
+              ? "Takeaway"
+              : order.orderType === "dining"
+                ? "Dining"
+                : "Home Delivery",
             tableOrToken: null,
             timePlaced: new Date(order.createdAt).toLocaleTimeString("en-US", {
               hour: "2-digit",
@@ -611,6 +650,8 @@ function TableBookings() {
     }
   };
 
+  const pendingCount = bookings.filter(b => String(b.status).toLowerCase() === 'pending').length;
+
   if (loading)
     return (
       <div className="text-center py-10 text-gray-400">Loading bookings...</div>
@@ -748,7 +789,7 @@ function TableBookings() {
   );
 }
 
-function AllOrders({ onSelectOrder, onCancel }) {
+function AllOrders({ onSelectOrder, onCancel, onVerifyTakeaway, refreshToken = 0 }) {
   const navigate = useNavigate();
   const [orders, setOrders] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -770,11 +811,22 @@ function AllOrders({ onSelectOrder, onCancel }) {
           const transformedOrders = response.data.data.orders
             .map(transformOrderForList)
             .sort((a, b) => {
-              const priorityDiff =
-                (allOrdersStatusPriority[a.status] ?? 999) -
-                (allOrdersStatusPriority[b.status] ?? 999);
-              if (priorityDiff !== 0) return priorityDiff;
-              return b.sortTimestamp - a.sortTimestamp;
+              // Group 0 = active orders, Group 1 = terminal (delivered/cancelled)
+              const groupA = allOrdersStatusGroup[a.status] ?? 0;
+              const groupB = allOrdersStatusGroup[b.status] ?? 0;
+              if (groupA !== groupB) return groupA - groupB;
+
+              if (groupA === 0) {
+                // Within active orders: sort by status urgency first, then newest created first
+                const priorityDiff =
+                  (allOrdersStatusPriority[a.status] ?? 999) -
+                  (allOrdersStatusPriority[b.status] ?? 999);
+                if (priorityDiff !== 0) return priorityDiff;
+                return b.sortTimestamp - a.sortTimestamp;
+              } else {
+                // Within terminal orders: sort purely by most recent event (newest first)
+                return b.sortTimestamp - a.sortTimestamp;
+              }
             });
 
           setOrders(transformedOrders);
@@ -822,7 +874,7 @@ function AllOrders({ onSelectOrder, onCancel }) {
       if (countdownIntervalId) clearInterval(countdownIntervalId);
       document.removeEventListener("visibilitychange", handleVisibility);
     };
-  }, []);
+  }, [refreshToken]);
 
   const handleMarkReady = async ({ orderId, mongoId }) => {
     const orderKey = mongoId || orderId;
@@ -895,19 +947,11 @@ function AllOrders({ onSelectOrder, onCancel }) {
 
             if (normalizedStatus === "preparing" && order.preparingTimestamp) {
               const elapsedMs = currentTime - order.preparingTimestamp;
-              const elapsedMinutes = Math.floor(elapsedMs / 60000);
-              const remainingMinutes = Math.max(
-                0,
-                order.initialETA - elapsedMinutes,
-              );
+              const remainingMs = order.initialETA * 60000 - elapsedMs;
+              const remainingMinutes = Math.ceil(remainingMs / 60000);
 
               if (remainingMinutes <= 0) {
-                const remainingSeconds = Math.max(
-                  0,
-                  Math.floor(order.initialETA * 60 - elapsedMs / 1000),
-                );
-                etaDisplay =
-                  remainingSeconds > 0 ? `${remainingSeconds} secs` : "0 mins";
+                etaDisplay = "0 mins";
               } else {
                 etaDisplay = `${remainingMinutes} mins`;
               }
@@ -928,6 +972,148 @@ function AllOrders({ onSelectOrder, onCancel }) {
                 isMarkingReady={Boolean(
                   markingReadyOrderIds[order.mongoId || order.orderId],
                 )}
+                onVerifyTakeaway={onVerifyTakeaway}
+              />
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// Takeaway Orders Component — same data as AllOrders but filtered to Takeaway type only
+function TakeawayOrders({ onSelectOrder, onCancel, onVerifyTakeaway, refreshToken = 0 }) {
+  const [orders, setOrders] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [currentTime, setCurrentTime] = useState(new Date());
+  const [markingReadyOrderIds, setMarkingReadyOrderIds] = useState({});
+
+  useEffect(() => {
+    let isMounted = true;
+    let intervalId = null;
+    let countdownIntervalId = null;
+
+    const fetchOrders = async () => {
+      try {
+        const response = await restaurantAPI.getOrders();
+        if (!isMounted) return;
+
+        if (response.data?.success && response.data.data?.orders) {
+          const transformedOrders = response.data.data.orders
+            .filter((o) => String(o.orderType || '').toLowerCase() === 'takeaway')
+            .map(transformOrderForList)
+            .sort((a, b) => {
+              const groupA = allOrdersStatusGroup[a.status] ?? 0;
+              const groupB = allOrdersStatusGroup[b.status] ?? 0;
+              if (groupA !== groupB) return groupA - groupB;
+              if (groupA === 0) {
+                const priorityDiff =
+                  (allOrdersStatusPriority[a.status] ?? 999) -
+                  (allOrdersStatusPriority[b.status] ?? 999);
+                if (priorityDiff !== 0) return priorityDiff;
+                return b.sortTimestamp - a.sortTimestamp;
+              }
+              return b.sortTimestamp - a.sortTimestamp;
+            });
+
+          setOrders(transformedOrders);
+        } else {
+          setOrders([]);
+        }
+      } catch (error) {
+        if (error.code !== 'ERR_NETWORK' && error.response?.status !== 404 && error.response?.status !== 401) {
+          debugError('Error fetching takeaway orders:', error);
+        }
+        setOrders([]);
+      } finally {
+        if (isMounted) setLoading(false);
+      }
+    };
+
+    fetchOrders();
+    intervalId = setInterval(fetchOrders, 10000);
+    const handleVisibility = () => { if (!document.hidden) fetchOrders(); };
+    document.addEventListener('visibilitychange', handleVisibility);
+    countdownIntervalId = setInterval(() => { if (isMounted) setCurrentTime(new Date()); }, 1000);
+
+    return () => {
+      isMounted = false;
+      if (intervalId) clearInterval(intervalId);
+      if (countdownIntervalId) clearInterval(countdownIntervalId);
+      document.removeEventListener('visibilitychange', handleVisibility);
+    };
+  }, [refreshToken]);
+
+  const handleMarkReady = async ({ orderId, mongoId }) => {
+    const orderKey = mongoId || orderId;
+    if (!orderKey || markingReadyOrderIds[orderKey]) return;
+    try {
+      setMarkingReadyOrderIds((prev) => ({ ...prev, [orderKey]: true }));
+      await restaurantAPI.markOrderReady(orderKey);
+      setOrders((prev) =>
+        prev.map((order) =>
+          (order.mongoId || order.orderId) === orderKey
+            ? { ...order, status: 'ready', eta: null, sortTimestamp: Date.now() }
+            : order,
+        ),
+      );
+      toast.success('Order marked as ready');
+    } catch (error) {
+      debugError('Error marking takeaway order as ready:', error);
+      toast.error(error.response?.data?.message || 'Failed to mark order as ready');
+    } finally {
+      setMarkingReadyOrderIds((prev) => ({ ...prev, [orderKey]: false }));
+    }
+  };
+
+  if (loading) {
+    return (
+      <div className="pt-4 pb-6">
+        <div className="flex items-baseline justify-between mb-3">
+          <h2 className="text-base font-semibold text-black">Takeaway orders</h2>
+          <Loader2 className="w-4 h-4 animate-spin text-gray-500" />
+        </div>
+        <div className="text-center py-8 text-gray-500 text-sm">Loading...</div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="pt-4 pb-6">
+      <div className="flex items-baseline justify-between mb-3">
+        <div className="flex items-center gap-2">
+          <h2 className="text-base font-semibold text-black">Takeaway orders</h2>
+          <span className="text-xs text-gray-500">({orders.length})</span>
+        </div>
+      </div>
+      {orders.length === 0 ? (
+        <div className="text-center py-8 text-gray-500 text-sm">No takeaway orders found</div>
+      ) : (
+        <div>
+          {orders.map((order) => {
+            const normalizedStatus = String(order.status || '').toLowerCase();
+            let etaDisplay = order.eta;
+            if (normalizedStatus === 'preparing' && order.preparingTimestamp) {
+              const elapsedMs = currentTime - order.preparingTimestamp;
+              const remainingMs = order.initialETA * 60000 - elapsedMs;
+              const remainingMinutes = Math.ceil(remainingMs / 60000);
+              if (remainingMinutes <= 0) {
+                etaDisplay = '0 mins';
+              } else {
+                etaDisplay = `${remainingMinutes} mins`;
+              }
+            }
+            return (
+              <OrderCard
+                key={order.orderId || order.mongoId}
+                {...order}
+                eta={etaDisplay}
+                onSelect={onSelectOrder}
+                onCancel={normalizedStatus === 'preparing' ? onCancel : undefined}
+                onMarkReady={normalizedStatus === 'preparing' ? handleMarkReady : undefined}
+                isMarkingReady={Boolean(markingReadyOrderIds[order.mongoId || order.orderId])}
+                onVerifyTakeaway={onVerifyTakeaway}
               />
             );
           })}
@@ -938,7 +1124,7 @@ function AllOrders({ onSelectOrder, onCancel }) {
 }
 
 // Search Results Component
-function SearchResults({ query, results, isLoading, onSelectOrder }) {
+function SearchResults({ query, results, isLoading, onSelectOrder, onVerifyTakeaway }) {
   if (isLoading) {
     return (
       <div className="flex flex-col items-center justify-center p-20">
@@ -973,6 +1159,7 @@ function SearchResults({ query, results, isLoading, onSelectOrder }) {
               key={order.orderId || order.mongoId}
               {...order}
               onSelect={onSelectOrder}
+              onVerifyTakeaway={onVerifyTakeaway}
             />
           ))}
         </div>
@@ -1117,6 +1304,13 @@ export default function OrdersMain() {
   const [cancelReason, setCancelReason] = useState("");
   const [orderToCancel, setOrderToCancel] = useState(null);
   const [acceptSwipeProgress, setAcceptSwipeProgress] = useState(0);
+
+  // Takeaway OTP verification states
+  const [showVerifyTakeawayPopup, setShowVerifyTakeawayPopup] = useState(false);
+  const [verifyingOrder, setVerifyingOrder] = useState(null);
+  const [takeawayOtpInput, setTakeawayOtpInput] = useState("");
+  const [isSubmittingVerifyTakeaway, setIsSubmittingVerifyTakeaway] = useState(false);
+  const otpInputRef = useRef(null);
   const [isAcceptingOrder, setIsAcceptingOrder] = useState(false);
   const shownOrdersRef = useRef(new Set()); // Track orders already shown in popup
   const acceptSliderRef = useRef(null);
@@ -1136,6 +1330,7 @@ export default function OrdersMain() {
   // Pending counts for tabs
   const [pendingBookingsCount, setPendingBookingsCount] = useState(0);
   const [pendingOrdersCount, setPendingOrdersCount] = useState(0);
+  const [activeTakeawayCount, setActiveTakeawayCount] = useState(0);
   const [pendingDiningRequest, setPendingDiningRequest] = useState(null);
 
   // Fetch pending counts and settings
@@ -1173,12 +1368,20 @@ export default function OrdersMain() {
         const ordersRes = await restaurantAPI.getOrders({ page: 1, limit: 100 });
         if (ordersRes.data.success) {
           const orders = Array.isArray(ordersRes.data.data?.orders) ? ordersRes.data.data.orders : [];
-          const pending = orders.filter(o => 
-            String(o.status).toLowerCase() === 'pending' || 
+          const pending = orders.filter(o =>
+            String(o.status).toLowerCase() === 'pending' ||
             String(o.status).toLowerCase() === 'created' ||
             String(o.status).toLowerCase() === 'confirmed'
           ).length;
           setPendingOrdersCount(pending);
+
+          // Count active (non-terminal) takeaway orders for the button badge
+          const activeStatuses = new Set(['pending', 'confirmed', 'preparing', 'ready', 'out_for_delivery', 'created']);
+          const takeawayActive = orders.filter(o =>
+            (String(o.orderType || '').toLowerCase() === 'takeaway') &&
+            activeStatuses.has(String(o.status || o.orderStatus || '').toLowerCase())
+          ).length;
+          setActiveTakeawayCount(takeawayActive);
         }
       } catch (error) {
         // Non-blocking
@@ -1436,25 +1639,7 @@ export default function OrdersMain() {
     }
   };
 
-  // Lenis smooth scrolling
-  useEffect(() => {
-    const lenis = new Lenis({
-      duration: 1.2,
-      easing: (t) => Math.min(1, 1.001 - Math.pow(2, -10 * t)),
-      smoothWheel: true,
-    });
 
-    function raf(time) {
-      lenis.raf(time);
-      requestAnimationFrame(raf);
-    }
-
-    requestAnimationFrame(raf);
-
-    return () => {
-      lenis.destroy();
-    };
-  }, []);
 
   // Show new order popup when real order notification arrives from Socket.IO
   useEffect(() => {
@@ -1532,6 +1717,7 @@ export default function OrdersMain() {
       }
       lastOrderToastRef.current = { key: toastKey, at: now };
 
+      setShowRejectPopup(false);
       setPopupOrder((prev) => {
         const base = prev || activePopupOrder || {};
         return {
@@ -1651,6 +1837,7 @@ export default function OrdersMain() {
                 orderToPopup.payment?.method ||
                 null,
               payment: orderToPopup.payment,
+              orderType: orderToPopup.orderType || "delivery",
             };
 
             debugLog("?? Found order ready for popup:", orderForPopup);
@@ -1697,20 +1884,32 @@ export default function OrdersMain() {
         if (stopSound) {
           stopSound();
         }
+        
+        // Instantly close the reject reasons popup
+        setShowRejectPopup(false);
+
+        // Show cancelled status in the main popup
+        setPopupOrder((prev) => {
+          const base = prev || orderToReject || {};
+          return {
+            ...base,
+            status: "cancelled",
+            orderStatus: "cancelled"
+          };
+        });
+
         restaurantAPI.rejectOrder(orderId, "No response from restaurant (Auto-rejected)")
           .then(() => {
             toast.info("Order auto-rejected due to no response");
             requestOrdersRefresh();
-            setShowNewOrderPopup(false);
-            setPopupOrder(null);
-            clearNewOrder();
-            setCountdown(240);
+            // The 2.5s timer in the other useEffect will close the main popup
           })
           .catch((err) => {
             debugError("Auto-reject failed:", err);
             setShowNewOrderPopup(false);
           });
       } else {
+        setShowRejectPopup(false);
         setShowNewOrderPopup(false);
       }
     }
@@ -1802,6 +2001,11 @@ export default function OrdersMain() {
 
   const triggerSwipeAccept = () => {
     if (isAcceptingOrder) return;
+    const activeOrder = popupOrder || newOrder;
+    const orderId = activeOrder?.orderMongoId || activeOrder?.orderId || activeOrder?._id || activeOrder?.id;
+    if (stopSound) stopSound();
+    if (clearNewOrder) clearNewOrder(orderId);
+
     setAcceptSwipeProgress(1);
     setTimeout(() => {
       handleAcceptOrder();
@@ -1887,7 +2091,7 @@ export default function OrdersMain() {
 
     setShowNewOrderPopup(false);
     setPopupOrder(null);
-    clearNewOrder();
+    clearNewOrder(orderId);
     setCountdown(240);
     setPrepTime(11);
     setAcceptSwipeProgress(0);
@@ -1899,6 +2103,14 @@ export default function OrdersMain() {
 
   // Handle reject order
   const handleRejectClick = () => {
+    const orderToReject = popupOrder || newOrder;
+    const orderId = orderToReject?.orderMongoId || orderToReject?.orderId || orderToReject?._id || orderToReject?.id;
+    if (stopSound) {
+      stopSound();
+    }
+    if (clearNewOrder) {
+      clearNewOrder(orderId);
+    }
     setShowRejectPopup(true);
   };
 
@@ -1912,10 +2124,11 @@ export default function OrdersMain() {
       stopSound();
     }
 
+    const orderId = orderToReject.orderMongoId || orderToReject.orderId || orderToReject._id || orderToReject.id;
+
     // Reject order via API if we have a real order
     if (orderToReject?.orderMongoId || orderToReject?.orderId) {
       try {
-        const orderId = orderToReject.orderMongoId || orderToReject.orderId;
         await restaurantAPI.rejectOrder(orderId, rejectReason);
         debugLog("? Order rejected:", orderId);
         requestOrdersRefresh();
@@ -1929,17 +2142,19 @@ export default function OrdersMain() {
     setShowRejectPopup(false);
     setShowNewOrderPopup(false);
     setPopupOrder(null);
-    clearNewOrder();
+    clearNewOrder(orderId);
     setRejectReason("");
     setCountdown(240);
     setPrepTime(11);
   };
 
   const handleRejectCancel = () => {
+    const orderToReject = popupOrder || newOrder;
+    const orderId = orderToReject?.orderMongoId || orderToReject?.orderId || orderToReject?._id || orderToReject?.id;
     setShowRejectPopup(false);
     setShowNewOrderPopup(false);
     setPopupOrder(null);
-    clearNewOrder();
+    clearNewOrder(orderId);
     setRejectReason("");
     setCountdown(240);
   };
@@ -1971,6 +2186,44 @@ export default function OrdersMain() {
     setShowCancelPopup(false);
     setOrderToCancel(null);
     setCancelReason("");
+  };
+
+  // Handle takeaway verification modal opening
+  const handleVerifyTakeawayClick = (order) => {
+    setVerifyingOrder(order);
+    setTakeawayOtpInput("");
+    setShowVerifyTakeawayPopup(true);
+  };
+
+  // Handle OTP verification and order completion
+  const handleVerifyTakeawayConfirm = async () => {
+    if (!verifyingOrder || !takeawayOtpInput.trim()) return;
+    
+    setIsSubmittingVerifyTakeaway(true);
+    try {
+      const orderId = verifyingOrder.mongoId || verifyingOrder.orderId;
+      await restaurantAPI.completeTakeawayOrder(orderId, takeawayOtpInput.trim());
+      
+      toast.success("Order verified & completed successfully");
+      requestOrdersRefresh();
+      setShowVerifyTakeawayPopup(false);
+      setVerifyingOrder(null);
+      setTakeawayOtpInput("");
+    } catch (error) {
+      debugError("Error verifying takeaway order:", error);
+      toast.error(error.response?.data?.message || "Invalid OTP");
+      // Clear input and refocus so restaurant can retry quickly
+      setTakeawayOtpInput("");
+      setTimeout(() => otpInputRef.current?.focus(), 50);
+    } finally {
+      setIsSubmittingVerifyTakeaway(false);
+    }
+  };
+
+  const handleVerifyTakeawayClose = () => {
+    setShowVerifyTakeawayPopup(false);
+    setVerifyingOrder(null);
+    setTakeawayOtpInput("");
   };
 
   // Toggle mute
@@ -2122,17 +2375,6 @@ export default function OrdersMain() {
         doc.text(restaurantNoteLines, 20, yPos + 7);
       }
 
-      // Cutlery preference
-      yPos += 15;
-      doc.setFont("helvetica", "normal");
-      doc.text(
-        orderToPrint.sendCutlery === false
-          ? "? Don't send cutlery"
-          : "? Send cutlery requested",
-        20,
-        yPos,
-      );
-
       // Footer
       const pageHeight = doc.internal.pageSize.height;
       doc.setFontSize(8);
@@ -2271,6 +2513,7 @@ export default function OrdersMain() {
           results={searchResults}
           isLoading={isSearching}
           onSelectOrder={handleSelectOrder}
+          onVerifyTakeaway={handleVerifyTakeawayClick}
         />
       );
     }
@@ -2281,6 +2524,8 @@ export default function OrdersMain() {
           <AllOrders
             onSelectOrder={handleSelectOrder}
             onCancel={handleCancelClick}
+            onVerifyTakeaway={handleVerifyTakeawayClick}
+            refreshToken={ordersRefreshToken}
           />
         );
       case "preparing":
@@ -2296,6 +2541,7 @@ export default function OrdersMain() {
         return (
           <ReadyOrders
             onSelectOrder={handleSelectOrder}
+            onVerifyTakeaway={handleVerifyTakeawayClick}
             refreshToken={ordersRefreshToken}
           />
         );
@@ -2322,6 +2568,15 @@ export default function OrdersMain() {
         );
       case "table-booking":
         return <TableBookings />;
+      case "takeaway-orders":
+        return (
+          <TakeawayOrders
+            onSelectOrder={handleSelectOrder}
+            onCancel={handleCancelClick}
+            onVerifyTakeaway={handleVerifyTakeawayClick}
+            refreshToken={ordersRefreshToken}
+          />
+        );
       case "cancelled":
         return (
           <CancelledOrders
@@ -2335,13 +2590,13 @@ export default function OrdersMain() {
   };
 
   return (
-    <div className="min-h-screen bg-gray-100 flex flex-col">
-      <div className="sticky top-0 z-50">
+    <div className="h-[100dvh] w-full bg-gray-100 flex flex-col overflow-hidden">
+      <div className="z-50 flex-shrink-0">
         <RestaurantNavbar showNotifications={true} hideSearch={true} />
       </div>
 
-      {/* Top Filter Bar - Sticky below navbar */}
-      <div className="sticky top-[72px] z-40 bg-gray-100 px-4 pb-2">
+      {/* Top Filter Bar */}
+      <div className="z-40 bg-gray-100 px-4 pb-2 flex-shrink-0">
         {/* Search Bar - Moved here to look like part of the content area */}
         <div className="py-3">
           <div className="relative group">
@@ -2420,19 +2675,13 @@ export default function OrdersMain() {
                 <div className="flex items-center gap-2 relative z-10">
                   <span className="flex items-center gap-1.5">
                     {tab.label}
-                    {tab.id === 'table-booking' && pendingBookingsCount > 0 && (
-                      <span className="px-1.5 py-0.5 rounded-full bg-red-100 text-[#B80B3D] text-[10px] font-black animate-bounce">
-                        {pendingBookingsCount}
-                      </span>
-                    )}
                     {tab.id === 'all' && pendingOrdersCount > 0 && (
                       <span className="px-1.5 py-0.5 rounded-full bg-amber-100 text-amber-700 text-[10px] font-black">
                         {pendingOrdersCount}
                       </span>
                     )}
                   </span>
-                  {((tab.id === 'table-booking' && pendingBookingsCount > 0) || 
-                    (tab.id === 'all' && pendingOrdersCount > 0)) && (
+                  {tab.id === 'all' && pendingOrdersCount > 0 && (
                     <span className="w-2 h-2 rounded-full bg-gradient-to-br from-[#B80B3D] to-[#66001D] animate-pulse shadow-[0_0_8px_rgba(239,68,68,0.6)]" />
                   )}
                 </div>
@@ -2446,72 +2695,13 @@ export default function OrdersMain() {
       <div
         ref={contentRef}
         className="flex-1 overflow-y-auto px-4 pb-24 content-scroll"
-        onTouchStart={handleTouchStart}
-        onTouchMove={handleTouchMove}
-        onTouchEnd={handleTouchEnd}
-        onMouseDown={(e) => {
-          mouseStartX.current = e.clientX;
-          mouseEndX.current = e.clientX;
-          isMouseDown.current = true;
-          isSwiping.current = false;
-        }}
-        onMouseMove={(e) => {
-          if (isMouseDown.current) {
-            if (!isSwiping.current) {
-              const deltaX = Math.abs(e.clientX - mouseStartX.current);
-              if (deltaX > 10) {
-                isSwiping.current = true;
-              }
-            }
-            if (isSwiping.current) {
-              mouseEndX.current = e.clientX;
-            }
-          }
-        }}
-        onMouseUp={() => {
-          if (isMouseDown.current && isSwiping.current) {
-            const swipeDistance = mouseStartX.current - mouseEndX.current;
-            const minSwipeDistance = 50;
-
-            if (
-              Math.abs(swipeDistance) > minSwipeDistance &&
-              !isTransitioning
-            ) {
-              const currentIndex = filterTabs.findIndex(
-                (tab) => tab.id === activeFilter,
-              );
-              let newIndex = currentIndex;
-
-              if (swipeDistance > 0 && currentIndex < filterTabs.length - 1) {
-                newIndex = currentIndex + 1;
-              } else if (swipeDistance < 0 && currentIndex > 0) {
-                newIndex = currentIndex - 1;
-              }
-
-              if (newIndex !== currentIndex) {
-                setIsTransitioning(true);
-                setTimeout(() => {
-                  setActiveFilter(filterTabs[newIndex].id);
-                  scrollToFilter(newIndex);
-                  setTimeout(() => setIsTransitioning(false), 300);
-                }, 50);
-              }
-            }
-          }
-
-          isMouseDown.current = false;
-          isSwiping.current = false;
-          mouseStartX.current = 0;
-          mouseEndX.current = 0;
-        }}
-        onMouseLeave={() => {
-          isMouseDown.current = false;
-          isSwiping.current = false;
-        }}>
+        style={{ WebkitOverflowScrolling: "touch" }}>
         <style>{`
           .content-scroll {
             scrollbar-width: none;
             -ms-overflow-style: none;
+            -webkit-overflow-scrolling: touch;
+            scroll-behavior: smooth;
           }
           .content-scroll::-webkit-scrollbar {
             display: none;
@@ -2627,6 +2817,82 @@ export default function OrdersMain() {
           </motion.div>
         )}
 
+        {searchQuery.trim() === '' && (
+          activeFilter === 'all' ||
+          activeFilter === 'preparing' ||
+          activeFilter === 'ready' ||
+          activeFilter === 'out-for-delivery' ||
+          activeFilter === 'scheduled' ||
+          activeFilter === 'table-booking' ||
+          activeFilter === 'takeaway-orders'
+        ) && (
+          <div className="pt-2 pb-2 flex justify-center gap-3 w-full">
+            {/* Takeaway Orders button — count hidden on 'all' tab */}
+            <motion.button
+              onClick={() => {
+                if (activeFilter === 'takeaway-orders') {
+                  setActiveFilter('all');
+                } else {
+                  setActiveFilter('takeaway-orders');
+                }
+              }}
+              className={`flex-1 min-w-0 py-3 rounded-full font-bold text-sm whitespace-nowrap relative overflow-hidden shadow-sm border border-gray-200 transition-all text-center ${
+                activeFilter === 'takeaway-orders' ? 'text-white' : 'bg-white text-black hover:bg-gray-50'
+              }`}
+              animate={{ scale: activeFilter === 'takeaway-orders' ? 1.05 : 1 }}
+              whileTap={{ scale: 0.95 }}>
+              {activeFilter === 'takeaway-orders' && (
+                <div className="absolute inset-0 bg-gradient-to-br from-[#B80B3D] to-[#66001D] rounded-full -z-10" />
+              )}
+              <div className="flex items-center justify-center gap-2 relative z-10">
+                <span className="flex items-center gap-1.5">
+                  Takeaway Orders
+                  {activeTakeawayCount > 0 && activeFilter !== 'all' && (
+                    <span className="px-1.5 py-0.5 rounded-full bg-amber-100 text-amber-700 text-[10px] font-black animate-bounce">
+                      {activeTakeawayCount}
+                    </span>
+                  )}
+                </span>
+                {activeTakeawayCount > 0 && activeFilter !== 'all' && (
+                  <span className="w-2 h-2 rounded-full bg-amber-500 animate-pulse shadow-[0_0_8px_rgba(245,158,11,0.6)]" />
+                )}
+              </div>
+            </motion.button>
+
+            {/* Table Booking button */}
+            <motion.button
+              onClick={() => {
+                if (activeFilter === 'table-booking') {
+                  setActiveFilter('all');
+                } else {
+                  setActiveFilter('table-booking');
+                }
+              }}
+              className={`flex-1 min-w-0 py-3 rounded-full font-bold text-sm whitespace-nowrap relative overflow-hidden shadow-sm border border-gray-200 transition-all text-center ${
+                activeFilter === 'table-booking' ? 'text-white' : 'bg-white text-black hover:bg-gray-50'
+              }`}
+              animate={{ scale: activeFilter === 'table-booking' ? 1.05 : 1 }}
+              whileTap={{ scale: 0.95 }}>
+              {activeFilter === 'table-booking' && (
+                <div className="absolute inset-0 bg-gradient-to-br from-[#B80B3D] to-[#66001D] rounded-full -z-10" />
+              )}
+              <div className="flex items-center justify-center gap-2 relative z-10">
+                <span className="flex items-center gap-1.5">
+                  Table Booking
+                  {pendingBookingsCount > 0 && (
+                    <span className="px-1.5 py-0.5 rounded-full bg-red-100 text-[#B80B3D] text-[10px] font-black animate-bounce">
+                      {pendingBookingsCount}
+                    </span>
+                  )}
+                </span>
+                {pendingBookingsCount > 0 && (
+                  <span className="w-2 h-2 rounded-full bg-gradient-to-br from-[#B80B3D] to-[#66001D] animate-pulse shadow-[0_0_8px_rgba(239,68,68,0.6)]" />
+                )}
+              </div>
+            </motion.button>
+          </div>
+        )}
+
         <AnimatePresence mode="wait">
           <motion.div
             key={activeFilter}
@@ -2660,9 +2926,36 @@ export default function OrdersMain() {
                 {/* Header */}
                 <div className="px-4 py-3 bg-white border-b border-gray-200 flex items-center justify-between">
                   <div className="flex-1">
-                    <h3 className="text-base font-bold text-gray-900">
-                      {(popupOrder || newOrder)?.orderId || "#Order"}
-                    </h3>
+                    <div className="flex items-center gap-2">
+                      <h3 className="text-base font-bold text-gray-900">
+                        {(popupOrder || newOrder)?.orderId || "#Order"}
+                      </h3>
+                      {(() => {
+                        const activeOrder = popupOrder || newOrder;
+                        if (!activeOrder) return null;
+                        const isTakeaway = activeOrder.orderType === "takeaway" || activeOrder.type === "Takeaway";
+                        const isDining = activeOrder.orderType === "dining" || activeOrder.type === "Dining";
+                        if (isTakeaway) {
+                          return (
+                            <span className="px-2.5 py-0.5 bg-orange-100 text-orange-700 text-[10px] font-bold rounded-full uppercase tracking-wider">
+                              Takeaway
+                            </span>
+                          );
+                        } else if (isDining) {
+                          return (
+                            <span className="px-2.5 py-0.5 bg-blue-100 text-blue-700 text-[10px] font-bold rounded-full uppercase tracking-wider">
+                              Dining
+                            </span>
+                          );
+                        } else {
+                          return (
+                            <span className="px-2.5 py-0.5 bg-green-100 text-green-700 text-[10px] font-bold rounded-full uppercase tracking-wider">
+                              Home Delivery
+                            </span>
+                          );
+                        }
+                      })()}
+                    </div>
                     <p className="text-xs text-gray-500 mt-0.5">
                       {(popupOrder || newOrder)?.restaurantName || "Restaurant"}
                     </p>
@@ -2689,6 +2982,90 @@ export default function OrdersMain() {
 
                 {/* Content */}
                 <div className="px-4 pt-4 pb-4 flex-1 overflow-y-auto min-h-0">
+                  {/* Order Type Banner/Card */}
+                  {(() => {
+                    const activeOrder = popupOrder || newOrder;
+                    if (!activeOrder) return null;
+
+                    const oType = String(activeOrder.orderType || activeOrder.type || "").toLowerCase().trim();
+                    const isTakeaway = oType === "takeaway";
+                    const isDining = oType === "dining";
+
+                    if (isTakeaway) {
+                      return (
+                        <div className="mb-4 bg-orange-50 border border-orange-200 rounded-xl p-3 flex items-start gap-3">
+                          <div className="w-8 h-8 rounded-full bg-orange-100 flex items-center justify-center shrink-0">
+                            <ShoppingBag className="w-4 h-4 text-orange-600" />
+                          </div>
+                          <div>
+                            <p className="text-[10px] font-bold text-orange-800 uppercase tracking-wider">
+                              Takeaway Order
+                            </p>
+                            <p className="text-xs text-orange-950 font-semibold mt-0.5">
+                              Customer will pick up from restaurant.
+                            </p>
+                          </div>
+                        </div>
+                      );
+                    }
+
+                    if (isDining) {
+                      return (
+                        <div className="mb-4 bg-blue-50 border border-blue-200 rounded-xl p-3 flex items-start gap-3">
+                          <div className="w-8 h-8 rounded-full bg-blue-100 flex items-center justify-center shrink-0">
+                            <Users className="w-4 h-4 text-blue-600" />
+                          </div>
+                          <div>
+                            <p className="text-[10px] font-bold text-blue-800 uppercase tracking-wider">
+                              Dining Order
+                            </p>
+                            <p className="text-xs text-blue-950 font-semibold mt-0.5">
+                              For in-restaurant dining. Table service.
+                            </p>
+                          </div>
+                        </div>
+                      );
+                    }
+
+                    // Home Delivery
+                    const addrObj = activeOrder.customerAddress || activeOrder.deliveryAddress || activeOrder.address;
+                    let displayAddress = "";
+                    if (addrObj) {
+                      if (typeof addrObj === "string") {
+                        displayAddress = addrObj;
+                      } else {
+                        displayAddress = [
+                          addrObj.street || addrObj.addressLine1 || addrObj.label,
+                          addrObj.addressLine2,
+                          addrObj.city,
+                          addrObj.pincode || addrObj.zipCode
+                        ].filter(Boolean).join(", ");
+                      }
+                    }
+
+                    return (
+                      <div className="mb-4 bg-green-50 border border-green-200 rounded-xl p-3 flex items-start gap-3">
+                        <div className="w-8 h-8 rounded-full bg-green-100 flex items-center justify-center shrink-0">
+                          <MapPin className="w-4 h-4 text-green-600" />
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <p className="text-[10px] font-bold text-green-800 uppercase tracking-wider">
+                            Home Delivery Order
+                          </p>
+                          {displayAddress ? (
+                            <p className="text-xs text-green-950 font-semibold mt-0.5 break-words">
+                              Deliver to: {displayAddress}
+                            </p>
+                          ) : (
+                            <p className="text-xs text-green-950 font-semibold mt-0.5">
+                              Deliver to customer address.
+                            </p>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })()}
+
                   {/* Scheduled Indicator */}
                   {(popupOrder || newOrder)?.scheduledAt && (
                     <div className="mb-4 bg-green-50 border border-green-200 rounded-lg p-3 flex items-center gap-3">
@@ -2822,38 +3199,6 @@ export default function OrdersMain() {
                     </AnimatePresence>
                   </div>
 
-                  {/* Cutlery preference */}
-                  <div
-                    className={`mb-4 flex items-center gap-2 rounded-lg p-3 ${(popupOrder || newOrder)?.sendCutlery === false
-                        ? "bg-orange-50"
-                        : "bg-gray-50"
-                      }`}>
-                    <svg
-                      className={`h-5 w-5 ${(popupOrder || newOrder)?.sendCutlery === false
-                          ? "text-orange-600"
-                          : "text-gray-600"
-                        }`}
-                      fill="none"
-                      stroke="currentColor"
-                      viewBox="0 0 24 24">
-                      <path
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                        strokeWidth={2}
-                        d="M3 3h2l.4 2M7 13h10l4-8H5.4M7 13L5.4 5M7 13l-2.293 2.293c-.63.63-.184 1.707.707 1.707H17m0 0a2 2 0 100 4 2 2 0 000-4zm-8 2a2 2 0 11-4 0 2 2 0 014 0z"
-                      />
-                    </svg>
-                    <span
-                      className={`text-sm font-medium ${(popupOrder || newOrder)?.sendCutlery === false
-                          ? "text-orange-700"
-                          : "text-gray-700"
-                        }`}>
-                      {(popupOrder || newOrder)?.sendCutlery === false
-                        ? "Don't send cutlery"
-                        : "Send cutlery"}
-                    </span>
-                  </div>
-
                   {/* Total bill */}
                   <div className="mb-4 flex items-center justify-between py-3 border-y border-gray-200">
                     <div className="flex items-center gap-2">
@@ -2893,7 +3238,7 @@ export default function OrdersMain() {
                         </span>
                         <span
                           className={`text-sm font-semibold ${isCod ? "text-amber-600" : "text-green-600"}`}>
-                          {isCod ? "Cash on Delivery" : "Online"}
+                          {isCod ? "Cash on Delivery" : "Paid"}
                         </span>
                       </div>
                     );
@@ -3052,14 +3397,14 @@ export default function OrdersMain() {
                         onClick={() => setRejectReason(reason)}
                         className={`w-full text-left p-4 rounded-lg border-2 transition-all ${
                           rejectReason === reason
-                            ? "border-primary-orange bg-gradient-to-br from-[#B80B3D] to-[#66001D]/10"
+                            ? "border-[#B80B3D] bg-red-50"
                             : "border-gray-200 bg-white hover:border-gray-300"
                         }`}>
                         <div className="flex items-center justify-between">
                           <span
                             className={`text-sm font-medium ${
                               rejectReason === reason
-                                ? "text-primary-orange"
+                                ? "text-[#B80B3D]"
                                 : "text-gray-900"
                             }`}>
                             {reason}
@@ -3210,6 +3555,119 @@ export default function OrdersMain() {
         )}
       </AnimatePresence>
 
+      {/* Verify & Complete Takeaway OTP Popup */}
+      {/* Scroll lock when popup open */}
+      {showVerifyTakeawayPopup && verifyingOrder && (
+        <style>{`body { overflow: hidden !important; }`}</style>
+      )}
+      <AnimatePresence>
+        {showVerifyTakeawayPopup && verifyingOrder && (
+          <>
+            <motion.div
+              className="fixed inset-0 z-[70] bg-black/70 backdrop-blur-sm flex items-center justify-center p-4"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              onClick={handleVerifyTakeawayClose}>
+              <motion.div
+                className="w-[95%] max-w-sm bg-white dark:bg-[#1a1a1a] rounded-3xl shadow-2xl overflow-hidden"
+                initial={{ scale: 0.85, opacity: 0, y: 20 }}
+                animate={{ scale: 1, opacity: 1, y: 0 }}
+                exit={{ scale: 0.85, opacity: 0, y: 20 }}
+                transition={{ type: "spring", damping: 20, stiffness: 300 }}
+                onClick={(e) => e.stopPropagation()}>
+
+                {/* Gradient Header */}
+                <div className="bg-gradient-to-br from-[#B80B3D] to-[#66001D] px-6 pt-6 pb-8 text-center relative overflow-hidden">
+                  {/* decorative circles */}
+                  <div className="absolute -top-6 -right-6 w-24 h-24 rounded-full bg-white/10" />
+                  <div className="absolute -bottom-4 -left-4 w-20 h-20 rounded-full bg-white/5" />
+
+                  {/* Bag Icon */}
+                  <div className="w-14 h-14 rounded-2xl bg-white/20 backdrop-blur-sm flex items-center justify-center mx-auto mb-3 shadow-lg relative z-10">
+                    <ShoppingBag className="w-7 h-7 text-white" />
+                  </div>
+                  <h3 className="text-white font-black text-lg tracking-tight relative z-10">
+                    Verify Takeaway
+                  </h3>
+                  <p className="text-white/70 text-[11px] font-semibold uppercase tracking-widest mt-0.5 relative z-10">
+                    Self-Pickup Verification
+                  </p>
+                </div>
+
+                {/* Pull-up card */}
+                <div className="px-5 -mt-5 relative z-10">
+                  {/* Order info card */}
+                  <div className="bg-white dark:bg-[#252525] rounded-2xl shadow-lg border border-slate-100 dark:border-slate-800 p-4 flex items-center gap-3">
+                    {/* Photo */}
+                    <div className="w-14 h-14 rounded-xl overflow-hidden bg-slate-100 dark:bg-slate-800 flex-shrink-0 shadow-sm">
+                      {verifyingOrder.photoUrl ? (
+                        <img src={verifyingOrder.photoUrl} alt={verifyingOrder.photoAlt || "Food"} className="w-full h-full object-cover" />
+                      ) : (
+                        <div className="w-full h-full flex items-center justify-center">
+                          <ShoppingBag className="w-6 h-6 text-slate-300" />
+                        </div>
+                      )}
+                    </div>
+                    {/* Details */}
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-1.5 flex-wrap">
+                        <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Order</span>
+                        <span className="text-sm font-black text-slate-900 dark:text-white">#{verifyingOrder.orderId}</span>
+                      </div>
+                      <p className="text-sm font-bold text-slate-700 dark:text-slate-200 mt-0.5 truncate">
+                        {verifyingOrder.customerName}
+                      </p>
+                      <p className="text-xs text-slate-400 dark:text-slate-500 truncate italic">
+                        {verifyingOrder.itemsSummary}
+                      </p>
+                    </div>
+                  </div>
+                </div>
+
+                {/* OTP Section */}
+                <div className="px-5 pt-5 pb-2">
+                  <label className="block text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest mb-3 text-center">
+                    Enter 4-Digit Customer OTP
+                  </label>
+                  <input
+                    type="text"
+                    inputMode="numeric"
+                    maxLength={4}
+                    value={takeawayOtpInput}
+                    onChange={(e) => setTakeawayOtpInput(e.target.value.replace(/\D/g, "").slice(0, 4))}
+                    ref={otpInputRef}
+                    placeholder="••••"
+                    className="w-full text-center text-5xl font-black tracking-[0.6em] pl-[0.3em] py-4 border-2 border-slate-200 dark:border-slate-700 rounded-2xl focus:border-[#B80B3D] focus:outline-none focus:ring-4 focus:ring-[#B80B3D]/10 bg-slate-50 dark:bg-slate-800/50 text-slate-800 dark:text-white transition-all font-mono caret-[#B80B3D]"
+                    autoFocus
+                  />
+                </div>
+
+                {/* Actions */}
+                <div className="flex gap-3 px-5 pt-3 pb-6">
+                  <button
+                    type="button"
+                    onClick={handleVerifyTakeawayClose}
+                    className="flex-1 bg-white dark:bg-slate-800 border-2 border-slate-200 dark:border-slate-700 text-slate-500 dark:text-slate-400 py-3.5 rounded-2xl font-black text-xs uppercase tracking-wider hover:bg-slate-50 dark:hover:bg-slate-700 transition-all active:scale-95">
+                    Cancel
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleVerifyTakeawayConfirm}
+                    disabled={isSubmittingVerifyTakeaway || takeawayOtpInput.length < 4}
+                    className="flex-1 py-3.5 rounded-2xl font-black text-xs uppercase tracking-wider text-white shadow-lg shadow-[#DC2626]/30 transition-all active:scale-95 disabled:opacity-40 disabled:cursor-not-allowed disabled:shadow-none"
+                    style={{ background: takeawayOtpInput.length < 4 ? '#94a3b8' : 'linear-gradient(135deg, #B80B3D, #66001D)' }}>
+                    {isSubmittingVerifyTakeaway ? "Verifying…" : "Complete Order"}
+                  </button>
+                </div>
+
+              </motion.div>
+            </motion.div>
+          </>
+        )}
+      </AnimatePresence>
+
+
       {/* Bottom Sheet for Order Details */}
       <AnimatePresence>
         {isSheetOpen && selectedOrder && (
@@ -3248,26 +3706,40 @@ export default function OrdersMain() {
                 </div>
                 <div className="flex flex-col items-end gap-1">
                   <span
-                    className={`inline-flex items-center gap-1 px-2 py-1 rounded-full text-[11px] font-medium border ${
-                      selectedOrder.status === "Ready"
-                        ? "border-green-500 text-green-600"
-                        : "border-gray-800 text-gray-900"
+                    className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[10px] font-semibold border ${
+                      (selectedOrder.status === "Ready" || 
+                       String(selectedOrder.status).toLowerCase() === "delivered" || 
+                       String(selectedOrder.status).toLowerCase() === "completed" || 
+                       String(selectedOrder.status).toLowerCase() === "picked_up" ||
+                       String(selectedOrder.status).toLowerCase() === "ready")
+                        ? "border-emerald-500 text-emerald-600 bg-emerald-50"
+                        : (String(selectedOrder.status).toLowerCase() === "cancelled" || String(selectedOrder.status).toLowerCase() === "rejected")
+                          ? "border-rose-500 text-rose-600 bg-rose-50"
+                          : "border-slate-800 text-slate-900 bg-slate-50"
                     }`}>
                     <span
                       className={`h-1.5 w-1.5 rounded-full ${
-                        selectedOrder.status === "Ready"
-                          ? "bg-green-500"
-                          : "bg-gray-800"
+                        (selectedOrder.status === "Ready" || 
+                         String(selectedOrder.status).toLowerCase() === "delivered" || 
+                         String(selectedOrder.status).toLowerCase() === "completed" || 
+                         String(selectedOrder.status).toLowerCase() === "picked_up" ||
+                         String(selectedOrder.status).toLowerCase() === "ready")
+                          ? "bg-emerald-500"
+                          : (String(selectedOrder.status).toLowerCase() === "cancelled" || String(selectedOrder.status).toLowerCase() === "rejected")
+                            ? "bg-rose-500"
+                            : "bg-slate-800"
                       }`}
                     />
-                    {selectedOrder.status}
+                    {(String(selectedOrder.status).toLowerCase() === "delivered" && selectedOrder.type === "Takeaway") ? "Picked Up" : selectedOrder.status}
                   </span>
                   <span className="text-[11px] text-gray-500">
                     {selectedOrder.timePlaced}
                   </span>
                   {/* Delivery Resend Button - Only for preparing/ready orders with no partner */}
-                  {(String(selectedOrder.status).toLowerCase() === "preparing" ||
-                    String(selectedOrder.status).toLowerCase() === "ready") &&
+                  {selectedOrder.type !== "Takeaway" &&
+                    selectedOrder.type !== "Dining" &&
+                    (String(selectedOrder.status).toLowerCase() === "preparing" ||
+                      String(selectedOrder.status).toLowerCase() === "ready") &&
                     !selectedOrder.deliveryPartnerId && (
                       <div className="mt-1">
                         <ResendNotificationButton
@@ -3355,7 +3827,7 @@ export default function OrdersMain() {
 
 
 // Order Card Component
-function OrderCard({
+const OrderCard = memo(function OrderCard({
   orderId,
   mongoId,
   status,
@@ -3376,15 +3848,21 @@ function OrderCard({
   isMarkingReady = false,
   scheduledAt = null,
   restaurantNote = null,
+  onVerifyTakeaway,
 }) {
   const normalizedStatus = String(status || "").toLowerCase();
+  const normalizedType = String(type || "").toLowerCase();
   const isReady = normalizedStatus === "ready";
   const isPreparing = normalizedStatus === "preparing";
   const brandColor = "#B80B3D";
 
-  const statusLabel = String(status || "")
-    .replace(/_/g, " ")
-    .replace(/\b\w/g, (c) => c.toUpperCase());
+  const statusLabel = (normalizedStatus === "delivered" && normalizedType === "takeaway")
+    ? "Picked Up"
+    : normalizedStatus === "placed"
+    ? "Order Placed"
+    : String(status || "")
+        .replace(/_/g, " ")
+        .replace(/\b\w/g, (c) => c.toUpperCase());
 
   return (
     <div className="w-full bg-white rounded-xl p-3 mb-3 border border-slate-100 shadow-sm relative overflow-hidden active:bg-slate-50 transition-colors">
@@ -3395,10 +3873,10 @@ function OrderCard({
       
       <div
         onClick={() => onSelect?.({ orderId, status, customerName, type, tableOrToken, timePlaced, eta, itemsSummary, paymentMethod, scheduledAt, restaurantNote })}
-        className="flex gap-3 items-start cursor-pointer pl-1">
+        className="flex gap-3 items-center cursor-pointer pl-1">
         
-        {/* Photo Container - Smaller for mobile */}
-        <div className="h-14 w-14 rounded-lg overflow-hidden bg-slate-50 flex-shrink-0 border border-slate-100 mt-0.5">
+        {/* Photo Container - Centered vertically and slightly larger */}
+        <div className="h-[60px] w-[60px] rounded-lg overflow-hidden bg-slate-50 flex-shrink-0 border border-slate-100 self-center flex items-center justify-center">
           {photoUrl ? (
             <img src={photoUrl} alt={photoAlt} className="h-full w-full object-cover" />
           ) : (
@@ -3411,9 +3889,9 @@ function OrderCard({
         </div>
 
         {/* Content Area */}
-        <div className="flex-1 min-w-0 flex flex-col">
+        <div className="flex-1 min-w-0 flex flex-col justify-center">
           {/* Top Row: ID & Status Badge */}
-          <div className="flex items-center justify-between gap-2 mb-1">
+          <div className="flex items-center justify-between gap-2 mb-1.5">
             <h3 className="text-[13px] font-black text-slate-900 truncate">
               #<span style={{ color: brandColor }}>{orderId}</span>
             </h3>
@@ -3426,8 +3904,11 @@ function OrderCard({
                 </span>
               )}
               <span className={`inline-flex items-center px-1.5 py-0.5 rounded-full text-[8px] font-black border uppercase tracking-wider ${
-                isReady ? "bg-emerald-50 text-emerald-600 border-emerald-100" : 
+                (isReady || normalizedStatus === "delivered" || normalizedStatus === "completed" || normalizedStatus === "picked_up") 
+                  ? "bg-emerald-50 text-emerald-600 border-emerald-100" : 
                 normalizedStatus === "confirmed" ? "bg-amber-50 text-amber-600 border-amber-100" : 
+                (normalizedStatus.includes("cancel") || normalizedStatus.includes("reject") || normalizedStatus === "failed")
+                  ? "bg-rose-50 text-rose-600 border-rose-100" :
                 "bg-slate-50 text-slate-500 border-slate-100"
               }`}>
                 {statusLabel}
@@ -3449,9 +3930,25 @@ function OrderCard({
           </div>
 
           {/* Customer & Type */}
-          <div className="flex items-center justify-between text-[9px] text-slate-400 font-bold uppercase tracking-tight mb-1">
-            <span className="truncate max-w-[60%]">{customerName}</span>
-            <span className="whitespace-nowrap">{type}</span>
+          <div className="flex items-center justify-between gap-2 text-[9px] font-bold uppercase tracking-tight mb-1">
+            <div className="flex items-center gap-1.5 text-slate-500 truncate max-w-[65%]">
+              <span>{customerName}</span>
+            </div>
+            <span className="whitespace-nowrap flex-shrink-0">
+              {normalizedType === "takeaway" ? (
+                <span className="px-1.5 py-0.5 rounded-full bg-amber-50 text-[#D97706] border border-amber-200/50">
+                  Takeaway
+                </span>
+              ) : normalizedType === "dining" ? (
+                <span className="px-1.5 py-0.5 rounded-full bg-blue-50 text-blue-600 border border-blue-200/50">
+                  Dining
+                </span>
+              ) : (
+                <span className="px-1.5 py-0.5 rounded-full bg-slate-50 text-slate-500 border border-slate-200/50">
+                  {type}
+                </span>
+              )}
+            </span>
           </div>
 
           {/* Items Summary - One line only */}
@@ -3459,6 +3956,11 @@ function OrderCard({
             {itemsSummary}
           </p>
 
+          {/* Time Placed */}
+          <div className="text-[9px] text-slate-400 font-bold uppercase tracking-tight mb-1">
+            {timePlaced}
+          </div>
+          
           {restaurantNote && (
             <div className="mb-2 px-2 py-1 bg-blue-50 border border-blue-100 rounded-md">
               <p className="text-[9px] text-blue-700 font-bold line-clamp-1 italic">
@@ -3467,8 +3969,9 @@ function OrderCard({
             </div>
           )}
 
-          {/* Bottom Actions Row - Clean Grid/Flex */}
-          <div className="flex items-center justify-between gap-2 pt-2 border-t border-slate-50 mt-auto">
+          {/* Bottom Actions Row - Only shown if actions/ETA exist */}
+          {(scheduledAt || (!isReady && eta) || (isPreparing || isReady || normalizedStatus === "confirmed")) && (
+            <div className="flex items-center justify-between gap-2 pt-2 border-t border-slate-50 mt-1.5">
               {scheduledAt ? (
                 <div className="flex flex-col gap-0.5">
                   <span className="text-[8px] font-bold text-green-600 uppercase">Scheduled For</span>
@@ -3490,57 +3993,62 @@ function OrderCard({
                       <span className="text-[11px] font-black text-slate-800">{eta}</span>
                     </div>
                   )}
-                  <span className="text-[7px] text-slate-300 font-bold uppercase">{timePlaced}</span>
                 </div>
               )}
 
             <div className="flex items-center gap-1.5 flex-shrink-0">
-              {(isPreparing || isReady || normalizedStatus === "confirmed") && (
-                <>
-                  {deliveryPartnerId && (
-                    <div className="h-5 w-5 rounded-full bg-emerald-100 flex items-center justify-center text-emerald-600" title="Driver Assigned">
-                      <svg className="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3">
-                        <path d="M5 13l4 4L19 7" strokeLinecap="round" strokeLinejoin="round" />
-                      </svg>
-                    </div>
-                  )}
-                  
-                  {!deliveryPartnerId && isPreparing && (
-                    <div className="px-1.5 py-0.5 rounded bg-slate-50 text-slate-400 text-[7px] font-black border border-slate-100 uppercase tracking-tighter">
-                      No Rider
-                    </div>
-                  )}
+                {(isPreparing || isReady || normalizedStatus === "confirmed") && (
+                  <>
+                    {deliveryPartnerId && (
+                      <div className="h-5 w-5 rounded-full bg-emerald-100 flex items-center justify-center text-emerald-600" title="Driver Assigned">
+                        <svg className="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3">
+                          <polyline points="20 6 9 17 4 12" />
+                        </svg>
+                      </div>
+                    )}
 
-                  {dispatchStatus !== "accepted" && (
-                    <ResendNotificationButton
-                      orderId={orderId}
-                      mongoId={mongoId}
-                      onSuccess={onSelect}
-                    />
-                  )}
-                </>
-              )}
+                    {dispatchStatus && normalizedType !== "takeaway" && normalizedType !== "dining" && (
+                      <span className="text-[8px] font-black uppercase tracking-wider text-slate-400 border border-slate-100 rounded-full px-2 py-0.5">
+                        {dispatchStatus}
+                      </span>
+                    )}
 
-              {isPreparing && onMarkReady && (
-                <button
-                  type="button"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    onMarkReady({ orderId, mongoId, customerName });
-                  }}
-                  disabled={isMarkingReady}
-                  className="px-3 py-1.5 rounded-lg text-[9px] font-black text-white shadow-sm transition-transform active:scale-95 disabled:opacity-50"
-                  style={{ backgroundColor: brandColor }}>
-                  {isMarkingReady ? "..." : "MARK READY"}
-                </button>
-              )}
+                    {isPreparing && onMarkReady && (
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          onMarkReady({ orderId, mongoId, customerName });
+                        }}
+                        disabled={isMarkingReady}
+                        className={`px-3 py-1.5 rounded-lg text-[9px] font-black text-white shadow-sm transition-all active:scale-95 disabled:opacity-70 ${isMarkingReady ? "animate-pulse" : "hover:brightness-110"}`}
+                        style={{ backgroundColor: brandColor }}>
+                        MARK READY
+                      </button>
+                    )}
+
+                    {isReady && normalizedType === "takeaway" && onVerifyTakeaway && (
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          onVerifyTakeaway({ orderId, mongoId, customerName, photoUrl, photoAlt, type, itemsSummary });
+                        }}
+                        className="px-3 py-1.5 rounded-lg text-[9px] font-black text-white shadow-sm transition-transform active:scale-95 hover:brightness-110"
+                        style={{ backgroundColor: brandColor }}>
+                        VERIFY & COMPLETE
+                      </button>
+                    )}
+                  </>
+                )}
+              </div>
             </div>
-          </div>
+          )}
         </div>
       </div>
     </div>
   );
-}
+});
 
 // Preparing Orders List
 function PreparingOrders({
@@ -3573,10 +4081,12 @@ function PreparingOrders({
           );
 
           const transformedOrders = preparingOrders.map((order) => {
-            const initialETA = order.estimatedDeliveryTime || 30; // in minutes
+            const initialETA = order.preparationTime || order.estimatedDeliveryTime || 30; // in minutes
             const preparingTimestamp = order.tracking?.preparing?.timestamp
               ? new Date(order.tracking.preparing.timestamp)
-              : new Date(order.createdAt); // Fallback to createdAt if preparing timestamp not available
+              : (order.acceptedAt 
+                 ? new Date(order.acceptedAt) 
+                 : new Date(order.createdAt)); // Fallback to createdAt if preparing timestamp not available
 
             return {
               orderId: order.orderId || order._id,
@@ -3584,9 +4094,13 @@ function PreparingOrders({
               status: order.status || "preparing",
               customerName: order.userId?.name || "Customer",
               type:
-                order.deliveryFleet === "standard"
-                  ? "Home Delivery"
-                  : "Express Delivery",
+                order.orderType === "takeaway"
+                  ? "Takeaway"
+                  : order.orderType === "dining"
+                    ? "Dining"
+                    : order.deliveryFleet === "standard"
+                      ? "Home Delivery"
+                      : "Express Delivery",
               tableOrToken: null,
               timePlaced: new Date(order.createdAt).toLocaleTimeString(
                 "en-US",
@@ -3811,28 +4325,17 @@ function PreparingOrders({
       ) : (
         <div>
           {orders.map((order) => {
-            // Calculate remaining ETA (countdown)
-            const elapsedMs = currentTime - order.preparingTimestamp;
-            const elapsedMinutes = Math.floor(elapsedMs / 60000);
-            const remainingMinutes = Math.max(
-              0,
-              order.initialETA - elapsedMinutes,
-            );
-
             // Format ETA display
             let etaDisplay = "";
-            if (remainingMinutes <= 0) {
-              const remainingSeconds = Math.max(
-                0,
-                Math.floor(order.initialETA * 60 - elapsedMs / 1000),
-              );
-              if (remainingSeconds > 0) {
-                etaDisplay = `${remainingSeconds} secs`;
-              } else {
+            {
+              const elapsedMs = currentTime - order.preparingTimestamp;
+              const remainingMs = order.initialETA * 60000 - elapsedMs;
+              const remainingMinutes = Math.ceil(remainingMs / 60000);
+              if (remainingMinutes <= 0) {
                 etaDisplay = "0 mins";
+              } else {
+                etaDisplay = `${remainingMinutes} mins`;
               }
-            } else {
-              etaDisplay = `${remainingMinutes} mins`;
             }
 
             return (
@@ -3868,7 +4371,7 @@ function PreparingOrders({
 }
 
 // Ready Orders List
-function ReadyOrders({ onSelectOrder, refreshToken = 0 }) {
+function ReadyOrders({ onSelectOrder, onVerifyTakeaway, refreshToken = 0 }) {
   const [orders, setOrders] = useState([]);
   const [loading, setLoading] = useState(true);
 
@@ -3894,9 +4397,13 @@ function ReadyOrders({ onSelectOrder, refreshToken = 0 }) {
             status: order.status || "ready",
             customerName: order.userId?.name || "Customer",
             type:
-              order.deliveryFleet === "standard"
-                ? "Home Delivery"
-                : "Express Delivery",
+              order.orderType === "takeaway"
+                ? "Takeaway"
+                : order.orderType === "dining"
+                  ? "Dining"
+                  : order.deliveryFleet === "standard"
+                    ? "Home Delivery"
+                    : "Express Delivery",
             tableOrToken: null,
             timePlaced: new Date(order.createdAt).toLocaleTimeString("en-US", {
               hour: "2-digit",
@@ -3979,6 +4486,7 @@ function ReadyOrders({ onSelectOrder, refreshToken = 0 }) {
               key={order.orderId || order.mongoId}
               {...order}
               onSelect={onSelectOrder}
+              onVerifyTakeaway={onVerifyTakeaway}
             />
           ))}
         </div>
@@ -4014,9 +4522,13 @@ const OutForDeliveryOrders = ({ onSelectOrder, refreshToken = 0 }) => {
             status: order.status || "out_for_delivery",
             customerName: order.userId?.name || "Customer",
             type:
-              order.deliveryFleet === "standard"
-                ? "Home Delivery"
-                : "Express Delivery",
+              order.orderType === "takeaway"
+                ? "Takeaway"
+                : order.orderType === "dining"
+                  ? "Dining"
+                  : order.deliveryFleet === "standard"
+                    ? "Home Delivery"
+                    : "Express Delivery",
             tableOrToken: null,
             timePlaced: new Date(order.createdAt).toLocaleTimeString("en-US", {
               hour: "2-digit",

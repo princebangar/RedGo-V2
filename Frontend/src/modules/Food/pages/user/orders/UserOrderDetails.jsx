@@ -13,6 +13,8 @@ import {
   MapPin,
   RotateCcw,
   FileText,
+  X,
+  Check,
 } from "lucide-react"
 import { orderAPI, restaurantAPI } from "@food/api"
 import { useCart } from "@food/context/CartContext"
@@ -122,7 +124,11 @@ export default function UserOrderDetails() {
   // Use fetched restaurant data if available, otherwise use order.restaurantId or order.restaurant
   const restaurantObj = restaurant || order.restaurantId || order.restaurant || {}
   const restaurantName =
-    order.restaurantName || restaurantObj.name || "Restaurant"
+    order.restaurantName ||
+    restaurantObj.restaurantName ||
+    restaurantObj.name ||
+    (typeof restaurantObj === 'string' ? restaurantObj : '') ||
+    "Restaurant"
 
   // Build restaurant address (try restaurant fields first, then fall back)
   const restaurantLocation = (() => {
@@ -170,8 +176,8 @@ export default function UserOrderDetails() {
   const pricing = order.pricing || {}
   const sendsCutlery = order.sendCutlery !== false
 
-  const userName = order.userName || ""
-  const userPhone = order.userPhone || ""
+  const userName = order.userName || order.customerName || ""
+  const userPhone = order.userPhone || order.customerPhone || ""
   const paymentMethod = order.payment?.method || "Online"
   const paymentDate = order.createdAt
     ? new Date(order.createdAt).toLocaleString("en-IN", {
@@ -375,29 +381,65 @@ export default function UserOrderDetails() {
       {/* Scrollable Content */}
       <div className="p-4 space-y-4">
         {/* Status Card */}
-        <div className="bg-white dark:bg-[#121212] p-4 rounded-xl flex items-center gap-3 shadow-sm border dark:border-gray-800">
-          <div className="bg-gray-100 dark:bg-gray-800 p-2 rounded-lg">
-            <ShoppingBag className="w-6 h-6 text-gray-600 dark:text-gray-400" />
-          </div>
-          <div>
-            <h2 className="font-semibold text-gray-800 dark:text-gray-100">
-              {order.status === "delivered"
-                ? "Order was delivered"
-                : (order.status === "cancelled" || order.status === "cancelled_by_restaurant" || order.status === "restaurant_cancelled" || order.status?.includes('cancel')) 
-                  ? "Order was cancelled"
-                  : "Order status: " + (order.status || "Processing")}
-            </h2>
-            {(order.status === "cancelled" || order.status === "cancelled_by_restaurant" || order.status === "restaurant_cancelled" || order.status?.includes('cancel')) && (
-              <div className="mt-2 p-3 bg-red-50 dark:bg-red-900/10 border border-red-100 dark:border-red-900/30 rounded-xl">
-                  <p className="text-sm text-red-700 dark:text-red-400 font-bold mb-1">Cancellation Reason:</p>
-                  <p className="text-sm text-red-600 dark:text-red-300 font-medium">
-                    {order.cancellationReason || "The restaurant was unable to fulfill this order."}
+        <div className="bg-white dark:bg-[#121212] p-4 rounded-xl flex items-center gap-3.5 shadow-sm border dark:border-gray-800">
+          {(() => {
+            const isCancelled = order.status === "cancelled" || order.status === "cancelled_by_restaurant" || order.status === "restaurant_cancelled" || order.status?.includes('cancel');
+            const isDelivered = order.status === "delivered";
+            return (
+              <>
+                <div className={`p-2.5 rounded-lg flex items-center justify-center ${
+                  isCancelled
+                    ? "bg-red-50 dark:bg-red-950/20 text-red-600 dark:text-red-400"
+                    : isDelivered
+                      ? "bg-green-50 dark:bg-green-950/20 text-green-600 dark:text-green-400"
+                      : "bg-amber-50 dark:bg-amber-950/20 text-amber-600 dark:text-amber-400"
+                }`}>
+                  {isCancelled ? (
+                    <X className="w-5 h-5" />
+                  ) : isDelivered ? (
+                    <Check className="w-5 h-5" />
+                  ) : (
+                    <ShoppingBag className="w-5 h-5 animate-pulse" />
+                  )}
+                </div>
+                <div>
+                  <h2 className="font-bold text-gray-800 dark:text-gray-100 leading-tight">
+                    {isDelivered
+                      ? (order.orderType === "takeaway" ? "Order Picked UP" : "Order was delivered")
+                      : isCancelled
+                        ? "Order was cancelled"
+                        : "Order Status: " + (order.status?.toUpperCase() || "PROCESSING")}
+                  </h2>
+                  <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                    {isDelivered
+                      ? "Thank you for ordering"
+                      : isCancelled
+                        ? "This order was not fulfilled"
+                        : "We are processing your order"}
                   </p>
-                <p className="text-[10px] text-gray-500 dark:text-gray-400 mt-2">Refund will be initiated to your source payment method.</p>
-              </div>
-            )}
-          </div>
+                </div>
+              </>
+            );
+          })()}
         </div>
+
+        {/* Cancellation Details Alert Box */}
+        {(order.status === "cancelled" || order.status === "cancelled_by_restaurant" || order.status === "restaurant_cancelled" || order.status?.includes('cancel')) && (
+          <div className="bg-red-50/60 dark:bg-red-950/10 border border-red-100/60 dark:border-red-900/20 rounded-xl p-4 shadow-sm flex gap-3 items-start">
+            <div className="w-2 h-2 rounded-full bg-red-500 mt-1.5 flex-shrink-0" />
+            <div className="space-y-1">
+              <span className="text-[10px] font-bold text-red-800 dark:text-red-400 uppercase tracking-widest block">
+                Cancellation Reason
+              </span>
+              <p className="text-sm font-semibold text-gray-900 dark:text-gray-100 leading-snug">
+                {order.cancellationReason || "The restaurant was unable to fulfill this order."}
+              </p>
+              <p className="text-[11px] text-gray-500 dark:text-gray-400 pt-0.5">
+                Refund will be initiated to your source payment method.
+              </p>
+            </div>
+          </div>
+        )}
 
         {/* Restaurant Info Card */}
         <div className="bg-white dark:bg-[#121212] p-4 rounded-xl shadow-sm border dark:border-gray-800">
@@ -405,11 +447,10 @@ export default function UserOrderDetails() {
             <div className="flex items-center gap-3">
               <img
                 src={
-                  // Prefer the food image from the first ordered item
-                  (Array.isArray(items) && items[0]?.image) ||
                   restaurantObj.profileImage?.url ||
                   restaurantObj.profileImage ||
                   order.restaurantImage ||
+                  (Array.isArray(items) && items[0]?.image) ||
                   "https://images.unsplash.com/photo-1546069901-ba9599a7e63c?auto=format&fit=crop&w=100&q=80"
                 }
                 alt={restaurantName}
@@ -439,21 +480,13 @@ export default function UserOrderDetails() {
             </button>
           </div>
 
-          <div className="flex flex-wrap items-center gap-2 mb-4">
-            <span
-              className={`inline-flex items-center rounded-full px-3 py-1 text-xs font-semibold ${sendsCutlery
-                  ? "bg-emerald-50 dark:bg-emerald-900/20 text-emerald-700 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-800"
-                  : "bg-orange-50 dark:bg-orange-900/20 text-orange-700 dark:text-orange-400 border border-orange-200 dark:border-orange-800"
-                }`}
-            >
-              {sendsCutlery ? "Send cutlery" : "Don't send cutlery"}
-            </span>
-            {order.note && (
+          {order.note && (
+            <div className="flex flex-wrap items-center gap-2 mb-4">
               <span className="inline-flex items-center rounded-full px-3 py-1 text-xs font-semibold bg-blue-50 dark:bg-blue-900/20 text-blue-700 dark:text-blue-400 border border-blue-200 dark:border-blue-800">
                 Note: {order.note}
               </span>
-            )}
-          </div>
+            </div>
+          )}
 
           <div className="border-t border-dashed border-gray-200 dark:border-gray-800 my-3" />
 
@@ -531,32 +564,55 @@ export default function UserOrderDetails() {
                 ₹{Number(pricing.tax || 0).toFixed(2)}
               </span>
             </div>
-            <div className="flex justify-between">
-              <span className="text-gray-400 dark:text-gray-500 font-medium">Delivery fee</span>
-              {pricing.deliveryFee === 0 && (
-                <span className="text-[#DC2626] text-[10px] font-bold border border-[#DC2626] px-1 rounded ml-1">
-                  FREE
+            {order.orderType !== "takeaway" && order.orderType !== "dining" && (
+              <div className="flex justify-between">
+                <span className="text-gray-400 dark:text-gray-500 font-medium">Delivery fee</span>
+                {pricing.deliveryFee === 0 && (
+                  <span className="text-[#DC2626] text-[10px] font-bold border border-[#DC2626] px-1 rounded ml-1">
+                    FREE
+                  </span>
+                )}
+                <span className="text-[#DC2626] dark:text-[#a04882] font-medium uppercase">
+                  {pricing.deliveryFee ? `₹${Number(pricing.deliveryFee).toFixed(2)}` : "Free"}
                 </span>
-              )}
-              <span className="text-[#DC2626] dark:text-[#a04882] font-medium uppercase">
-                {pricing.deliveryFee ? `₹${Number(pricing.deliveryFee).toFixed(2)}` : "Free"}
-              </span>
-            </div>
-            <div className="flex justify-between">
-              <span className="text-gray-500 dark:text-gray-400">Platform fee</span>
-              <span className="text-gray-800 dark:text-gray-200">
-                ₹{Number(pricing.platformFee || 0).toFixed(2)}
-              </span>
-            </div>
-            <div className="flex justify-between">
-              <span className="text-gray-500 dark:text-gray-400">Subscription / other fees</span>
-              <span className="text-gray-800 dark:text-gray-200">
-                ₹{Number(pricing.subscriptionFee || 0).toFixed(2)}
-              </span>
-            </div>
+              </div>
+            )}
+            {Number(pricing.platformFee || 0) > 0 && (
+              <div className="flex justify-between">
+                <span className="text-gray-500 dark:text-gray-400">Platform fee</span>
+                <span className="text-gray-800 dark:text-gray-200">
+                  ₹{Number(pricing.platformFee || 0).toFixed(2)}
+                </span>
+              </div>
+            )}
+            {Number(pricing.subscriptionFee || 0) > 0 && (
+              <div className="flex justify-between">
+                <span className="text-gray-500 dark:text-gray-400">Subscription / other fees</span>
+                <span className="text-gray-800 dark:text-gray-200">
+                  ₹{Number(pricing.subscriptionFee || 0).toFixed(2)}
+                </span>
+              </div>
+            )}
 
             <div className="border-t border-gray-100 dark:border-gray-800 my-2 pt-2 flex justify-between items-center">
-              <span className="font-bold text-gray-800 dark:text-gray-100">Paid</span>
+              <span className="font-bold text-gray-800 dark:text-gray-100 flex items-center">
+                Paid
+                {(() => {
+                  const method = (order.payment?.method || order.paymentMethod || "online").toLowerCase();
+                  if (method === "cash" || method === "cod") {
+                    return (
+                      <span className="px-2 py-0.5 ml-2.5 rounded text-[10px] font-bold uppercase tracking-wider border bg-gray-100 text-gray-800 border-gray-200 dark:bg-gray-800 dark:text-gray-200 dark:border-gray-700">
+                        COD
+                      </span>
+                    );
+                  }
+                  return (
+                    <span className="px-2 py-0.5 ml-2.5 rounded text-[10px] font-bold uppercase tracking-wider border bg-green-100 text-green-800 border-green-200 dark:bg-green-950/40 dark:text-green-300 dark:border-green-900/50">
+                      Online
+                    </span>
+                  );
+                })()}
+              </span>
               <span className="font-bold text-gray-800 dark:text-gray-100">
                 ₹{Number(pricing.total || 0).toFixed(2)}
               </span>
@@ -592,62 +648,79 @@ export default function UserOrderDetails() {
         </div>
 
         {/* User & Delivery Details */}
-        <div className="bg-white dark:bg-[#121212] p-4 rounded-xl shadow-sm space-y-5 border dark:border-gray-800">
+        <div className="bg-white dark:bg-[#121212] p-4 rounded-xl shadow-sm space-y-4 border dark:border-gray-800">
           {/* User */}
-          <div className="flex gap-3">
-            <div className="w-10 h-10 rounded-full bg-gray-200 dark:bg-gray-800 flex items-center justify-center">
-              <User className="w-5 h-5 text-gray-500 dark:text-gray-400" />
+          <div className="flex items-start gap-3">
+            <div className="w-9 h-9 rounded-full bg-gray-100 dark:bg-gray-800 flex items-center justify-center flex-shrink-0">
+              <User className="w-4 h-4 text-gray-600 dark:text-gray-400" />
             </div>
             <div>
-              <h4 className="font-semibold text-gray-800 dark:text-gray-200 text-sm">
-                {userName || "Customer"}
+              <h4 className="font-bold text-gray-800 dark:text-gray-100 text-sm">
+                Customer Details
               </h4>
-              <p className="text-gray-500 dark:text-gray-400 text-xs">{userPhone}</p>
+              <p className="text-gray-600 dark:text-gray-300 text-xs mt-0.5 font-medium">{userName || "Customer"}</p>
+              <p className="text-gray-400 dark:text-gray-500 text-[11px] mt-0.5">{userPhone}</p>
             </div>
           </div>
+
+          <div className="border-t border-gray-100 dark:border-gray-800/50" />
 
           {/* Payment */}
-          <div className="flex gap-3">
-            <div className="mt-0.5">
-              <CreditCard className="w-5 h-5 text-gray-500 dark:text-gray-400" />
+          <div className="flex items-start gap-3">
+            <div className="w-9 h-9 rounded-full bg-gray-100 dark:bg-gray-800 flex items-center justify-center flex-shrink-0">
+              <CreditCard className="w-4 h-4 text-gray-600 dark:text-gray-400" />
             </div>
             <div>
-              <h4 className="font-semibold text-gray-800 dark:text-gray-200 text-sm">
-                Payment method
+              <h4 className="font-bold text-gray-800 dark:text-gray-100 text-sm">
+                Payment Method
               </h4>
-              <p className="text-gray-500 dark:text-gray-400 text-xs mt-0.5">
-                Paid via: {paymentMethod.toUpperCase()}
-              </p>
+              <div className="flex items-center gap-1.5 mt-0.5">
+                <span className="text-gray-500 dark:text-gray-400 text-xs">Paid via</span>
+                <span className={`px-1.5 py-0.5 rounded text-[9px] font-bold uppercase tracking-wider border ${
+                  (paymentMethod.toLowerCase() === 'cash' || paymentMethod.toLowerCase() === 'cod')
+                    ? 'bg-gray-100 text-gray-800 border-gray-200 dark:bg-gray-800 dark:text-gray-200 dark:border-gray-700'
+                    : 'bg-green-100 text-green-800 border-green-200 dark:bg-green-950/40 dark:text-green-300 dark:border-green-900/50'
+                }`}>
+                  {paymentMethod}
+                </span>
+              </div>
             </div>
           </div>
 
+          <div className="border-t border-gray-100 dark:border-gray-800/50" />
+
           {/* Date */}
-          <div className="flex gap-3">
-            <div className="mt-0.5">
-              <Calendar className="w-5 h-5 text-gray-500 dark:text-gray-400" />
+          <div className="flex items-start gap-3">
+            <div className="w-9 h-9 rounded-full bg-gray-100 dark:bg-gray-800 flex items-center justify-center flex-shrink-0">
+              <Calendar className="w-4 h-4 text-gray-600 dark:text-gray-400" />
             </div>
             <div>
-              <h4 className="font-semibold text-gray-800 dark:text-gray-200 text-sm">
-                Payment date
+              <h4 className="font-bold text-gray-800 dark:text-gray-100 text-sm">
+                Payment Date
               </h4>
-              <p className="text-gray-500 dark:text-gray-400 text-xs mt-0.5">{paymentDate}</p>
+              <p className="text-gray-600 dark:text-gray-300 text-xs mt-0.5 font-medium">{paymentDate}</p>
             </div>
           </div>
 
           {/* Address */}
-          <div className="flex gap-3">
-            <div className="mt-0.5">
-              <MapPin className="w-5 h-5 text-gray-500 dark:text-gray-400" />
-            </div>
-            <div>
-              <h4 className="font-semibold text-gray-800 dark:text-gray-200 text-sm">
-                Delivery address
-              </h4>
-              <p className="text-gray-500 dark:text-gray-400 text-xs mt-0.5 leading-relaxed">
-                {addressText || "Address not available"}
-              </p>
-            </div>
-          </div>
+          {order.orderType !== "takeaway" && (
+            <>
+              <div className="border-t border-gray-100 dark:border-gray-800/50" />
+              <div className="flex items-start gap-3">
+                <div className="w-9 h-9 rounded-full bg-gray-100 dark:bg-gray-800 flex items-center justify-center flex-shrink-0">
+                  <MapPin className="w-4 h-4 text-gray-600 dark:text-gray-400" />
+                </div>
+                <div>
+                  <h4 className="font-bold text-gray-800 dark:text-gray-100 text-sm">
+                    Delivery Address
+                  </h4>
+                  <p className="text-gray-600 dark:text-gray-300 text-xs mt-0.5 leading-relaxed font-medium">
+                    {addressText || "Address not available"}
+                  </p>
+                </div>
+              </div>
+            </>
+          )}
         </div>
       </div>
 

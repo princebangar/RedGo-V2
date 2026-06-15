@@ -150,15 +150,24 @@ function RestaurantDetailsContent() {
   const [showMenuOptionsSheet, setShowMenuOptionsSheet] = useState(false)
   const showMoreInfo = searchParams.get('info') === 'true'
   const setShowMoreInfo = (val) => {
-    setSearchParams((prev) => {
-      const next = new URLSearchParams(prev)
-      if (val) {
+    if (val) {
+      setSearchParams((prev) => {
+        const next = new URLSearchParams(prev)
         next.set('info', 'true')
+        return next
+      })
+    } else {
+      const hasHistory = window.history.state && window.history.state.idx > 0
+      if (hasHistory) {
+        navigate(-1)
       } else {
-        next.delete('info')
+        setSearchParams((prev) => {
+          const next = new URLSearchParams(prev)
+          next.delete('info')
+          return next
+        }, { replace: true })
       }
-      return next
-    })
+    }
   }
   const [showShareModal, setShowShareModal] = useState(false)
   const [sharePayload, setSharePayload] = useState(null)
@@ -2263,7 +2272,11 @@ function RestaurantDetailsContent() {
                   {Number(restaurant?.rating || 0) > 0 ? Number(restaurant.rating).toFixed(1) : "NEW"}
                 </div>
                 <span className="mt-1 text-xs text-gray-500 whitespace-nowrap text-center">
-                  {Number(restaurant?.rating || 0) > 0 ? `${(restaurant.reviews || 0).toLocaleString()}+ ratings` : "No ratings yet"}
+                  {Number(restaurant?.rating || 0) > 0 ? (
+                    restaurant.reviews === 1
+                      ? "1 rating"
+                      : `${(restaurant.reviews || 0).toLocaleString()}${restaurant.reviews >= 100 ? '+' : ''} ratings`
+                  ) : "No ratings yet"}
                 </span>
               </div>
             </div>
@@ -3362,14 +3375,18 @@ function RestaurantDetailsContent() {
                               </div>
                               <div className="flex flex-col items-end gap-0.5">
                                 <div className="flex items-center gap-1">
-                                  <Star className="h-3.5 w-3.5 text-[#8CC63F] dark:text-green-500 fill-[#8CC63F] dark:fill-green-500" />
-                                  <span className="text-xs font-medium text-gray-900 dark:text-white">
-                                    {outlet?.rating ? outlet.rating : "NEW"}
-                                  </span>
-                                </div>
-                                <span className="text-xs text-gray-500 dark:text-gray-400">
-                                  By {(outlet?.reviews || 0) >= 1000 ? `${((outlet.reviews || 0) / 1000).toFixed(1)}K+` : `${outlet?.reviews || 0}+`}
-                                </span>
+                                   <Star className="h-3.5 w-3.5 text-[#8CC63F] dark:text-green-500 fill-[#8CC63F] dark:fill-green-500" />
+                                   <span className="text-xs font-medium text-gray-900 dark:text-white">
+                                     {outlet?.rating ? outlet.rating : "NEW"}
+                                   </span>
+                                 </div>
+                                 <span className="text-xs text-gray-500 dark:text-gray-400">
+                                    {(outlet?.reviews || 0) === 1 ? "1 rating" : (outlet?.reviews || 0) < 100
+                                      ? `${outlet?.reviews || 0} ratings`
+                                      : (outlet?.reviews || 0) < 1000
+                                        ? `${Math.floor((outlet?.reviews || 0) / 100) * 100}+ ratings`
+                                        : `${((outlet?.reviews || 0) / 1000).toFixed(1)}K+ ratings`}
+                                 </span>
                               </div>
                             </div>
                           </div>

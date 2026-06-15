@@ -242,6 +242,7 @@ export async function tryAutoAssign(orderId, options = {}) {
   const order = await FoodOrder.findOneAndUpdate(
     {
       _id: new mongoose.Types.ObjectId(orderId),
+      orderType: 'delivery',
       orderStatus: { $in: Array.from(dispatchableStatuses) },
       $or: [
         { 'dispatch.status': 'unassigned' },

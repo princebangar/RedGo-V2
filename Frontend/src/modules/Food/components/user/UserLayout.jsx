@@ -383,8 +383,8 @@ export default function UserLayout() {
 
   return (
     <div className="min-h-screen bg-[#f5f5f5] dark:bg-[#0a0a0a] transition-colors duration-200">
-      <CartProvider>
-        <ProfileProvider>
+      <ProfileProvider>
+        <CartProvider>
           <OrdersProvider>
             <SearchOverlayProvider>
               <LocationSelectorProvider>
@@ -392,8 +392,8 @@ export default function UserLayout() {
               </LocationSelectorProvider>
             </SearchOverlayProvider>
           </OrdersProvider>
-        </ProfileProvider>
-      </CartProvider>
+        </CartProvider>
+      </ProfileProvider>
     </div>
   )
 }

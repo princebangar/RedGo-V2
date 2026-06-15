@@ -290,6 +290,8 @@ const orderSchema = new mongoose.Schema(
         restaurantNote: { type: String, default: '', trim: true },
         note: { type: String, default: '', trim: true },
         sendCutlery: { type: Boolean, default: true },
+        preparationTime: { type: Number, default: 0 },
+        acceptedAt: { type: Date },
         deliveryFleet: { type: String, default: 'standard', trim: true },
         scheduledAt: { type: Date, default: null },
         riderEarning: { type: Number, default: 0, min: 0 },
@@ -332,6 +334,18 @@ orderSchema.pre('save', async function (next) {
     // Synchronize camelCase alias to satisfy unique index 'orderId_1'
     if (this.order_id) {
         this.orderId = this.order_id;
+    }
+    // Auto-generate takeaway OTP for active states if missing
+    if (this.orderType === 'takeaway' && ['preparing', 'ready_for_pickup'].includes(this.orderStatus)) {
+        if (!this.deliveryOtp) {
+            this.deliveryOtp = String(Math.floor(1000 + Math.random() * 9000));
+        }
+        if (!this.deliveryVerification || !this.deliveryVerification.dropOtp || !this.deliveryVerification.dropOtp.required) {
+            this.deliveryVerification = {
+                ...(this.deliveryVerification?.toObject?.() || this.deliveryVerification || {}),
+                dropOtp: { required: true, verified: false }
+            };
+        }
     }
     next();
 });

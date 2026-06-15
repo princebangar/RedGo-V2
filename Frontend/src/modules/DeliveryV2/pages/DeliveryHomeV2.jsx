@@ -975,7 +975,7 @@ export default function DeliveryHomeV2({ tab = 'feed' }) {
                         await acceptOrder(o);
                         // Only dismiss the modal on successful accept
                         setIncomingOrder(null);
-                        clearNewOrder();
+                        clearNewOrder(o);
                       } catch (err) {
                         // acceptOrder already shows a toast for the specific error:
                         // - "Order already accepted by another partner" (403)
@@ -988,7 +988,7 @@ export default function DeliveryHomeV2({ tab = 'feed' }) {
                         if (isTaken) {
                           // Dismiss modal — the order is no longer available
                           setIncomingOrder(null);
-                          clearNewOrder();
+                          clearNewOrder(o);
                         }
                         // For other errors (network, etc.), keep showing the modal so they can retry
                       }
@@ -1004,7 +1004,7 @@ export default function DeliveryHomeV2({ tab = 'feed' }) {
 
                       stopSound?.();
                       setIncomingOrder(null);
-                      clearNewOrder();
+                      clearNewOrder(orderToReject);
 
                       if (!orderId) return;
 

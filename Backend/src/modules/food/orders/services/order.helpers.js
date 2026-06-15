@@ -57,12 +57,18 @@ export function emitDeliveryDropOtpToUser(order, plainOtp) {
   try {
     const io = getIO();
     if (!io || !plainOtp || !order?.userId) return;
+
+    const isTakeaway = order?.orderType === "takeaway";
+    const message = isTakeaway
+      ? "Share this OTP with the restaurant to pick up your order."
+      : "Share this OTP with your delivery partner to hand over the order.";
+
     io.to(rooms.user(order.userId)).emit("delivery_drop_otp", {
       orderMongoId: order._id?.toString?.(),
       orderId: order.order_id || order._id?.toString?.(),
       otp: plainOtp,
-      message:
-        "Share this OTP with your delivery partner to hand over the order.",
+      orderType: order?.orderType || "delivery",
+      message,
     });
   } catch (e) {
     logger.warn(`emitDeliveryDropOtpToUser failed: ${e?.message || e}`);
@@ -306,4 +312,22 @@ export function isStatusAdvance(current, next) {
   if (nextPrio === 100 && currentPrio < 80) return true;
 
   return nextPrio > currentPrio;
+}
+
+export function normalizeOtpValue(value) {
+  return String(value ?? '').replace(/\D/g, '').trim();
+}
+
+export function isOtpMatch(expectedOtp, enteredOtp) {
+  const expected = normalizeOtpValue(expectedOtp);
+  const entered = normalizeOtpValue(enteredOtp);
+  if (!expected || !entered) return false;
+  if (entered === expected) return true;
+
+  // Accept last 4 digits if client sends prefixed/padded OTP.
+  if (expected.length === 4 && entered.length > 4) {
+    return entered.slice(-4) === expected;
+  }
+
+  return false;
 }

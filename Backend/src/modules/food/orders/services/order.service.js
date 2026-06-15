@@ -50,6 +50,7 @@ import {
   buildDeliverySocketPayload,
   notifyRestaurantNewOrder,
   isStatusAdvance,
+  isOtpMatch,
 } from './order.helpers.js';
 
 
@@ -591,8 +592,28 @@ export async function getOrderById(
   }
 
   if (userId) {
-    const drop = order.deliveryVerification?.dropOtp || {};
-    const secret = String(order.deliveryOtp || "").trim();
+    let drop = order.deliveryVerification?.dropOtp || {};
+    let secret = String(order.deliveryOtp || "").trim();
+
+    // Self-healing for takeaway orders in active statuses that missed OTP generation
+    if (order.orderType === "takeaway" && ["preparing", "ready_for_pickup"].includes(order.orderStatus) && !secret) {
+      secret = generateFourDigitDeliveryOtp();
+      try {
+        await mongoose.model('FoodOrder').updateOne(
+          { _id: order._id },
+          { 
+            $set: { 
+              deliveryOtp: secret,
+              'deliveryVerification.dropOtp': { required: true, verified: false }
+            } 
+          }
+        );
+        drop = { required: true, verified: false };
+      } catch (err) {
+        logger.warn(`Failed to self-heal takeaway OTP for order ${order._id}: ${err.message}`);
+      }
+    }
+
     const out = normalizeOrderForClient(order);
     delete out.deliveryOtp;
     out.deliveryVerification = {
@@ -696,14 +717,37 @@ export async function resyncState(userId, role) {
       .lean();
 
     if (order) {
+      let secret = String(order.deliveryOtp || "").trim();
+      let drop = order.deliveryVerification?.dropOtp || {};
+
+      // Self-healing for takeaway orders in active statuses that missed OTP generation
+      if (order.orderType === "takeaway" && ["preparing", "ready_for_pickup"].includes(order.orderStatus) && !secret) {
+        secret = generateFourDigitDeliveryOtp();
+        try {
+          await FoodOrder.updateOne(
+            { _id: order._id },
+            { 
+              $set: { 
+                deliveryOtp: secret,
+                'deliveryVerification.dropOtp': { required: true, verified: false }
+              } 
+            }
+          );
+          drop = { required: true, verified: false };
+        } catch (err) {
+          logger.warn(`Failed to self-heal takeaway OTP in resyncState: ${err.message}`);
+        }
+      }
+
       const out = normalizeOrderForClient(order);
-      // Re-add handover OTP if order is picked up
+      // Re-add handover OTP if order is picked up OR if it's a takeaway order in an active status
       if (
-        (order.deliveryState?.currentPhase === "at_drop" || order.orderStatus === "picked_up") &&
-        !order.deliveryVerification?.dropOtp?.verified &&
-        order.deliveryOtp
+        ((order.deliveryState?.currentPhase === "at_drop" || order.orderStatus === "picked_up") ||
+         (order.orderType === "takeaway" && ["preparing", "ready_for_pickup"].includes(order.orderStatus))) &&
+        !drop?.verified &&
+        secret
       ) {
-        out.handoverOtp = order.deliveryOtp;
+        out.handoverOtp = secret;
       }
       return { activeOrder: out };
     }
@@ -1028,19 +1072,42 @@ export async function updateOrderStatusRestaurant(
   orderId,
   restaurantId,
   orderStatus,
-  note = ""
+  note = "",
+  preparationTime = 0
 ) {
   const identity = buildOrderIdentityFilter(orderId);
   let order = await FoodOrder.findOne({
     ...identity,
     restaurantId: new mongoose.Types.ObjectId(restaurantId),
-  });
+  }).select("+deliveryOtp");
   if (!order) throw new NotFoundError("Order not found");
   const from = order.orderStatus;
   if (!isStatusAdvance(from, orderStatus)) {
       throw new ValidationError(`Current order status '${from}' is further ahead than '${orderStatus}'. Order cannot be moved backwards.`);
   }
   order.orderStatus = orderStatus;
+
+  if (preparationTime !== undefined && preparationTime !== null && preparationTime > 0) {
+    order.preparationTime = preparationTime;
+  }
+
+  if ((orderStatus === "confirmed" || orderStatus === "preparing") && !order.acceptedAt) {
+    order.acceptedAt = new Date();
+  }
+
+  // Generate OTP for Takeaway when status changes to preparing or ready_for_pickup
+  if (["preparing", "ready_for_pickup"].includes(orderStatus) && order.orderType === "takeaway") {
+    if (!order.deliveryOtp) {
+      order.deliveryOtp = generateFourDigitDeliveryOtp();
+    }
+    order.deliveryVerification = {
+      ...(order.deliveryVerification?.toObject?.() || order.deliveryVerification || {}),
+      dropOtp: { required: true, verified: false },
+    };
+    order.markModified('deliveryVerification');
+    order.markModified('deliveryVerification.dropOtp');
+  }
+
   pushStatusHistory(order, {
     byRole: "RESTAURANT",
     byId: restaurantId,
@@ -1049,6 +1116,11 @@ export async function updateOrderStatusRestaurant(
     note: note || ""
   });
   await order.save();
+
+  // If takeaway and in an active status, emit the OTP to the user
+  if (["preparing", "ready_for_pickup"].includes(orderStatus) && order.orderType === "takeaway" && order.deliveryOtp) {
+    emitDeliveryDropOtpToUser(order, order.deliveryOtp);
+  }
 
   // Custom messages / titles for status updates
   let title = `Order ${order._id.toString()} updated`;
@@ -1626,5 +1698,112 @@ export async function deleteOrderAdmin(orderId, adminId) {
     orderId: String(order._id.toString() || ""),
     orderMongoId: String(order._id),
   };
+}
+
+export async function completeTakeawayOrderRestaurant(orderId, restaurantId, otp) {
+  const identity = buildOrderIdentityFilter(orderId);
+  const order = await FoodOrder.findOne({
+    ...identity,
+    restaurantId: new mongoose.Types.ObjectId(restaurantId),
+  }).select("+deliveryOtp");
+  if (!order) throw new NotFoundError("Order not found");
+
+  if (order.orderType !== "takeaway") {
+    throw new ValidationError("Only takeaway orders can be completed via restaurant verification");
+  }
+
+  if (order.orderStatus === "delivered") {
+    return normalizeOrderForClient(order);
+  }
+
+  if (!["preparing", "ready_for_pickup"].includes(order.orderStatus)) {
+    throw new ValidationError("Order must be ready for pickup or being prepared to be completed");
+  }
+
+  const existingOtp = String(order.deliveryOtp || "").trim();
+  if (!isOtpMatch(existingOtp, otp)) {
+    throw new ValidationError("Invalid OTP");
+  }
+
+  const from = order.orderStatus;
+  order.orderStatus = "delivered";
+  if (!order.deliveryVerification) {
+    order.deliveryVerification = {};
+  }
+  order.deliveryVerification.dropOtp = {
+    required: true,
+    verified: true,
+    code: existingOtp
+  };
+  
+  order.deliveredAt = new Date();
+  
+  pushStatusHistory(order, {
+    byRole: "RESTAURANT",
+    byId: restaurantId,
+    from,
+    to: "delivered",
+    note: "Takeaway order completed. OTP verified successfully."
+  });
+
+  await order.save();
+
+  // Sync to FoodTransaction ledger
+  await foodTransactionService.updateTransactionStatus(order._id, 'takeaway_completed_and_paid', {
+    status: 'captured',
+    recordedByRole: 'RESTAURANT',
+    recordedById: restaurantId,
+    note: 'Takeaway order completed and OTP verified.'
+  });
+
+  // Fetch updated order to get synced fields
+  const updatedOrder = await FoodOrder.findById(order._id).lean();
+
+  // Real-time: status update via socket to restaurant and user
+  try {
+    const io = getIO();
+    if (io) {
+      const payload = {
+        orderMongoId: order._id?.toString?.(),
+        orderId: order.order_id || order._id.toString(),
+        orderStatus: "delivered",
+        title: "Takeaway Order Picked Up! 🎉",
+        message: "You have picked up your order successfully. Enjoy your meal!",
+      };
+      io.to(rooms.restaurant(restaurantId)).emit("order_status_update", payload);
+      io.to(rooms.user(order.userId)).emit("order_status_update", payload);
+    }
+
+    await notifyOwnersSafely(
+      [
+        { ownerType: "USER", ownerId: order.userId },
+        { ownerType: "RESTAURANT", ownerId: restaurantId },
+      ],
+      {
+        title: "Takeaway Order Picked Up! 🎉",
+        body: "Your order has been picked up and marked as completed.",
+        image: "https://i.ibb.co/3m2Yh7r/Appzeto-Brand-Image.png",
+        data: {
+          type: "order_status_update",
+          orderId: order._id.toString(),
+          orderMongoId: order._id?.toString?.() || "",
+          orderStatus: "delivered",
+          link: `/food/user/orders/${order._id?.toString?.() || ""}`,
+        },
+      }
+    );
+  } catch (err) {
+    logger.warn(`completeTakeawayOrderRestaurant notifications failed: ${err?.message || err}`);
+  }
+
+  enqueueOrderEvent('restaurant_order_status_updated', {
+    orderMongoId: order._id?.toString?.(),
+    orderId: order._id.toString(),
+    restaurantId,
+    from,
+    to: 'delivered'
+  });
+
+  return normalizeOrderForClient(updatedOrder || order);
 }
 

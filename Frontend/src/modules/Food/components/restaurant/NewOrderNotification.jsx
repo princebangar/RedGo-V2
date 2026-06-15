@@ -37,7 +37,22 @@ export default function NewOrderNotification({ order, onClose, onViewOrder }) {
                 <Bell className="w-6 h-6 text-white animate-pulse" />
               </div>
               <div>
-                <h3 className="text-white font-bold text-lg">New Order!</h3>
+                <div className="flex items-center gap-2">
+                  <h3 className="text-white font-bold text-lg">New Order!</h3>
+                  {order.orderType === "takeaway" ? (
+                    <span className="px-2 py-0.5 bg-orange-100 text-orange-700 text-[10px] font-bold rounded-full uppercase tracking-wider">
+                      Takeaway
+                    </span>
+                  ) : order.orderType === "dining" ? (
+                    <span className="px-2 py-0.5 bg-blue-100 text-blue-700 text-[10px] font-bold rounded-full uppercase tracking-wider">
+                      Dining
+                    </span>
+                  ) : (
+                    <span className="px-2 py-0.5 bg-green-100 text-green-700 text-[10px] font-bold rounded-full uppercase tracking-wider">
+                      Delivery
+                    </span>
+                  )}
+                </div>
                 <p className="text-white/90 text-sm">Order #{order.orderId}</p>
               </div>
             </div>
@@ -97,18 +112,40 @@ export default function NewOrderNotification({ order, onClose, onViewOrder }) {
                 </div>
               </div>
 
-              {/* Delivery Address */}
-              {order.customerAddress && (
-                <div className="flex items-start gap-2 p-3 bg-gray-50 rounded-lg">
-                  <MapPin className="w-4 h-4 text-gray-500 mt-0.5 flex-shrink-0" />
+              {/* Takeaway / Delivery Address */}
+              {order.orderType === "takeaway" ? (
+                <div className="flex items-start gap-2.5 p-3 bg-orange-50 rounded-lg border border-orange-100">
+                  <ShoppingBag className="w-4 h-4 text-orange-600 mt-0.5 flex-shrink-0" />
                   <div className="flex-1">
-                    <p className="text-xs text-gray-500 mb-1">Delivery Address</p>
-                    <p className="text-sm text-gray-800">
-                      {order.customerAddress.street || order.customerAddress.label || 'Address'}
-                      {order.customerAddress.city && `, ${order.customerAddress.city}`}
+                    <p className="text-xs text-orange-700 font-semibold mb-0.5">Order Type</p>
+                    <p className="text-sm text-orange-950 font-bold">
+                      Takeaway — Customer will pick up from restaurant.
                     </p>
                   </div>
                 </div>
+              ) : order.orderType === "dining" ? (
+                <div className="flex items-start gap-2.5 p-3 bg-blue-50 rounded-lg border border-blue-100">
+                  <ShoppingBag className="w-4 h-4 text-blue-600 mt-0.5 flex-shrink-0" />
+                  <div className="flex-1">
+                    <p className="text-xs text-blue-700 font-semibold mb-0.5">Order Type</p>
+                    <p className="text-sm text-blue-950 font-bold">
+                      Dining — In-restaurant table service.
+                    </p>
+                  </div>
+                </div>
+              ) : (
+                order.customerAddress && (
+                  <div className="flex items-start gap-2 p-3 bg-gray-50 rounded-lg">
+                    <MapPin className="w-4 h-4 text-gray-500 mt-0.5 flex-shrink-0" />
+                    <div className="flex-1">
+                      <p className="text-xs text-gray-500 mb-1">Delivery Address</p>
+                      <p className="text-sm text-gray-800">
+                        {order.customerAddress.street || order.customerAddress.label || 'Address'}
+                        {order.customerAddress.city && `, ${order.customerAddress.city}`}
+                      </p>
+                    </div>
+                  </div>
+                )
               )}
 
               {/* Estimated Time */}

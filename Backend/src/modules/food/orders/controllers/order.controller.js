@@ -1,5 +1,6 @@
 import { sendResponse } from '../../../../utils/response.js';
 import * as orderService from '../services/order.service.js';
+import { ValidationError } from '../../../../core/auth/errors.js';
 import * as foodOrderPaymentService from '../services/foodOrderPayment.service.js';
 import {
     validateCalculateOrderDto,
@@ -171,7 +172,13 @@ export async function updateOrderStatusRestaurantController(req, res, next) {
         const restaurantId = req.user?.userId;
         const orderId = req.params.orderId;
         const dto = validateOrderStatusDto(req.body);
-        const order = await orderService.updateOrderStatusRestaurant(orderId, restaurantId, dto.orderStatus, dto.note);
+        const order = await orderService.updateOrderStatusRestaurant(
+            orderId,
+            restaurantId,
+            dto.orderStatus,
+            dto.note,
+            dto.preparationTime
+        );
         return sendResponse(res, 200, 'Order status updated', { order });
     } catch (err) {
         next(err);
@@ -371,6 +378,21 @@ export async function resendDeliveryNotificationRestaurantController(req, res, n
         const orderId = req.params.orderId;
         const result = await orderService.resendDeliveryNotificationRestaurant(orderId, restaurantId);
         return sendResponse(res, 200, 'Notification resent successfully', result);
+    } catch (err) {
+        next(err);
+    }
+}
+
+export async function completeTakeawayOrderRestaurantController(req, res, next) {
+    try {
+        const restaurantId = req.user?.userId;
+        const orderId = req.params.orderId;
+        const { otp } = req.body;
+        if (!otp) {
+            throw new ValidationError("OTP is required");
+        }
+        const order = await orderService.completeTakeawayOrderRestaurant(orderId, restaurantId, otp);
+        return sendResponse(res, 200, 'Order verified and completed successfully', { order });
     } catch (err) {
         next(err);
     }

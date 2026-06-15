@@ -1,6 +1,7 @@
 import { motion, AnimatePresence } from 'framer-motion';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { useCart } from "@food/context/CartContext";
+import { useProfile } from "@food/context/ProfileContext";
 import { useEffect, useRef, useState } from 'react';
 import { gsap } from 'gsap';
 const debugLog = (...args) => {}
@@ -29,6 +30,10 @@ export default function AddToCartAnimation({
   dynamicBottom = null,
 }) {
   const { items, itemCount, total, lastAddEvent, lastRemoveEvent } = useCart();
+  const { orderType } = useProfile();
+  const isTakeaway = orderType === 'takeaway';
+  // Navigate to the correct cart for the active mode
+  const cartLinkTo = isTakeaway ? '/food/user/cart' : (linkTo || '/food/user/cart');
   const location = useLocation();
   const navigate = useNavigate();
   const linkRef = useRef(null);
@@ -452,7 +457,7 @@ export default function AddToCartAnimation({
                 e.preventDefault();
                 e.stopPropagation();
                 debugLog('View cart clicked, navigating to:', linkTo);
-                navigate(linkTo, { state: { from: location.pathname } });
+              navigate(cartLinkTo, { state: { from: location.pathname } });
               }}
               className={`bg-gradient-to-r from-[#991b1b] via-[#DC2626] to-[#991b1b] text-white rounded-full shadow-xl shadow-[#DC2626]/30 px-3 py-2 flex items-center gap-2 hover:from-[#991b1b] hover:via-[#DC2626] hover:to-[#991b1b] transition-all duration-300 pointer-events-auto border border-[#DC2626]/30 backdrop-blur-sm cursor-pointer ${pillClassName}`}
             >
@@ -493,7 +498,9 @@ export default function AddToCartAnimation({
                 animate={{ opacity: 1, x: 0 }}
                 transition={{ delay: 0.1, duration: 0.3 }}
               >
-                <span className="text-xs font-bold leading-tight drop-shadow-sm">View cart</span>
+                <span className="text-xs font-bold leading-tight drop-shadow-sm">
+                  {isTakeaway ? 'Takeaway Cart' : 'View cart'}
+                </span>
                 <span className="text-[10px] opacity-95 leading-tight font-medium">
                   {itemCount} {itemCount === 1 ? 'item' : 'items'}
                 </span>
