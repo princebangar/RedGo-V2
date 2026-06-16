@@ -165,9 +165,21 @@ export default function Offers() {
                               {o.couponCode || "-"}
                             </p>
                           </div>
-                          <span className="px-2 py-1 rounded-md text-xs font-semibold bg-blue-600 text-white">
-                            {o.title || "Offer"}
-                          </span>
+                          <div className="flex flex-col items-end gap-1">
+                            <span className="px-2 py-1 rounded-md text-xs font-semibold bg-blue-600 text-white">
+                              {o.title || "Offer"}
+                            </span>
+                            {o.couponType === "delivery" && (
+                              <span className="text-[10px] px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-700 font-medium">
+                                Delivery Only
+                              </span>
+                            )}
+                            {o.couponType === "takeaway" && (
+                              <span className="text-[10px] px-2 py-0.5 rounded-full bg-orange-100 text-orange-700 font-medium">
+                                Takeaway Only
+                              </span>
+                            )}
+                          </div>
                         </div>
                         <p className="text-sm text-slate-700 dark:text-slate-300">
                           <span className="font-semibold">Restaurant:</span>{" "}

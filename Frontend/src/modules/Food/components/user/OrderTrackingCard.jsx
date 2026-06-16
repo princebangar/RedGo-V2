@@ -152,12 +152,24 @@ function OrderTrackingCardInner({ hasBottomNav = true }) {
   const activeOrderKeyRef = useRef("");
   const activeOrderSnapshotRef = useRef(null);
   const [invalidOrderIds, setInvalidOrderIds] = useState(new Set());
+  // Guard: track which order keys are currently being verified to prevent concurrent duplicate calls
+  const verifyingKeysRef = useRef(new Set());
+  const lastVerifyTimeRef = useRef({});
+  // Guard: prevent concurrent fetchOrders calls (StrictMode double-invoke / event storms)
+  const isFetchingOrdersRef = useRef(false);
+  const lastFetchOrdersTimeRef = useRef(0);
 
   const fetchOrders = useCallback(async () => {
     if (!isModuleAuthenticated("user")) {
       setHasFetchedApi(true);
       return;
     }
+    // Drop duplicate concurrent calls — only one fetch at a time
+    if (isFetchingOrdersRef.current) return;
+    // Throttle: don't re-fetch within 2 seconds of the last completed fetch
+    const now = Date.now();
+    if (now - lastFetchOrdersTimeRef.current < 2000) return;
+    isFetchingOrdersRef.current = true;
     try {
       const response = await orderAPI.getOrders({ limit: 10, page: 1 });
       let nextOrders = [];
@@ -190,13 +202,15 @@ function OrderTrackingCardInner({ hasBottomNav = true }) {
         setApiOrders([]);
       }
     } finally {
+      lastFetchOrdersTimeRef.current = Date.now();
+      isFetchingOrdersRef.current = false;
       setHasFetchedApi(true);
     }
   }, []);
 
   useEffect(() => {
     fetchOrders();
-    const interval = setInterval(fetchOrders, 30000);
+    const interval = setInterval(fetchOrders, 60000); // 60s — live updates via Socket.IO anyway
     return () => clearInterval(interval);
   }, [fetchOrders]);
 
@@ -327,7 +341,17 @@ function OrderTrackingCardInner({ hasBottomNav = true }) {
     const isRecentlyConfirmed = apiOrders.some((o) => getOrderKey(o) === key);
     if (isRecentlyConfirmed) return;
 
+    // Prevent concurrent duplicate calls for the same key
+    if (verifyingKeysRef.current.has(key)) return;
+
+    // Cooldown: don't re-verify the same key more than once per 8 seconds
+    const now = Date.now();
+    const lastVerify = lastVerifyTimeRef.current[key] || 0;
+    if (now - lastVerify < 8000) return;
+
     const verifyOrderExists = async () => {
+      verifyingKeysRef.current.add(key);
+      lastVerifyTimeRef.current[key] = Date.now();
       try {
         await orderAPI.getOrderDetails(key);
       } catch (error) {
@@ -338,6 +362,8 @@ function OrderTrackingCardInner({ hasBottomNav = true }) {
             return next;
           });
         }
+      } finally {
+        verifyingKeysRef.current.delete(key);
       }
     };
 

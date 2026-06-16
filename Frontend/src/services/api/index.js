@@ -1098,6 +1098,7 @@ export const restaurantAPI = {
             isGlobalCoupon: true,
             endDate: o.endDate || null,
             showInCart: o.showInCart !== false,
+            couponType: o.couponType || "all",
             _ts: now,
           };
         });

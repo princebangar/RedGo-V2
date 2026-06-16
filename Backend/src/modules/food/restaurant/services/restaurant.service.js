@@ -1562,7 +1562,8 @@ export const listPublicOffers = async () => {
             restaurantRating: typeof restaurant?.rating === 'number' ? restaurant.rating : 0,
             endDate: o.endDate || null,
             showInCart: o.showInCart !== false,
-            minOrderValue: o.minOrderValue ?? 0
+            minOrderValue: o.minOrderValue ?? 0,
+            couponType: o.couponType || 'all'
         };
     });
 

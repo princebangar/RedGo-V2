@@ -17,7 +17,8 @@ const foodOfferSchema = new mongoose.Schema(
         isFirstOrderOnly: { type: Boolean, default: false },
         endDate: { type: Date },
         status: { type: String, enum: ['active', 'paused', 'inactive'], default: 'active', index: true },
-        showInCart: { type: Boolean, default: true }
+        showInCart: { type: Boolean, default: true },
+        couponType: { type: String, enum: ['delivery', 'takeaway', 'all'], default: 'all', index: true }
     },
     { collection: 'food_offers', timestamps: true }
 );

@@ -189,11 +189,38 @@ export default function UserOrderDetails() {
     })
     : ""
 
-  const addressText =
-    order.address?.formattedAddress ||
-    [order.address?.street, order.address?.city, order.address?.state, order.address?.zipCode]
-      .filter(Boolean)
-      .join(", ")
+  // Try all common field names the backend may use for the delivery address
+  const addressText = (() => {
+    const candidates = [
+      order.deliveryAddress,
+      order.address,
+      order.deliveryAddressId,
+      order.userAddress,
+    ].filter(Boolean);
+
+    for (const addr of candidates) {
+      // If addr is a plain string
+      if (typeof addr === "string" && addr.trim()) return addr.trim();
+
+      if (typeof addr === "object") {
+        if (addr.formattedAddress) return addr.formattedAddress;
+        if (addr.address && typeof addr.address === "string") return addr.address;
+        const parts = [
+          addr.houseNo || addr.houseNumber,
+          addr.buildingName,
+          addr.street || addr.streetAddress || addr.addressLine1,
+          addr.addressLine2,
+          addr.area || addr.locality || addr.neighbourhood,
+          addr.landmark,
+          addr.city || addr.town,
+          addr.state,
+          addr.zipCode || addr.pincode || addr.postalCode || addr.zip,
+        ].filter(Boolean);
+        if (parts.length) return parts.join(", ");
+      }
+    }
+    return "";
+  })();
 
   const savings =
     (pricing.discount || 0) +

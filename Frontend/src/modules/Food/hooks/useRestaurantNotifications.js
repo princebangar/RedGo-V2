@@ -164,6 +164,17 @@ const stopGlobalAlertLoop = () => {
   }
   globalAlertLoopStartedAt = 0;
   
+  if (typeof window !== 'undefined') {
+    try {
+      const keys = Object.keys(localStorage);
+      keys.forEach(k => {
+        if (k.startsWith('alert_start_')) {
+          localStorage.removeItem(k);
+        }
+      });
+    } catch (_) {}
+  }
+  
   if (globalAudio) {
     try {
       globalAudio.pause();
@@ -231,20 +242,46 @@ const playGlobalNotificationSound = async (orderData = {}) => {
 
 const startGlobalAlertLoop = (orderData) => {
   stopGlobalAlertLoop();
-  globalAlertLoopStartedAt = Date.now();
+  
+  const orderId = getOrderAlertKey(orderData);
+  const storageKey = `alert_start_${orderId}`;
+  let alertStartTime = typeof window !== 'undefined' ? Number(localStorage.getItem(storageKey)) : 0;
+  
+  if (!alertStartTime) {
+    alertStartTime = Date.now();
+    if (typeof window !== 'undefined') {
+      try {
+        localStorage.setItem(storageKey, String(alertStartTime));
+      } catch (_) {}
+    }
+  }
+
+  globalAlertLoopStartedAt = alertStartTime;
   globalActiveOrder = orderData;
   updateGlobalState({ activeOrder: orderData });
+
+  const elapsed = Date.now() - globalAlertLoopStartedAt;
+  const ALERT_LOOP_MAX_MS = 120000;
+  const ALERT_LOOP_INTERVAL_MS = 4500;
+
+  if (elapsed >= ALERT_LOOP_MAX_MS) {
+    stopGlobalAlertLoop();
+    return;
+  }
 
   if (!globalIsMuted) {
     playGlobalNotificationSound(orderData);
   }
 
   globalAlertLoopTimer = setInterval(() => {
-    const elapsed = Date.now() - globalAlertLoopStartedAt;
-    const ALERT_LOOP_MAX_MS = 120000;
-    const ALERT_LOOP_INTERVAL_MS = 4500;
+    if (!globalActiveOrder) {
+      stopGlobalAlertLoop();
+      return;
+    }
     
-    if (elapsed >= ALERT_LOOP_MAX_MS || !globalActiveOrder) {
+    const currentElapsed = Date.now() - globalAlertLoopStartedAt;
+    
+    if (currentElapsed >= ALERT_LOOP_MAX_MS) {
       stopGlobalAlertLoop();
       return;
     }
@@ -703,6 +740,12 @@ export const useRestaurantNotifications = () => {
         globalAudio.pause();
         globalAudio.currentTime = 0;
         globalAudio.muted = false;
+
+        // If there's an active order pending that isn't muted, resume the alarm immediately!
+        if (globalActiveOrder && !globalIsMuted) {
+          playGlobalNotificationSound(globalActiveOrder);
+          startGlobalAlertLoop(globalActiveOrder);
+        }
       } catch (error) {
         // ignore
       }

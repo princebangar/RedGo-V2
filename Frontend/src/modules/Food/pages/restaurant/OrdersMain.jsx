@@ -90,6 +90,8 @@ const TERMINAL_STATUSES = new Set(["delivered", "completed", "picked_up", "cance
 
 const transformOrderForList = (order) => {
   const isTerminal = TERMINAL_STATUSES.has(order.status);
+  // Dining orders are handled via Dining Booking tab, not the food order list
+  if (String(order.orderType || "").toLowerCase() === "dining") return null;
   return {
   orderId: order.orderId || order._id,
   mongoId: order._id,
@@ -660,7 +662,7 @@ function TableBookings() {
   return (
     <div className="pt-4 pb-6 px-1">
       <div className="flex items-baseline justify-between mb-4 px-1">
-        <h2 className="text-base font-semibold text-black">Table Bookings</h2>
+        <h2 className="text-base font-semibold text-black">Dining Bookings</h2>
         <div className="flex items-center gap-3">
            <button 
             onClick={handleRefresh}
@@ -674,7 +676,7 @@ function TableBookings() {
 
       {bookings.length === 0 ? (
         <div className="text-center py-12 bg-white rounded-2xl border border-gray-200">
-          <p className="text-gray-400 text-sm">No table bookings yet</p>
+          <p className="text-gray-400 text-sm">No dining bookings yet</p>
         </div>
       ) : (
         <div className="space-y-3">
@@ -810,6 +812,7 @@ function AllOrders({ onSelectOrder, onCancel, onVerifyTakeaway, refreshToken = 0
         if (response.data?.success && response.data.data?.orders) {
           const transformedOrders = response.data.data.orders
             .map(transformOrderForList)
+            .filter(Boolean)
             .sort((a, b) => {
               // Group 0 = active orders, Group 1 = terminal (delivered/cancelled)
               const groupA = allOrdersStatusGroup[a.status] ?? 0;
@@ -1003,6 +1006,7 @@ function TakeawayOrders({ onSelectOrder, onCancel, onVerifyTakeaway, refreshToke
           const transformedOrders = response.data.data.orders
             .filter((o) => String(o.orderType || '').toLowerCase() === 'takeaway')
             .map(transformOrderForList)
+            .filter(Boolean)
             .sort((a, b) => {
               const groupA = allOrdersStatusGroup[a.status] ?? 0;
               const groupB = allOrdersStatusGroup[b.status] ?? 0;
@@ -1350,7 +1354,7 @@ export default function OrdersMain() {
             
             // If new pending booking found, maybe show toast
             if (pending > pendingBookingsCount) {
-              toast.info(`New table booking request! Check the "Table Booking" tab.`);
+              toast.info(`New dining booking request! Check the "Dining Booking" tab.`);
             }
             setPendingBookingsCount(pending);
           }
@@ -1880,34 +1884,45 @@ export default function OrdersMain() {
       const orderId = resolveOrderActionId(orderToReject);
       
       if (orderId && !isAcceptingOrder) {
-        debugLog("?? Timer expired. Auto-rejecting order:", orderId);
-        if (stopSound) {
-          stopSound();
-        }
+        // Safety: Double check if order has genuinely expired (4 minutes = 240s) using createdAt
+        const orderTime = orderToReject?.createdAt ? new Date(orderToReject.createdAt).getTime() : Date.now();
+        const secondsElapsed = Math.floor((Date.now() - orderTime) / 1000);
         
-        // Instantly close the reject reasons popup
-        setShowRejectPopup(false);
+        if (secondsElapsed >= 235) {
+          debugLog("⏰ Timer expired. Auto-rejecting order:", orderId);
+          if (stopSound) {
+            stopSound();
+          }
+          
+          // Instantly close the reject reasons popup
+          setShowRejectPopup(false);
 
-        // Show cancelled status in the main popup
-        setPopupOrder((prev) => {
-          const base = prev || orderToReject || {};
-          return {
-            ...base,
-            status: "cancelled",
-            orderStatus: "cancelled"
-          };
-        });
-
-        restaurantAPI.rejectOrder(orderId, "No response from restaurant (Auto-rejected)")
-          .then(() => {
-            toast.info("Order auto-rejected due to no response");
-            requestOrdersRefresh();
-            // The 2.5s timer in the other useEffect will close the main popup
-          })
-          .catch((err) => {
-            debugError("Auto-reject failed:", err);
-            setShowNewOrderPopup(false);
+          // Show cancelled status in the main popup
+          setPopupOrder((prev) => {
+            const base = prev || orderToReject || {};
+            return {
+              ...base,
+              status: "cancelled",
+              orderStatus: "cancelled"
+            };
           });
+
+          restaurantAPI.rejectOrder(orderId, "No response from restaurant (Auto-rejected)")
+            .then(() => {
+              toast.info("Order auto-rejected due to no response");
+              requestOrdersRefresh();
+              // The 2.5s timer in the other useEffect will close the main popup
+            })
+            .catch((err) => {
+              debugError("Auto-reject failed:", err);
+              setShowNewOrderPopup(false);
+            });
+        } else {
+          // If time is still remaining in reality, correct the countdown state instead of auto-cancelling!
+          const remaining = Math.max(0, 240 - secondsElapsed);
+          debugLog("⏳ Recalculated countdown state to match real time elapsed:", remaining);
+          setCountdown(remaining);
+        }
       } else {
         setShowRejectPopup(false);
         setShowNewOrderPopup(false);
@@ -2878,7 +2893,7 @@ export default function OrdersMain() {
               )}
               <div className="flex items-center justify-center gap-2 relative z-10">
                 <span className="flex items-center gap-1.5">
-                  Table Booking
+                  Dining Booking
                   {pendingBookingsCount > 0 && (
                     <span className="px-1.5 py-0.5 rounded-full bg-red-100 text-[#B80B3D] text-[10px] font-black animate-bounce">
                       {pendingBookingsCount}
@@ -4077,7 +4092,7 @@ function PreparingOrders({
           // 'confirmed' orders should only appear in popup notification, not in preparing list
           // After accepting, order status changes to 'preparing' and then appears here
           const preparingOrders = response.data.data.orders.filter(
-            (order) => order.status === "preparing",
+            (order) => order.status === "preparing" && String(order.orderType || "").toLowerCase() !== "dining",
           );
 
           const transformedOrders = preparingOrders.map((order) => {
@@ -4388,7 +4403,7 @@ function ReadyOrders({ onSelectOrder, onVerifyTakeaway, refreshToken = 0 }) {
         if (response.data?.success && response.data.data?.orders) {
           // Filter orders with 'ready' status
           const readyOrders = response.data.data.orders.filter(
-            (order) => order.status === "ready",
+            (order) => order.status === "ready" && String(order.orderType || "").toLowerCase() !== "dining",
           );
 
           const transformedOrders = readyOrders.map((order) => ({

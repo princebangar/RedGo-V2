@@ -3671,7 +3671,8 @@ export async function getAllOffers(_query = {}) {
             maxDiscount: o.maxDiscount ?? null,
             usageLimit: o.usageLimit ?? null,
             usedCount: o.usedCount ?? 0,
-            restaurantScope: o.restaurantScope
+            restaurantScope: o.restaurantScope,
+            couponType: o.couponType || 'all'
         };
     });
 
@@ -3699,7 +3700,8 @@ export async function createAdminOffer(body) {
         isFirstOrderOnly: body.isFirstOrderOnly ?? false,
         endDate: body.endDate,
         status: body.endDate && new Date(body.endDate).getTime() <= Date.now() ? 'inactive' : 'active',
-        showInCart: true
+        showInCart: true,
+        couponType: body.couponType || 'all'
     });
 
     if (doc.restaurantScope === 'selected' && doc.restaurantId) {

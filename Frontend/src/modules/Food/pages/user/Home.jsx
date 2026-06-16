@@ -2926,10 +2926,14 @@ export default function Home() {
           <div className="px-4 mb-3 lg:mb-4">
             <div className="flex flex-col gap-1 antialiased">
               <h2 className="text-[11px] sm:text-xs font-semibold text-[#5d80a3] tracking-[0.15em] uppercase">
-                {loadingRestaurants ? "Finding Restaurants For You" : `${filteredRestaurants.length} Restaurants Delivering to You`}
+                {loadingRestaurants 
+                  ? "Finding Restaurants For You" 
+                  : orderType === "takeaway"
+                  ? `${filteredRestaurants.length} Restaurants near you`
+                  : `${filteredRestaurants.length} Restaurants Delivering to You`}
               </h2>
               <h3 className="text-lg sm:text-xl font-bold text-[#364d66] dark:text-gray-200 tracking-tight">
-                Featured Restaurants
+                {orderType === "takeaway" ? "Takeaway Restaurants" : "Featured Restaurants"}
               </h3>
             </div>
           </div>

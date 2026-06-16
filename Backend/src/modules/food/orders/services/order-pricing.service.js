@@ -170,6 +170,11 @@ export async function calculateOrderPricing(userId, dto) {
         if (c2 > 0) firstOrderOk = false;
       }
 
+      const couponTypeOk =
+        !offer.couponType ||
+        offer.couponType === "all" ||
+        String(offer.couponType).toLowerCase() === String(dto.orderType || "delivery").toLowerCase();
+
       const allowed =
         statusOk &&
         startOk &&
@@ -178,7 +183,8 @@ export async function calculateOrderPricing(userId, dto) {
         minOk &&
         usageOk &&
         perUserOk &&
-        firstOrderOk;
+        firstOrderOk &&
+        couponTypeOk;
 
       if (allowed) {
         if (offer.discountType === "percentage") {

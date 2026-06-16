@@ -1478,19 +1478,54 @@ export default function OrderTracking() {
       }
     }
 
+    const userAgent = navigator.userAgent || navigator.vendor || window.opera;
+    const isAndroid = /android/i.test(userAgent);
+    const isIOS = /iPad|iPhone|iPod/.test(userAgent) && !window.MSStream;
+
     let mapsUrl = '';
+    let isMobileDeepLink = false;
+
     if (lat !== null && lng !== null && Number.isFinite(Number(lat)) && Number.isFinite(Number(lng))) {
       const name = order?.restaurant || 'Restaurant';
-      mapsUrl = `https://maps.google.com/?q=${lat},${lng}+(${encodeURIComponent(name)})`;
+      if (isAndroid) {
+        mapsUrl = `geo:0,0?q=${lat},${lng}(${encodeURIComponent(name)})`;
+        isMobileDeepLink = true;
+      } else if (isIOS) {
+        mapsUrl = `maps://?q=${lat},${lng}`;
+        isMobileDeepLink = true;
+      } else {
+        mapsUrl = `https://maps.google.com/?q=${lat},${lng}+(${encodeURIComponent(name)})`;
+      }
     } else {
-      // Build a highly specific query: "Restaurant Name Restaurant Address"
       const name = order?.restaurant || 'Restaurant';
       const address = order?.restaurantAddress || '';
       const query = address ? `${name} ${address}` : name;
-      mapsUrl = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(query)}`;
+      if (isAndroid) {
+        mapsUrl = `geo:0,0?q=${encodeURIComponent(query)}`;
+        isMobileDeepLink = true;
+      } else if (isIOS) {
+        mapsUrl = `maps://?q=${encodeURIComponent(query)}`;
+        isMobileDeepLink = true;
+      } else {
+        mapsUrl = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(query)}`;
+      }
     }
-    
-    window.open(mapsUrl, '_blank');
+
+    if (isMobileDeepLink) {
+      try {
+        const link = document.createElement('a');
+        link.href = mapsUrl;
+        link.setAttribute('target', '_self');
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+      } catch (err) {
+        debugError('Failed to open native maps link, falling back to window.location:', err);
+        window.location.assign(mapsUrl);
+      }
+    } else {
+      window.open(mapsUrl, '_blank');
+    }
   };
 
   const handleCallRider = (e) => {

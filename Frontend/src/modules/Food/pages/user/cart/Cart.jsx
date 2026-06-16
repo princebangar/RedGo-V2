@@ -307,6 +307,12 @@ export default function Cart() {
 
   // Coupons state - fetched from backend
   const [availableCoupons, setAvailableCoupons] = useState([])
+  const filteredCoupons = useMemo(() => {
+    return availableCoupons.filter((coupon) => {
+      if (!coupon.couponType || coupon.couponType === "all") return true
+      return coupon.couponType === orderType
+    })
+  }, [availableCoupons, orderType])
   const [loadingCoupons, setLoadingCoupons] = useState(false)
   const [userOrderCount, setUserOrderCount] = useState(0)
 
@@ -927,6 +933,7 @@ export default function Cart() {
                   isGlobalCoupon: Boolean(coupon.isGlobalCoupon),
                   itemId: couponItemId,
                   itemName: cartItem.name,
+                  couponType: coupon.couponType || "all",
                 })
               }
             })
@@ -990,11 +997,28 @@ export default function Cart() {
         if (response?.data?.success && response?.data?.data?.pricing) {
           setPricing(response.data.data.pricing)
 
-          // Update applied coupon if backend returns one
-          if (response.data.data.pricing.appliedCoupon && !appliedCoupon) {
-            const coupon = availableCoupons.find(c => c.code === response.data.data.pricing.appliedCoupon.code)
-            if (coupon) {
-              setAppliedCoupon(coupon)
+          const backendApplied = response.data.data.pricing.appliedCoupon
+          if (backendApplied) {
+            if (!appliedCoupon || appliedCoupon.code !== backendApplied.code) {
+              const coupon = availableCoupons.find(c => c.code === backendApplied.code)
+              if (coupon) {
+                setAppliedCoupon(coupon)
+              } else {
+                setAppliedCoupon({
+                  code: backendApplied.code,
+                  discount: backendApplied.discount || 0,
+                  minOrder: 0,
+                  customerGroup: "all",
+                  couponType: "all",
+                })
+              }
+            }
+          } else {
+            if (appliedCoupon) {
+              setAppliedCoupon(null)
+              setCouponCode("")
+              setManualCouponCode("")
+              toast.error("Applied coupon is not valid for this order type")
             }
           }
         }
@@ -1436,8 +1460,13 @@ export default function Cart() {
       return
     }
 
+    if (coupon?.couponType && coupon.couponType !== "all" && coupon.couponType !== orderType) {
+      toast.error(`This coupon is only valid for ${coupon.couponType} orders`)
+      return
+    }
+
     // Validate with backend first; only set applied if backend accepts
-    if (cart.length > 0 && hasSavedAddress) {
+    if (cart.length > 0 && (orderType === "takeaway" || hasSavedAddress)) {
       try {
         const items = cart.map(item => ({
           itemId: item.itemId || item.id,
@@ -1455,8 +1484,9 @@ export default function Cart() {
         const response = await orderAPI.calculateOrder({
           items,
           restaurantId: restaurantData?.restaurantId || restaurantData?._id || restaurantId || null,
-          deliveryAddress: defaultAddress,
-          couponCode: coupon.code
+          deliveryAddress: orderType === "takeaway" ? undefined : defaultAddress,
+          couponCode: coupon.code,
+          orderType: orderType
         })
 
         const pricingData = response?.data?.data?.pricing
@@ -1484,8 +1514,8 @@ export default function Cart() {
       return
     }
 
-    if (cart.length === 0 || !hasSavedAddress) {
-      toast.error("Add items and delivery address first")
+    if (cart.length === 0 || (orderType !== "takeaway" && !hasSavedAddress)) {
+      toast.error(orderType === "takeaway" ? "Add items first" : "Add items and delivery address first")
       return
     }
 
@@ -1496,6 +1526,11 @@ export default function Cart() {
     // If we know this is first-time only and user already ordered, block early.
     if (matchedCoupon?.customerGroup === "new" && userOrderCount > 0) {
       toast.error("This coupon is only for first-time users")
+      return
+    }
+
+    if (matchedCoupon && matchedCoupon.couponType && matchedCoupon.couponType !== "all" && matchedCoupon.couponType !== orderType) {
+      toast.error(`This coupon is only valid for ${matchedCoupon.couponType} orders`)
       return
     }
 
@@ -1516,8 +1551,9 @@ export default function Cart() {
       const response = await orderAPI.calculateOrder({
         items,
         restaurantId: restaurantData?.restaurantId || restaurantData?._id || restaurantId || null,
-        deliveryAddress: defaultAddress,
-        couponCode: inputCode
+        deliveryAddress: orderType === "takeaway" ? undefined : defaultAddress,
+        couponCode: inputCode,
+        orderType: orderType
       })
 
       const pricingData = response?.data?.data?.pricing
@@ -1540,6 +1576,7 @@ export default function Cart() {
           discount: pricingData.appliedCoupon.discount || 0,
           minOrder: 0,
           customerGroup: "all",
+          couponType: "all",
         },
       )
       setShowCoupons(false)
@@ -2464,9 +2501,9 @@ export default function Cart() {
                     </div>
 
                     {/* Quick Suggestions if any */}
-                    {availableCoupons.length > 0 && (
+                    {filteredCoupons.length > 0 && (
                       <div className="space-y-3 pt-2 border-t border-dashed border-gray-100 dark:border-gray-800">
-                        {availableCoupons.slice(0, 2).map((coupon) => (
+                        {filteredCoupons.slice(0, 2).map((coupon) => (
                           <div key={coupon.code} className="flex items-center justify-between group">
                             <div>
                               <p className="text-xs font-black text-gray-700 dark:text-gray-300 tracking-tight">USE {coupon.code}</p>
