@@ -1089,7 +1089,7 @@ export const restaurantAPI = {
             couponCode: o.couponCode,
             discountType: o.discountType,
             discountPercentage: isPct ? Number(o.discountValue) || 0 : 0,
-            originalPrice: 0,
+            originalPrice: isPct ? 0 : Number(o.discountValue || 0),
             discountedPrice: 0,
             minOrderValue: Number(o.minOrderValue || 0),
             minOrder: Number(o.minOrderValue || 0),

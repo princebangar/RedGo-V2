@@ -28,6 +28,7 @@ import {
   Check,
   Lock,
   Percent,
+  Tag,
   Eye,
   Users,
   AlertCircle,
@@ -95,6 +96,26 @@ const DishImage = ({ src, alt, className }) => (
   </div>
 )
 
+const ScallopBadge = ({ className = "" }) => (
+  <svg
+    viewBox="0 0 100 100"
+    className={`text-[#2563EB] fill-current flex-shrink-0 ${className}`}
+  >
+    <path d="M 86.29 42.78 Q 95.00 50.00 86.29 57.22 Q 91.57 67.22 80.76 70.56 Q 81.82 81.82 70.56 80.76 Q 67.22 91.57 57.22 86.29 Q 50.00 95.00 42.78 86.29 Q 32.78 91.57 29.44 80.76 Q 18.18 81.82 19.24 70.56 Q 8.43 67.22 13.71 57.22 Q 5.00 50.00 13.71 42.78 Q 8.43 32.78 19.24 29.44 Q 18.18 18.18 29.44 19.24 Q 32.78 8.43 42.78 13.71 Q 50.00 5.00 57.22 13.71 Q 67.22 8.43 70.56 19.24 Q 81.82 18.18 80.76 29.44 Q 91.57 32.78 86.29 42.78 Z" />
+    <text
+      x="50"
+      y="63"
+      textAnchor="middle"
+      fontSize="42"
+      fontWeight="900"
+      fill="white"
+      className="select-none font-sans"
+    >
+      %
+    </text>
+  </svg>
+)
+
 
 
 
@@ -139,6 +160,40 @@ function RestaurantDetailsContent() {
   const [showFilterSheet, setShowFilterSheet] = useState(false)
   const [showLocationSheet, setShowLocationSheet] = useState(false)
   const [showScheduleSheet, setShowScheduleSheet] = useState(false)
+
+  const [coupons, setCoupons] = useState([])
+  const [loadingCoupons, setLoadingCoupons] = useState(false)
+  const [showOffersSheet, setShowOffersSheet] = useState(false)
+  const [currentCouponIndex, setCurrentCouponIndex] = useState(0)
+
+  const formatCouponStripText = (coupon) => {
+    if (!coupon) return ""
+    if (coupon.discountType === "percentage") {
+      const limitText = coupon.maxDiscount ? ` up to ₹${coupon.maxDiscount}` : ""
+      return `${coupon.discountPercentage}% OFF above ₹${coupon.minOrderValue}${limitText}`
+    }
+    const value = coupon.originalPrice || coupon.discountValue || 0
+    return `Flat ₹${value} OFF above ₹${coupon.minOrderValue}`
+  }
+
+  const formatCouponTitle = (coupon) => {
+    return formatCouponStripText(coupon)
+  }
+
+  const handleCopyCoupon = (code) => {
+    if (typeof navigator !== "undefined" && navigator.clipboard) {
+      navigator.clipboard.writeText(code)
+        .then(() => {
+          toast.success(`Coupon code ${code} copied!`)
+        })
+        .catch((err) => {
+          debugError("Failed to copy coupon code:", err)
+          toast.error("Failed to copy code.")
+        })
+    } else {
+      toast.success(`Coupon code ${code} copied!`)
+    }
+  }
 
   const [selectedDate, setSelectedDate] = useState(null)
   const [selectedTimeSlot, setSelectedTimeSlot] = useState(null)
@@ -265,6 +320,54 @@ function RestaurantDetailsContent() {
   const [restaurantError, setRestaurantError] = useState(null)
   const fetchedRestaurantRef = useRef(false) // Track if restaurant has been fetched for current slug
   const fetchedSlugRef = useRef(null)
+
+  // Fetch available coupons for the restaurant
+  useEffect(() => {
+    const fetchCoupons = async () => {
+      const rId = restaurant?.id || restaurant?.restaurantId || restaurant?.mongoId || restaurant?._id
+      if (!rId) return
+      
+      setLoadingCoupons(true)
+      try {
+        const res = await restaurantAPI.getCouponsByItemIdPublic(rId)
+        if (res?.data?.success && res?.data?.data?.coupons) {
+          const list = res.data.data.coupons
+          setCoupons(list)
+        }
+      } catch (err) {
+        debugError("Failed to fetch coupons for restaurant:", err)
+      } finally {
+        setLoadingCoupons(false)
+      }
+    }
+    fetchCoupons()
+  }, [restaurant?.id, restaurant?.restaurantId, restaurant?.mongoId, restaurant?._id])
+
+  // Reset coupon carousel index when coupons change
+  useEffect(() => {
+    setCurrentCouponIndex(0)
+  }, [coupons])
+
+  // Automatically cycle through coupons (carousel)
+  useEffect(() => {
+    if (coupons.length <= 1) return
+    const timer = setInterval(() => {
+      setCurrentCouponIndex((prev) => (prev + 1) % coupons.length)
+    }, 3000)
+    return () => clearInterval(timer)
+  }, [coupons.length])
+
+  // Lock body scroll when offers sheet is open
+  useEffect(() => {
+    if (showOffersSheet) {
+      document.body.style.overflow = 'hidden'
+    } else {
+      document.body.style.overflow = ''
+    }
+    return () => {
+      document.body.style.overflow = ''
+    }
+  }, [showOffersSheet])
 
   useEffect(() => {
     const intervalId = setInterval(() => {
@@ -2324,6 +2427,38 @@ function RestaurantDetailsContent() {
 
 
 
+          {/* Offers strip */}
+          {coupons && coupons.length > 0 && (
+            <div 
+              onClick={() => setShowOffersSheet(true)}
+              className="flex items-center justify-between border border-gray-200 dark:border-gray-800 bg-white dark:bg-[#1a1a1a] px-3.5 py-2.5 rounded-xl cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-800/50 transition-all duration-200 mb-3 shadow-sm"
+            >
+              <div className="flex items-center gap-2 overflow-hidden flex-1 mr-4">
+                <div className="flex-shrink-0 flex items-center justify-center">
+                  <ScallopBadge className="h-6 w-6 text-[#2563EB]" />
+                </div>
+                <div className="flex-1 h-4 overflow-hidden relative min-w-0">
+                  <AnimatePresence>
+                    <motion.span
+                      key={currentCouponIndex}
+                      initial={{ y: -14, opacity: 0 }}
+                      animate={{ y: 0, opacity: 1 }}
+                      exit={{ y: 14, opacity: 0 }}
+                      transition={{ duration: 0.22, ease: "easeInOut" }}
+                      className="absolute inset-x-0 top-0 bottom-0 text-xs font-semibold text-gray-800 dark:text-gray-200 truncate flex items-center"
+                    >
+                      {formatCouponStripText(coupons[currentCouponIndex])}
+                    </motion.span>
+                  </AnimatePresence>
+                </div>
+              </div>
+              <div className="flex items-center gap-1 text-xs font-semibold text-gray-500 dark:text-gray-400 whitespace-nowrap pl-2 flex-shrink-0">
+                <span>{coupons.length} offer{coupons.length > 1 ? "s" : ""}</span>
+                <ChevronDown className="h-4 w-4" />
+              </div>
+            </div>
+          )}
+
           {/* Filter/Category Buttons */}
           {restaurant?.menuSections && Array.isArray(restaurant.menuSections) && restaurant.menuSections.length > 0 && (
             <div className="border-y border-gray-200 py-3 -mx-4 px-4 overflow-x-auto scrollbar-hide">
@@ -4048,6 +4183,97 @@ function RestaurantDetailsContent() {
                     </button>
                   </div>
                 </motion.div>
+              </>
+            )}
+          </AnimatePresence>,
+          document.body
+        )}
+
+      {/* Offers Bottom Sheet */}
+      {typeof window !== "undefined" &&
+        createPortal(
+          <AnimatePresence>
+            {showOffersSheet && (
+              <>
+                {/* Backdrop */}
+                <motion.div
+                  className="fixed inset-0 bg-black/60 z-[10020] pointer-events-auto"
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  exit={{ opacity: 0 }}
+                  onClick={() => setShowOffersSheet(false)}
+                />
+                {/* Container for bottom sheet / centered modal */}
+                <div className="fixed inset-0 flex items-end sm:items-center justify-center z-[10021] pointer-events-none p-0 sm:p-4">
+                  <div className="relative w-full max-w-lg pointer-events-auto">
+                    {/* Unified Close Button - matches Cart popup styling */}
+                    <button
+                      onClick={() => setShowOffersSheet(false)}
+                      className="absolute bottom-[calc(100%+16px)] left-1/2 -translate-x-1/2 sm:bottom-auto sm:top-4 sm:right-4 sm:left-auto sm:translate-x-0 w-12 h-12 sm:w-8 sm:h-8 rounded-full bg-black/50 border-2 border-white sm:border-0 sm:bg-gray-100 sm:dark:bg-gray-800 flex items-center justify-center text-white sm:text-gray-500 sm:dark:text-gray-400 hover:bg-black/70 sm:hover:bg-gray-200 sm:dark:hover:bg-gray-700 transition-colors z-[10022] cursor-pointer shadow-lg"
+                      aria-label="Close coupons"
+                    >
+                      <X className="h-5 w-5 sm:h-4 sm:w-4" />
+                    </button>
+
+                    {/* Sheet Content */}
+                    <motion.div
+                      className="relative bg-white dark:bg-[#1a1a1a] rounded-t-3xl sm:rounded-3xl w-full overflow-hidden flex flex-col max-h-[80vh] sm:max-h-[75vh] shadow-2xl border border-gray-100 dark:border-gray-800"
+                      initial={{ y: "100%", opacity: 0.5 }}
+                      animate={{ y: 0, opacity: 1 }}
+                      exit={{ y: "100%", opacity: 0.5 }}
+                      transition={{ type: "spring", damping: 30, stiffness: 300 }}
+                      onClick={(e) => e.stopPropagation()}
+                    >
+                      <div className="px-5 pt-6 pb-4 border-b border-gray-100 dark:border-gray-800">
+                        <h2 className="text-xl font-bold text-gray-900 dark:text-gray-100">
+                          Offers at {restaurant?.name || "this restaurant"}
+                        </h2>
+                      </div>
+
+                      <div className="flex-1 overflow-y-auto p-5 space-y-4">
+                        <h3 className="text-xs font-bold text-gray-400 dark:text-gray-500 uppercase tracking-wider">
+                          Restaurant coupons
+                        </h3>
+                        <div className="space-y-3 pb-6">
+                          {coupons.map((coupon, idx) => (
+                            <div
+                              key={coupon.couponCode || idx}
+                              className="border border-gray-100 dark:border-gray-850 rounded-2xl p-4 bg-white dark:bg-[#222222] shadow-sm relative overflow-hidden"
+                            >
+                              <div className="flex items-start gap-4">
+                                {/* Blue Scallop Badge */}
+                                <div className="flex-shrink-0">
+                                  <ScallopBadge className="h-10 w-10" />
+                                </div>
+
+                                {/* Coupon details */}
+                                <div className="flex-1 min-w-0 pr-6">
+                                  <h4 className="text-base font-bold text-gray-950 dark:text-gray-50 leading-tight">
+                                    {formatCouponTitle(coupon)}
+                                  </h4>
+                                  <p className="text-xs text-gray-500 dark:text-gray-405 mt-1">
+                                    Use code <span className="font-semibold text-gray-750 dark:text-gray-250">{coupon.couponCode}</span>
+                                  </p>
+
+                                  {/* Dashed Copy Box */}
+                                  <div className="mt-3.5">
+                                    <button
+                                      onClick={() => handleCopyCoupon(coupon.couponCode)}
+                                      className="inline-flex items-center gap-2 px-3 py-1.5 border border-dashed border-blue-200 dark:border-blue-900/50 bg-blue-50/50 dark:bg-blue-950/20 text-xs font-bold text-blue-600 dark:text-blue-400 rounded-lg hover:bg-blue-100/30 dark:hover:bg-blue-950/40 transition-colors focus:outline-none cursor-pointer"
+                                    >
+                                      <span>{coupon.couponCode}</span>
+                                      <Copy className="h-3 w-3" />
+                                    </button>
+                                  </div>
+                                </div>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    </motion.div>
+                  </div>
+                </div>
               </>
             )}
           </AnimatePresence>,

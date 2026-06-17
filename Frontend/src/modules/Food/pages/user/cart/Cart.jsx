@@ -176,7 +176,7 @@ export default function Cart() {
 
   const [sendCutlery, setSendCutlery] = useState(true)
   const [isPlacingOrder, setIsPlacingOrder] = useState(false)
-  const [showBillDetails, setShowBillDetails] = useState(true)
+  const [showBillDetails, setShowBillDetails] = useState(false)
   const [showPlacingOrder, setShowPlacingOrder] = useState(false)
   const [isScheduled, setIsScheduled] = useState(false)
   const [scheduledDate, setScheduledDate] = useState("")
@@ -301,6 +301,14 @@ export default function Cart() {
   const [pricing, setPricing] = useState(null)
   const [loadingPricing, setLoadingPricing] = useState(false)
 
+  // Use backend pricing if available, otherwise fallback to item sums
+  const subtotal = pricing?.subtotal || cart.reduce((sum, item) => sum + (item.price || 0) * (item.quantity || 1), 0)
+
+  // Auto coupon popup state
+  const hasShownPromoPopupRef = useRef({ delivery: false, takeaway: false, dining: false })
+  const [showAutoCouponPopup, setShowAutoCouponPopup] = useState(false)
+  const [bestCoupon, setBestCoupon] = useState(null)
+
   // Addons state
   const [addons, setAddons] = useState([])
   const [loadingAddons, setLoadingAddons] = useState(false)
@@ -308,13 +316,90 @@ export default function Cart() {
   // Coupons state - fetched from backend
   const [availableCoupons, setAvailableCoupons] = useState([])
   const filteredCoupons = useMemo(() => {
-    return availableCoupons.filter((coupon) => {
+    const subtotal = pricing?.subtotal || cart.reduce((sum, item) => sum + (item.price || 0) * (item.quantity || 1), 0)
+    const filtered = availableCoupons.filter((coupon) => {
       if (!coupon.couponType || coupon.couponType === "all") return true
       return coupon.couponType === orderType
     })
-  }, [availableCoupons, orderType])
+
+    // Sort: Applicable coupons first, then by discount value descending
+    return filtered.sort((a, b) => {
+      const isApplicableA = subtotal >= (Number(a.minOrder) || 0)
+      const isApplicableB = subtotal >= (Number(b.minOrder) || 0)
+
+      if (isApplicableA && !isApplicableB) return -1
+      if (!isApplicableA && isApplicableB) return 1
+
+      const discountA = Number(a.discount || 0)
+      const discountB = Number(b.discount || 0)
+      return discountB - discountA
+    })
+  }, [availableCoupons, orderType, cart, pricing])
   const [loadingCoupons, setLoadingCoupons] = useState(false)
   const [userOrderCount, setUserOrderCount] = useState(0)
+
+  // Lock body scroll when auto coupon popup is open
+  useEffect(() => {
+    if (showAutoCouponPopup) {
+      document.body.style.overflow = 'hidden'
+    } else {
+      document.body.style.overflow = ''
+    }
+    return () => {
+      document.body.style.overflow = ''
+    }
+  }, [showAutoCouponPopup])
+
+  // Trigger auto-coupon popup on load if eligible coupons exist and none is applied yet
+  useEffect(() => {
+    // If cart is empty, reset the popup tracking entirely so next time they add items and visit cart, it shows again!
+    if (cart.length === 0) {
+      hasShownPromoPopupRef.current = { delivery: false, takeaway: false, dining: false }
+      return
+    }
+
+    const currentOrderType = orderType || "delivery"
+    console.log("[AUTO-COUPON] Check trigger:", {
+      cartLength: cart.length,
+      filteredCouponsLength: filteredCoupons.length,
+      appliedCoupon: !!appliedCoupon,
+      hasShown: hasShownPromoPopupRef.current[currentOrderType],
+      loadingCoupons,
+      subtotal,
+      firstCoupon: filteredCoupons[0],
+      orderType: currentOrderType
+    })
+
+    if (
+      cart.length > 0 && 
+      filteredCoupons.length > 0 && 
+      !appliedCoupon && 
+      !hasShownPromoPopupRef.current[currentOrderType] && 
+      !loadingCoupons
+    ) {
+      const topCoupon = filteredCoupons[0]
+      const isApplicable = subtotal >= (Number(topCoupon.minOrder) || 0)
+      console.log("[AUTO-COUPON] Checking applicability:", {
+        isApplicable,
+        subtotal,
+        minOrder: topCoupon.minOrder
+      })
+      
+      if (isApplicable) {
+        console.log("[AUTO-COUPON] Showing popup for:", topCoupon.code)
+        setBestCoupon(topCoupon)
+        setShowAutoCouponPopup(true)
+        hasShownPromoPopupRef.current[currentOrderType] = true
+      }
+    }
+  }, [filteredCoupons, appliedCoupon, loadingCoupons, subtotal, cart.length, orderType])
+
+  const handleApplyAutoCoupon = () => {
+    if (bestCoupon) {
+      handleApplyCoupon(bestCoupon)
+      setShowAutoCouponPopup(false)
+    }
+  }
 
   // Fee settings from database (used for platform fee and GST fallback only)
   const [feeSettings, setFeeSettings] = useState({
@@ -1035,7 +1120,8 @@ export default function Cart() {
     }
 
     calculatePricing()
-  }, [cart, defaultAddress, appliedCoupon, couponCode, restaurantId, orderType])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [cart, defaultAddress, restaurantId, orderType])
 
   // Fetch wallet balance
   useEffect(() => {
@@ -1111,7 +1197,7 @@ export default function Cart() {
   }, [])
 
   // Use backend pricing if available, otherwise fallback to database fee settings
-  const subtotal = pricing?.subtotal || cart.reduce((sum, item) => sum + (item.price || 0) * (item.quantity || 1), 0)
+  // subtotal is declared at the top of the component
   const fallbackDeliveryFee = (() => {
     if (appliedCoupon?.freeDelivery) {
       return 0
@@ -1612,8 +1698,8 @@ export default function Cart() {
         const response = await orderAPI.calculateOrder({
           items,
           restaurantId: restaurantData?.restaurantId || restaurantData?._id || restaurantId || null,
-          deliveryAddress: defaultAddress,
-          couponCode: null
+          deliveryAddress: orderType === "takeaway" ? undefined : defaultAddress,
+          couponCode: undefined
         })
 
         if (response?.data?.success && response?.data?.data?.pricing) {
@@ -2256,10 +2342,13 @@ export default function Cart() {
       <div className="flex-1 overflow-y-auto overflow-x-hidden pb-44 md:pb-52">
         {/* Savings Banner */}
         {savings > 0 && (
-          <div className="bg-blue-100 dark:bg-blue-900/20 px-4 md:px-6 py-2 md:py-3 flex-shrink-0">
-            <div className="max-w-7xl mx-auto">
-              <p className="text-sm md:text-base font-medium text-blue-800 dark:text-blue-200">
-                Saved {RUPEE_SYMBOL}{savings} on this order
+          <div className="bg-green-50 dark:bg-green-950/20 px-4 md:px-6 py-2.5 flex-shrink-0 border-b border-green-100/30 dark:border-green-900/10">
+            <div className="max-w-7xl mx-auto flex items-center gap-2">
+              <span className="text-sm md:text-base">🎉</span>
+              <p className="text-sm md:text-base font-semibold text-green-700 dark:text-green-400">
+                {appliedCoupon?.code 
+                  ? `You saved ${RUPEE_SYMBOL}${savings} with '${appliedCoupon.code}' on this order!`
+                  : `You saved ${RUPEE_SYMBOL}${savings} on this order!`}
               </p>
             </div>
           </div>
@@ -2466,30 +2555,120 @@ export default function Cart() {
 
               {/* Simplified Coupon Section */}
               <div className="bg-white dark:bg-[#1a1a1a] rounded-2xl overflow-hidden border border-slate-100 dark:border-gray-800 shadow-sm">
-                <button 
-                  onClick={() => setShowCoupons(!showCoupons)}
-                  className="w-full px-4 py-4 md:px-6 flex items-center justify-between group active:scale-[0.99] transition-all"
+                <div 
+                  className="w-full px-4 py-4 md:px-6 flex items-center justify-between"
                 >
                   <div className="flex items-center gap-3">
                     <Tag className="h-5 w-5 text-gray-400" />
                     <span className="text-sm md:text-base font-bold text-gray-800 dark:text-gray-200">Offers & Coupons</span>
                   </div>
-                  <div className="flex items-center gap-1 text-[#DC2626] font-black text-xs md:text-sm tracking-wider">
-                    {showCoupons ? "CLOSE" : "VIEW ALL"} <ChevronRight className={`h-4 w-4 transition-transform ${showCoupons ? 'rotate-90' : ''}`} />
+                  {showCoupons && (
+                    <button 
+                      onClick={() => setShowCoupons(false)}
+                      className="flex items-center gap-1 text-[#DC2626] font-black text-xs md:text-sm tracking-wider hover:underline"
+                    >
+                      CLOSE <ChevronRight className="h-4 w-4 rotate-90" />
+                    </button>
+                  )}
+                </div>
+
+                {/* Zomato/Swiggy style outer coupons preview */}
+                {!showCoupons && !appliedCoupon && (
+                  <div className="px-4 pb-4 md:px-6 md:pb-5 pt-1 animate-in fade-in duration-300">
+                    {filteredCoupons.length > 0 ? (
+                      <div className="space-y-2.5">
+                        <div className="flex flex-col gap-2.5">
+                          {filteredCoupons.slice(0, 2).map((coupon) => {
+                            const isApplicable = subtotal >= (Number(coupon.minOrder) || 0)
+                            
+                            return (
+                              <div 
+                                key={coupon.code} 
+                                className="bg-[#DC2626]/5 dark:bg-[#DC2626]/10 border border-[#DC2626]/10 dark:border-[#DC2626]/20 rounded-xl p-3 flex items-center justify-between gap-3 shadow-[0_2px_8px_rgba(220,38,38,0.02)] hover:shadow-[0_4px_12px_rgba(220,38,38,0.05)] transition-all"
+                              >
+                                <div className="flex items-center gap-2.5 min-w-0">
+                                  <div className="w-8 h-8 rounded-full bg-red-100 dark:bg-[#DC2626]/20 flex items-center justify-center flex-shrink-0">
+                                    <Percent className="w-4 h-4 text-[#DC2626]" />
+                                  </div>
+                                  <div className="min-w-0 flex-1">
+                                    <div className="flex items-center gap-2 flex-wrap">
+                                      <span className="inline-block text-[10px] font-bold text-[#DC2626] uppercase tracking-wider bg-white dark:bg-gray-900 border border-dashed border-[#DC2626]/30 px-2 py-0.5 rounded shadow-sm">
+                                        {coupon.code}
+                                      </span>
+                                      <span className="text-xs font-black text-gray-900 dark:text-gray-100">
+                                        {coupon.discountDisplay || `Save ${RUPEE_SYMBOL}${coupon.discount}`}
+                                      </span>
+                                    </div>
+                                    <p className="text-[11px] font-medium text-gray-500 dark:text-gray-400 mt-1 line-clamp-1">
+                                      {coupon.description || `Save flat amount on your order`}
+                                    </p>
+                                    {!isApplicable && (
+                                      <p className="text-[9px] font-semibold text-gray-400 dark:text-gray-500 mt-0.5">
+                                        Add items worth {RUPEE_SYMBOL}{((Number(coupon.minOrder) || 0) - subtotal).toFixed(0)} more to apply
+                                      </p>
+                                    )}
+                                  </div>
+                                </div>
+                                <button
+                                  disabled={!isApplicable}
+                                  onClick={(e) => {
+                                    e.preventDefault()
+                                    e.stopPropagation()
+                                    handleApplyCoupon(coupon)
+                                  }}
+                                  className={`text-xs font-black px-4 py-1.5 rounded-lg shadow-sm active:scale-95 transition-all flex-shrink-0 uppercase tracking-wider ${
+                                    isApplicable 
+                                      ? "text-[#DC2626] bg-white dark:bg-gray-900 border border-[#DC2626]/20 hover:bg-[#DC2626]/5" 
+                                      : "text-gray-400 bg-gray-50 dark:bg-gray-900/50 border border-gray-200 dark:border-gray-800 cursor-not-allowed"
+                                  }`}
+                                >
+                                  Apply
+                                </button>
+                              </div>
+                            )
+                          })}
+                        </div>
+                        <button
+                          onClick={() => setShowCoupons(true)}
+                          className="w-full py-2.5 px-4 bg-gray-50/50 hover:bg-gray-50 dark:bg-gray-900/30 dark:hover:bg-gray-900/50 border border-dashed border-gray-200 dark:border-gray-800 rounded-xl text-xs font-bold text-[#DC2626] flex items-center justify-between transition-all active:scale-[0.98] mt-2.5"
+                        >
+                          <span>
+                            {filteredCoupons.length > 2 
+                              ? `+ ${filteredCoupons.length - 2} more offer${filteredCoupons.length - 2 > 1 ? 's' : ''}` 
+                              : "More offers available"}
+                          </span>
+                          <span className="flex items-center gap-1 font-black uppercase tracking-wider text-[10px]">
+                            VIEW ALL
+                            <ChevronRight className="h-3.5 w-3.5" />
+                          </span>
+                        </button>
+                      </div>
+                    ) : (
+                      <button
+                        onClick={() => setShowCoupons(true)}
+                        className="w-full py-2.5 px-4 bg-gray-50/50 hover:bg-gray-50 dark:bg-gray-900/30 dark:hover:bg-gray-900/50 border border-dashed border-gray-200 dark:border-gray-800 rounded-xl text-xs font-bold text-[#DC2626] flex items-center justify-between transition-all active:scale-[0.98]"
+                      >
+                        <span>Have a coupon code?</span>
+                        <span className="flex items-center gap-1 font-black uppercase tracking-wider text-[10px]">
+                          APPLY
+                          <ChevronRight className="h-3.5 w-3.5" />
+                        </span>
+                      </button>
+                    )}
                   </div>
-                </button>
+                )}
 
                 {/* Expandable Coupon Input Area */}
                 {showCoupons && !appliedCoupon && (
                   <div className="px-4 pb-5 md:px-6 md:pb-6 space-y-4 animate-in fade-in slide-in-from-top-2 duration-300">
                     <div className="flex items-center gap-3">
-                      <div className="flex-1 bg-gray-50 dark:bg-gray-900 rounded-xl px-4 py-3 border border-transparent focus-within:border-[#DC2626] transition-all">
+                      <div className="flex-1 bg-white dark:bg-gray-950 rounded-xl px-4 h-12 border border-gray-200 dark:border-gray-800/80 flex items-center focus-within:border-[#DC2626] focus-within:ring-1 focus-within:ring-[#DC2626]/20 transition-all shadow-sm">
                         <input
                           type="text"
                           value={manualCouponCode}
                           onChange={(e) => setManualCouponCode(e.target.value.toUpperCase())}
                           placeholder="Coupon code"
-                          className="w-full bg-transparent text-sm md:text-base font-semibold text-gray-800 dark:text-gray-100 outline-none placeholder:text-gray-400"
+                          className="w-full bg-transparent text-sm md:text-base font-semibold text-gray-800 dark:text-gray-100 outline-none placeholder:text-gray-400/85"
                         />
                       </div>
                       <button
@@ -2505,8 +2684,13 @@ export default function Cart() {
                       <div className="space-y-3 pt-2 border-t border-dashed border-gray-100 dark:border-gray-800">
                         {filteredCoupons.slice(0, 2).map((coupon) => (
                           <div key={coupon.code} className="flex items-center justify-between group">
-                            <div>
-                              <p className="text-xs font-black text-gray-700 dark:text-gray-300 tracking-tight">USE {coupon.code}</p>
+                            <div className="flex flex-col gap-1.5">
+                              <div className="flex items-center gap-1.5">
+                                <span className="text-xs text-gray-500 dark:text-gray-400 font-bold">Use code</span>
+                                <span className="text-xs font-black text-[#DC2626] uppercase tracking-wider bg-[#DC2626]/5 dark:bg-[#DC2626]/10 border border-dashed border-[#DC2626]/45 px-2 py-0.5 rounded shadow-sm">
+                                  {coupon.code}
+                                </span>
+                              </div>
                               <p className="text-[11px] text-gray-500 font-medium">{coupon.description || `Save ${RUPEE_SYMBOL}${coupon.discount}`}</p>
                             </div>
                             <button
@@ -2523,17 +2707,27 @@ export default function Cart() {
                 )}
 
                 {appliedCoupon && (
-                  <div className="px-4 py-3 md:px-6 bg-green-50/50 dark:bg-green-900/5 border-t border-dashed border-gray-100 dark:border-gray-800 flex items-center justify-between">
-                    <div className="flex items-center gap-2">
-                      <div className="w-6 h-6 rounded-full bg-green-100 dark:bg-green-900/30 flex items-center justify-center">
-                        <Check className="h-3.5 w-3.5 text-green-600" />
+                  <div className="px-4 py-3.5 md:px-6 bg-green-50/40 dark:bg-green-950/10 border-t border-dashed border-gray-100 dark:border-gray-800/60 flex items-center justify-between">
+                    <div className="flex items-center gap-3">
+                      <div className="w-7 h-7 rounded-full bg-green-100 dark:bg-green-900/30 flex items-center justify-center flex-shrink-0">
+                        <Check className="h-4.5 w-4.5 text-green-600" />
                       </div>
                       <div>
-                        <p className="text-[11px] font-bold text-gray-500 uppercase tracking-tight">Applied: <span className="text-green-600">{appliedCoupon.code}</span></p>
-                        <p className="text-xs font-black text-green-600">You saved {RUPEE_SYMBOL}{discount}</p>
+                        <div className="flex items-center gap-1.5">
+                          <span className="text-[11px] font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider">Applied:</span>
+                          <span className="text-[11px] font-extrabold text-green-600 dark:text-green-400 bg-green-100/60 dark:bg-green-900/30 px-1.5 py-0.5 rounded border border-dashed border-green-500/30 uppercase tracking-wider">{appliedCoupon.code}</span>
+                        </div>
+                        <p className="text-xs font-black text-green-600 dark:text-green-400 mt-1">
+                          You saved {RUPEE_SYMBOL}{Math.round(discount)}
+                        </p>
                       </div>
                     </div>
-                    <button onClick={handleRemoveCoupon} className="text-gray-400 hover:text-red-500 text-[10px] font-bold uppercase tracking-widest px-2 py-1">REMOVE</button>
+                    <button 
+                      onClick={handleRemoveCoupon} 
+                      className="text-[#DC2626] hover:text-[#991B1B] text-xs font-black uppercase tracking-wider px-3 py-1.5 hover:bg-[#DC2626]/5 rounded-lg active:scale-95 transition-all"
+                    >
+                      REMOVE
+                    </button>
                   </div>
                 )}
               </div>
@@ -2820,11 +3014,11 @@ export default function Cart() {
               <div className="bg-white dark:bg-[#1a1a1a] px-4 md:px-6 py-5 rounded-2xl shadow-sm border border-slate-100 dark:border-gray-800">
                 <button
                   onClick={() => setShowBillDetails(!showBillDetails)}
-                  className="flex items-center justify-between w-full"
+                  className="flex items-center justify-between w-full group focus:outline-none"
                 >
                   <div className="flex items-center gap-3">
-                    <FileText className="h-5 w-5 text-gray-700 dark:text-gray-300" />
-                    <span className="text-base text-gray-900 dark:text-gray-100 font-black tracking-tight">Bill Details</span>
+                    <FileText className="h-5 w-5 text-gray-700 dark:text-gray-300 group-hover:text-[#DC2626] transition-colors" />
+                    <span className="text-base text-gray-900 dark:text-gray-100 font-black tracking-tight group-hover:text-[#DC2626] transition-colors">Bill Details</span>
                   </div>
                   <div className="flex items-center gap-3">
                     <div className="text-right">
@@ -2832,7 +3026,9 @@ export default function Cart() {
                         {RUPEE_SYMBOL}{total.toFixed(2)}
                       </p>
                     </div>
-                    <ChevronDown className={`h-5 w-5 text-gray-400 transition-transform ${showBillDetails ? '' : '-rotate-90'}`} />
+                    <div className="w-7 h-7 rounded-full bg-slate-50 dark:bg-gray-800 group-hover:bg-[#DC2626]/5 flex items-center justify-center transition-all border border-slate-100 dark:border-gray-700 group-hover:border-[#DC2626]/20">
+                      <ChevronRight className={`h-4 w-4 text-gray-500 group-hover:text-[#DC2626] transition-transform duration-300 ${showBillDetails ? 'rotate-90' : 'rotate-0'}`} />
+                    </div>
                   </div>
                 </button>
 
@@ -3650,6 +3846,115 @@ export default function Cart() {
                     </button>
                   </div>
                 </motion.div>
+              </>
+            )}
+          </AnimatePresence>,
+          document.body
+        )}
+
+        {/* Auto Apply Coupon Popup Sheet */}
+        {createPortal(
+          <AnimatePresence>
+            {showAutoCouponPopup && bestCoupon && (
+              <>
+                {/* Backdrop Overlay */}
+                <motion.div
+                  className="fixed inset-0 bg-black/60 backdrop-blur-[2px] z-[10020] cursor-pointer"
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  exit={{ opacity: 0 }}
+                  transition={{ duration: 0.2 }}
+                  onClick={() => setShowAutoCouponPopup(false)}
+                />
+                
+                {/* Modal Layout Wrapper */}
+                <div className="fixed inset-0 flex items-end sm:items-center justify-center z-[10021] pointer-events-none sm:p-4">
+                  {/* Modal Card */}
+                  <motion.div
+                    className="w-full sm:max-w-md bg-white dark:bg-[#1a1a1a] rounded-t-3xl sm:rounded-3xl shadow-2xl p-6 flex flex-col items-center justify-between pb-8 sm:pb-6 relative pointer-events-auto"
+                    initial={{ y: "100%", opacity: 0.5 }}
+                    animate={{ y: 0, opacity: 1 }}
+                    exit={{ y: "100%", opacity: 0.5 }}
+                    transition={{ type: "spring", damping: 28, stiffness: 240 }}
+                  >
+                    {/* Background overlay with overflow-hidden to clip sunburst rays */}
+                    <div className="absolute inset-0 rounded-t-3xl sm:rounded-3xl overflow-hidden pointer-events-none z-0">
+                      {/* Soft radial blue glow */}
+                      <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,rgba(59,130,246,0.08)_0%,transparent_75%)]" />
+                      
+                      {/* Spinning SVG Sunburst rays */}
+                      <svg className="absolute left-1/2 -translate-x-1/2 -top-16 w-80 h-80 animate-[spin_80s_linear_infinite] opacity-30 text-blue-500/10" viewBox="0 0 100 100" fill="currentColor">
+                        <g opacity="0.12">
+                          <path d="M50 50 L45 0 L55 0 Z" />
+                          <path d="M50 50 L95 15 L100 25 Z" />
+                          <path d="M50 50 L100 45 L100 55 Z" />
+                          <path d="M50 50 L95 85 L85 95 Z" />
+                          <path d="M50 50 L55 100 L45 100 Z" />
+                          <path d="M50 50 L5 85 L0 75 Z" />
+                          <path d="M50 50 L0 55 L0 45 Z" />
+                          <path d="M50 50 L5 15 L15 5 Z" />
+                          <path d="M50 50 L75 5 L85 15 Z" />
+                          <path d="M50 50 L100 75 L95 85 Z" />
+                          <path d="M50 50 L25 95 L15 85 Z" />
+                          <path d="M50 50 L0 25 L5 15 Z" />
+                        </g>
+                      </svg>
+                    </div>
+
+                    {/* Absolute close button */}
+                    <button
+                      onClick={() => setShowAutoCouponPopup(false)}
+                      className="absolute bottom-[calc(100%+16px)] left-1/2 -translate-x-1/2 sm:bottom-auto sm:top-4 sm:right-4 sm:left-auto sm:translate-x-0 w-12 h-12 sm:w-8 sm:h-8 rounded-full bg-black/50 border-2 border-white sm:border-0 sm:bg-gray-100 sm:dark:bg-gray-800 flex items-center justify-center text-white sm:text-gray-500 sm:dark:text-gray-400 hover:bg-black/70 sm:hover:bg-gray-200 sm:dark:hover:bg-gray-700 transition-colors z-50 cursor-pointer shadow-lg"
+                    >
+                      <X className="h-5 w-5 sm:h-4 sm:w-4" />
+                    </button>
+
+
+
+                    {/* Coupon Icon with Sunburst Effect */}
+                    <div className="w-full flex flex-col items-center justify-center pt-6 pb-2 relative z-10 flex-shrink-0">
+                      <div className="relative z-10 w-24 h-24 flex-shrink-0 flex items-center justify-center">
+                        {/* Outer glow */}
+                        <div className="absolute inset-0 rounded-full bg-blue-500/20 blur-xl animate-pulse" />
+                        
+                        {/* Scalloped Badge SVG */}
+                        <svg className="w-20 h-20 flex-shrink-0 text-[#3B82F6] dark:text-blue-500 drop-shadow-xl" viewBox="0 0 100 100" fill="currentColor">
+                          <path d="M 86.29 42.78 Q 95.00 50.00 86.29 57.22 Q 91.57 67.22 80.76 70.56 Q 81.82 81.82 70.56 80.76 Q 67.22 91.57 57.22 86.29 Q 50.00 95.00 42.78 86.29 Q 32.78 91.57 29.44 80.76 Q 18.18 81.82 19.24 70.56 Q 8.43 67.22 13.71 57.22 Q 5.00 50.00 13.71 42.78 Q 8.43 32.78 19.24 29.44 Q 18.18 18.18 29.44 19.24 Q 32.78 8.43 42.78 13.71 Q 50.00 5.00 57.22 13.71 Q 67.22 8.43 70.56 19.24 Q 81.82 18.18 80.76 29.44 Q 91.57 32.78 86.29 42.78 Z" />
+                        </svg>
+                        
+                        <Percent className="absolute w-9 h-9 text-white font-bold drop-shadow-md" />
+                      </div>
+                    </div>
+
+                    {/* Exclusive Tag */}
+                    <span className="text-[11px] font-bold text-gray-800 dark:text-gray-200 tracking-[0.2em] uppercase mt-4 flex items-center gap-1.5 justify-center relative z-10">
+                      ✦ EXCLUSIVELY FOR YOU ✦
+                    </span>
+
+                    {/* Savings text */}
+                    <h3 className="text-2xl font-black text-gray-900 dark:text-gray-100 mt-3 text-center leading-tight relative z-10">
+                      Save <span className="text-[#3B82F6] dark:text-blue-400 font-extrabold">{RUPEE_SYMBOL}{Math.round(bestCoupon.discount)}</span> on this order
+                    </h3>
+
+                    {/* Coupon code name */}
+                    <p className="text-sm font-semibold text-gray-500 dark:text-gray-400 mt-1.5 text-center relative z-10">
+                      with coupon '<span className="text-gray-900 dark:text-gray-200 font-extrabold uppercase">{bestCoupon.code}</span>'
+                    </p>
+
+                    {/* Tip */}
+                    <p className="text-[11px] font-semibold text-gray-400 dark:text-gray-500 mt-5 text-center relative z-10">
+                      Tap on 'APPLY' to avail this
+                    </p>
+
+                    {/* Apply Button */}
+                    <button
+                      onClick={handleApplyAutoCoupon}
+                      className="w-full mt-6 h-12 bg-[#DC2626] hover:bg-[#B91C1C] text-white rounded-xl text-sm font-bold uppercase tracking-widest active:scale-95 transition-all shadow-md shadow-[#DC2626]/20 relative z-10 cursor-pointer"
+                    >
+                      APPLY
+                    </button>
+                  </motion.div>
+                </div>
               </>
             )}
           </AnimatePresence>,
