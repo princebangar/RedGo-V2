@@ -2687,7 +2687,7 @@ export default function Cart() {
                             <div className="flex flex-col gap-1.5">
                               <div className="flex items-center gap-1.5">
                                 <span className="text-xs text-gray-500 dark:text-gray-400 font-bold">Use code</span>
-                                <span className="text-xs font-black text-[#DC2626] uppercase tracking-wider bg-[#DC2626]/5 dark:bg-[#DC2626]/10 border border-dashed border-[#DC2626]/45 px-2 py-0.5 rounded shadow-sm">
+                                <span className="text-xs font-bold text-[#DC2626] uppercase tracking-wider bg-[#DC2626]/5 dark:bg-[#DC2626]/10 border border-dashed border-[#DC2626]/45 px-2 py-0.5 rounded shadow-sm">
                                   {coupon.code}
                                 </span>
                               </div>
@@ -2695,7 +2695,7 @@ export default function Cart() {
                             </div>
                             <button
                               onClick={() => handleApplyCoupon(coupon)}
-                              className="text-[10px] font-black text-[#DC2626] uppercase tracking-widest px-2 py-1 hover:bg-[#DC262605] rounded"
+                              className="text-[10px] font-bold text-[#DC2626] uppercase tracking-widest px-2 py-1 hover:bg-[#DC2626]/5 rounded transition-colors"
                             >
                               APPLY
                             </button>
@@ -2714,17 +2714,17 @@ export default function Cart() {
                       </div>
                       <div>
                         <div className="flex items-center gap-1.5">
-                          <span className="text-[11px] font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider">Applied:</span>
-                          <span className="text-[11px] font-extrabold text-green-600 dark:text-green-400 bg-green-100/60 dark:bg-green-900/30 px-1.5 py-0.5 rounded border border-dashed border-green-500/30 uppercase tracking-wider">{appliedCoupon.code}</span>
+                          <span className="text-[11px] font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-wider">Applied:</span>
+                          <span className="text-[11px] font-bold text-green-600 dark:text-green-400 bg-green-100/60 dark:bg-green-900/30 px-1.5 py-0.5 rounded border border-dashed border-green-500/30 uppercase tracking-wider">{appliedCoupon.code}</span>
                         </div>
-                        <p className="text-xs font-black text-green-600 dark:text-green-400 mt-1">
+                        <p className="text-[13px] font-bold text-green-600 dark:text-green-400 mt-0.5">
                           You saved {RUPEE_SYMBOL}{Math.round(discount)}
                         </p>
                       </div>
                     </div>
                     <button 
                       onClick={handleRemoveCoupon} 
-                      className="text-[#DC2626] hover:text-[#991B1B] text-xs font-black uppercase tracking-wider px-3 py-1.5 hover:bg-[#DC2626]/5 rounded-lg active:scale-95 transition-all"
+                      className="text-[#DC2626] hover:text-[#991B1B] text-xs font-bold uppercase tracking-wider px-3 py-1.5 hover:bg-[#DC2626]/5 rounded-lg active:scale-95 transition-all"
                     >
                       REMOVE
                     </button>
@@ -3902,12 +3902,16 @@ export default function Cart() {
                     </div>
 
                     {/* Absolute close button */}
-                    <button
+                    <motion.button
                       onClick={() => setShowAutoCouponPopup(false)}
-                      className="absolute bottom-[calc(100%+16px)] left-1/2 -translate-x-1/2 sm:bottom-auto sm:top-4 sm:right-4 sm:left-auto sm:translate-x-0 w-12 h-12 sm:w-8 sm:h-8 rounded-full bg-black/50 border-2 border-white sm:border-0 sm:bg-gray-100 sm:dark:bg-gray-800 flex items-center justify-center text-white sm:text-gray-500 sm:dark:text-gray-400 hover:bg-black/70 sm:hover:bg-gray-200 sm:dark:hover:bg-gray-700 transition-colors z-50 cursor-pointer shadow-lg"
+                      initial={{ opacity: 0, scale: 0.9 }}
+                      animate={{ opacity: 1, scale: 1 }}
+                      exit={{ opacity: 0, scale: 0.9 }}
+                      transition={{ duration: 0.15 }}
+                      className="absolute bottom-[calc(100%+16px)] left-1/2 -translate-x-1/2 sm:bottom-auto sm:top-4 sm:right-4 sm:left-auto sm:translate-x-0 w-12 h-12 sm:w-8 sm:h-8 rounded-full bg-neutral-800/80 backdrop-blur-sm border border-white/15 sm:border-0 sm:bg-gray-100 sm:dark:bg-gray-800 flex items-center justify-center text-white sm:text-gray-500 sm:dark:text-gray-400 hover:bg-neutral-700/80 sm:hover:bg-gray-200 sm:dark:hover:bg-gray-700 transition-colors z-50 cursor-pointer shadow-lg"
                     >
                       <X className="h-5 w-5 sm:h-4 sm:w-4" />
-                    </button>
+                    </motion.button>
 
 
 

@@ -168,7 +168,7 @@ const RestaurantImageCarousel = React.memo(
     restaurant,
     priority = false,
     backendOrigin = "",
-    className = "h-48 sm:h-56 md:h-60 lg:h-64 xl:h-72",
+    className = "h-56 sm:h-60 md:h-64 lg:h-[280px] xl:h-[320px]",
     roundedClass = "rounded-t-md",
   }) => {
     const webviewSessionKeyRef = useRef(WEBVIEW_SESSION_CACHE_BUSTER);
@@ -438,6 +438,111 @@ const RestaurantImageCarousel = React.memo(
   },
 );
 
+// Symmetrical Scallop Icon Badge (with inline % vector text) to look exactly like the restaurant details page
+const ScallopBadge = ({ className = "" }) => (
+  <svg
+    viewBox="0 0 100 100"
+    className={`text-[#2563EB] fill-current flex-shrink-0 ${className}`}
+  >
+    <path d="M 86.29 42.78 Q 95.00 50.00 86.29 57.22 Q 91.57 67.22 80.76 70.56 Q 81.82 81.82 70.56 80.76 Q 67.22 91.57 57.22 86.29 Q 50.00 95.00 42.78 86.29 Q 32.78 91.57 29.44 80.76 Q 18.18 81.82 19.24 70.56 Q 8.43 67.22 13.71 57.22 Q 5.00 50.00 13.71 42.78 Q 8.43 32.78 19.24 29.44 Q 18.18 18.18 29.44 19.24 Q 32.78 8.43 42.78 13.71 Q 50.00 5.00 57.22 13.71 Q 67.22 8.43 70.56 19.24 Q 81.82 18.18 80.76 29.44 Q 91.57 32.78 86.29 42.78 Z" />
+    <text
+      x="50"
+      y="63"
+      textAnchor="middle"
+      fontSize="42"
+      fontWeight="900"
+      fill="white"
+      className="select-none font-sans"
+    >
+      %
+    </text>
+  </svg>
+);
+
+const formatCouponText = (coupon) => {
+  if (!coupon) return "";
+  if (coupon.discountType === "percentage") {
+    const discountPercentage = coupon.discountPercentage ?? coupon.discountValue;
+    const limitText = coupon.maxDiscount ? ` up to ₹${coupon.maxDiscount}` : "";
+    return `${discountPercentage}% OFF above ₹${coupon.minOrderValue || 0}${limitText}`;
+  }
+  const value = coupon.originalPrice || coupon.discountValue || 0;
+  return `Flat ₹${value} OFF above ₹${coupon.minOrderValue || 0}`;
+};
+
+// Restaurant Card Offer Carousel Component - cycles through active coupons
+const RestaurantCardOfferCarousel = React.memo(({ coupons }) => {
+  const uniqueCoupons = React.useMemo(() => {
+    if (!coupons || coupons.length === 0) return [];
+    const map = new Map();
+    coupons.forEach(c => {
+      const text = formatCouponText(c);
+      if (text && !map.has(text)) {
+        map.set(text, c);
+      }
+    });
+    return Array.from(map.values());
+  }, [coupons]);
+
+  const [currentIndex, setCurrentIndex] = useState(0);
+
+  const couponsKey = uniqueCoupons.map(c => c.couponCode || c.code || "").join(",");
+
+  useEffect(() => {
+    if (uniqueCoupons.length <= 1) return;
+    const interval = setInterval(() => {
+      setCurrentIndex((prev) => (prev + 1) % uniqueCoupons.length);
+    }, 3000);
+    return () => clearInterval(interval);
+  }, [couponsKey, uniqueCoupons.length]);
+
+  if (uniqueCoupons.length === 0) return null;
+
+  // Static display if only 1 unique coupon exists to prevent layout shifting/unwanted sliding
+  if (uniqueCoupons.length === 1) {
+    return (
+      <div className="flex items-center gap-2 mt-2 overflow-hidden h-[20px] relative">
+        {/* Symmetrical Scallop Icon like Zomato */}
+        <div className="flex-shrink-0 flex items-center justify-center w-5 h-5">
+          <ScallopBadge className="h-5 w-5 text-[#2563EB]" />
+        </div>
+        <div className="flex-grow h-full overflow-hidden relative min-w-0">
+          <span className="absolute inset-x-0 top-0 bottom-0 text-[11px] sm:text-xs font-bold text-slate-700 dark:text-slate-300 tracking-wide truncate flex items-center">
+            {formatCouponText(uniqueCoupons[0])}
+          </span>
+        </div>
+      </div>
+    );
+  }
+
+  const currentCoupon = uniqueCoupons[currentIndex];
+
+  return (
+    <div className="flex items-center gap-2 mt-2 overflow-hidden h-[20px] relative">
+      {/* Symmetrical Scallop Icon like Zomato */}
+      <div className="flex-shrink-0 flex items-center justify-center w-5 h-5">
+        <ScallopBadge className="h-5 w-5 text-[#2563EB]" />
+      </div>
+
+      {/* Animating Coupon Text - sliding down vertically */}
+      <div className="flex-grow h-full overflow-hidden relative min-w-0">
+        <AnimatePresence initial={false}>
+          <motion.span
+            key={`${currentCoupon.couponCode || currentCoupon.code || currentIndex}-${currentIndex}`}
+            initial={{ top: -14, opacity: 0 }}
+            animate={{ top: 0, opacity: 1 }}
+            exit={{ top: 14, opacity: 0 }}
+            transition={{ duration: 0.22, ease: "easeInOut" }}
+            className="absolute inset-x-0 bottom-0 text-[11px] sm:text-xs font-bold text-slate-700 dark:text-slate-300 tracking-wide truncate flex items-center"
+          >
+            {formatCouponText(currentCoupon)}
+          </motion.span>
+        </AnimatePresence>
+      </div>
+    </div>
+  );
+});
+
 export default function Home() {
   const HERO_BANNER_AUTO_SLIDE_MS = 3500;
   const BACKEND_ORIGIN = API_BASE_URL.replace(/\/api\/?$/, "");
@@ -467,7 +572,7 @@ export default function Home() {
         routerLocation.pathname === "/user/" ||
         routerLocation.pathname === "/food" ||
         routerLocation.pathname === "/food/";
-      if (isHome && orderType === "dining") {
+      if (isHome && orderType !== "delivery") {
         setOrderType("delivery");
       }
     }
@@ -508,6 +613,31 @@ export default function Home() {
   }, []);
 
   const [currentBannerIndex, setCurrentBannerIndex] = useState(0);
+  const [publicOffers, setPublicOffers] = useState([]);
+
+  useEffect(() => {
+    let active = true;
+    const fetchOffers = async () => {
+      try {
+        const response = await restaurantAPI.getPublicOffers();
+        if (!active) return;
+        const list = response?.data?.data?.allOffers || response?.data?.allOffers || [];
+        const activeOffers = list.filter((o) => {
+          if (o.showInCart === false) return false;
+          if (o.status && o.status !== "active") return false;
+          return true;
+        });
+        setPublicOffers(activeOffers);
+      } catch (err) {
+        debugError("Error fetching public offers for Home page:", err);
+      }
+    };
+    fetchOffers();
+    return () => {
+      active = false;
+    };
+  }, []);
+
   const [heroBannerImages, setHeroBannerImages] = useState([]);
   const [heroBannersData, setHeroBannersData] = useState([]); // Store full banner data with linked restaurants
   const [loadingBanners, setLoadingBanners] = useState(true);
@@ -1725,6 +1855,8 @@ export default function Home() {
                 openingTime: restaurant.openingTime || restaurant?.deliveryTimings?.openingTime || null,
                 closingTime: restaurant.closingTime || restaurant?.deliveryTimings?.closingTime || null,
                 recommendedDishes: Array.isArray(restaurant.recommendedDishes) ? restaurant.recommendedDishes : [],
+                hasDishes: restaurant.hasDishes === true || (restaurant.totalMenuItems > 0),
+                totalMenuItems: restaurant.totalMenuItems || 0,
               };
             });
 
@@ -2450,21 +2582,21 @@ export default function Home() {
             )}
             <div className="relative z-10">
               {orderType !== "takeaway" && !isTakeawayPage ? (
-                  <HomeHeader
-                    activeTab={activeTab}
-                    setActiveTab={setActiveTab}
-                    location={effectiveLocation}
-                    handleSearchFocus={handleSearchFocus}
-                    placeholderIndex={placeholderIndex}
-                    placeholders={placeholders}
-                    vegMode={vegMode}
-                    handleVegModeChange={handleVegModeChange}
-                    vegModeToggleRef={vegModeToggleRef}
-                    // Pass Banner Props to Unified Component
-                    showBanner={activeTab === "food" && orderType !== "takeaway" && !isTakeawayPage}
-                    videoUrl={festVideoActive ? "" : festBannerVideoUrl}
-                    hideFoodImages={festVideoActive}
-                  />
+                <HomeHeader
+                  activeTab={activeTab}
+                  setActiveTab={setActiveTab}
+                  location={effectiveLocation}
+                  handleSearchFocus={handleSearchFocus}
+                  placeholderIndex={placeholderIndex}
+                  placeholders={placeholders}
+                  vegMode={vegMode}
+                  handleVegModeChange={handleVegModeChange}
+                  vegModeToggleRef={vegModeToggleRef}
+                  // Pass Banner Props to Unified Component
+                  showBanner={activeTab === "food" && orderType !== "takeaway" && !isTakeawayPage}
+                  videoUrl={festVideoActive ? "" : festBannerVideoUrl}
+                  hideFoodImages={festVideoActive}
+                />
               ) : (
                 <div className="bg-white/0 dark:bg-black/0 px-4 pt-2 pb-4 border-b-0 dark:border-gray-800 backdrop-blur-sm">
                   <div className="flex items-center justify-between">
@@ -2494,8 +2626,8 @@ export default function Home() {
                           </span>
                         )}
                       </Link>
-                      <Link 
-                        to="/food/user/profile" 
+                      <Link
+                        to="/food/user/profile"
                         onClick={(e) => {
                           if (!isModuleAuthenticated('user')) {
                             e.preventDefault();
@@ -2506,9 +2638,9 @@ export default function Home() {
                       >
                         <Avatar className="h-full w-full bg-[#FFF5E6]">
                           {userProfile?.profileImage && (
-                            <AvatarImage 
-                              src={userProfile.profileImage} 
-                              alt="Profile" 
+                            <AvatarImage
+                              src={userProfile.profileImage}
+                              alt="Profile"
                               className="object-cover"
                             />
                           )}
@@ -2536,7 +2668,7 @@ export default function Home() {
                 className="bg-transparent dark:bg-transparent"
               >
                 {(orderType === "takeaway" || isTakeawayPage) && (
-                  <div className="px-4 pt-4 pb-2 bg-white dark:bg-[#0a0a0a]">
+                  <div className="px-4 pt-3 pb-1 bg-white dark:bg-[#0a0a0a]">
                     <div className="flex flex-col gap-1">
                       <h1 className="text-lg sm:text-xl font-bold text-gray-900 dark:text-white flex items-center gap-2">
                         <span className="p-2 bg-green-100 dark:bg-green-900/30 rounded-xl">
@@ -2549,7 +2681,7 @@ export default function Home() {
                         Order online, skip the queue & pickup yourself
                       </p>
                     </div>
-                    <div className="h-[1px] bg-gradient-to-r from-gray-100 via-gray-200 to-transparent dark:from-gray-800 dark:via-gray-700 dark:to-transparent mt-5 mb-2"></div>
+                    <div className="h-[1px] bg-gradient-to-r from-gray-100 via-gray-200 to-transparent dark:from-gray-800 dark:via-gray-700 dark:to-transparent mt-3 mb-1"></div>
                   </div>
                 )}
                 {/* "What's on your mind today?" Section */}
@@ -2625,7 +2757,7 @@ export default function Home() {
                       animate={{ opacity: 1 }}
                       exit={{ opacity: 0 }}
                       transition={{ duration: 0.2 }}
-                      className="fixed top-0 left-0 right-0 z-[100] bg-white/80 dark:bg-[#0a0a0a]/80 backdrop-blur-md shadow-lg border-b border-white/10 dark:border-white/5 safe-top"
+                      className="fixed top-0 left-0 right-0 z-[100] bg-white/80 dark:bg-[#0a0a0a]/80 backdrop-blur-md shadow-lg border-b border-white/10 dark:border-white/5 safe-top md:hidden"
                     >
                       {/* Search Bar + Veg Mode Row (Always visible when sticky) */}
                       <AnimatePresence>
@@ -2645,8 +2777,8 @@ export default function Home() {
                                 <span className="absolute inset-0 text-base text-gray-400 font-medium">Search "biryani"</span>
                               </div>
                               <div className="h-5 w-[1px] bg-gray-200 dark:bg-white/10 mx-2" />
-                              <Mic 
-                                className="h-5 w-5 text-[#DC2626] dark:text-[#a14b84]" 
+                              <Mic
+                                className="h-5 w-5 text-[#DC2626] dark:text-[#a14b84]"
                                 onClick={(e) => {
                                   e.stopPropagation();
                                   setIsVoiceOverlayOpen(true);
@@ -2726,7 +2858,7 @@ export default function Home() {
 
                 {/* Filters Sticky Sidebar Header - Hidden for takeaway as per request */}
                 {orderType !== "takeaway" && !isTakeawayPage && (
-                  <section className="py-2.5 px-4 bg-white/95 dark:bg-[#0a0a0a]/95 backdrop-blur-md sticky top-0 z-[40] -mx-4 w-[calc(100%+2rem)] border-b border-gray-100 dark:border-white/5 shadow-sm transition-colors duration-300">
+                  <section className="py-2.5 px-4 bg-white/95 dark:bg-[#0a0a0a]/95 backdrop-blur-md sticky top-0 md:top-[140px] z-[40] -mx-4 w-[calc(100%+2rem)] border-b border-gray-100 dark:border-white/5 shadow-sm transition-colors duration-300">
                     <div
                       className="flex items-center gap-2 overflow-x-auto scrollbar-hide px-4"
                       style={{
@@ -2920,17 +3052,17 @@ export default function Home() {
 
         {/* Restaurants - Enhanced with Animations */}
         <motion.section
-          className="content-auto space-y-0 pt-3 sm:pt-4 lg:pt-6 pb-8 md:pb-10"
+          className={`content-auto space-y-0 pb-8 md:pb-10 ${(orderType === "takeaway" || isTakeawayPage) ? "pt-1 sm:pt-2 lg:pt-3" : "pt-3 sm:pt-4 lg:pt-6"}`}
           initial={false}
           animate={{ opacity: 1 }}>
           <div className="px-4 mb-3 lg:mb-4">
             <div className="flex flex-col gap-1 antialiased">
               <h2 className="text-[11px] sm:text-xs font-semibold text-[#5d80a3] tracking-[0.15em] uppercase">
-                {loadingRestaurants 
-                  ? "Finding Restaurants For You" 
+                {loadingRestaurants
+                  ? "Finding Restaurants For You"
                   : orderType === "takeaway"
-                  ? `${filteredRestaurants.length} Restaurants near you`
-                  : `${filteredRestaurants.length} Restaurants Delivering to You`}
+                    ? `${filteredRestaurants.length} Restaurants near you`
+                    : `${filteredRestaurants.length} Restaurants Delivering to You`}
               </h2>
               <h3 className="text-lg sm:text-xl font-bold text-[#364d66] dark:text-gray-200 tracking-tight">
                 {orderType === "takeaway" ? "Takeaway Restaurants" : "Featured Restaurants"}
@@ -2987,6 +3119,29 @@ export default function Home() {
                 );
                 // Direct favorite check - isFavorite is already memoized in context
                 const favorite = isFavorite(restaurantSlug);
+
+                const restaurantCoupons = restaurant.hasDishes === false ? [] : publicOffers.filter((o) => {
+                  // 1. Restaurant Scope check
+                  if (String(o?.restaurantScope) === "selected") {
+                    const couponRestId = String(o.restaurantId || "").trim();
+                    const rId = String(restaurant.restaurantId || "").trim();
+                    const id = String(restaurant.id || "").trim();
+                    const mongoId = String(restaurant.mongoId || "").trim();
+                    if (!(couponRestId === rId || couponRestId === id || couponRestId === mongoId)) {
+                      return false;
+                    }
+                  }
+
+                  // 2. Order/Tab Type check (couponType: 'delivery', 'takeaway', 'all')
+                  const isTakeawayActive = orderType === "takeaway" || isTakeawayPage;
+                  const cType = String(o.couponType || "all").trim().toLowerCase();
+
+                  if (isTakeawayActive) {
+                    return cType === "takeaway" || cType === "all";
+                  } else {
+                    return cType === "delivery" || cType === "all";
+                  }
+                });
 
                 const handleToggleFavorite = (e) => {
                   e.preventDefault();
@@ -3078,7 +3233,7 @@ export default function Home() {
                               {/* Restaurant Name & Rating */}
                               <div className="flex items-start justify-between gap-2 mb-2 lg:mb-3">
                                 <div className="flex-1 min-w-0">
-                                  <h3 className="text-2xl lg:text-3xl font-bold text-[#1c1c1c] dark:text-white line-clamp-1 leading-tight tracking-tight transition-colors duration-300 group-hover:text-[#257d3c]">
+                                  <h3 className="text-2xl lg:text-3xl font-bold text-[#1c1c1c] dark:text-white line-clamp-2 leading-tight tracking-tight transition-colors duration-300 group-hover:text-[#257d3c]">
                                     {restaurant.name}
                                   </h3>
                                   <div className="flex flex-wrap items-center gap-2 mt-2">
@@ -3097,6 +3252,9 @@ export default function Home() {
                                       </span>
                                     </div>
                                   </div>
+
+                                  {/* Offer Badge - Animated Carousel */}
+                                  <RestaurantCardOfferCarousel coupons={restaurantCoupons} />
                                 </div>
                                 <div className="flex flex-col items-end gap-0.5">
                                   <div className="flex-shrink-0 bg-[#257d3c] text-white px-2 py-1 rounded-lg flex items-center gap-1">
@@ -3120,52 +3278,38 @@ export default function Home() {
                               </div>
 
                               {/* Closes in / Opening time badge moved here */}
-                              <div className="flex items-center gap-1 text-sm lg:text-base text-gray-500 mb-2 lg:mb-3">
+                              <div className="flex items-center gap-1 text-sm lg:text-base text-gray-500 mt-2">
                                 {availability.isOpen &&
                                   availability.closingCountdownLabel && (
-                                    <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-indigo-50/50 dark:bg-indigo-900/20 text-indigo-700 dark:text-indigo-300 border border-indigo-100 dark:border-indigo-800 text-[10px] font-black uppercase tracking-widest transition-all duration-300 hover:bg-indigo-50 hover:border-indigo-200">
-                                      <Timer className="h-3.5 w-3.5 flex-shrink-0 text-indigo-500 dark:text-indigo-400" strokeWidth={3} />
+                                    <div className="flex items-center gap-1.5 px-2 py-1 rounded-md bg-[#f4f6ff] dark:bg-indigo-900/20 text-[#4d5bce] dark:text-indigo-300 border border-[#e0e4ff] dark:border-indigo-800 text-[10px] font-bold uppercase tracking-wide transition-all duration-300">
+                                      <Timer className="h-3 w-3 flex-shrink-0 text-[#4d5bce] dark:text-indigo-400" strokeWidth={2.5} />
                                       <span>{availability.closingCountdownLabel}</span>
                                     </div>
                                   )}
                                 {!availability.isOpen && (
-                                  <div className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-widest transition-all duration-300 ${
-                                    availability.reason === "inactive" || availability.reason === "not-accepting-orders"
+                                  <div className={`flex items-center gap-1.5 px-2 py-1 rounded-md text-[10px] font-bold uppercase tracking-wide transition-all duration-300 ${availability.reason === "inactive" || availability.reason === "not-accepting-orders"
                                       ? "bg-red-50 dark:bg-red-950/20 text-red-600 dark:text-red-400 border border-red-100 dark:border-red-900/30"
-                                      : "bg-gray-100 dark:bg-gray-800 text-gray-500 dark:text-gray-400 border border-gray-200 dark:border-gray-700"
-                                  }`}>
+                                      : "bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400 border border-gray-200 dark:border-gray-700"
+                                    }`}>
                                     {availability.reason === "inactive" || availability.reason === "not-accepting-orders" ? (
                                       <>
-                                        <AlertCircle className="h-3.5 w-3.5 flex-shrink-0 text-red-500 dark:text-red-400" strokeWidth={3} />
+                                        <AlertCircle className="h-3 w-3 flex-shrink-0 text-red-500 dark:text-red-400" strokeWidth={2.5} />
                                         <span>Offline</span>
                                       </>
                                     ) : availability.openingTime ? (
                                       <>
-                                        <Clock className="h-3.5 w-3.5 flex-shrink-0 text-gray-500 dark:text-gray-400" strokeWidth={3} />
+                                        <Clock className="h-3 w-3 flex-shrink-0 text-gray-500 dark:text-gray-400" strokeWidth={2.5} />
                                         <span>Opens at {availability.openingTime}</span>
                                       </>
                                     ) : (
                                       <>
-                                        <AlertCircle className="h-3.5 w-3.5 flex-shrink-0 text-gray-500 dark:text-gray-400" strokeWidth={3} />
+                                        <AlertCircle className="h-3 w-3 flex-shrink-0 text-gray-500 dark:text-gray-400" strokeWidth={2.5} />
                                         <span>Closed</span>
                                       </>
                                     )}
                                   </div>
                                 )}
                               </div>
-
-                              {/* Offer Badge */}
-                              {restaurant.offer && (
-                                <div className="flex items-center gap-2 text-sm lg:text-base mt-auto transform transition-transform duration-300 group-hover:translate-x-1">
-                                  <BadgePercent
-                                    className="h-4 w-4 lg:h-5 lg:w-5 text-[#DC2626]"
-                                    strokeWidth={3}
-                                  />
-                                  <span className="text-[#DC2626] dark:text-[#F87171] font-black uppercase text-[10px] tracking-wider">
-                                    {restaurant.offer}
-                                  </span>
-                                </div>
-                              )}
                             </CardContent>
                           </div>
 
@@ -3197,7 +3341,7 @@ export default function Home() {
         </motion.section>
       </div>
 
-      <VoiceSearchOverlay 
+      <VoiceSearchOverlay
         isOpen={isVoiceOverlayOpen}
         onClose={() => setIsVoiceOverlayOpen(false)}
         onSearchResult={(transcript) => {

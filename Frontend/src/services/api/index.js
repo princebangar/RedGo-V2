@@ -1076,6 +1076,10 @@ export const restaurantAPI = {
       const now = Date.now();
       const coupons = list
         .filter((o) => {
+          // Filter out coupons toggled off or inactive
+          if (o.showInCart === false) return false;
+          if (o.status && o.status !== "active") return false;
+
           // Guard: respect selected restaurant scope
           if (String(o?.restaurantScope) === "selected") {
             if (!restaurantId) return false;

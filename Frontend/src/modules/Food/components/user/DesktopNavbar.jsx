@@ -73,14 +73,16 @@ export default function DesktopNavbar({ showLogo = true }) {
         openLocationSelector()
     }
 
-    // Check active routes - support both /user/* and /* paths
     const isDining = location.pathname === "/food/user/dining" || location.pathname === "/food/dining"
+    const isTakeaway = location.pathname === "/food/user/takeaway" || location.pathname === "/food/takeaway"
     const isUnder250 = location.pathname === "/food/user/under-250" || location.pathname === "/food/under-250"
     const isProfile = location.pathname.startsWith("/food/user/profile") || location.pathname.startsWith("/food/profile")
-    const isDelivery = !isDining && !isUnder250 && !isProfile && (location.pathname === "/food/user" || location.pathname === "/food" || (location.pathname.startsWith("/food/user") && !location.pathname.includes("/dining") && !location.pathname.includes("/under-250") && !location.pathname.includes("/profile")))
+    const isDelivery = !isDining && !isTakeaway && !isUnder250 && !isProfile && (location.pathname === "/food/user" || location.pathname === "/food" || (location.pathname.startsWith("/food/user") && !location.pathname.includes("/dining") && !location.pathname.includes("/takeaway") && !location.pathname.includes("/under-250") && !location.pathname.includes("/profile")))
     const isBannerRoute =
         location.pathname === "/food/user" ||
         location.pathname === "/food" ||
+        location.pathname === "/food/user/takeaway" ||
+        location.pathname === "/food/takeaway" ||
         location.pathname === "/food/user/under-250" ||
         location.pathname === "/food/under-250"
 
@@ -184,13 +186,10 @@ export default function DesktopNavbar({ showLogo = true }) {
     return (
         <nav
             ref={navRef}
-            className={`hidden md:flex flex-col fixed top-0 left-0 right-0 z-50 py-2 transition-all duration-300 ${(isBannerRoute && !hasScrolledPastBanner)
-                ? "bg-transparent !bg-transparent border-0 shadow-none"
-                : "bg-white dark:bg-[#1a1a1a] border-b border-gray-200 dark:border-gray-800 shadow-sm"
-                }`}
+            className="hidden md:flex flex-col fixed top-0 left-0 right-0 z-50 py-2 transition-all duration-300 bg-white dark:bg-[#1a1a1a] border-b border-gray-200 dark:border-gray-800 shadow-sm"
         >
             {/* Top Row: Location - Search - Icons */}
-            <div className={`w-full ${(isBannerRoute && !hasScrolledPastBanner) ? "border-b border-transparent" : "border-b border-gray-100 dark:border-gray-800"}`}>
+            <div className="w-full border-b border-gray-100 dark:border-gray-800">
                 <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
                     <div className="flex items-center justify-between h-16 gap-4">
                         {/* Left: Logo & Location */}
@@ -345,14 +344,14 @@ export default function DesktopNavbar({ showLogo = true }) {
             </div>
 
             {/* Bottom Row: Navigation Tabs & Veg Mode */}
-            <div className={`w-full pb-3 ${(isBannerRoute && !hasScrolledPastBanner) ? "bg-transparent !bg-transparent" : "bg-white dark:bg-[#1a1a1a]"}`}>
+            <div className="w-full pb-3 bg-white dark:bg-[#1a1a1a]">
                 <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
                     <div className="flex items-center justify-center h-12">
                         {/* Navigation Tabs - Centered with spacing */}
-                        <div className="flex items-center space-x-24">
+                        <div className="flex items-center space-x-12 lg:space-x-16 xl:space-x-20">
                             {/* Delivery Tab */}
                             <Link
-                                to="/"
+                                to="/food/user"
                                 className={`flex flex-col items-center gap-1 px-2 py-1 transition-colors relative group ${isDelivery
                                     ? "text-[#DC2626]"
                                     : "text-gray-600 dark:text-gray-400 hover:text-[#DC2626]"
@@ -360,6 +359,26 @@ export default function DesktopNavbar({ showLogo = true }) {
                             >
                                 <span className="text-sm font-bold tracking-wide uppercase">Delivery</span>
                                 {isDelivery && (
+                                    <motion.div
+                                        layoutId="navIndicator"
+                                        className="absolute -bottom-3 left-0 right-0 h-0.5 bg-[#DC2626]"
+                                        initial={{ opacity: 0 }}
+                                        animate={{ opacity: 1 }}
+                                        transition={{ duration: 0.3 }}
+                                    />
+                                )}
+                            </Link>
+
+                            {/* Takeaway Tab */}
+                            <Link
+                                to="/food/user/takeaway"
+                                className={`flex flex-col items-center gap-1 px-2 py-1 transition-colors relative group ${isTakeaway
+                                    ? "text-[#DC2626]"
+                                    : "text-gray-600 dark:text-gray-400 hover:text-[#DC2626]"
+                                    }`}
+                            >
+                                <span className="text-sm font-bold tracking-wide uppercase">Takeaway</span>
+                                {isTakeaway && (
                                     <motion.div
                                         layoutId="navIndicator"
                                         className="absolute -bottom-3 left-0 right-0 h-0.5 bg-[#DC2626]"

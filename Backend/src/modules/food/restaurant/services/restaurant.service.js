@@ -1444,6 +1444,16 @@ export const listApprovedRestaurants = async (query = {}) => {
         approvalStatus: 'approved'
     }).select('restaurantId name price image foodType variants variations').lean();
 
+    // Count total approved menu items per restaurant (to detect empty-menu restaurants)
+    const menuCounts = await FoodItem.aggregate([
+        { $match: { restaurantId: { $in: restaurantIds }, isAvailable: true, approvalStatus: 'approved' } },
+        { $group: { _id: '$restaurantId', count: { $sum: 1 } } }
+    ]);
+    const menuCountMap = menuCounts.reduce((acc, entry) => {
+        acc[String(entry._id)] = entry.count;
+        return acc;
+    }, {});
+
     const recommendedMap = allRecommended.reduce((acc, item) => {
         const rid = String(item.restaurantId);
         if (!acc[rid]) acc[rid] = [];
@@ -1470,7 +1480,9 @@ export const listApprovedRestaurants = async (query = {}) => {
         closingTime: r.closingTime || null,
         openDays: Array.isArray(r.openDays) ? r.openDays : [],
         menuImages: Array.isArray(r.menuImages) ? r.menuImages : [],
-        recommendedDishes: recommendedMap[String(r._id)] || []
+        recommendedDishes: recommendedMap[String(r._id)] || [],
+        totalMenuItems: menuCountMap[String(r._id)] || 0,
+        hasDishes: (menuCountMap[String(r._id)] || 0) > 0
     }));
 
     return { restaurants, total, page, limit };
