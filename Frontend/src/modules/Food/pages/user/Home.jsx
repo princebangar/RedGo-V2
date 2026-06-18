@@ -2949,9 +2949,8 @@ export default function Home() {
 
             <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3 px-4">
               {recommendedForYouRestaurants.map((restaurant, index) => {
-                const restaurantSlug =
-                  restaurant.slug ||
-                  restaurant.name.toLowerCase().replace(/\s+/g, "-");
+                const rawSlug = restaurant.slug || restaurant.name;
+                const restaurantSlug = rawSlug.toLowerCase().replace(/[\s\/]+/g, "-");
                 return (
                   <motion.div
                     key={`recommended-${restaurant.mongoId || restaurant.id || restaurantSlug}`}
@@ -3108,11 +3107,8 @@ export default function Home() {
                     restaurant?._id ||
                     `restaurant-${index}`,
                   );
-                const restaurantSlug =
-                  typeof restaurant?.slug === "string" &&
-                    restaurant.slug.trim()
-                    ? restaurant.slug.trim()
-                    : fallbackSlugSource.toLowerCase().replace(/\s+/g, "-");
+                const rawSlug = (typeof restaurant?.slug === "string" && restaurant.slug.trim()) ? restaurant.slug.trim() : fallbackSlugSource;
+                const restaurantSlug = rawSlug.toLowerCase().replace(/[\s\/]+/g, "-");
                 const availability = getRestaurantAvailabilityStatus(
                   restaurant,
                   new Date(availabilityTick),

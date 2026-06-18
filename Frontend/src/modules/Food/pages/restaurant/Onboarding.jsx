@@ -1151,6 +1151,8 @@ export default function RestaurantOnboarding() {
 
     if (!step1.restaurantName?.trim()) {
       errors.push("Restaurant name is required")
+    } else if (/[\/-]/.test(step1.restaurantName)) {
+      errors.push("Restaurant name cannot contain slashes (/) or hyphens (-)")
     }
     if (typeof step1.pureVegRestaurant !== "boolean") {
       errors.push("Please select whether your restaurant is pure veg")
@@ -1684,7 +1686,10 @@ export default function RestaurantOnboarding() {
             <Label className="text-xs text-gray-700">Restaurant name*</Label>
             <Input
               value={step1.restaurantName || ""}
-              onChange={(e) => setStep1({ ...step1, restaurantName: formatNameToCapital(e.target.value) })}
+              onChange={(e) => {
+                const sanitizedVal = e.target.value.replace(/[\/-]/g, "");
+                setStep1({ ...step1, restaurantName: formatNameToCapital(sanitizedVal) });
+              }}
               className="mt-1 bg-white text-sm"
               placeholder="Customers will see this name"
               disabled={!isEditing}

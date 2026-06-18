@@ -516,6 +516,8 @@ export default function EditOwner() {
     // 2. Restaurant details validation
     if (!formData.restaurantName?.trim()) {
       errors.push({ tab: "restaurant", field: "restaurantName", message: "Restaurant name is required" })
+    } else if (/[\/-]/.test(formData.restaurantName)) {
+      errors.push({ tab: "restaurant", field: "restaurantName", message: "Restaurant name cannot contain slashes (/) or hyphens (-)" })
     }
 
     if (!formData.primaryContactNumber?.trim()) {
@@ -925,7 +927,7 @@ export default function EditOwner() {
                   <Input
                     type="text"
                     value={formData.restaurantName}
-                    onChange={(e) => handleInputChange("restaurantName", e.target.value)}
+                    onChange={(e) => handleInputChange("restaurantName", e.target.value.replace(/[\/-]/g, ""))}
                     placeholder="Enter restaurant name"
                     className="w-full text-sm h-11"
                   />

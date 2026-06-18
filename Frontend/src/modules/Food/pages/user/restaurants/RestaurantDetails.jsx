@@ -516,7 +516,8 @@ function RestaurantDetailsContent() {
                     const restaurantName = slug.replace(/-/g, ' ').replace(/\b\w/g, l => l.toUpperCase())
                     const matchingRestaurant = restaurants.find(r =>
                       r.slug === slug ||
-                      r.name?.toLowerCase().replace(/\s+/g, '-') === slug.toLowerCase() ||
+                      r.slug?.replace(/[\s\/]+/g, '-') === slug ||
+                      r.name?.toLowerCase().replace(/[\s\/]+/g, '-') === slug.toLowerCase() ||
                       r.name?.toLowerCase() === restaurantName.toLowerCase()
                     )
 
@@ -793,7 +794,7 @@ function RestaurantDetailsContent() {
             outlets: Array.isArray(actualRestaurant?.outlets) ? actualRestaurant.outlets : (Array.isArray(apiRestaurant?.outlets) ? apiRestaurant.outlets : []),
             categories: Array.isArray(actualRestaurant?.categories) ? actualRestaurant.categories : (Array.isArray(apiRestaurant?.categories) ? apiRestaurant.categories : []),
             menu: Array.isArray(actualRestaurant?.menu) ? actualRestaurant.menu : (Array.isArray(apiRestaurant?.menu) ? apiRestaurant.menu : []),
-            slug: actualRestaurant?.slug || apiRestaurant?.slug || actualRestaurant?.name?.toLowerCase().replace(/\s+/g, '-') || apiRestaurant?.name?.toLowerCase().replace(/\s+/g, '-') || slug || "unknown",
+            slug: actualRestaurant?.slug?.replace(/[\s\/]+/g, '-') || apiRestaurant?.slug?.replace(/[\s\/]+/g, '-') || actualRestaurant?.name?.toLowerCase().replace(/[\s\/]+/g, '-') || apiRestaurant?.name?.toLowerCase().replace(/[\s\/]+/g, '-') || slug || "unknown",
             restaurantId: actualRestaurant?.restaurantId || actualRestaurant?._id || actualRestaurant?.id || apiRestaurant?.restaurantId || apiRestaurant?._id || apiRestaurant?.id || null,
             // Add other fields with defaults
             featuredDish: actualRestaurant?.featuredDish || apiRestaurant?.featuredDish || onboardingStep4?.featuredDish || "Special Dish",
@@ -2428,7 +2429,7 @@ function RestaurantDetailsContent() {
             <div className="flex items-start justify-between gap-4">
               <div className="min-w-0">
                 <div className="flex items-center gap-2">
-                  <h1 className="text-2xl font-bold text-gray-900 dark:text-white truncate">
+                  <h1 className="text-2xl font-bold text-gray-900 dark:text-white line-clamp-2 leading-tight">
                     {restaurant?.name || "Unknown Restaurant"}
                   </h1>
                 </div>
@@ -3248,12 +3249,12 @@ function RestaurantDetailsContent() {
           >
             <Button
               ref={menuButtonRef}
-              className="bg-gradient-to-r from-[#DC2626] to-[#991B1B] hover:from-[#991B1B] hover:to-[#7F1D1D] text-white flex items-center gap-2 shadow-lg border border-white/20 px-6 py-3.5 h-auto rounded-full font-bold active:scale-95 group"
+              className="bg-[#5a5e66] hover:bg-[#4a4e56] text-white flex items-center gap-2.5 shadow-lg border border-white/10 px-6 py-3 h-auto rounded-[22px] active:scale-95 transition-all group"
               size="lg"
               onClick={() => setShowMenuSheet(true)}
             >
-              <Utensils className="h-4 w-4 text-white group-hover:rotate-12 transition-transform" />
-              <span className="tracking-widest text-xs uppercase font-extrabold antialiased">Menu</span>
+              <Utensils className="h-5 w-5 text-white group-hover:scale-110 transition-transform" />
+              <span className="text-[17px] font-medium antialiased tracking-wide">Menu</span>
             </Button>
           </motion.div>,
           document.body

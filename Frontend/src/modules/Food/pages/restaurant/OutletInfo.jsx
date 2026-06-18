@@ -348,6 +348,10 @@ export default function OutletInfo() {
   const handleSaveName = async () => {
     const newName = editNameValue.trim()
     if (!newName) return
+    if (/[\/-]/.test(newName)) {
+      toast.error("Name cannot contain slashes (/) or hyphens (-)")
+      return
+    }
     try {
       await restaurantAPI.updateProfile({ name: newName })
       setRestaurantName(newName)
@@ -490,7 +494,7 @@ export default function OutletInfo() {
             <div className="relative group">
               <Input 
                 value={editNameValue} 
-                onChange={(e) => setEditNameValue(e.target.value)} 
+                onChange={(e) => setEditNameValue(e.target.value.replace(/[\/-]/g, ""))} 
                 placeholder="Ex: RedGo Express" 
                 className="w-full h-14 px-5 rounded-2xl border-2 border-gray-100 focus:border-[#B80B3D] focus:ring-0 transition-all font-bold text-lg bg-gray-50 group-hover:bg-white" 
               />
