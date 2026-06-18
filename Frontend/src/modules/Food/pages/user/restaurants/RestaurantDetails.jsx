@@ -3248,7 +3248,7 @@ function RestaurantDetailsContent() {
           >
             <Button
               ref={menuButtonRef}
-              className="bg-gradient-to-r from-[#DC2626] to-[#991B1B] hover:from-[#991B1B] hover:to-[#7F1D1D] text-white flex items-center gap-2 shadow-[0_12px_40px_rgba(220,38,38,0.4)] border border-white/20 px-6 py-3.5 h-auto rounded-full font-bold active:scale-95 group"
+              className="bg-gradient-to-r from-[#DC2626] to-[#991B1B] hover:from-[#991B1B] hover:to-[#7F1D1D] text-white flex items-center gap-2 shadow-lg border border-white/20 px-6 py-3.5 h-auto rounded-full font-bold active:scale-95 group"
               size="lg"
               onClick={() => setShowMenuSheet(true)}
             >
