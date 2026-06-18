@@ -3226,8 +3226,8 @@ function RestaurantDetailsContent() {
             dragConstraints={{
               left: 0,
               right: windowSize.width - menuButtonWidth,
-              top: -(windowSize.height - menuButtonHeight - 80),
-              bottom: 80
+              top: -(windowSize.height - menuButtonHeight - (itemCount > 0 ? 150 : 80)),
+              bottom: itemCount > 0 ? 150 : 80
             }}
             initial={{ 
               x: (windowSize.width - menuButtonWidth) / 2,
@@ -3238,7 +3238,7 @@ function RestaurantDetailsContent() {
             style={{
               position: 'fixed',
               left: 0,
-              bottom: 80,
+              bottom: itemCount > 0 ? 150 : 80,
               backfaceVisibility: 'hidden',
               WebkitFontSmoothing: 'antialiased',
               zIndex: 9998,

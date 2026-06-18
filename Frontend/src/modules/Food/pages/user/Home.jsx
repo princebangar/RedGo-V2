@@ -3279,13 +3279,6 @@ export default function Home() {
 
                               {/* Closes in / Opening time badge moved here */}
                               <div className="flex items-center gap-1 text-sm lg:text-base text-gray-500 mt-2">
-                                {availability.isOpen &&
-                                  availability.closingCountdownLabel && (
-                                    <div className="flex items-center gap-1.5 px-2 py-1 rounded-md bg-[#f4f6ff] dark:bg-indigo-900/20 text-[#4d5bce] dark:text-indigo-300 border border-[#e0e4ff] dark:border-indigo-800 text-[10px] font-bold uppercase tracking-wide transition-all duration-300">
-                                      <Timer className="h-3 w-3 flex-shrink-0 text-[#4d5bce] dark:text-indigo-400" strokeWidth={2.5} />
-                                      <span>{availability.closingCountdownLabel}</span>
-                                    </div>
-                                  )}
                                 {!availability.isOpen && (
                                   <div className={`flex items-center gap-1.5 px-2 py-1 rounded-md text-[10px] font-bold uppercase tracking-wide transition-all duration-300 ${availability.reason === "inactive" || availability.reason === "not-accepting-orders"
                                       ? "bg-red-50 dark:bg-red-950/20 text-red-600 dark:text-red-400 border border-red-100 dark:border-red-900/30"
