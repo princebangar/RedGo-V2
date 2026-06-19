@@ -121,8 +121,10 @@ const setSessionCache = (key, data) => {
   try { sessionStorage.setItem(key, JSON.stringify(data)); } catch (e) { }
 };
 
+// v2: added foodTypeScope field — old cache entries without it must be dropped
+const HOME_CATEGORIES_CACHE_KEY = 'food_home_categories_v2';
 let HOME_RESTAURANTS_CACHE = getSessionCache('food_home_restaurants');
-let HOME_CATEGORIES_CACHE = getSessionCache('food_home_categories');
+let HOME_CATEGORIES_CACHE = getSessionCache(HOME_CATEGORIES_CACHE_KEY);
 
 
 // Explore More Icons
@@ -241,6 +243,7 @@ const RestaurantImageCarousel = React.memo(
     const [currentIndex, setCurrentIndex] = useState(0);
     const [loadedBySrc, setLoadedBySrc] = useState({});
     const [isImageUnavailable, setIsImageUnavailable] = useState(false);
+    const [loadedIndices, setLoadedIndices] = useState(new Set([0]));
     const touchStartX = useRef(0);
     const touchEndX = useRef(0);
     const isSwiping = useRef(false);
@@ -298,9 +301,25 @@ const RestaurantImageCarousel = React.memo(
     // Reset transient image state when restaurant or source list changes.
     useEffect(() => {
       setCurrentIndex(0);
+      setLoadedIndices(new Set([0]));
       setIsTransitioning(true);
       setIsImageUnavailable(slideItems.length === 0);
     }, [restaurant?.id, restaurant?.slug, restaurant?.updatedAt, slideItems.length]);
+
+    // Tracks loaded indices for lazy loading
+    useEffect(() => {
+      if (infiniteSlides.length === 0) return;
+      setLoadedIndices((prev) => {
+        const next = new Set(prev);
+        const adjacent = [
+          (currentIndex - 1 + infiniteSlides.length) % infiniteSlides.length,
+          currentIndex,
+          (currentIndex + 1) % infiniteSlides.length,
+        ];
+        adjacent.forEach((idx) => next.add(idx));
+        return next;
+      });
+    }, [currentIndex, infiniteSlides.length]);
 
     // Handle touch events for swipe
     const handleTouchStart = (e) => {
@@ -351,29 +370,31 @@ const RestaurantImageCarousel = React.memo(
           style={{ transform: `translateX(-${currentIndex * 100}%)` }}
         >
           {infiniteSlides.map((item, idx) => {
-            // Performance Optimization: Only render the current, next, and previous slides 
+            const shouldLoad = loadedIndices.has(idx);
             const isVisible =
               Math.abs(idx - currentIndex) <= 1 ||
               (currentIndex === 0 && idx === infiniteSlides.length - 1) ||
               (currentIndex === infiniteSlides.length - 1 && idx === 0);
 
-            if (!isVisible) return <div key={`${item.id}-${idx}`} className="w-full h-full flex-shrink-0" />;
-
             return (
-              <div key={`${item.id}-${idx}-${item.src}`} className="w-full h-full flex-shrink-0 relative">
-                <OptimizedImage
-                  src={item.src}
-                  alt={`${restaurant.name} - Image ${idx + 1}`}
-                  className="w-full h-full"
-                  objectFit="cover"
-                  priority={priority && isVisible}
-                  onLoad={() => {
-                    setLoadedBySrc((prev) => ({ ...prev, [item.src]: true }));
-                  }}
-                  onError={() => {
-                    if (idx === currentIndex && slideItems.length === 1) setIsImageUnavailable(true);
-                  }}
-                />
+              <div key={`${item.id}-${idx}`} className="w-full h-full flex-shrink-0 relative">
+                {shouldLoad ? (
+                  <OptimizedImage
+                    src={item.src}
+                    alt={`${restaurant.name} - Image ${idx + 1}`}
+                    className="w-full h-full"
+                    objectFit="cover"
+                    priority={priority && isVisible}
+                    onLoad={() => {
+                      setLoadedBySrc((prev) => ({ ...prev, [item.src]: true }));
+                    }}
+                    onError={() => {
+                      if (idx === currentIndex && slideItems.length === 1) setIsImageUnavailable(true);
+                    }}
+                  />
+                ) : (
+                  <div className="absolute inset-0 bg-gradient-to-r from-gray-200 via-gray-300 to-gray-200 dark:from-gray-700 dark:via-gray-600 dark:to-gray-700 animate-pulse" />
+                )}
               </div>
             );
           })}
@@ -966,10 +987,17 @@ export default function Home() {
   }, [landingCategories, normalizeImageUrl, slugifyCategory]);
 
   const displayCategories = useMemo(() => {
-    if (realCategories.length > 0) return realCategories;
-    if (menuCategories.length > 0) return menuCategories;
-    return normalizedLandingCategories;
-  }, [menuCategories, realCategories, normalizedLandingCategories]);
+    const filterByVeg = (cats) => {
+      if (!vegMode) return cats;
+      return cats.filter((cat) => {
+        const scope = String(cat.foodTypeScope || cat.type || '').toLowerCase().trim();
+        return scope !== 'non-veg' && scope !== 'nonveg' && scope !== 'non veg';
+      });
+    };
+    if (realCategories.length > 0) return filterByVeg(realCategories);
+    if (menuCategories.length > 0) return filterByVeg(menuCategories);
+    return filterByVeg(normalizedLandingCategories);
+  }, [menuCategories, realCategories, normalizedLandingCategories, vegMode]);
 
   // Swipe functionality for hero banner carousel
   const touchStartX = useRef(0);
@@ -1493,6 +1521,7 @@ export default function Home() {
                 foodImages[idx % foodImages.length] ||
                 foodImages[0],
               type: cat?.type || "",
+              foodTypeScope: cat?.foodTypeScope || "",
             }))
             : [];
 
@@ -1507,7 +1536,7 @@ export default function Home() {
         if (!cancelled) {
           setRealCategories(categories);
           HOME_CATEGORIES_CACHE = categories;
-          setSessionCache('food_home_categories', categories);
+          setSessionCache(HOME_CATEGORIES_CACHE_KEY, categories);
         }
       } catch (err) {
         debugWarn("Failed to fetch categories:", err);
@@ -1993,11 +2022,12 @@ export default function Home() {
             const sectionItems = Array.isArray(section?.items)
               ? section.items
               : [];
+            let sectionHasVeg = false;
             sectionItems.forEach((item) => {
               const foodType = String(item?.foodType || "")
                 .trim()
                 .toLowerCase();
-              if (foodType === "veg") hasVeg = true;
+              if (foodType === "veg") { hasVeg = true; sectionHasVeg = true; }
               if (
                 foodType === "non-veg" ||
                 foodType === "non veg" ||
@@ -2017,7 +2047,7 @@ export default function Home() {
                 const foodType = String(item?.foodType || "")
                   .trim()
                   .toLowerCase();
-                if (foodType === "veg") hasVeg = true;
+                if (foodType === "veg") { hasVeg = true; sectionHasVeg = true; }
                 if (
                   foodType === "non-veg" ||
                   foodType === "non veg" ||
@@ -2032,6 +2062,9 @@ export default function Home() {
 
             const slug = slugifyCategory(categoryName);
             if (!slug) return;
+
+            // Skip non-veg-only sections when veg mode is on
+            if (vegMode && !sectionHasVeg) return;
 
             let image = "";
             if (Array.isArray(section?.items) && section.items.length > 0) {
@@ -2102,9 +2135,10 @@ export default function Home() {
   const matchesVegMode = useCallback(
     (restaurant) => {
       if (!vegMode) return true;
-      return restaurant?.pureVegRestaurant === true;
+      if (vegModeOption === "pure-veg") return restaurant?.pureVegRestaurant === true;
+      return true; // "all" option: show all restaurants, non-veg dishes hidden inside by RestaurantDetails
     },
-    [vegMode],
+    [vegMode, vegModeOption],
   );
 
   // Filter restaurants and foods based on active filters
@@ -3277,8 +3311,8 @@ export default function Home() {
                               <div className="flex items-center gap-1 text-sm lg:text-base text-gray-500 mt-2">
                                 {!availability.isOpen && (
                                   <div className={`flex items-center gap-1.5 px-2 py-1 rounded-md text-[10px] font-bold uppercase tracking-wide transition-all duration-300 ${availability.reason === "inactive" || availability.reason === "not-accepting-orders"
-                                      ? "bg-red-50 dark:bg-red-950/20 text-red-600 dark:text-red-400 border border-red-100 dark:border-red-900/30"
-                                      : "bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400 border border-gray-200 dark:border-gray-700"
+                                    ? "bg-red-50 dark:bg-red-950/20 text-red-600 dark:text-red-400 border border-red-100 dark:border-red-900/30"
+                                    : "bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400 border border-gray-200 dark:border-gray-700"
                                     }`}>
                                     {availability.reason === "inactive" || availability.reason === "not-accepting-orders" ? (
                                       <>

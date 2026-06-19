@@ -9,6 +9,7 @@ import { useLocation } from "@food/hooks/useLocation";
 import { useZone } from "@food/hooks/useZone";
 import useAppBackNavigation from "@food/hooks/useAppBackNavigation";
 import { API_BASE_URL } from "@food/api/config";
+import { useProfile } from "@food/context/ProfileContext";
 
 export default function Categories() {
   const navigate = useNavigate();
@@ -16,6 +17,7 @@ export default function Categories() {
   const [categories, setCategories] = useState([]);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState("");
+  const { vegMode } = useProfile();
   const { location } = useLocation();
   const { zoneId } = useZone(location);
 
@@ -26,7 +28,7 @@ export default function Categories() {
     const trimmed = imageUrl.trim();
     if (!trimmed) return "";
     if (/^data:/i.test(trimmed) || /^blob:/i.test(trimmed)) return trimmed;
-    
+
     const normalizedInput = trimmed
       .replace(/\\/g, "/")
       .replace(/^(https?):\/(?!\/)/i, "$1://")
@@ -56,6 +58,7 @@ export default function Categories() {
             slug: cat?.slug || String(cat?.name || "").toLowerCase().replace(/\s+/g, "-"),
             image: normalizeImageUrl(cat?.image || cat?.imageUrl) || foodImages[idx % foodImages.length],
             type: cat?.type || "",
+            foodTypeScope: cat?.foodTypeScope || "",
           }));
           setCategories(transformed);
         }
@@ -68,9 +71,13 @@ export default function Categories() {
     fetchCategories();
   }, [zoneId, BACKEND_ORIGIN]);
 
-  const filteredCategories = categories.filter((cat) =>
-    (cat.name || "").toLowerCase().includes(searchQuery.toLowerCase())
-  );
+  const filteredCategories = categories.filter((cat) => {
+    if (vegMode) {
+      const scope = String(cat.foodTypeScope || "").toLowerCase().trim();
+      if (scope === "non-veg" || scope === "nonveg" || scope === "non veg") return false;
+    }
+    return (cat.name || "").toLowerCase().includes(searchQuery.toLowerCase());
+  });
 
   return (
     <div className="min-h-screen bg-white dark:bg-[#0a0a0a] pb-10">
@@ -150,7 +157,7 @@ export default function Categories() {
             </div>
             <h3 className="text-lg font-bold text-neutral-900 dark:text-white">No results found</h3>
             <p className="text-sm text-neutral-500 dark:text-gray-400 mt-2 max-w-[240px]">We couldn't find any categories matching your search. Try another keyword!</p>
-            <button 
+            <button
               onClick={() => setSearchQuery("")}
               className="mt-8 px-8 py-3 bg-neutral-900 dark:bg-white dark:text-black text-white rounded-2xl text-sm font-bold active:scale-95 transition-all shadow-lg"
             >
