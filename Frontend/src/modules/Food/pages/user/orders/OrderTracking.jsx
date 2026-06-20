@@ -41,7 +41,6 @@ import { useLocation as useUserLocation } from "@food/hooks/useLocation"
 import DeliveryTrackingMap from "@food/components/user/DeliveryTrackingMap"
 import { orderAPI, restaurantAPI } from "@food/api"
 import { useCompanyName } from "@food/hooks/useCompanyName"
-import { useUserNotifications } from "@food/hooks/useUserNotifications"
 import { RESTAURANT_PIN_SVG, CUSTOMER_PIN_SVG, RIDER_BIKE_SVG } from "@food/constants/mapIcons"
 import burgerImg from "@food/assets/takeaway_burger.png"
 
@@ -893,6 +892,18 @@ function normalizeLookupId(value) {
   return raw
 }
 
+const getGlobalLastFetchTime = (id) => {
+  if (typeof window === 'undefined') return 0;
+  window.__lastOrderDetailsFetchTime = window.__lastOrderDetailsFetchTime || {};
+  return window.__lastOrderDetailsFetchTime[id] || 0;
+};
+
+const setGlobalLastFetchTime = (id, time) => {
+  if (typeof window === 'undefined') return;
+  window.__lastOrderDetailsFetchTime = window.__lastOrderDetailsFetchTime || {};
+  window.__lastOrderDetailsFetchTime[id] = time;
+};
+
 export default function OrderTracking() {
   const companyName = useCompanyName()
   const navigate = useNavigate()
@@ -900,11 +911,22 @@ export default function OrderTracking() {
   const { orderId } = useParams()
   const [searchParams] = useSearchParams()
   const confirmed = searchParams.get("confirmed") === "true"
-  const { getOrderById } = useOrders()
   const { profile, getDefaultAddress } = useProfile()
   const { location: userLiveLocation } = useUserLocation()
 
-  const { isConnected: isSocketConnected } = useUserNotifications()
+  const [isSocketConnected, setIsSocketConnected] = useState(() => {
+    return typeof window !== 'undefined' ? !!window.orderSocketConnected : false
+  })
+
+  useEffect(() => {
+    const handleConnectionChange = (e) => {
+      setIsSocketConnected(!!e?.detail?.isConnected)
+    }
+    window.addEventListener('userSocketConnectionChange', handleConnectionChange)
+    return () => {
+      window.removeEventListener('userSocketConnectionChange', handleConnectionChange)
+    }
+  }, [])
   
   // State for order data
   const [order, setOrder] = useState(null)
@@ -926,6 +948,12 @@ export default function OrderTracking() {
   useEffect(() => {
     estimatedTimeRef.current = estimatedTime
   }, [estimatedTime])
+
+  const isRefreshingRef = useRef(isRefreshing)
+  useEffect(() => {
+    isRefreshingRef.current = isRefreshing
+  }, [isRefreshing])
+
   const [showCancelDialog, setShowCancelDialog] = useState(false)
   const [showOrderDetails, setShowOrderDetails] = useState(false)
   const [cancellationReason, setCancellationReason] = useState("")
@@ -1478,54 +1506,18 @@ export default function OrderTracking() {
       }
     }
 
-    const userAgent = navigator.userAgent || navigator.vendor || window.opera;
-    const isAndroid = /android/i.test(userAgent);
-    const isIOS = /iPad|iPhone|iPod/.test(userAgent) && !window.MSStream;
-
     let mapsUrl = '';
-    let isMobileDeepLink = false;
+    const name = order?.restaurant || 'Restaurant';
 
     if (lat !== null && lng !== null && Number.isFinite(Number(lat)) && Number.isFinite(Number(lng))) {
-      const name = order?.restaurant || 'Restaurant';
-      if (isAndroid) {
-        mapsUrl = `geo:0,0?q=${lat},${lng}(${encodeURIComponent(name)})`;
-        isMobileDeepLink = true;
-      } else if (isIOS) {
-        mapsUrl = `maps://?q=${lat},${lng}`;
-        isMobileDeepLink = true;
-      } else {
-        mapsUrl = `https://maps.google.com/?q=${lat},${lng}+(${encodeURIComponent(name)})`;
-      }
+      mapsUrl = `https://maps.google.com/?q=${lat},${lng}+(${encodeURIComponent(name)})`;
     } else {
-      const name = order?.restaurant || 'Restaurant';
       const address = order?.restaurantAddress || '';
       const query = address ? `${name} ${address}` : name;
-      if (isAndroid) {
-        mapsUrl = `geo:0,0?q=${encodeURIComponent(query)}`;
-        isMobileDeepLink = true;
-      } else if (isIOS) {
-        mapsUrl = `maps://?q=${encodeURIComponent(query)}`;
-        isMobileDeepLink = true;
-      } else {
-        mapsUrl = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(query)}`;
-      }
+      mapsUrl = `https://maps.google.com/?q=${encodeURIComponent(query)}`;
     }
 
-    if (isMobileDeepLink) {
-      try {
-        const link = document.createElement('a');
-        link.href = mapsUrl;
-        link.setAttribute('target', '_self');
-        document.body.appendChild(link);
-        link.click();
-        document.body.removeChild(link);
-      } catch (err) {
-        debugError('Failed to open native maps link, falling back to window.location:', err);
-        window.location.assign(mapsUrl);
-      }
-    } else {
-      window.open(mapsUrl, '_blank');
-    }
+    window.open(mapsUrl, '_blank');
   };
 
   const handleCallRider = (e) => {
@@ -1584,6 +1576,18 @@ export default function OrderTracking() {
       if (terminalPollStopRef.current && !isInitial) return;
 
       const now = Date.now();
+      
+      // Global throttle across component remounts to prevent rapid API hammering
+      const globalLastFetch = getGlobalLastFetchTime(orderId);
+      if (isInitial && now - globalLastFetch < 2000) {
+        debugLog("?? Throttling initial poll - too soon since last fetch");
+        setLoading(false);
+        return;
+      }
+      if (isInitial) {
+        setGlobalLastFetchTime(orderId, now);
+      }
+
       if (isInitial && now - lastPollExecutionRef.current < 1000) return;
       if (isInitial) lastPollExecutionRef.current = now;
 
@@ -1672,7 +1676,7 @@ export default function OrderTracking() {
       if (pollRef.current) pollRef.current(false);
     };
     
-    const pollInterval = (isSocketConnected || window.orderSocketConnected) ? 12000 : 5000;
+    const pollInterval = (isSocketConnected || window.orderSocketConnected) ? 60000 : 20000;
     const interval = setInterval(tick, pollInterval);
 
     return () => clearInterval(interval);
@@ -1725,7 +1729,7 @@ export default function OrderTracking() {
 
         // Pull latest order state without refresh spam on bursty socket events.
         const now = Date.now();
-        if (now - lastRealtimeRefreshRef.current > 1500 && !isRefreshing) {
+        if (now - lastRealtimeRefreshRef.current > 1500 && !isRefreshingRef.current) {
           lastRealtimeRefreshRef.current = now;
           handleRefresh();
         }
@@ -1896,6 +1900,8 @@ export default function OrderTracking() {
   };
 
   const handleRefresh = async () => {
+    if (isRefreshingRef.current) return
+    isRefreshingRef.current = true
     setIsRefreshing(true)
     try {
       const response = await fetchOrderDetailsWithFallback({ force: true })
@@ -1942,11 +1948,12 @@ export default function OrderTracking() {
           }
         }
 
-        setOrder(transformOrderForTracking(apiOrder, order, restaurantCoords, restaurantAddress))
+        setOrder(prev => transformOrderForTracking(apiOrder, prev, restaurantCoords, restaurantAddress))
       }
     } catch (err) {
       debugError('Error refreshing order:', err)
     } finally {
+      isRefreshingRef.current = false
       setIsRefreshing(false)
     }
   }

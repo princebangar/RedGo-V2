@@ -205,7 +205,8 @@ function UserLayoutContent() {
     !normalizedPath.includes('profile') &&
     !normalizedPath.includes('wallet') &&
     !normalizedPath.includes('help') &&
-    !normalizedPath.includes('address');
+    !normalizedPath.includes('address') &&
+    !normalizedPath.includes('orders');
 
   // Debounced loading state to prevent flickering and ensure smooth navigation transitions
   const { showGlobalLoader, setShowGlobalLoader } = useLocationSelector()
