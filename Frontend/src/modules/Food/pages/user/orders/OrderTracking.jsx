@@ -913,6 +913,7 @@ export default function OrderTracking() {
   const confirmed = searchParams.get("confirmed") === "true"
   const { profile, getDefaultAddress } = useProfile()
   const { location: userLiveLocation } = useUserLocation()
+  const { getOrderById } = useOrders()
 
   const [isSocketConnected, setIsSocketConnected] = useState(() => {
     return typeof window !== 'undefined' ? !!window.orderSocketConnected : false
