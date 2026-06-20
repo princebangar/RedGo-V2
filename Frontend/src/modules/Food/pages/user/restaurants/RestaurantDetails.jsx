@@ -417,9 +417,10 @@ function RestaurantDetailsContent() {
     return () => clearInterval(timer)
   }, [couponsKey, coupons.length])
 
-  // Lock body scroll when offers sheet is open
+  // Lock body scroll when any bottom sheet or modal is open
   useEffect(() => {
-    if (showOffersSheet) {
+    const anySheetOpen = showOffersSheet || showMenuSheet || showFilterSheet || showLocationSheet || showMenuOptionsSheet || showItemDetail || showShareModal || showManageCollections || showScheduleSheet
+    if (anySheetOpen) {
       document.body.style.overflow = 'hidden'
     } else {
       document.body.style.overflow = ''
@@ -427,7 +428,7 @@ function RestaurantDetailsContent() {
     return () => {
       document.body.style.overflow = ''
     }
-  }, [showOffersSheet])
+  }, [showOffersSheet, showMenuSheet, showFilterSheet, showLocationSheet, showMenuOptionsSheet, showItemDetail, showShareModal, showManageCollections, showScheduleSheet])
 
   useEffect(() => {
     const intervalId = setInterval(() => {
@@ -1478,7 +1479,7 @@ function RestaurantDetailsContent() {
     return firstSubsectionImage || ""
   }
 
-  // Menu categories - dynamically generated from restaurant menu sections
+  // Menu categories - built from raw sections but item count respects veg mode inline
   const menuCategories = useMemo(() => {
     if (!restaurant?.menuSections || !Array.isArray(restaurant.menuSections)) return []
 
@@ -1487,10 +1488,18 @@ function RestaurantDetailsContent() {
         if (isRecommendedSection(section)) return null
 
         const sectionTitle = getSectionDisplayName(section)
-        const itemCount = Array.isArray(section?.items) ? section.items.length : 0
-        const subsectionCount = Array.isArray(section?.subsections)
-          ? section.subsections.reduce((sum, sub) => sum + (Array.isArray(sub?.items) ? sub.items.length : 0), 0)
-          : 0
+
+        // Count only items that pass veg mode filter
+        const countVisibleItems = (items) =>
+          toRenderableArray(items).filter((item) => {
+            if (item?.isAvailable === false) return false
+            if (vegMode && item?.foodType !== 'Veg') return false
+            return true
+          }).length
+
+        const itemCount = countVisibleItems(section?.items)
+        const subsectionCount = toRenderableArray(section?.subsections)
+          .reduce((sum, sub) => sum + countVisibleItems(sub?.items), 0)
         const totalCount = itemCount + subsectionCount
 
         if (totalCount <= 0) return null
@@ -1504,7 +1513,7 @@ function RestaurantDetailsContent() {
         }
       })
       .filter(Boolean)
-  }, [restaurant?.menuSections])
+  }, [restaurant?.menuSections, vegMode])
 
   // Count active filters
   const getActiveFilterCount = () => {
@@ -2436,13 +2445,11 @@ function RestaurantDetailsContent() {
           <div className="relative">
             <div className="relative rounded-3xl border border-gray-100 dark:border-gray-800 bg-white dark:bg-[#1a1a1a] shadow-[0_16px_40px_rgba(15,23,42,0.08)] p-4 sm:p-5 space-y-4 overflow-hidden">
               <div className="absolute inset-x-0 top-0 h-1.5 bg-gradient-to-r from-[#DC2626] via-[#8a4b77] to-[#b36b8f]" />
-              <div className="flex items-start justify-between gap-4">
-                <div className="min-w-0">
-                  <div className="flex items-center gap-2">
-                    <h1 className="text-2xl font-bold text-gray-900 dark:text-white line-clamp-2 leading-tight">
-                      {restaurant?.name || "Unknown Restaurant"}
-                    </h1>
-                  </div>
+              <div className="flex items-start justify-between gap-3">
+                <div className="min-w-0 flex-1">
+                  <h1 className="text-2xl font-bold text-gray-900 dark:text-white leading-tight break-words">
+                    {restaurant?.name || "Unknown Restaurant"}
+                  </h1>
                   <div className="mt-1 flex items-center gap-2 text-sm text-gray-700 dark:text-gray-300">
                     <Utensils className="h-4 w-4" />
                     <span>{restaurant?.topCategory || restaurant?.cuisine || "Multi-cuisine"}</span>
