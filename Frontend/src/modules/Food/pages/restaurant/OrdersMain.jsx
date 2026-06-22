@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, memo } from "react";
+import { useState, useEffect, useRef, memo, Component } from "react";
 import { useNavigate } from "react-router-dom";
 import {
   checkOnboardingStatus,
@@ -34,9 +34,9 @@ import { useRestaurantNotifications } from "@food/hooks/useRestaurantNotificatio
 import { jsPDF } from "jspdf";
 import autoTable from "jspdf-autotable";
 import ResendNotificationButton from "@food/components/restaurant/ResendNotificationButton";
-const debugLog = (...args) => {};
-const debugWarn = (...args) => {};
-const debugError = (...args) => {};
+const debugLog = (...args) => { };
+const debugWarn = (...args) => { };
+const debugError = (...args) => { };
 
 const STORAGE_KEY = "restaurant_online_status";
 
@@ -93,47 +93,47 @@ const transformOrderForList = (order) => {
   // Dining orders are handled via Dining Booking tab, not the food order list
   if (String(order.orderType || "").toLowerCase() === "dining") return null;
   return {
-  orderId: order.orderId || order._id,
-  mongoId: order._id,
-  status: order.status || "pending",
-  customerName: order.userId?.name || order.customerName || "Customer",
-  type: order.orderType === "takeaway"
-    ? "Takeaway"
-    : order.orderType === "dining"
-      ? "Dining"
-      : "Home Delivery",
-  tableOrToken: null,
-  timePlaced: new Date(getAllOrdersTimestamp(order)).toLocaleDateString(
-    "en-US",
-    {
-      month: "short",
-      day: "numeric",
-      hour: "2-digit",
-      minute: "2-digit",
-    },
-  ),
-  eta: null,
-  itemsSummary:
-    order.items?.map((item) => `${item.quantity}x ${item.name}`).join(", ") ||
-    "No items",
-  photoUrl: order.items?.[0]?.image || null,
-  photoAlt: order.items?.[0]?.name || "Order",
-  paymentMethod: order.paymentMethod || order.payment?.method || null,
-  deliveryPartnerId: order.deliveryPartnerId || null,
-  dispatchStatus: order.dispatch?.status || null,
-  preparingTimestamp: order.tracking?.preparing?.timestamp
-    ? new Date(order.tracking.preparing.timestamp)
-    : (order.acceptedAt 
-       ? new Date(order.acceptedAt) 
-       : new Date(order.createdAt || Date.now())),
-  initialETA: order.preparationTime || order.estimatedDeliveryTime || 30,
-  // For active orders: sort by creation time (newest first within same status)
-  // For terminal orders: sort by the most recent event (cancelledAt/deliveredAt/updatedAt)
-  sortTimestamp: isTerminal
-    ? new Date(getAllOrdersTimestamp(order)).getTime()
-    : new Date(order.createdAt || Date.now()).getTime(),
-  scheduledAt: order.scheduledAt || null,
-  restaurantNote: order.restaurantNote || null,
+    orderId: order.orderId || order._id,
+    mongoId: order._id,
+    status: order.status || "pending",
+    customerName: order.userId?.name || order.customerName || "Customer",
+    type: order.orderType === "takeaway"
+      ? "Takeaway"
+      : order.orderType === "dining"
+        ? "Dining"
+        : "Home Delivery",
+    tableOrToken: null,
+    timePlaced: new Date(getAllOrdersTimestamp(order)).toLocaleDateString(
+      "en-US",
+      {
+        month: "short",
+        day: "numeric",
+        hour: "2-digit",
+        minute: "2-digit",
+      },
+    ),
+    eta: null,
+    itemsSummary:
+      order.items?.map((item) => `${item.quantity}x ${item.name}`).join(", ") ||
+      "No items",
+    photoUrl: order.items?.[0]?.image || null,
+    photoAlt: order.items?.[0]?.name || "Order",
+    paymentMethod: order.paymentMethod || order.payment?.method || null,
+    deliveryPartnerId: order.deliveryPartnerId || null,
+    dispatchStatus: order.dispatch?.status || null,
+    preparingTimestamp: order.tracking?.preparing?.timestamp
+      ? new Date(order.tracking.preparing.timestamp)
+      : (order.acceptedAt
+        ? new Date(order.acceptedAt)
+        : new Date(order.createdAt || Date.now())),
+    initialETA: order.preparationTime || order.estimatedDeliveryTime || 30,
+    // For active orders: sort by creation time (newest first within same status)
+    // For terminal orders: sort by the most recent event (cancelledAt/deliveredAt/updatedAt)
+    sortTimestamp: isTerminal
+      ? new Date(getAllOrdersTimestamp(order)).getTime()
+      : new Date(order.createdAt || Date.now()).getTime(),
+    scheduledAt: order.scheduledAt || null,
+    restaurantNote: order.restaurantNote || null,
   };
 };
 
@@ -250,12 +250,12 @@ function CompletedOrders({ onSelectOrder, refreshToken = 0 }) {
           {orders.map((order) => {
             const deliveredDate = order.deliveredAt
               ? new Date(order.deliveredAt).toLocaleDateString("en-US", {
-                  month: "short",
-                  day: "numeric",
-                  year: "numeric",
-                  hour: "2-digit",
-                  minute: "2-digit",
-                })
+                month: "short",
+                day: "numeric",
+                year: "numeric",
+                hour: "2-digit",
+                minute: "2-digit",
+              })
               : "N/A";
 
             return (
@@ -464,12 +464,12 @@ function CancelledOrders({ onSelectOrder, refreshToken = 0 }) {
           {orders.map((order) => {
             const cancelledDate = order.cancelledAt
               ? new Date(order.cancelledAt).toLocaleDateString("en-US", {
-                  month: "short",
-                  day: "numeric",
-                  year: "numeric",
-                  hour: "2-digit",
-                  minute: "2-digit",
-                })
+                month: "short",
+                day: "numeric",
+                year: "numeric",
+                hour: "2-digit",
+                minute: "2-digit",
+              })
               : "N/A";
 
             const cancelledByText =
@@ -527,17 +527,15 @@ function CancelledOrders({ onSelectOrder, refreshToken = 0 }) {
 
                       <div className="flex flex-col items-end gap-1">
                         <span
-                          className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[9px] font-bold border ${
-                            order.cancelledBy === "user"
+                          className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[9px] font-bold border ${order.cancelledBy === "user"
                               ? "border-orange-200 bg-orange-50 text-orange-600"
                               : "border-rose-200 bg-rose-50 text-rose-600"
-                          }`}>
+                            }`}>
                           <span
-                            className={`h-1 w-1 rounded-full ${
-                              order.cancelledBy === "user"
+                            className={`h-1 w-1 rounded-full ${order.cancelledBy === "user"
                                 ? "bg-orange-500"
                                 : "bg-rose-500"
-                            }`}
+                              }`}
                           />
                           {cancelledByText}
                         </span>
@@ -664,7 +662,7 @@ function TableBookings() {
       <div className="flex items-baseline justify-between mb-4 px-1">
         <h2 className="text-base font-semibold text-black">Dining Bookings</h2>
         <div className="flex items-center gap-3">
-           <button 
+          <button
             onClick={handleRefresh}
             className="text-[10px] font-black text-primary-orange uppercase tracking-widest hover:opacity-80 transition-opacity"
           >
@@ -735,56 +733,56 @@ function TableBookings() {
                   </span>
                 </div>
 
-              <div className="flex items-center gap-4 text-[11px] text-gray-600 bg-gray-50 p-2.5 rounded-xl border border-gray-100">
-                <div className="flex items-center gap-1">
-                  <Calendar className="w-3.5 h-3.5 text-gray-400" />
-                  <span>
-                    {new Date(booking.date).toLocaleDateString("en-GB", {
-                      day: "2-digit",
-                      month: "short",
-                    })}
-                  </span>
-                </div>
-                <div className="flex items-center gap-1">
-                  <Clock className="w-3.5 h-3.5 text-gray-400" />
-                  <span>{booking.timeSlot}</span>
-                </div>
-                <div className="flex items-center gap-1">
-                  <Users className="w-3.5 h-3.5 text-gray-400" />
-                  <span>{booking.guests} Guests</span>
-                </div>
-              </div>
-
-              {booking.specialRequest && (
-                <div className="mt-3 p-2 bg-blue-50/50 rounded-lg border border-blue-100/50">
-                  <p className="text-[10px] text-blue-700 italic flex items-start gap-1">
-                    <MessageSquare className="w-3 h-3 mt-0.5 shrink-0" />
-                    <span className="line-clamp-2">
-                      {booking.specialRequest}
+                <div className="flex items-center gap-4 text-[11px] text-gray-600 bg-gray-50 p-2.5 rounded-xl border border-gray-100">
+                  <div className="flex items-center gap-1">
+                    <Calendar className="w-3.5 h-3.5 text-gray-400" />
+                    <span>
+                      {new Date(booking.date).toLocaleDateString("en-GB", {
+                        day: "2-digit",
+                        month: "short",
+                      })}
                     </span>
-                  </p>
+                  </div>
+                  <div className="flex items-center gap-1">
+                    <Clock className="w-3.5 h-3.5 text-gray-400" />
+                    <span>{booking.timeSlot}</span>
+                  </div>
+                  <div className="flex items-center gap-1">
+                    <Users className="w-3.5 h-3.5 text-gray-400" />
+                    <span>{booking.guests} Guests</span>
+                  </div>
                 </div>
-              )}
 
-              {String(booking.status || '').toLowerCase() === 'pending' && (
-                <div className="mt-4 flex gap-2">
-                  <button
-                    onClick={() => handleStatusUpdate(booking._id, 'accepted')}
-                    className="flex-1 py-2 bg-gradient-to-br from-[#B80B3D] to-[#66001D] text-white text-[11px] font-black rounded-xl hover:opacity-95 transition-opacity uppercase tracking-widest shadow-sm"
-                  >
-                    Accept
-                  </button>
-                  <button
-                    onClick={() => handleStatusUpdate(booking._id, 'cancelled')}
-                    className="flex-1 py-2 bg-white border border-rose-200 text-slate-600 text-[11px] font-black rounded-xl hover:bg-slate-50 transition-colors uppercase tracking-widest"
-                  >
-                    Decline
-                  </button>
-                </div>
-              )}
-            </div>
-          );
-        })}
+                {booking.specialRequest && (
+                  <div className="mt-3 p-2 bg-blue-50/50 rounded-lg border border-blue-100/50">
+                    <p className="text-[10px] text-blue-700 italic flex items-start gap-1">
+                      <MessageSquare className="w-3 h-3 mt-0.5 shrink-0" />
+                      <span className="line-clamp-2">
+                        {booking.specialRequest}
+                      </span>
+                    </p>
+                  </div>
+                )}
+
+                {String(booking.status || '').toLowerCase() === 'pending' && (
+                  <div className="mt-4 flex gap-2">
+                    <button
+                      onClick={() => handleStatusUpdate(booking._id, 'accepted')}
+                      className="flex-1 py-2 bg-gradient-to-br from-[#B80B3D] to-[#66001D] text-white text-[11px] font-black rounded-xl hover:opacity-95 transition-opacity uppercase tracking-widest shadow-sm"
+                    >
+                      Accept
+                    </button>
+                    <button
+                      onClick={() => handleStatusUpdate(booking._id, 'cancelled')}
+                      className="flex-1 py-2 bg-white border border-rose-200 text-slate-600 text-[11px] font-black rounded-xl hover:bg-slate-50 transition-colors uppercase tracking-widest"
+                    >
+                      Decline
+                    </button>
+                  </div>
+                )}
+              </div>
+            );
+          })}
         </div>
       )}
     </div>
@@ -857,7 +855,7 @@ function AllOrders({ onSelectOrder, onCancel, onVerifyTakeaway, refreshToken = 0
 
     fetchOrders();
     intervalId = setInterval(fetchOrders, 10000);
-    
+
     const handleVisibility = () => {
       if (!document.hidden) {
         fetchOrders();
@@ -890,11 +888,11 @@ function AllOrders({ onSelectOrder, onCancel, onVerifyTakeaway, refreshToken = 0
         prev.map((order) =>
           (order.mongoId || order.orderId) === orderKey
             ? {
-                ...order,
-                status: "ready",
-                eta: null,
-                sortTimestamp: Date.now(),
-              }
+              ...order,
+              status: "ready",
+              eta: null,
+              sortTimestamp: Date.now(),
+            }
             : order,
         ),
       );
@@ -928,7 +926,7 @@ function AllOrders({ onSelectOrder, onCancel, onVerifyTakeaway, refreshToken = 0
           <h2 className="text-base font-semibold text-black">All orders</h2>
           <span className="text-xs text-gray-500">({orders.length})</span>
         </div>
-        <button 
+        <button
           onClick={() => navigate('/food/restaurant/orders/all')}
           className="text-xs font-bold text-[#B80B3D] hover:underline flex items-center gap-1"
         >
@@ -1280,7 +1278,50 @@ const getInitialCountdown = (order) => {
   return Math.max(0, Math.min(240, remaining));
 }
 
-export default function OrdersMain() {
+class OrdersErrorBoundary extends Component {
+  constructor(props) {
+    super(props);
+    this.state = { hasError: false, error: null };
+  }
+  static getDerivedStateFromError(error) {
+    return { hasError: true, error };
+  }
+  componentDidCatch(error, info) {
+    console.error('[OrdersMain] Render error:', error, info);
+    this.setState({ stack: error?.stack || '', componentStack: info?.componentStack || '' });
+  }
+  render() {
+    if (this.state.hasError) {
+      const msg = this.state.error?.message || 'Unknown error';
+      const stack = this.state.stack || '';
+      const comp = this.state.componentStack || '';
+      return (
+        <div style={{ padding: 16, background: '#fff', minHeight: '100dvh', overflowY: 'auto' }}>
+          <h2 style={{ color: '#B80B3D', fontWeight: 700, marginBottom: 8, fontSize: 16 }}>Something went wrong</h2>
+          <p style={{ fontSize: 12, color: '#B80B3D', fontWeight: 600, marginBottom: 8, wordBreak: 'break-all' }}>{msg}</p>
+          {stack ? (
+            <pre style={{ fontSize: 9, color: '#555', background: '#f5f5f5', padding: 8, borderRadius: 6, overflowX: 'auto', whiteSpace: 'pre-wrap', wordBreak: 'break-all', marginBottom: 8 }}>
+              {stack.slice(0, 800)}
+            </pre>
+          ) : null}
+          {comp ? (
+            <pre style={{ fontSize: 9, color: '#777', background: '#fafafa', padding: 8, borderRadius: 6, overflowX: 'auto', whiteSpace: 'pre-wrap', wordBreak: 'break-all', marginBottom: 12 }}>
+              {comp.slice(0, 400)}
+            </pre>
+          ) : null}
+          <button
+            onClick={() => { this.setState({ hasError: false, error: null, stack: '', componentStack: '' }); window.location.reload(); }}
+            style={{ padding: '10px 20px', background: '#B80B3D', color: '#fff', border: 'none', borderRadius: 8, fontWeight: 700, fontSize: 13 }}>
+            Reload Page
+          </button>
+        </div>
+      );
+    }
+    return this.props.children;
+  }
+}
+
+function OrdersMainInner() {
   const navigate = useNavigate();
   const [activeFilter, setActiveFilter] = useState("all");
   const [isTransitioning, setIsTransitioning] = useState(false);
@@ -1344,14 +1385,14 @@ export default function OrdersMain() {
         // Fetch current restaurant data
         const resRes = await restaurantAPI.getCurrentRestaurant();
         const restaurantData = resRes.data?.data?.restaurant || resRes.data?.restaurant || resRes.data?.data;
-        
+
         if (restaurantData?._id || restaurantData?.id) {
           // 1. Fetch bookings
           const res = await diningAPI.getRestaurantBookings(restaurantData);
           if (res.data.success) {
             const bookings = Array.isArray(res.data.data) ? res.data.data : [];
             const pending = bookings.filter(b => String(b.status).toLowerCase() === 'pending').length;
-            
+
             // If new pending booking found, maybe show toast
             if (pending > pendingBookingsCount) {
               toast.info(`New dining booking request! Check the "Dining Booking" tab.`);
@@ -1498,6 +1539,19 @@ export default function OrdersMain() {
   const { newOrder, clearNewOrder, isConnected, stopSound, isMuted, setMuted } = useRestaurantNotifications();
   const lastOrderToastRef = useRef({ key: "", at: 0 });
 
+  // Mobile error logging — only async rejections (safe, fires outside render)
+  useEffect(() => {
+    const handleRejection = (event) => {
+      const reason = event?.reason?.message || String(event?.reason || 'Promise rejected');
+      console.error('[OrdersMain] unhandledrejection:', event?.reason);
+      setTimeout(() => {
+        toast.error(`[Async Error] ${reason}`, { duration: 10000, id: 'async-error' });
+      }, 100);
+    };
+    window.addEventListener('unhandledrejection', handleRejection);
+    return () => window.removeEventListener('unhandledrejection', handleRejection);
+  }, []);
+
   const rejectReasons = [
     "Restaurant is too busy",
     "Item not available",
@@ -1514,7 +1568,7 @@ export default function OrdersMain() {
         const response = await restaurantAPI.getCurrentRestaurant();
         const restaurant =
           response?.data?.data?.restaurant || response?.data?.restaurant;
-        
+
         if (restaurant) {
           // Log restaurant status for debugging redirection issues
           console.log("🏪 [OrdersMain] Restaurant Status Check:", {
@@ -1535,9 +1589,9 @@ export default function OrdersMain() {
           // isRestaurantOnboardingComplete now handles 'pending' and existing restaurant IDs
           if (!isRestaurantOnboardingComplete(restaurant)) {
             console.warn("⚠️ [OrdersMain] Onboarding detected as INCOMPLETE. Checking next step...");
-            
+
             const incompleteStep = await checkOnboardingStatus();
-            
+
             if (incompleteStep) {
               console.log(`🚀 [OrdersMain] Redirecting to onboarding step ${incompleteStep}`);
               navigate(`/food/restaurant/onboarding?step=${incompleteStep}`, {
@@ -1882,18 +1936,18 @@ export default function OrdersMain() {
       // Auto-reject when timer hits zero
       const orderToReject = popupOrder || newOrder;
       const orderId = resolveOrderActionId(orderToReject);
-      
+
       if (orderId && !isAcceptingOrder) {
         // Safety: Double check if order has genuinely expired (4 minutes = 240s) using createdAt
         const orderTime = orderToReject?.createdAt ? new Date(orderToReject.createdAt).getTime() : Date.now();
         const secondsElapsed = Math.floor((Date.now() - orderTime) / 1000);
-        
+
         if (secondsElapsed >= 235) {
           debugLog("⏰ Timer expired. Auto-rejecting order:", orderId);
           if (stopSound) {
             stopSound();
           }
-          
+
           // Instantly close the reject reasons popup
           setShowRejectPopup(false);
 
@@ -2213,12 +2267,12 @@ export default function OrdersMain() {
   // Handle OTP verification and order completion
   const handleVerifyTakeawayConfirm = async () => {
     if (!verifyingOrder || !takeawayOtpInput.trim()) return;
-    
+
     setIsSubmittingVerifyTakeaway(true);
     try {
       const orderId = verifyingOrder.mongoId || verifyingOrder.orderId;
       await restaurantAPI.completeTakeawayOrder(orderId, takeawayOtpInput.trim());
-      
+
       toast.success("Order verified & completed successfully");
       requestOrdersRefresh();
       setShowVerifyTakeawayPopup(false);
@@ -2240,6 +2294,7 @@ export default function OrdersMain() {
     setVerifyingOrder(null);
     setTakeawayOtpInput("");
   };
+
 
   // Toggle mute
   const toggleMute = () => {
@@ -2280,12 +2335,12 @@ export default function OrdersMain() {
 
       const orderDate = orderToPrint.createdAt
         ? new Date(orderToPrint.createdAt).toLocaleString("en-GB", {
-            day: "numeric",
-            month: "short",
-            year: "numeric",
-            hour: "2-digit",
-            minute: "2-digit",
-          })
+          day: "numeric",
+          month: "short",
+          year: "numeric",
+          hour: "2-digit",
+          minute: "2-digit",
+        })
         : new Date().toLocaleString("en-GB");
 
       doc.text(`Date: ${orderDate}`, 20, 52);
@@ -2663,9 +2718,8 @@ export default function OrdersMain() {
                     setTimeout(() => setIsTransitioning(false), 300);
                   }
                 }}
-                className={`shrink-0 px-6 py-3.5 rounded-full font-medium text-sm whitespace-nowrap relative overflow-hidden ${
-                  isActive ? "text-white" : "bg-white text-black"
-                }`}
+                className={`shrink-0 px-6 py-3.5 rounded-full font-medium text-sm whitespace-nowrap relative overflow-hidden ${isActive ? "text-white" : "bg-white text-black"
+                  }`}
                 animate={{
                   scale: isActive ? 1.05 : 1,
                   opacity: isActive ? 1 : 0.7,
@@ -2731,11 +2785,10 @@ export default function OrdersMain() {
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ duration: 0.3, delay: 0.1 }}
-              className={`mt-4 mb-4 rounded-2xl shadow-sm px-6 py-4 ${
-                restaurantStatus.rejectionReason
+              className={`mt-4 mb-4 rounded-2xl shadow-sm px-6 py-4 ${restaurantStatus.rejectionReason
                   ? "bg-white border border-red-200"
                   : "bg-white border border-yellow-200"
-              }`}>
+                }`}>
               {restaurantStatus.rejectionReason ? (
                 <>
                   <div className="flex items-start gap-3 mb-3">
@@ -2841,72 +2894,70 @@ export default function OrdersMain() {
           activeFilter === 'table-booking' ||
           activeFilter === 'takeaway-orders'
         ) && (
-          <div className="pt-2 pb-2 flex justify-center gap-3 w-full">
-            {/* Takeaway Orders button — count hidden on 'all' tab */}
-            <motion.button
-              onClick={() => {
-                if (activeFilter === 'takeaway-orders') {
-                  setActiveFilter('all');
-                } else {
-                  setActiveFilter('takeaway-orders');
-                }
-              }}
-              className={`flex-1 min-w-0 py-3 rounded-full font-bold text-sm whitespace-nowrap relative overflow-hidden shadow-sm border border-gray-200 transition-all text-center ${
-                activeFilter === 'takeaway-orders' ? 'text-white' : 'bg-white text-black hover:bg-gray-50'
-              }`}
-              animate={{ scale: activeFilter === 'takeaway-orders' ? 1.05 : 1 }}
-              whileTap={{ scale: 0.95 }}>
-              {activeFilter === 'takeaway-orders' && (
-                <div className="absolute inset-0 bg-gradient-to-br from-[#B80B3D] to-[#66001D] rounded-full -z-10" />
-              )}
-              <div className="flex items-center justify-center gap-2 relative z-10">
-                <span className="flex items-center gap-1.5">
-                  Takeaway Orders
+            <div className="pt-2 pb-2 flex justify-center gap-3 w-full">
+              {/* Takeaway Orders button — count hidden on 'all' tab */}
+              <motion.button
+                onClick={() => {
+                  if (activeFilter === 'takeaway-orders') {
+                    setActiveFilter('all');
+                  } else {
+                    setActiveFilter('takeaway-orders');
+                  }
+                }}
+                className={`flex-1 min-w-0 py-3 rounded-full font-bold text-sm whitespace-nowrap relative overflow-hidden shadow-sm border border-gray-200 transition-all text-center ${activeFilter === 'takeaway-orders' ? 'text-white' : 'bg-white text-black hover:bg-gray-50'
+                  }`}
+                animate={{ scale: activeFilter === 'takeaway-orders' ? 1.05 : 1 }}
+                whileTap={{ scale: 0.95 }}>
+                {activeFilter === 'takeaway-orders' && (
+                  <div className="absolute inset-0 bg-gradient-to-br from-[#B80B3D] to-[#66001D] rounded-full -z-10" />
+                )}
+                <div className="flex items-center justify-center gap-2 relative z-10">
+                  <span className="flex items-center gap-1.5">
+                    Takeaway Orders
+                    {activeTakeawayCount > 0 && activeFilter !== 'all' && (
+                      <span className="px-1.5 py-0.5 rounded-full bg-amber-100 text-amber-700 text-[10px] font-black animate-bounce">
+                        {activeTakeawayCount}
+                      </span>
+                    )}
+                  </span>
                   {activeTakeawayCount > 0 && activeFilter !== 'all' && (
-                    <span className="px-1.5 py-0.5 rounded-full bg-amber-100 text-amber-700 text-[10px] font-black animate-bounce">
-                      {activeTakeawayCount}
-                    </span>
+                    <span className="w-2 h-2 rounded-full bg-amber-500 animate-pulse shadow-[0_0_8px_rgba(245,158,11,0.6)]" />
                   )}
-                </span>
-                {activeTakeawayCount > 0 && activeFilter !== 'all' && (
-                  <span className="w-2 h-2 rounded-full bg-amber-500 animate-pulse shadow-[0_0_8px_rgba(245,158,11,0.6)]" />
-                )}
-              </div>
-            </motion.button>
+                </div>
+              </motion.button>
 
-            {/* Table Booking button */}
-            <motion.button
-              onClick={() => {
-                if (activeFilter === 'table-booking') {
-                  setActiveFilter('all');
-                } else {
-                  setActiveFilter('table-booking');
-                }
-              }}
-              className={`flex-1 min-w-0 py-3 rounded-full font-bold text-sm whitespace-nowrap relative overflow-hidden shadow-sm border border-gray-200 transition-all text-center ${
-                activeFilter === 'table-booking' ? 'text-white' : 'bg-white text-black hover:bg-gray-50'
-              }`}
-              animate={{ scale: activeFilter === 'table-booking' ? 1.05 : 1 }}
-              whileTap={{ scale: 0.95 }}>
-              {activeFilter === 'table-booking' && (
-                <div className="absolute inset-0 bg-gradient-to-br from-[#B80B3D] to-[#66001D] rounded-full -z-10" />
-              )}
-              <div className="flex items-center justify-center gap-2 relative z-10">
-                <span className="flex items-center gap-1.5">
-                  Dining Booking
-                  {pendingBookingsCount > 0 && (
-                    <span className="px-1.5 py-0.5 rounded-full bg-red-100 text-[#B80B3D] text-[10px] font-black animate-bounce">
-                      {pendingBookingsCount}
-                    </span>
-                  )}
-                </span>
-                {pendingBookingsCount > 0 && (
-                  <span className="w-2 h-2 rounded-full bg-gradient-to-br from-[#B80B3D] to-[#66001D] animate-pulse shadow-[0_0_8px_rgba(239,68,68,0.6)]" />
+              {/* Table Booking button */}
+              <motion.button
+                onClick={() => {
+                  if (activeFilter === 'table-booking') {
+                    setActiveFilter('all');
+                  } else {
+                    setActiveFilter('table-booking');
+                  }
+                }}
+                className={`flex-1 min-w-0 py-3 rounded-full font-bold text-sm whitespace-nowrap relative overflow-hidden shadow-sm border border-gray-200 transition-all text-center ${activeFilter === 'table-booking' ? 'text-white' : 'bg-white text-black hover:bg-gray-50'
+                  }`}
+                animate={{ scale: activeFilter === 'table-booking' ? 1.05 : 1 }}
+                whileTap={{ scale: 0.95 }}>
+                {activeFilter === 'table-booking' && (
+                  <div className="absolute inset-0 bg-gradient-to-br from-[#B80B3D] to-[#66001D] rounded-full -z-10" />
                 )}
-              </div>
-            </motion.button>
-          </div>
-        )}
+                <div className="flex items-center justify-center gap-2 relative z-10">
+                  <span className="flex items-center gap-1.5">
+                    Dining Booking
+                    {pendingBookingsCount > 0 && (
+                      <span className="px-1.5 py-0.5 rounded-full bg-red-100 text-[#B80B3D] text-[10px] font-black animate-bounce">
+                        {pendingBookingsCount}
+                      </span>
+                    )}
+                  </span>
+                  {pendingBookingsCount > 0 && (
+                    <span className="w-2 h-2 rounded-full bg-gradient-to-br from-[#B80B3D] to-[#66001D] animate-pulse shadow-[0_0_8px_rgba(239,68,68,0.6)]" />
+                  )}
+                </div>
+              </motion.button>
+            </div>
+          )}
 
         <AnimatePresence mode="wait">
           <motion.div
@@ -3116,13 +3167,13 @@ export default function OrdersMain() {
                     <p className="text-xs text-gray-500 mt-1">
                       {(popupOrder || newOrder)?.createdAt
                         ? new Date(
-                            (popupOrder || newOrder).createdAt,
-                          ).toLocaleString("en-GB", {
-                            day: "numeric",
-                            month: "short",
-                            hour: "2-digit",
-                            minute: "2-digit",
-                          })
+                          (popupOrder || newOrder).createdAt,
+                        ).toLocaleString("en-GB", {
+                          day: "numeric",
+                          month: "short",
+                          hour: "2-digit",
+                          minute: "2-digit",
+                        })
                         : "Just now"}
                     </p>
                   </div>
@@ -3206,8 +3257,8 @@ export default function OrdersMain() {
                                 </div>
                               ),
                             ) || (
-                              <p className="text-sm text-gray-500">No items</p>
-                            )}
+                                <p className="text-sm text-gray-500">No items</p>
+                              )}
                           </div>
                         </motion.div>
                       )}
@@ -3410,18 +3461,16 @@ export default function OrdersMain() {
                       <button
                         key={reason}
                         onClick={() => setRejectReason(reason)}
-                        className={`w-full text-left p-4 rounded-lg border-2 transition-all ${
-                          rejectReason === reason
+                        className={`w-full text-left p-4 rounded-lg border-2 transition-all ${rejectReason === reason
                             ? "border-[#B80B3D] bg-red-50"
                             : "border-gray-200 bg-white hover:border-gray-300"
-                        }`}>
+                          }`}>
                         <div className="flex items-center justify-between">
                           <span
-                            className={`text-sm font-medium ${
-                              rejectReason === reason
+                            className={`text-sm font-medium ${rejectReason === reason
                                 ? "text-[#B80B3D]"
                                 : "text-gray-900"
-                            }`}>
+                              }`}>
                             {reason}
                           </span>
                           {rejectReason === reason && (
@@ -3456,11 +3505,10 @@ export default function OrdersMain() {
                   <button
                     onClick={handleRejectConfirm}
                     disabled={!rejectReason}
-                    className={`flex-1 py-3 rounded-lg font-semibold text-sm transition-colors ${
-                      rejectReason
+                    className={`flex-1 py-3 rounded-lg font-semibold text-sm transition-colors ${rejectReason
                         ? "!bg-gradient-to-br from-[#B80B3D] to-[#66001D] !text-white hover:!bg-gradient-to-br from-[#B80B3D] to-[#66001D]/90"
                         : "bg-gray-200 text-gray-400 cursor-not-allowed"
-                    }`}>
+                      }`}>
                     Confirm Rejection
                   </button>
                 </div>
@@ -3505,18 +3553,16 @@ export default function OrdersMain() {
                         key={reason}
                         type="button"
                         onClick={() => setCancelReason(reason)}
-                        className={`w-full text-left px-4 py-3 rounded-lg border-2 transition-colors ${
-                          cancelReason === reason
+                        className={`w-full text-left px-4 py-3 rounded-lg border-2 transition-colors ${cancelReason === reason
                             ? "border-red-500 bg-red-50"
                             : "border-gray-200 hover:border-gray-300"
-                        }`}>
+                          }`}>
                         <div className="flex items-center gap-3">
                           <div
-                            className={`w-5 h-5 rounded-full border-2 flex items-center justify-center ${
-                              cancelReason === reason
+                            className={`w-5 h-5 rounded-full border-2 flex items-center justify-center ${cancelReason === reason
                                 ? "border-red-500 bg-gradient-to-br from-[#B80B3D] to-[#66001D]"
                                 : "border-gray-300"
-                            }`}>
+                              }`}>
                             {cancelReason === reason && (
                               <svg
                                 className="w-3 h-3 text-white"
@@ -3533,11 +3579,10 @@ export default function OrdersMain() {
                             )}
                           </div>
                           <span
-                            className={`text-sm font-medium ${
-                              cancelReason === reason
+                            className={`text-sm font-medium ${cancelReason === reason
                                 ? "text-red-700"
                                 : "text-gray-700"
-                            }`}>
+                              }`}>
                             {reason}
                           </span>
                         </div>
@@ -3556,11 +3601,10 @@ export default function OrdersMain() {
                   <button
                     onClick={handleCancelConfirm}
                     disabled={!cancelReason}
-                    className={`flex-1 py-3 rounded-lg font-semibold text-sm transition-colors ${
-                      cancelReason
+                    className={`flex-1 py-3 rounded-lg font-semibold text-sm transition-colors ${cancelReason
                         ? "!bg-gradient-to-br from-[#B80B3D] to-[#66001D] !text-white hover:bg-red-700"
                         : "bg-gray-200 text-gray-400 cursor-not-allowed"
-                    }`}>
+                      }`}>
                     Confirm Cancellation
                   </button>
                 </div>
@@ -3571,112 +3615,102 @@ export default function OrdersMain() {
       </AnimatePresence>
 
       {/* Verify & Complete Takeaway OTP Popup */}
-      <AnimatePresence>
-        {showVerifyTakeawayPopup && verifyingOrder && (
-          <>
-            <motion.div
-              className="fixed inset-0 z-[110] bg-black/70 backdrop-blur-sm flex items-center justify-center p-4"
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-              onClick={handleVerifyTakeawayClose}>
-              <motion.div
-                className="w-[95%] max-w-sm bg-white dark:bg-[#1a1a1a] rounded-3xl shadow-2xl overflow-hidden"
-                initial={{ scale: 0.85, opacity: 0, y: 20 }}
-                animate={{ scale: 1, opacity: 1, y: 0 }}
-                exit={{ scale: 0.85, opacity: 0, y: 20 }}
-                transition={{ type: "spring", damping: 20, stiffness: 300 }}
-                onClick={(e) => e.stopPropagation()}>
+      {showVerifyTakeawayPopup && verifyingOrder && (
+        <>
+          <div
+            className="fixed inset-0 z-[110] bg-black/70 flex items-center justify-center p-4"
+            onClick={handleVerifyTakeawayClose}>
+            <div
+              className="w-[95%] max-w-sm bg-white dark:bg-[#1a1a1a] rounded-3xl shadow-2xl overflow-hidden"
+              onClick={(e) => e.stopPropagation()}>
 
-                {/* Gradient Header */}
-                <div className="bg-gradient-to-br from-[#B80B3D] to-[#66001D] px-6 pt-6 pb-8 text-center relative overflow-hidden">
-                  {/* decorative circles */}
-                  <div className="absolute -top-6 -right-6 w-24 h-24 rounded-full bg-white/10" />
-                  <div className="absolute -bottom-4 -left-4 w-20 h-20 rounded-full bg-white/5" />
+              {/* Gradient Header */}
+              <div className="bg-gradient-to-br from-[#B80B3D] to-[#66001D] px-6 pt-6 pb-8 text-center relative overflow-hidden">
+                {/* decorative circles */}
+                <div className="absolute -top-6 -right-6 w-24 h-24 rounded-full bg-white/10" />
+                <div className="absolute -bottom-4 -left-4 w-20 h-20 rounded-full bg-white/5" />
 
-                  {/* Bag Icon */}
-                  <div className="w-14 h-14 rounded-2xl bg-white/20 backdrop-blur-sm flex items-center justify-center mx-auto mb-3 shadow-lg relative z-10">
-                    <ShoppingBag className="w-7 h-7 text-white" />
-                  </div>
-                  <h3 className="text-white font-black text-lg tracking-tight relative z-10">
-                    Verify Takeaway
-                  </h3>
-                  <p className="text-white/70 text-[11px] font-semibold uppercase tracking-widest mt-0.5 relative z-10">
-                    Self-Pickup Verification
-                  </p>
+                {/* Bag Icon */}
+                <div className="w-14 h-14 rounded-2xl bg-white/20 backdrop-blur-sm flex items-center justify-center mx-auto mb-3 shadow-lg relative z-10">
+                  <ShoppingBag className="w-7 h-7 text-white" />
                 </div>
+                <h3 className="text-white font-black text-lg tracking-tight relative z-10">
+                  Verify Takeaway
+                </h3>
+                <p className="text-white/70 text-[11px] font-semibold uppercase tracking-widest mt-0.5 relative z-10">
+                  Self-Pickup Verification
+                </p>
+              </div>
 
-                {/* Pull-up card */}
-                <div className="px-5 -mt-5 relative z-10">
-                  {/* Order info card */}
-                  <div className="bg-white dark:bg-[#252525] rounded-2xl shadow-lg border border-slate-100 dark:border-slate-800 p-4 flex items-center gap-3">
-                    {/* Photo */}
-                    <div className="w-14 h-14 rounded-xl overflow-hidden bg-slate-100 dark:bg-slate-800 flex-shrink-0 shadow-sm">
-                      {verifyingOrder.photoUrl ? (
-                        <img src={verifyingOrder.photoUrl} alt={verifyingOrder.photoAlt || "Food"} className="w-full h-full object-cover" />
-                      ) : (
-                        <div className="w-full h-full flex items-center justify-center">
-                          <ShoppingBag className="w-6 h-6 text-slate-300" />
-                        </div>
-                      )}
-                    </div>
-                    {/* Details */}
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-1.5 flex-wrap">
-                        <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Order</span>
-                        <span className="text-sm font-black text-slate-900 dark:text-white">#{verifyingOrder.orderId}</span>
+              {/* Pull-up card */}
+              <div className="px-5 -mt-5 relative z-10">
+                {/* Order info card */}
+                <div className="bg-white dark:bg-[#252525] rounded-2xl shadow-lg border border-slate-100 dark:border-slate-800 p-4 flex items-center gap-3">
+                  {/* Photo */}
+                  <div className="w-14 h-14 rounded-xl overflow-hidden bg-slate-100 dark:bg-slate-800 flex-shrink-0 shadow-sm">
+                    {verifyingOrder.photoUrl ? (
+                      <img src={verifyingOrder.photoUrl} alt={verifyingOrder.photoAlt || "Food"} className="w-full h-full object-cover" />
+                    ) : (
+                      <div className="w-full h-full flex items-center justify-center">
+                        <ShoppingBag className="w-6 h-6 text-slate-300" />
                       </div>
-                      <p className="text-sm font-bold text-slate-700 dark:text-slate-200 mt-0.5 truncate">
-                        {verifyingOrder.customerName}
-                      </p>
-                      <p className="text-xs text-slate-400 dark:text-slate-500 truncate italic">
-                        {verifyingOrder.itemsSummary}
-                      </p>
+                    )}
+                  </div>
+                  {/* Details */}
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-1.5 flex-wrap">
+                      <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Order</span>
+                      <span className="text-sm font-black text-slate-900 dark:text-white">#{verifyingOrder.orderId}</span>
                     </div>
+                    <p className="text-sm font-bold text-slate-700 dark:text-slate-200 mt-0.5 truncate">
+                      {verifyingOrder.customerName}
+                    </p>
+                    <p className="text-xs text-slate-400 dark:text-slate-500 truncate italic">
+                      {verifyingOrder.itemsSummary}
+                    </p>
                   </div>
                 </div>
+              </div>
 
-                {/* OTP Section */}
-                <div className="px-5 pt-5 pb-2">
-                  <label className="block text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest mb-3 text-center">
-                    Enter 4-Digit Customer OTP
-                  </label>
-                  <input
-                    type="text"
-                    inputMode="numeric"
-                    maxLength={4}
-                    value={takeawayOtpInput}
-                    onChange={(e) => setTakeawayOtpInput(e.target.value.replace(/\D/g, "").slice(0, 4))}
-                    ref={otpInputRef}
-                    placeholder="••••"
-                    className="w-full text-center text-5xl font-black tracking-[0.6em] pl-[0.3em] py-4 border-2 border-slate-200 dark:border-slate-700 rounded-2xl focus:border-[#B80B3D] focus:outline-none focus:ring-4 focus:ring-[#B80B3D]/10 bg-slate-50 dark:bg-slate-800/50 text-slate-800 dark:text-white transition-all font-mono caret-[#B80B3D]"
-                    autoFocus
-                  />
-                </div>
+              {/* OTP Section */}
+              <div className="px-5 pt-5 pb-2">
+                <label className="block text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest mb-3 text-center">
+                  Enter 4-Digit Customer OTP
+                </label>
+                <input
+                  type="text"
+                  inputMode="numeric"
+                  maxLength={4}
+                  value={takeawayOtpInput}
+                  onChange={(e) => setTakeawayOtpInput(e.target.value.replace(/\D/g, "").slice(0, 4))}
+                  ref={otpInputRef}
+                  placeholder="••••"
+                  className="w-full text-center text-5xl font-black tracking-[0.6em] pl-[0.3em] py-4 border-2 border-slate-200 dark:border-slate-700 rounded-2xl focus:border-[#B80B3D] focus:outline-none focus:ring-4 focus:ring-[#B80B3D]/10 bg-slate-50 dark:bg-slate-800/50 text-slate-800 dark:text-white transition-all font-mono caret-[#B80B3D]"
+                />
+              </div>
 
-                {/* Actions */}
-                <div className="flex gap-3 px-5 pt-3 pb-6">
-                  <button
-                    type="button"
-                    onClick={handleVerifyTakeawayClose}
-                    className="flex-1 bg-white dark:bg-slate-800 border-2 border-slate-200 dark:border-slate-700 text-slate-500 dark:text-slate-400 py-3.5 rounded-2xl font-black text-xs uppercase tracking-wider hover:bg-slate-50 dark:hover:bg-slate-700 transition-all active:scale-95">
-                    Cancel
-                  </button>
-                  <button
-                    type="button"
-                    onClick={handleVerifyTakeawayConfirm}
-                    disabled={isSubmittingVerifyTakeaway || takeawayOtpInput.length < 4}
-                    className="flex-1 py-3.5 rounded-2xl font-black text-xs uppercase tracking-wider text-white shadow-lg shadow-[#DC2626]/30 transition-all active:scale-95 disabled:opacity-40 disabled:cursor-not-allowed disabled:shadow-none"
-                    style={{ background: takeawayOtpInput.length < 4 ? '#94a3b8' : 'linear-gradient(135deg, #B80B3D, #66001D)' }}>
-                    {isSubmittingVerifyTakeaway ? "Verifying…" : "Complete Order"}
-                  </button>
-                </div>
+              {/* Actions */}
+              <div className="flex gap-3 px-5 pt-3 pb-6">
+                <button
+                  type="button"
+                  onClick={handleVerifyTakeawayClose}
+                  className="flex-1 bg-white dark:bg-slate-800 border-2 border-slate-200 dark:border-slate-700 text-slate-500 dark:text-slate-400 py-3.5 rounded-2xl font-black text-xs uppercase tracking-wider hover:bg-slate-50 dark:hover:bg-slate-700 transition-all active:scale-95">
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={handleVerifyTakeawayConfirm}
+                  disabled={isSubmittingVerifyTakeaway || takeawayOtpInput.length < 4}
+                  className="flex-1 py-3.5 rounded-2xl font-black text-xs uppercase tracking-wider text-white shadow-lg shadow-[#DC2626]/30 transition-all active:scale-95 disabled:opacity-40 disabled:cursor-not-allowed disabled:shadow-none"
+                  style={{ background: takeawayOtpInput.length < 4 ? '#94a3b8' : 'linear-gradient(135deg, #B80B3D, #66001D)' }}>
+                  {isSubmittingVerifyTakeaway ? "Verifying…" : "Complete Order"}
+                </button>
+              </div>
 
-              </motion.div>
-            </motion.div>
-          </>
-        )}
-      </AnimatePresence>
+            </div>
+          </div>
+        </>
+      )}
 
 
       {/* Bottom Sheet for Order Details */}
@@ -3717,29 +3751,27 @@ export default function OrdersMain() {
                 </div>
                 <div className="flex flex-col items-end gap-1">
                   <span
-                    className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[10px] font-semibold border ${
-                      (selectedOrder.status === "Ready" || 
-                       String(selectedOrder.status).toLowerCase() === "delivered" || 
-                       String(selectedOrder.status).toLowerCase() === "completed" || 
-                       String(selectedOrder.status).toLowerCase() === "picked_up" ||
-                       String(selectedOrder.status).toLowerCase() === "ready")
+                    className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[10px] font-semibold border ${(selectedOrder.status === "Ready" ||
+                        String(selectedOrder.status).toLowerCase() === "delivered" ||
+                        String(selectedOrder.status).toLowerCase() === "completed" ||
+                        String(selectedOrder.status).toLowerCase() === "picked_up" ||
+                        String(selectedOrder.status).toLowerCase() === "ready")
                         ? "border-emerald-500 text-emerald-600 bg-emerald-50"
                         : (String(selectedOrder.status).toLowerCase() === "cancelled" || String(selectedOrder.status).toLowerCase() === "rejected")
                           ? "border-rose-500 text-rose-600 bg-rose-50"
                           : "border-slate-800 text-slate-900 bg-slate-50"
-                    }`}>
+                      }`}>
                     <span
-                      className={`h-1.5 w-1.5 rounded-full ${
-                        (selectedOrder.status === "Ready" || 
-                         String(selectedOrder.status).toLowerCase() === "delivered" || 
-                         String(selectedOrder.status).toLowerCase() === "completed" || 
-                         String(selectedOrder.status).toLowerCase() === "picked_up" ||
-                         String(selectedOrder.status).toLowerCase() === "ready")
+                      className={`h-1.5 w-1.5 rounded-full ${(selectedOrder.status === "Ready" ||
+                          String(selectedOrder.status).toLowerCase() === "delivered" ||
+                          String(selectedOrder.status).toLowerCase() === "completed" ||
+                          String(selectedOrder.status).toLowerCase() === "picked_up" ||
+                          String(selectedOrder.status).toLowerCase() === "ready")
                           ? "bg-emerald-500"
                           : (String(selectedOrder.status).toLowerCase() === "cancelled" || String(selectedOrder.status).toLowerCase() === "rejected")
                             ? "bg-rose-500"
                             : "bg-slate-800"
-                      }`}
+                        }`}
                     />
                     {(String(selectedOrder.status).toLowerCase() === "delivered" && selectedOrder.type === "Takeaway") ? "Picked Up" : selectedOrder.status}
                   </span>
@@ -3830,14 +3862,18 @@ export default function OrdersMain() {
         )}
       </AnimatePresence>
 
-      {/* Scroll lock when any popup or sheet is open */}
-      {(showNewOrderPopup || showRejectPopup || showCancelPopup || showVerifyTakeawayPopup || isSheetOpen) && (
-        <style>{`body { overflow: hidden !important; }`}</style>
-      )}
 
       {/* Bottom Navigation - Sticky */}
       <BottomNavOrders />
     </div>
+  );
+}
+
+export default function OrdersMain() {
+  return (
+    <OrdersErrorBoundary>
+      <OrdersMainInner />
+    </OrdersErrorBoundary>
   );
 }
 
@@ -3875,22 +3911,22 @@ const OrderCard = memo(function OrderCard({
   const statusLabel = (normalizedStatus === "delivered" && normalizedType === "takeaway")
     ? "Picked Up"
     : normalizedStatus === "placed"
-    ? "Order Placed"
-    : String(status || "")
+      ? "Order Placed"
+      : String(status || "")
         .replace(/_/g, " ")
         .replace(/\b\w/g, (c) => c.toUpperCase());
 
   return (
     <div className="w-full bg-white rounded-xl p-3 mb-3 border border-slate-100 shadow-sm relative overflow-hidden active:bg-slate-50 transition-colors">
-      <div 
-        className="absolute top-0 left-0 w-1 h-full" 
+      <div
+        className="absolute top-0 left-0 w-1 h-full"
         style={{ backgroundColor: brandColor }}
       />
-      
+
       <div
         onClick={() => onSelect?.({ orderId, status, customerName, type, tableOrToken, timePlaced, eta, itemsSummary, paymentMethod, scheduledAt, restaurantNote })}
         className="flex gap-3 items-center cursor-pointer pl-1">
-        
+
         {/* Photo Container - Centered vertically and slightly larger */}
         <div className="h-[60px] w-[60px] rounded-lg overflow-hidden bg-slate-50 flex-shrink-0 border border-slate-100 self-center flex items-center justify-center">
           {photoUrl ? (
@@ -3911,7 +3947,7 @@ const OrderCard = memo(function OrderCard({
             <h3 className="text-[13px] font-black text-slate-900 truncate">
               #<span style={{ color: brandColor }}>{orderId}</span>
             </h3>
-            
+
             <div className="flex items-center gap-1.5 flex-shrink-0">
               {scheduledAt && (
                 <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full bg-green-50 text-green-600 border border-green-100 text-[8px] font-black uppercase">
@@ -3919,17 +3955,16 @@ const OrderCard = memo(function OrderCard({
                   Scheduled
                 </span>
               )}
-              <span className={`inline-flex items-center px-1.5 py-0.5 rounded-full text-[8px] font-black border uppercase tracking-wider ${
-                (isReady || normalizedStatus === "delivered" || normalizedStatus === "completed" || normalizedStatus === "picked_up") 
-                  ? "bg-emerald-50 text-emerald-600 border-emerald-100" : 
-                normalizedStatus === "confirmed" ? "bg-amber-50 text-amber-600 border-amber-100" : 
-                (normalizedStatus.includes("cancel") || normalizedStatus.includes("reject") || normalizedStatus === "failed")
-                  ? "bg-rose-50 text-rose-600 border-rose-100" :
-                "bg-slate-50 text-slate-500 border-slate-100"
-              }`}>
+              <span className={`inline-flex items-center px-1.5 py-0.5 rounded-full text-[8px] font-black border uppercase tracking-wider ${(isReady || normalizedStatus === "delivered" || normalizedStatus === "completed" || normalizedStatus === "picked_up")
+                  ? "bg-emerald-50 text-emerald-600 border-emerald-100" :
+                  normalizedStatus === "confirmed" ? "bg-amber-50 text-amber-600 border-amber-100" :
+                    (normalizedStatus.includes("cancel") || normalizedStatus.includes("reject") || normalizedStatus === "failed")
+                      ? "bg-rose-50 text-rose-600 border-rose-100" :
+                      "bg-slate-50 text-slate-500 border-slate-100"
+                }`}>
                 {statusLabel}
               </span>
-              
+
               {isPreparing && onCancel && (
                 <button
                   type="button"
@@ -3976,7 +4011,7 @@ const OrderCard = memo(function OrderCard({
           <div className="text-[9px] text-slate-400 font-bold uppercase tracking-tight mb-1">
             {timePlaced}
           </div>
-          
+
           {restaurantNote && (
             <div className="mb-2 px-2 py-1 bg-blue-50 border border-blue-100 rounded-md">
               <p className="text-[9px] text-blue-700 font-bold line-clamp-1 italic">
@@ -4012,7 +4047,7 @@ const OrderCard = memo(function OrderCard({
                 </div>
               )}
 
-            <div className="flex flex-wrap items-center gap-1.5 flex-shrink-0">
+              <div className="flex flex-wrap items-center gap-1.5 flex-shrink-0">
                 {(isPreparing || isReady || normalizedStatus === "confirmed") && (
                   <>
                     {deliveryPartnerId && (
@@ -4037,7 +4072,7 @@ const OrderCard = memo(function OrderCard({
                           orderId={orderId}
                           mongoId={mongoId}
                         />
-                    )}
+                      )}
 
                     {isPreparing && onMarkReady && (
                       <button
@@ -4113,9 +4148,9 @@ function PreparingOrders({
             const initialETA = order.preparationTime || order.estimatedDeliveryTime || 30; // in minutes
             const preparingTimestamp = order.tracking?.preparing?.timestamp
               ? new Date(order.tracking.preparing.timestamp)
-              : (order.acceptedAt 
-                 ? new Date(order.acceptedAt) 
-                 : new Date(order.createdAt)); // Fallback to createdAt if preparing timestamp not available
+              : (order.acceptedAt
+                ? new Date(order.acceptedAt)
+                : new Date(order.createdAt)); // Fallback to createdAt if preparing timestamp not available
 
             return {
               orderId: order.orderId || order._id,
@@ -4739,7 +4774,7 @@ function EmptyState({ message = "Temporarily closed" }) {
       </h2>
 
       {/* View Status Button */}
-      <button 
+      <button
         onClick={() => {
           // If message is related to rejection/offline, go to status page, otherwise refresh orders
           if (message?.toLowerCase().includes("rejected") || message?.toLowerCase().includes("closed")) {

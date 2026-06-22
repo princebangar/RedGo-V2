@@ -1,5 +1,5 @@
 import { useNavigate, useLocation } from "react-router-dom"
-import { useMemo, useState, useEffect } from "react"
+import { useMemo } from "react"
 import { motion, AnimatePresence } from "framer-motion"
 import {
   FileText,
@@ -26,55 +26,30 @@ const findActiveTab = (tabs, pathname) =>
 export default function BottomNavOrders({ activeTabOverride }) {
   const navigate = useNavigate()
   const { pathname } = useLocation()
-  const [isKeyboardVisible, setIsKeyboardVisible] = useState(false)
-
-  // Hide bottom nav when keyboard is open (standard mobile UX)
-  useEffect(() => {
-    const handleResize = () => {
-      if (window.visualViewport) {
-        // If the visual viewport is significantly smaller than innerHeight, keyboard is open
-        const isKeyboardOpen = window.visualViewport.height < window.innerHeight * 0.85
-        setIsKeyboardVisible(isKeyboardOpen)
-      }
-    }
-
-    if (window.visualViewport) {
-      window.visualViewport.addEventListener('resize', handleResize)
-      // Initial check
-      handleResize()
-      return () => window.visualViewport.removeEventListener('resize', handleResize)
-    } else {
-      // Fallback for older browsers
-      const handleWindowResize = () => {
-        setIsKeyboardVisible(window.innerHeight < 550)
-      }
-      window.addEventListener('resize', handleWindowResize)
-      return () => window.removeEventListener('resize', handleWindowResize)
-    }
-  }, [])
 
 
   const basePath = pathname.includes("/food/restaurant")
     ? "/food/restaurant"
     : pathname.includes("/restaurant")
-    ? "/food/restaurant"
-    : "/food/restaurant"
+      ? "/food/restaurant"
+      : "/food/restaurant"
 
   const { unreadCount } = useNotificationInbox("restaurant", { limit: 20, pollMs: 60 * 1000 })
   const { newOrder, newReservation } = useRestaurantNotifications();
 
   const tabs = useMemo(() => getOrdersTabs(basePath), [basePath])
 
-  const isInternalPage = pathname.includes("/create-offers") || pathname.includes("/help-centre/support")
-  if (isInternalPage || isKeyboardVisible) {
-    return null
-  }
-
+  // Must be before any early return to avoid hooks order violation
   const activeTab = useMemo(() => {
     if (activeTabOverride) return activeTabOverride;
     const match = findActiveTab(tabs, pathname)
     return match?.id || "orders"
   }, [tabs, pathname, activeTabOverride])
+
+  const isInternalPage = pathname.includes("/create-offers") || pathname.includes("/help-centre/support")
+  if (isInternalPage) {
+    return null
+  }
 
   const handleTabClick = (tab) => {
     if (tab.route && tab.route !== pathname) {
@@ -109,19 +84,17 @@ export default function BottomNavOrders({ activeTabOverride }) {
                       />
                     )}
                     <Icon
-                      className={`relative z-10 h-4.5 w-4.5 transition-colors duration-300 ease-in-out ${
-                        isActive ? "text-white" : "text-white/78"
-                      }`}
+                      className={`relative z-10 h-4.5 w-4.5 transition-colors duration-300 ease-in-out ${isActive ? "text-white" : "text-white/78"
+                        }`}
                     />
                     {/* Notification Dot */}
-                    {((tab.id === 'orders' && (newOrder || newReservation)) || 
+                    {((tab.id === 'orders' && (newOrder || newReservation)) ||
                       (tab.id === 'feedback' && unreadCount > 0)) && (
-                      <span className="absolute top-2 right-1/4 w-2 h-2 rounded-full bg-gradient-to-br from-[#B80B3D] to-[#66001D] border border-[#B80B3D] z-20 animate-pulse" />
-                    )}
+                        <span className="absolute top-2 right-1/4 w-2 h-2 rounded-full bg-gradient-to-br from-[#B80B3D] to-[#66001D] border border-[#B80B3D] z-20 animate-pulse" />
+                      )}
                     <span
-                      className={`relative z-10 whitespace-nowrap text-[11px] leading-none transition-colors duration-300 ease-in-out ${
-                        isActive ? "text-white" : "text-white/78"
-                      }`}
+                      className={`relative z-10 whitespace-nowrap text-[11px] leading-none transition-colors duration-300 ease-in-out ${isActive ? "text-white" : "text-white/78"
+                        }`}
                     >
                       {tab.label}
                     </span>
