@@ -106,6 +106,20 @@ export default function RestaurantReviews() {
     return stars
   }
 
+  const formatDateTime = (dateString) => {
+    if (!dateString) return 'N/A'
+    try {
+      const date = new Date(dateString)
+      const day = date.getDate().toString().padStart(2, '0')
+      const month = date.toLocaleDateString('en-US', { month: 'short' }).toUpperCase()
+      const year = date.getFullYear()
+      const time = date.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true })
+      return `${day} ${month} ${year}, ${time}`
+    } catch (e) {
+      return 'Invalid Date'
+    }
+  }
+
   useEffect(() => {
     const fetchReviews = async () => {
       try {
