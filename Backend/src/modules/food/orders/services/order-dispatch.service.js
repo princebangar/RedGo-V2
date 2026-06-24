@@ -143,7 +143,6 @@ async function listNearbyOnlineDeliveryPartners(
       partners.map((p) => ({ partnerId: p._id, ...p })),
       { requiredAmount, allowOverLimitFallback },
     );
-
     return {
       restaurant: null,
       partners: cashEligiblePartners.map((p) => ({ partnerId: p.partnerId || p._id, distanceKm: null })),
@@ -188,12 +187,17 @@ async function listNearbyOnlineDeliveryPartners(
       .limit(Math.max(1, limit))
       .lean();
 
+    const fallbackPartners = anyOnline.map((p) => ({
+      partnerId: p._id,
+      distanceKm: null,
+      status: p.status,
+    }));
+    const cashEligibleFallback = await filterPartnersByCashLimit(fallbackPartners, {
+      requiredAmount,
+      allowOverLimitFallback,
+    });
     return {
-      partners: anyOnline.map((p) => ({
-        partnerId: p._id,
-        distanceKm: null,
-        status: p.status,
-      })),
+      partners: cashEligibleFallback,
     };
   }
 
@@ -205,7 +209,6 @@ async function listNearbyOnlineDeliveryPartners(
     requiredAmount,
     allowOverLimitFallback,
   });
-
   return { partners: cashEligibleFinal };
 }
 

@@ -51,6 +51,78 @@ function isOtpMatch(expectedOtp, enteredOtp) {
   return false;
 }
 
+const ACTIVE_TRIP_ORDER_STATUSES = ['preparing', 'ready_for_pickup', 'picked_up'];
+
+export async function getMaxConcurrentOrders() {
+  const doc = await FoodDeliveryCashLimit.findOne({ isActive: true })
+    .sort({ createdAt: -1 })
+    .lean();
+  return Math.min(5, Math.max(1, Number(doc?.maxConcurrentOrders ?? 1)));
+}
+
+export async function countActiveTripsForPartner(deliveryPartnerId) {
+  if (!deliveryPartnerId) return 0;
+  const partnerId = new mongoose.Types.ObjectId(deliveryPartnerId);
+  return FoodOrder.countDocuments({
+    'dispatch.deliveryPartnerId': partnerId,
+    'dispatch.status': 'accepted',
+    orderStatus: { $in: ACTIVE_TRIP_ORDER_STATUSES },
+  });
+}
+
+export async function getPartnerOrderCapacity(deliveryPartnerId) {
+  const [max, active] = await Promise.all([
+    getMaxConcurrentOrders(),
+    countActiveTripsForPartner(deliveryPartnerId),
+  ]);
+  const remaining = Math.max(0, max - active);
+  return { max, active, remaining };
+}
+
+async function enrichOrderWithTransaction(order) {
+  if (!order) return null;
+  const tx = await FoodTransaction.findOne({ orderId: order._id }).lean();
+  const out = sanitizeOrderForExternal(order);
+  if (tx) {
+    out.paymentMethod = tx.payment?.method || tx.paymentMethod || out.paymentMethod;
+    out.payment = tx.payment || out.payment;
+    out.pricing = tx.pricing || out.pricing;
+    out.amounts = tx.amounts || out.amounts;
+    out.transactionStatus = tx.status || out.transactionStatus;
+  }
+  return out;
+}
+
+export async function getActiveTripsDelivery(deliveryPartnerId) {
+  if (!deliveryPartnerId) {
+    throw new ValidationError('Delivery partner ID required');
+  }
+
+  const partnerId = new mongoose.Types.ObjectId(deliveryPartnerId);
+  const orders = await FoodOrder.find({
+    'dispatch.deliveryPartnerId': partnerId,
+    'dispatch.status': 'accepted',
+    orderStatus: { $in: ACTIVE_TRIP_ORDER_STATUSES },
+  })
+    .populate({
+      path: 'restaurantId',
+      select: 'restaurantName name phone location addressLine1 area city state profileImage',
+    })
+    .populate({ path: 'userId', select: 'name phone' })
+    .sort({ updatedAt: -1 })
+    .lean();
+
+  const enriched = await Promise.all(
+    (orders || []).map((order) => enrichOrderWithTransaction(order)),
+  );
+  return enriched.filter(Boolean);
+}
+
+export async function getCurrentTripDelivery(deliveryPartnerId) {
+  const orders = await getActiveTripsDelivery(deliveryPartnerId);
+  return orders[0] || null;
+}
+
 async function getPartnerCashCapacity(deliveryPartnerId) {
   const partnerObjectId = new mongoose.Types.ObjectId(deliveryPartnerId);
   const limitDoc = await FoodDeliveryCashLimit.findOne({ isActive: true })
@@ -273,43 +345,12 @@ async function syncRazorpayQrPayment(orderDoc) {
   return updatedTx?.payment || payment;
 }
 
-export async function getCurrentTripDelivery(deliveryPartnerId) {
-  if (!deliveryPartnerId) {
-    throw new ValidationError('Delivery partner ID required');
-  }
-
-  const partnerId = new mongoose.Types.ObjectId(deliveryPartnerId);
-  const order = await FoodOrder.findOne({
-    'dispatch.deliveryPartnerId': partnerId,
-    'dispatch.status': 'accepted',
-    orderStatus: {
-      $in: ['preparing', 'ready_for_pickup', 'picked_up'],
-    },
-  })
-    .populate({
-      path: 'restaurantId',
-      select: 'restaurantName name phone location addressLine1 area city state profileImage',
-    })
-    .populate({ path: 'userId', select: 'name phone' })
-    .sort({ updatedAt: -1 })
-    .lean();
-
-  if (!order) return null;
-  const tx = await FoodTransaction.findOne({ orderId: order._id }).lean();
-  const out = sanitizeOrderForExternal(order);
-  if (tx) {
-    out.paymentMethod = tx.payment?.method || tx.paymentMethod || out.paymentMethod;
-    out.payment = tx.payment || out.payment;
-    out.pricing = tx.pricing || out.pricing;
-    out.amounts = tx.amounts || out.amounts;
-    out.transactionStatus = tx.status || out.transactionStatus;
-  }
-  return out;
-}
-
 export async function listOrdersAvailableDelivery(deliveryPartnerId, query) {
   const { page, limit, skip } = buildPaginationOptions(query);
-  const partnerCapacity = await getPartnerCashCapacity(deliveryPartnerId);
+  const [partnerCapacity, orderCapacity] = await Promise.all([
+    getPartnerCashCapacity(deliveryPartnerId),
+    getPartnerOrderCapacity(deliveryPartnerId),
+  ]);
   const cashLimit = {
     blocked: !partnerCapacity.hasCapacity,
     message: !partnerCapacity.hasCapacity
@@ -379,9 +420,28 @@ export async function listOrdersAvailableDelivery(deliveryPartnerId, query) {
     };
   });
 
+  const newOffers = enriched.filter((order) => {
+    const dispatchStatus = String(order?.dispatch?.status || '').toLowerCase();
+    const orderStatus = String(order?.orderStatus || '').toLowerCase();
+    return (
+      ['unassigned', 'assigned'].includes(dispatchStatus) &&
+      ['preparing', 'ready_for_pickup'].includes(orderStatus)
+    );
+  });
+
+  const acceptedOrders = enriched.filter((order) => {
+    const dispatchStatus = String(order?.dispatch?.status || '').toLowerCase();
+    const partnerMatch =
+      String(order?.dispatch?.deliveryPartnerId || '') === String(deliveryPartnerId);
+    return dispatchStatus === 'accepted' && partnerMatch;
+  });
+
   return {
     ...buildPaginatedResult({ docs: enriched, total, page, limit }),
     cashLimit,
+    capacity: orderCapacity,
+    newOffers,
+    acceptedOrders,
   };
 }
 
@@ -413,6 +473,15 @@ export async function acceptOrderDelivery(orderId, deliveryPartnerId) {
 
   if (!partnerCapacity.hasCapacity && !canBypassCashLimit) {
     throw new ValidationError('Cash limit reached. Please deposit your amount to get orders.');
+  }
+
+  const orderCapacity = await getPartnerOrderCapacity(deliveryPartnerId);
+  const alreadyAcceptedByPartner =
+    existingOrder?.dispatch?.status === 'accepted' &&
+    String(existingOrder?.dispatch?.deliveryPartnerId || '') === String(deliveryPartnerId);
+
+  if (!alreadyAcceptedByPartner && orderCapacity.remaining <= 0) {
+    throw new ValidationError('Maximum concurrent orders reached');
   }
 
   const now = new Date();

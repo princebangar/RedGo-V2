@@ -2208,10 +2208,11 @@ export async function getContactMessages(query = {}) {
 // ----- Delivery Cash Limit (admin) -----
 export async function getDeliveryCashLimitSettings() {
     const doc = await FoodDeliveryCashLimit.findOne({ isActive: true }).sort({ createdAt: -1 }).lean();
-    const settings = doc || { deliveryCashLimit: 0, deliveryWithdrawalLimit: 100, isActive: true };
+    const settings = doc || { deliveryCashLimit: 0, deliveryWithdrawalLimit: 100, maxConcurrentOrders: 1, isActive: true };
     return {
         deliveryCashLimit: Number(settings.deliveryCashLimit) || 0,
-        deliveryWithdrawalLimit: Number(settings.deliveryWithdrawalLimit) || 100
+        deliveryWithdrawalLimit: Number(settings.deliveryWithdrawalLimit) || 100,
+        maxConcurrentOrders: Math.min(5, Math.max(1, Number(settings.maxConcurrentOrders ?? 1))),
     };
 }
 
@@ -2219,26 +2220,34 @@ export async function upsertDeliveryCashLimitSettings(body = {}) {
     const existing = await FoodDeliveryCashLimit.findOne({ isActive: true }).sort({ createdAt: -1 });
     const nextCashLimit = body.deliveryCashLimit;
     const nextWithdrawalLimit = body.deliveryWithdrawalLimit;
+    const nextMaxConcurrent = body.maxConcurrentOrders;
+
+    const clampMaxConcurrent = (value) =>
+        Math.min(5, Math.max(1, Number(value) || 1));
 
     if (existing) {
         if (nextCashLimit !== undefined) existing.deliveryCashLimit = Math.max(0, Number(nextCashLimit) || 0);
         if (nextWithdrawalLimit !== undefined) existing.deliveryWithdrawalLimit = Math.max(0, Number(nextWithdrawalLimit) || 0);
+        if (nextMaxConcurrent !== undefined) existing.maxConcurrentOrders = clampMaxConcurrent(nextMaxConcurrent);
         await existing.save();
         return {
             deliveryCashLimit: existing.deliveryCashLimit,
-            deliveryWithdrawalLimit: existing.deliveryWithdrawalLimit
+            deliveryWithdrawalLimit: existing.deliveryWithdrawalLimit,
+            maxConcurrentOrders: existing.maxConcurrentOrders,
         };
     }
 
     const created = await FoodDeliveryCashLimit.create({
         deliveryCashLimit: nextCashLimit !== undefined ? Math.max(0, Number(nextCashLimit) || 0) : 0,
         deliveryWithdrawalLimit: nextWithdrawalLimit !== undefined ? Math.max(0, Number(nextWithdrawalLimit) || 0) : 100,
+        maxConcurrentOrders: nextMaxConcurrent !== undefined ? clampMaxConcurrent(nextMaxConcurrent) : 1,
         isActive: true
     });
 
     return {
         deliveryCashLimit: created.deliveryCashLimit,
-        deliveryWithdrawalLimit: created.deliveryWithdrawalLimit
+        deliveryWithdrawalLimit: created.deliveryWithdrawalLimit,
+        maxConcurrentOrders: created.maxConcurrentOrders,
     };
 }
 

@@ -10,8 +10,8 @@ import { calculateDistance } from '@/modules/DeliveryV2/hooks/proximity.utils';
  */
 export const useProximityCheck = () => {
   const riderLocation = useDeliveryStore((state) => state.riderLocation);
-  const activeOrder = useDeliveryStore((state) => state.activeOrder);
-  const tripStatus = useDeliveryStore((state) => state.tripStatus);
+  const activeOrder = useDeliveryStore((state) => state.getFocusedOrder());
+  const tripStatus = useDeliveryStore((state) => state.getFocusedTripStatus());
   const settings = useDeliveryStore((state) => state.settings);
 
   // Determine current target based on trip state

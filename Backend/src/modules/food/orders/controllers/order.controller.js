@@ -200,7 +200,8 @@ export async function acceptOrderDeliveryController(req, res, next) {
         const deliveryPartnerId = req.user?.userId;
         const orderId = req.params.orderId;
         const order = await orderService.acceptOrderDelivery(orderId, deliveryPartnerId);
-        return sendResponse(res, 200, 'Order accepted', { order });
+        const capacity = await orderService.getPartnerOrderCapacity(deliveryPartnerId);
+        return sendResponse(res, 200, 'Order accepted', { order, capacity });
     } catch (err) {
         next(err);
     }
@@ -289,8 +290,15 @@ export async function updateOrderStatusDeliveryController(req, res, next) {
 export async function getCurrentTripDeliveryController(req, res, next) {
     try {
         const deliveryPartnerId = req.user?.userId;
-        const order = await orderService.getCurrentTripDelivery(deliveryPartnerId);
-        return sendResponse(res, 200, 'Current trip retrieved', { activeOrder: order });
+        const [activeOrders, capacity] = await Promise.all([
+            orderService.getActiveTripsDelivery(deliveryPartnerId),
+            orderService.getPartnerOrderCapacity(deliveryPartnerId),
+        ]);
+        return sendResponse(res, 200, 'Current trip retrieved', {
+            activeOrder: activeOrders[0] || null,
+            activeOrders,
+            capacity,
+        });
     } catch (err) {
         next(err);
     }

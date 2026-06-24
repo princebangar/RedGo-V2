@@ -5,6 +5,8 @@ import { deliveryAPI } from '@food/api';
 const alertSound = '/restaurant_alert.mp3';
 const originalSound = '/restaurant_alert.mp3';
 import { dispatchNotificationInboxRefresh } from '@food/hooks/useNotificationInbox';
+import { useDeliveryStore, resolveOrderKey } from '@/modules/DeliveryV2/store/useDeliveryStore';
+import { mapOrderLocations } from '@/modules/DeliveryV2/utils/orderMapping';
 
 const shouldLogDeliverySocket = () => {
   if (typeof window === 'undefined') return import.meta.env.DEV;
@@ -386,6 +388,7 @@ export const useDeliveryNotifications = () => {
     }
 
     activeOrderRef.current = orderData || { id: Date.now() };
+    useDeliveryStore.getState().addNewOrder(orderData);
     playNotificationSound(orderData);
     startAlertLoop(playNotificationSound);
 
@@ -403,17 +406,35 @@ export const useDeliveryNotifications = () => {
         deliveryAPI.getCurrentDelivery(),
       ]);
 
-      const currentTrip =
+      const currentPayload =
         currentTripResult.status === 'fulfilled'
           ? currentTripResult.value?.data?.data ??
             currentTripResult.value?.data ??
             null
           : null;
 
-      if (currentTrip) {
-        debugLog('Recovered current delivery trip after reconnect/focus:', currentTrip);
+      const activeOrders = Array.isArray(currentPayload?.activeOrders)
+        ? currentPayload.activeOrders
+        : currentPayload?.activeOrder
+          ? [currentPayload.activeOrder]
+          : [];
+
+      if (currentPayload?.capacity) {
+        useDeliveryStore.getState().setCapacity(currentPayload.capacity);
+      }
+
+      if (activeOrders.length) {
+        useDeliveryStore.getState().setAcceptedOrders(
+          activeOrders.map(mapOrderLocations).filter(Boolean),
+          { capacity: currentPayload?.capacity },
+        );
+        return;
+      }
+
+      if (currentPayload && (currentPayload._id || currentPayload.orderId)) {
+        debugLog('Recovered current delivery trip after reconnect/focus:', currentPayload);
         setOrderStatusUpdate({
-          ...currentTrip,
+          ...currentPayload,
           recoverySource: 'delivery_reconnect',
         });
         return;
@@ -441,9 +462,20 @@ export const useDeliveryNotifications = () => {
         );
       });
 
-      if (recoverableOrder && !activeOrderRef.current && !isProcessedOrder(recoverableOrder)) {
+      if (availablePayload?.capacity) {
+        useDeliveryStore.getState().setCapacity(availablePayload.capacity);
+      }
+
+      const newOffers = Array.isArray(availablePayload?.newOffers)
+        ? availablePayload.newOffers
+        : [];
+
+      newOffers.forEach((order) => useDeliveryStore.getState().addNewOrder(order));
+
+      if (recoverableOrder && !isProcessedOrder(recoverableOrder)) {
         debugLog('Recovered available delivery order after reconnect/focus:', recoverableOrder);
         setNewOrder(recoverableOrder);
+        useDeliveryStore.getState().addNewOrder(recoverableOrder);
         handleIncomingOrderAlert(recoverableOrder);
       }
     } catch (error) {
@@ -883,19 +915,40 @@ export const useDeliveryNotifications = () => {
         dispatchStatus: orderData?.dispatch?.status,
       });
       setNewOrder(orderData);
+      useDeliveryStore.getState().addNewOrder(orderData);
       handleIncomingOrderAlert(orderData);
     });
 
-    // Listen for priority-based order notifications (new_order_available)
+    // Same payload as new_order — only refresh UI state, queue dedupes by order identity
     socketRef.current.on('new_order_available', (orderData) => {
       debugLog('New order available received via socket', {
         orderId: orderData?.orderId || orderData?.orderMongoId || orderData?._id,
         phase: orderData?.phase || 'unknown',
         dispatchStatus: orderData?.dispatch?.status,
       });
-      // Treat it the same as new_order for now - delivery boy can accept it
       setNewOrder(orderData);
-      handleIncomingOrderAlert(orderData);
+      useDeliveryStore.getState().addNewOrder(orderData);
+    });
+
+    socketRef.current.on('active_orders', (orders = []) => {
+      if (!Array.isArray(orders) || orders.length === 0) return;
+      useDeliveryStore.getState().setAcceptedOrders(
+        orders.map(mapOrderLocations).filter(Boolean),
+      );
+    });
+
+    socketRef.current.on('delivery_capacity', (capacity) => {
+      if (capacity) {
+        useDeliveryStore.getState().setCapacity(capacity);
+      }
+    });
+
+    socketRef.current.on('active_order', (orderData) => {
+      if (!orderData) return;
+      const mapped = mapOrderLocations(orderData);
+      if (mapped) {
+        useDeliveryStore.getState().acceptOrderToQueue(mapped);
+      }
     });
 
     socketRef.current.on('play_notification_sound', (data) => {
@@ -951,7 +1004,11 @@ export const useDeliveryNotifications = () => {
       stopAlertLoop();
       activeOrderRef.current = null;
       setNewOrder(null);
-      if (data?.orderId) setClaimedOrderId(data.orderId);
+      const claimedId = data?.orderId || data?.orderMongoId || data?.order_id;
+      if (claimedId) {
+        useDeliveryStore.getState().removeNewOrder(claimedId);
+        setClaimedOrderId(claimedId);
+      }
     });
 
     // Backend emits 'order_claimed' when another delivery boy accepts an offered order
@@ -961,7 +1018,10 @@ export const useDeliveryNotifications = () => {
       activeOrderRef.current = null;
       setNewOrder(null);
       const claimedId = data?.orderId || data?.orderMongoId || data?.order_id;
-      if (claimedId) setClaimedOrderId(claimedId);
+      if (claimedId) {
+        useDeliveryStore.getState().removeNewOrder(claimedId);
+        setClaimedOrderId(claimedId);
+      }
     });
 
     socketRef.current.on('admin_notification', (payload) => {
@@ -1064,6 +1124,13 @@ export const useDeliveryNotifications = () => {
     stopAlertLoop();
     activeOrderRef.current = null;
     setNewOrder(null);
+    const removeId =
+      typeof target === 'object'
+        ? resolveOrderKey(target)
+        : String(target || '').trim();
+    if (removeId) {
+      useDeliveryStore.getState().removeNewOrder(removeId);
+    }
   }, [newOrder, stopAlertLoop]);
 
   const clearClaimedOrderId = () => setClaimedOrderId(null);

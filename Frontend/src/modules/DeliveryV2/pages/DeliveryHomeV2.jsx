@@ -1,20 +1,22 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
-import { useDeliveryStore } from '@/modules/DeliveryV2/store/useDeliveryStore';
+import { useDeliveryStore, resolveOrderKey, mapDeliveryPhaseToTripStatus } from '@/modules/DeliveryV2/store/useDeliveryStore';
 import { useProximityCheck } from '@/modules/DeliveryV2/hooks/useProximityCheck';
 import { useOrderManager } from '@/modules/DeliveryV2/hooks/useOrderManager';
-import { useDeliveryNotifications } from '@food/hooks/useDeliveryNotifications';
+import { useDeliveryNotificationsContext } from '@/modules/DeliveryV2/components/DeliveryRealtimeShell';
 import { writeOrderTracking } from '@food/realtimeTracking';
 import { deliveryAPI } from '@food/api';
 import { toast } from 'sonner';
+import { mapOrderLocations } from '@/modules/DeliveryV2/utils/orderMapping';
 
 // Components
 import LiveMap from '@/modules/DeliveryV2/components/map/LiveMap';
-import { NewOrderModal } from '@/modules/DeliveryV2/components/modals/NewOrderModal';
 import { PickupActionModal } from '@/modules/DeliveryV2/components/modals/PickupActionModal';
 import { DeliveryVerificationModal } from '@/modules/DeliveryV2/components/modals/DeliveryVerificationModal';
 import { OrderSummaryModal } from '@/modules/DeliveryV2/components/modals/OrderSummaryModal';
 import ActionSlider from '@/modules/DeliveryV2/components/ui/ActionSlider';
+import OrderSwitcher from '@/modules/DeliveryV2/components/orders/OrderSwitcher';
+import DeliveryBottomNav from '@/modules/DeliveryV2/components/DeliveryBottomNav';
 
 // Sub Pages
 import PocketV2 from '@/modules/DeliveryV2/pages/PocketV2';
@@ -24,9 +26,8 @@ import ProfileV2 from '@/modules/DeliveryV2/pages/ProfileV2';
 // Icons
 import { 
   Bell, HelpCircle, AlertTriangle, 
-  Wallet, History, User as UserIcon, LayoutGrid,
   Plus, Minus, Navigation2, Target, Play, CheckCircle2, Clock, ChevronDown,
-  Contact, Package
+  Contact
 } from 'lucide-react';
 
 import { getHaversineDistance, calculateETA, calculateHeading } from '@/modules/DeliveryV2/utils/geo';
@@ -66,24 +67,33 @@ function BottomPopup({ isOpen, onClose, title, children }) {
  */
 export default function DeliveryHomeV2({ tab = 'feed' }) {
   const navigate = useNavigate();
-  const { isOnline, toggleOnline, riderLocation, activeOrder, tripStatus, setRiderLocation, setActiveOrder, updateTripStatus, clearActiveOrder } = useDeliveryStore();
+  const { isOnline, toggleOnline, riderLocation, acceptedOrders, focusedOrderId, orderSessions, setRiderLocation, setAcceptedOrders, setCapacity, setFocusedOrder, updateOrderSession, updateTripStatus, removeAcceptedOrder } = useDeliveryStore();
+  const activeOrder = useDeliveryStore((state) => state.getFocusedOrder());
+  const tripStatus = useDeliveryStore((state) => state.getFocusedTripStatus());
+  const focusedSession = focusedOrderId ? orderSessions[focusedOrderId] || {} : {};
+  const showVerification = Boolean(focusedSession.showVerification);
+  const isModalMinimized = Boolean(focusedSession.isModalMinimized);
+  const setShowVerification = (value) => {
+    if (!focusedOrderId) return;
+    updateOrderSession(focusedOrderId, { showVerification: value });
+  };
+  const setIsModalMinimized = (value) => {
+    if (!focusedOrderId) return;
+    updateOrderSession(focusedOrderId, { isModalMinimized: value });
+  };
   const { isWithinRange, distanceToTarget } = useProximityCheck();
-  const { acceptOrder, reachPickup, pickUpOrder, reachDrop, completeDelivery, resetTrip } = useOrderManager();
-  const { newOrder, clearNewOrder, orderStatusUpdate, clearOrderStatusUpdate, claimedOrderId, clearClaimedOrderId, adminNotification, clearAdminNotification, isConnected: isSocketConnected, emitLocation, stopSound } = useDeliveryNotifications();
+  const { reachPickup, pickUpOrder, reachDrop, completeDelivery, resetTrip } = useOrderManager();
+  const { newOrder, clearNewOrder, orderStatusUpdate, clearOrderStatusUpdate, claimedOrderId, clearClaimedOrderId, adminNotification, clearAdminNotification, isConnected: isSocketConnected, emitLocation, stopSound } = useDeliveryNotificationsContext();
   const companyName = useCompanyName();
   const { items: broadcastItems, unreadCount: notificationUnreadCount, markAsRead: markBroadcastAsRead, dismissAll: dismissAllBroadcast } = useNotificationInbox("delivery", { limit: 20 });
 
-  const [incomingOrder, setIncomingOrder] = useState(null);
   const [cashLimitNotice, setCashLimitNotice] = useState(null);
   const [currentTab, setCurrentTab] = useState(tab);
   const [showNotifications, setShowNotifications] = useState(false);
-  
-  // Track URL changes (Prop changes) to update sub-page content
   useEffect(() => {
     setCurrentTab(tab);
   }, [tab]);
 
-  const [showVerification, setShowVerification] = useState(false);
   const [showEmergencyPopup, setShowEmergencyPopup] = useState(false);
   const [profileImage, setProfileImage] = useState(null);
   const [emergencyNumbers, setEmergencyNumbers] = useState({
@@ -93,7 +103,6 @@ export default function DeliveryHomeV2({ tab = 'feed' }) {
     insurance: "",
   });
   
-  const [isModalMinimized, setIsModalMinimized] = useState(false);
   const [eta, setEta] = useState(null);
   const lastLocationSentAt = useRef(0);
   const lastCoordRef = useRef(null);
@@ -310,76 +319,52 @@ export default function DeliveryHomeV2({ tab = 'feed' }) {
   // Auto-restore modal when status or content changes
   useEffect(() => {
     setIsModalMinimized(false);
-  }, [tripStatus, showVerification, incomingOrder]);
+  }, [tripStatus, focusedOrderId]);
 
   // 1. Initial Sync (Force sync with server to avoid 'stuck' persistent state)
   useEffect(() => {
     const syncWithServer = async () => {
       try {
         const response = await deliveryAPI.getCurrentDelivery();
-        const rawData = response?.data?.data?.activeOrder || response?.data?.data;
-        const serverData = (rawData && (rawData._id || rawData.orderId)) ? rawData : null;
-        
-        if (serverData) {
-          // Robust location mapping (Same as acceptOrder logic)
-          const getLoc = (ref, keysLat, keysLng) => {
-            if (!ref) return null;
-            if (ref.location) {
-              if (Array.isArray(ref.location.coordinates) && ref.location.coordinates.length >= 2) {
-                return {
-                  lat: ref.location.coordinates[1],
-                  lng: ref.location.coordinates[0]
-                };
-              }
-              return {
-                lat: ref.location.latitude || ref.location.lat,
-                lng: ref.location.longitude || ref.location.lng
-              };
-            }
-            for (const k of keysLat) { if (ref[k] != null) return { lat: ref[k], lng: ref[keysLng[keysLat.indexOf(k)]] }; }
-            return null;
-          };
+        const payload = response?.data?.data || {};
+        const activeOrders = Array.isArray(payload.activeOrders)
+          ? payload.activeOrders
+          : payload.activeOrder
+            ? [payload.activeOrder]
+            : [];
 
-          const resLoc = getLoc(serverData.restaurantId, ['latitude', 'lat'], ['longitude', 'lng']) || 
-                         getLoc(serverData, ['restaurant_lat', 'restaurantLat', 'latitude'], ['restaurant_lng', 'restaurantLng', 'longitude']);
-                         
-          const cusLoc = getLoc(serverData.deliveryAddress, ['latitude', 'lat'], ['longitude', 'lng']) || 
-                         getLoc(serverData, ['customer_lat', 'customerLat', 'latitude'], ['customer_lng', 'customerLng', 'longitude']);
-
-          const syncedOrder = {
-            ...serverData,
-            _id: serverData._id,
-            orderId: serverData.orderId || serverData.order_id || serverData._id,
-            restaurantLocation: resLoc,
-            customerLocation: cusLoc
-          };
-
-          setActiveOrder(syncedOrder);
-          
-          const backendStatus = serverData.deliveryStatus || serverData.orderState?.status || serverData.orderStatus || serverData.status;
-          const currentPhase = serverData.deliveryState?.currentPhase;
-
-          if (['delivered', 'completed', 'DELIVERED'].includes(backendStatus)) {
-            updateTripStatus('COMPLETED');
-          } else if (currentPhase === 'at_drop' || ['reached_drop', 'REACHED_DROP'].includes(backendStatus)) {
-            updateTripStatus('REACHED_DROP');
-          } else if (['picked_up', 'PICKED_UP', 'delivering'].includes(backendStatus)) {
-            updateTripStatus('PICKED_UP');
-          } else if (currentPhase === 'at_pickup' || ['reached_pickup', 'REACHED_PICKUP'].includes(backendStatus)) {
-            updateTripStatus('REACHED_PICKUP');
-          } else if (['confirmed', 'preparing', 'ready_for_pickup'].includes(backendStatus)) {
-            updateTripStatus('PICKING_UP');
-          }
-        } else {
-          clearActiveOrder();
+        if (payload.capacity) {
+          setCapacity(payload.capacity);
         }
-      } catch (err) { 
-        console.error('Order Sync Failed:', err); 
-        clearActiveOrder();
+
+        if (activeOrders.length) {
+          const mapped = activeOrders.map(mapOrderLocations).filter(Boolean);
+          setAcceptedOrders(mapped, { capacity: payload.capacity });
+
+          mapped.forEach((order) => {
+            const orderId = resolveOrderKey(order);
+            const backendStatus = String(
+              order.deliveryStatus ||
+                order.orderState?.status ||
+                order.orderStatus ||
+                order.status ||
+                '',
+            ).toLowerCase();
+            const currentPhase = order.deliveryState?.currentPhase;
+            let nextStatus = mapDeliveryPhaseToTripStatus(order);
+            if (['delivered', 'completed'].includes(backendStatus)) nextStatus = 'COMPLETED';
+            else if (currentPhase === 'at_drop' || backendStatus === 'reached_drop') nextStatus = 'REACHED_DROP';
+            else if (['picked_up', 'delivering'].includes(backendStatus)) nextStatus = 'PICKED_UP';
+            else if (currentPhase === 'at_pickup' || backendStatus === 'reached_pickup') nextStatus = 'REACHED_PICKUP';
+            updateOrderSession(orderId, { tripStatus: nextStatus });
+          });
+        }
+      } catch (err) {
+        console.error('Order Sync Failed:', err);
       }
     };
     syncWithServer();
-  }, []); // Only on mount to stabilize state
+  }, [setAcceptedOrders, setCapacity, updateOrderSession]);
   
   // 1.5 Professional Unified ETA Calculation Hook
   useEffect(() => {
@@ -520,86 +505,44 @@ export default function DeliveryHomeV2({ tab = 'feed' }) {
     return () => clearInterval(pingInterval);
   }, [isOnline]);
 
-  useEffect(() => { if (newOrder) setIncomingOrder(newOrder); }, [newOrder]);
-
   useEffect(() => {
-    if (activeOrder && incomingOrder) {
-      setIncomingOrder(null);
+    if (newOrder) {
+      useDeliveryStore.getState().addNewOrder(newOrder);
+      stopSound?.();
     }
-  }, [activeOrder, incomingOrder]);
+  }, [newOrder, stopSound]);
 
-  // When another delivery partner claims the incoming order (via socket 'order_claimed'),
-  // dismiss the NewOrderModal and inform this delivery boy.
   useEffect(() => {
     if (!claimedOrderId) return;
-    const incomingId = incomingOrder?.orderId || incomingOrder?._id || incomingOrder?.orderMongoId;
-    if (incomingId && String(incomingId) === String(claimedOrderId)) {
-      toast.info('Order was taken by another delivery partner.', { duration: 4000 });
-      setIncomingOrder(null);
-      clearNewOrder();
-    }
+    clearNewOrder(claimedOrderId);
     clearClaimedOrderId();
-  }, [claimedOrderId]);
+  }, [claimedOrderId, clearNewOrder, clearClaimedOrderId]);
 
   useEffect(() => {
     if (!isOnline) return;
-    if (currentTab !== 'feed') return;
-    if (activeOrder) return;
+    if (currentTab !== 'feed' && currentTab !== 'orders') return;
 
     let cancelled = false;
 
     const hydrateAvailableOrder = async () => {
       try {
         const currentResponse = await deliveryAPI.getCurrentDelivery();
-        const currentPayload =
-          currentResponse?.data?.data?.activeOrder ||
-          currentResponse?.data?.data ||
-          null;
+        const currentPayload = currentResponse?.data?.data || {};
+        const activeOrders = Array.isArray(currentPayload.activeOrders)
+          ? currentPayload.activeOrders
+          : currentPayload.activeOrder
+            ? [currentPayload.activeOrder]
+            : [];
 
-        if (!cancelled && currentPayload && (currentPayload._id || currentPayload.orderId)) {
-          // Robust location mapping
-          const getLoc = (ref, keysLat, keysLng) => {
-            if (!ref) return null;
-            if (ref.location) {
-              if (Array.isArray(ref.location.coordinates) && ref.location.coordinates.length >= 2) {
-                return { lat: ref.location.coordinates[1], lng: ref.location.coordinates[0] };
-              }
-              return { lat: ref.location.latitude || ref.location.lat, lng: ref.location.longitude || ref.location.lng };
-            }
-            for (const k of keysLat) { if (ref[k] != null) return { lat: ref[k], lng: ref[keysLng[keysLat.indexOf(k)]] }; }
-            return null;
-          };
+        if (!cancelled && currentPayload.capacity) {
+          setCapacity(currentPayload.capacity);
+        }
 
-          const resLoc = getLoc(currentPayload.restaurantId, ['latitude', 'lat'], ['longitude', 'lng']) || 
-                         getLoc(currentPayload, ['restaurant_lat', 'restaurantLat', 'latitude'], ['restaurant_lng', 'restaurantLng', 'longitude']);
-          const cusLoc = getLoc(currentPayload.deliveryAddress, ['latitude', 'lat'], ['longitude', 'lng']) || 
-                         getLoc(currentPayload, ['customer_lat', 'customerLat', 'latitude'], ['customer_lng', 'customerLng', 'longitude']);
-
-          setActiveOrder({
-            ...currentPayload,
-            _id: currentPayload._id,
-            orderId: currentPayload.orderId || currentPayload.order_id || currentPayload._id,
-            restaurantLocation: resLoc,
-            customerLocation: cusLoc
-          });
-
-          // Sync status with server
-          const backendStatus = String(currentPayload.deliveryStatus || currentPayload.orderState?.status || currentPayload.orderStatus || currentPayload.status || "").toLowerCase();
-          const currentPhase = currentPayload.deliveryState?.currentPhase;
-
-          if (['delivered', 'completed'].includes(backendStatus)) {
-            updateTripStatus('COMPLETED');
-          } else if (currentPhase === 'at_drop' || backendStatus === 'reached_drop') {
-            updateTripStatus('REACHED_DROP');
-          } else if (['picked_up', 'delivering'].includes(backendStatus)) {
-            updateTripStatus('PICKED_UP');
-          } else if (currentPhase === 'at_pickup' || backendStatus === 'reached_pickup') {
-            updateTripStatus('REACHED_PICKUP');
-          } else if (['confirmed', 'preparing', 'ready_for_pickup'].includes(backendStatus)) {
-             // Only set to PICKING_UP if we aren't already further ahead
-             if (tripStatus === 'IDLE') updateTripStatus('PICKING_UP');
-          }
-          return;
+        if (!cancelled && activeOrders.length) {
+          setAcceptedOrders(
+            activeOrders.map(mapOrderLocations).filter(Boolean),
+            { capacity: currentPayload.capacity },
+          );
         }
 
         const availableResponse = await deliveryAPI.getOrders({ limit: 20, page: 1 });
@@ -607,37 +550,29 @@ export default function DeliveryHomeV2({ tab = 'feed' }) {
           availableResponse?.data?.data ||
           availableResponse?.data ||
           {};
-        const availableOrders = Array.isArray(availablePayload?.docs)
-          ? availablePayload.docs
-          : Array.isArray(availablePayload?.items)
-            ? availablePayload.items
-            : Array.isArray(availablePayload)
-              ? availablePayload
-              : [];
 
         const nextCashLimitNotice =
           availablePayload?.cashLimit?.blocked ? availablePayload.cashLimit : null;
         if (!cancelled) setCashLimitNotice(nextCashLimitNotice);
 
-        const nextIncomingOrder = availableOrders.find((order) => {
-          const dispatchStatus = String(order?.dispatch?.status || '').toLowerCase();
-          const orderStatus = String(order?.orderStatus || order?.status || '').toLowerCase();
-          return (
-            ['unassigned', 'assigned'].includes(dispatchStatus) &&
-            ['preparing', 'ready_for_pickup'].includes(orderStatus)
-          );
-        });
+        if (!cancelled && availablePayload.capacity) {
+          setCapacity(availablePayload.capacity);
+        }
 
-        if (!cancelled && nextIncomingOrder) {
-          setCashLimitNotice(null);
-          setIncomingOrder((prev) => {
-            const prevId = prev?.orderId || prev?._id || prev?.orderMongoId;
-            const nextId =
-              nextIncomingOrder?.orderId ||
-              nextIncomingOrder?._id ||
-              nextIncomingOrder?.orderMongoId;
-            return prevId === nextId && prev ? prev : nextIncomingOrder;
-          });
+        const newOffers = Array.isArray(availablePayload.newOffers)
+          ? availablePayload.newOffers
+          : (Array.isArray(availablePayload?.docs) ? availablePayload.docs : []).filter((order) => {
+              const dispatchStatus = String(order?.dispatch?.status || '').toLowerCase();
+              const orderStatus = String(order?.orderStatus || order?.status || '').toLowerCase();
+              return (
+                ['unassigned', 'assigned'].includes(dispatchStatus) &&
+                ['preparing', 'ready_for_pickup'].includes(orderStatus)
+              );
+            });
+
+        if (!cancelled) {
+          newOffers.forEach((order) => useDeliveryStore.getState().addNewOrder(order));
+          if (newOffers.length) setCashLimitNotice(null);
         }
       } catch (error) {
         console.warn('[DeliveryHomeV2] Available order fallback sync failed:', error?.message || error);
@@ -663,17 +598,25 @@ export default function DeliveryHomeV2({ tab = 'feed' }) {
       window.clearInterval(poller);
       document.removeEventListener("visibilitychange", handleVisibility);
     };
-  }, [activeOrder, currentTab, isOnline, isSocketConnected, setActiveOrder, tripStatus, updateTripStatus]);
+  }, [currentTab, isOnline, isSocketConnected, setAcceptedOrders, setCapacity]);
 
   useEffect(() => {
     if (orderStatusUpdate) {
       if (orderStatusUpdate.status === 'cancelled') {
         toast.error('Order cancelled');
-        resetTrip();
+        const cancelledId =
+          orderStatusUpdate.orderId ||
+          orderStatusUpdate.orderMongoId ||
+          orderStatusUpdate._id;
+        if (cancelledId) {
+          removeAcceptedOrder(cancelledId);
+        } else {
+          resetTrip();
+        }
       }
       clearOrderStatusUpdate();
     }
-  }, [orderStatusUpdate, resetTrip, clearOrderStatusUpdate]);
+  }, [orderStatusUpdate, resetTrip, clearOrderStatusUpdate, removeAcceptedOrder]);
 
   // Handle Real-time Admin Notifications
   useEffect(() => {
@@ -701,8 +644,8 @@ export default function DeliveryHomeV2({ tab = 'feed' }) {
     }
   };
 
-  const handleMapClick = (lat, lng) => {
-    if (activeOrder || incomingOrder || showVerification) {
+  const handleMapClick = () => {
+    if (activeOrder || showVerification) {
       setIsModalMinimized(true);
     }
   };
@@ -836,6 +779,13 @@ export default function DeliveryHomeV2({ tab = 'feed' }) {
             </motion.div>
           )}
         </AnimatePresence>
+
+        {currentTab === 'feed' && acceptedOrders.length > 1 && (
+          <OrderSwitcher
+            orders={acceptedOrders}
+            focusedOrderId={focusedOrderId}
+          />
+        )}
       </div>
       )}
 
@@ -966,59 +916,6 @@ export default function DeliveryHomeV2({ tab = 'feed' }) {
               className="fixed inset-x-0 top-0 bottom-[92px] z-[300] pointer-events-none flex items-end"
             >
               <div className="w-full pointer-events-auto relative">
-                {incomingOrder && (
-                  <NewOrderModal 
-                    order={incomingOrder} 
-                    onAccept={async (o) => {
-                      stopSound?.();
-                      try {
-                        await acceptOrder(o);
-                        // Only dismiss the modal on successful accept
-                        setIncomingOrder(null);
-                        clearNewOrder(o);
-                      } catch (err) {
-                        // acceptOrder already shows a toast for the specific error:
-                        // - "Order already accepted by another partner" (403)
-                        // - Network/timeout errors
-                        // Keep the modal visible only if it's not a "taken" error
-                        const msg = String(err?.response?.data?.message || err?.message || '');
-                        const isTaken = msg.toLowerCase().includes('already accepted') || 
-                                        msg.toLowerCase().includes('another partner') ||
-                                        (err?.response?.status === 403);
-                        if (isTaken) {
-                          // Dismiss modal — the order is no longer available
-                          setIncomingOrder(null);
-                          clearNewOrder(o);
-                        }
-                        // For other errors (network, etc.), keep showing the modal so they can retry
-                      }
-                    }}
-                    onReject={async () => {
-                      const orderToReject = incomingOrder;
-                      const orderId =
-                        orderToReject?._id ||
-                        orderToReject?.id ||
-                        orderToReject?.orderMongoId ||
-                        orderToReject?.orderId ||
-                        orderToReject?.order_id;
-
-                      stopSound?.();
-                      setIncomingOrder(null);
-                      clearNewOrder(orderToReject);
-
-                      if (!orderId) return;
-
-                      try {
-                        await deliveryAPI.rejectOrder(orderId, {
-                          reason: "Rejected by delivery partner",
-                        });
-                      } catch (error) {
-                        console.warn('[DeliveryHomeV2] Reject order failed:', error?.message || error);
-                      }
-                    }}
-                    onMinimize={() => setIsModalMinimized(true)}
-                  />
-                )}
                 {(tripStatus === 'PICKING_UP' || tripStatus === 'REACHED_PICKUP') && (
                   <PickupActionModal 
                     order={activeOrder} 
@@ -1211,7 +1108,7 @@ export default function DeliveryHomeV2({ tab = 'feed' }) {
       </BottomPopup>
 
       {/* Floating Minimize/Restore Toggle - Above navbar */}
-      {isModalMinimized && (activeOrder || incomingOrder || showVerification) && (
+      {isModalMinimized && (activeOrder || showVerification) && (
         <motion.div 
            initial={{ y: 100, opacity: 0 }}
            animate={{ y: 0, opacity: 1 }}
@@ -1232,21 +1129,7 @@ export default function DeliveryHomeV2({ tab = 'feed' }) {
         </motion.div>
       )}
 
-      {/* ─── 3. BOTTOM NAV (Fixed - Compact Pro) ─── */}
-      <div className="bg-white border-t border-gray-100 px-8 py-3 pb-6 flex justify-between items-center z-[200] shadow-[0_-5px_20px_rgba(0,0,0,0.05)]">
-         <button onClick={() => navigate('/food/delivery/feed')} className={`flex flex-col items-center gap-1 transition-all ${currentTab === 'feed' ? 'text-gray-950 scale-110' : 'text-gray-400 opacity-70'}`}>
-            <LayoutGrid className="w-6 h-6" /><span className="text-[11px] font-medium font-sans">Feed</span>
-         </button>
-         <button onClick={() => navigate('/food/delivery/pocket')} className={`flex flex-col items-center gap-1 transition-all ${currentTab === 'pocket' ? 'text-gray-950 scale-110' : 'text-gray-400 opacity-70'}`}>
-            <Wallet className="w-6 h-6" /><span className="text-[11px] font-medium font-sans">Pocket</span>
-         </button>
-         <button onClick={() => navigate('/food/delivery/history')} className={`flex flex-col items-center gap-1 transition-all ${currentTab === 'history' ? 'text-gray-950 scale-110' : 'text-gray-400 opacity-70'}`}>
-            <History className="w-6 h-6" /><span className="text-[11px] font-medium font-sans">Trip History</span>
-         </button>
-         <button onClick={() => navigate('/food/delivery/profile')} className={`flex flex-col items-center gap-1 transition-all ${currentTab === 'profile' ? 'text-gray-950 scale-110' : 'text-gray-400 opacity-70'}`}>
-            <UserIcon className="w-6 h-6" /><span className="text-[11px] font-medium font-sans">Profile</span>
-         </button>
-      </div>
+      <DeliveryBottomNav currentTab={currentTab} />
     </div>
   );
 }

@@ -13,6 +13,8 @@ const SignupStep2 = lazy(() => import("./pages/auth/SignupStep2"))
 
 // V2 Pages
 import DeliveryHomeV2 from './pages/DeliveryHomeV2';
+import OrdersV2 from './pages/OrdersV2';
+import DeliveryRealtimeShell from './components/DeliveryRealtimeShell';
 import { PayoutV2 } from './pages/pocket/PayoutV2';
 import { PocketStatementV2 } from './pages/pocket/PocketStatementV2';
 import { DeductionStatementV2 } from './pages/pocket/DeductionStatementV2';
@@ -79,11 +81,12 @@ const DeliveryV2Router = () => {
         {/* Protected Core Routes */}
         <Route element={
           <ProtectedRoute>
-            <Outlet />
+            <DeliveryRealtimeShell />
           </ProtectedRoute>
         }>
           <Route path="" element={<DeliveryHomeV2 tab="feed" />} />
           <Route path="feed" element={<DeliveryHomeV2 tab="feed" />} />
+          <Route path="orders" element={<OrdersV2 />} />
           <Route path="pocket" element={<DeliveryHomeV2 tab="pocket" />} />
           <Route path="history" element={<DeliveryHomeV2 tab="history" />} />
           <Route path="profile" element={<DeliveryHomeV2 tab="profile" />} />
