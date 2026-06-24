@@ -332,6 +332,12 @@ export const initSocket = async (server) => {
             }
             const { resyncState } = await import('../modules/food/orders/services/order.service.js');
             const state = await resyncState(userId, role);
+            if (state.activeOrders?.length) {
+              socket.emit('active_orders', state.activeOrders);
+              if (state.capacity) {
+                socket.emit('delivery_capacity', state.capacity);
+              }
+            }
             if (state.activeOrder) {
               const eventName = role === 'USER' ? 'order_state' : 'active_order';
               socket.emit(eventName, state.activeOrder);
@@ -363,6 +369,7 @@ export const initSocket = async (server) => {
                 socketId: socket.id,
                 deliveryPartnerId: String(userId || ''),
                 hasActiveOrder: Boolean(state.activeOrder),
+                activeOrderCount: Array.isArray(state.activeOrders) ? state.activeOrders.length : 0,
               });
             }
           } catch (err) {

@@ -755,16 +755,13 @@ export async function resyncState(userId, role) {
   }
 
   if (role === "DELIVERY_PARTNER") {
-    const order = await FoodOrder.findOne({
-      "dispatch.deliveryPartnerId": new mongoose.Types.ObjectId(userId),
-      "dispatch.status": { $in: ["assigned", "accepted"] },
-      orderStatus: {
-        $nin: ["delivered", "cancelled_by_user", "cancelled_by_restaurant"],
-      },
-    })
-      .populate("restaurantId")
-      .lean();
-    return { activeOrder: order ? sanitizeOrderForExternal(order) : null };
+    const activeOrders = await deliveryService.getActiveTripsDelivery(userId);
+    const capacity = await deliveryService.getPartnerOrderCapacity(userId);
+    return {
+      activeOrder: activeOrders[0] || null,
+      activeOrders,
+      capacity,
+    };
   }
 
   return {};
@@ -1410,6 +1407,14 @@ export async function resendDeliveryNotificationRestaurant(orderId, restaurantId
 
 export async function getCurrentTripDelivery(deliveryPartnerId) {
   return deliveryService.getCurrentTripDelivery(deliveryPartnerId);
+}
+
+export async function getActiveTripsDelivery(deliveryPartnerId) {
+  return deliveryService.getActiveTripsDelivery(deliveryPartnerId);
+}
+
+export async function getPartnerOrderCapacity(deliveryPartnerId) {
+  return deliveryService.getPartnerOrderCapacity(deliveryPartnerId);
 }
 
 // ----- Delivery: available, accept, reject, status -----
