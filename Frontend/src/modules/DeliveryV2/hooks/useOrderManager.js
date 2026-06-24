@@ -1,24 +1,35 @@
 import { useRef } from 'react';
-import { useDeliveryStore } from '@/modules/DeliveryV2/store/useDeliveryStore';
+import {
+  useDeliveryStore,
+  resolveOrderKey,
+  mapDeliveryPhaseToTripStatus,
+} from '@/modules/DeliveryV2/store/useDeliveryStore';
 import { deliveryAPI } from '@food/api';
 import { toast } from 'sonner';
+import { mapOrderLocations } from '@/modules/DeliveryV2/utils/orderMapping';
 
-/**
- * useOrderManager - Professional hook for real-world trip lifecycle actions.
- * Connects directly to the backend API services.
- */
 export const useOrderManager = () => {
-  const { 
-    activeOrder, tripStatus, updateTripStatus, clearActiveOrder, setActiveOrder, riderLocation 
+  const {
+    getFocusedOrder,
+    focusedOrderId,
+    acceptOrderToQueue,
+    removeNewOrder,
+    removeAcceptedOrder,
+    updateTripStatus,
+    updateOrderSession,
+    setCapacity,
+    riderLocation,
+    orderSessions,
   } = useDeliveryStore();
 
-  const resolveOrderId = (orderLike = activeOrder) =>
-    orderLike?._id || orderLike?.id || orderLike?.orderId || orderLike?.order_id;
+  const resolveOrderId = (orderLike) => {
+    const source = orderLike || getFocusedOrder();
+    return resolveOrderKey(source);
+  };
 
   const acceptOrderInFlight = useRef(false);
 
   const acceptOrder = async (order) => {
-    // Client-side guard: prevent duplicate API calls if already processing
     if (acceptOrderInFlight.current) {
       toast.info('Already processing this order...');
       return;
@@ -32,62 +43,47 @@ export const useOrderManager = () => {
     acceptOrderInFlight.current = true;
     try {
       const response = await deliveryAPI.acceptOrder(orderId);
-      
+
       if (response?.data?.success) {
         const fullOrder = response.data.data?.order || order;
-        
-        // Robustly determine locations from multiple possible formats (Populated API vs Socket)
-        const getLoc = (ref, keysLat, keysLng) => {
-          if (!ref) return null;
-          // Handle nested populated objects
-          if (ref.location) {
-            // Handle GeoJSON format: location: { type: 'Point', coordinates: [lng, lat] }
-            if (Array.isArray(ref.location.coordinates) && ref.location.coordinates.length >= 2) {
-              return {
-                lat: ref.location.coordinates[1], // Latitude is second in GeoJSON [lng, lat]
-                lng: ref.location.coordinates[0]  // Longitude is first
-              };
-            }
-            // Handle standard object format: location: { latitude: 12.3, longitude: 45.6 }
-            return {
-              lat: ref.location.latitude || ref.location.lat,
-              lng: ref.location.longitude || ref.location.lng
-            };
-          }
-          // Handle flat objects or direct lat/lng keys
-          for (const k of keysLat) { if (ref[k] != null) return { lat: ref[k], lng: ref[keysLng[keysLat.indexOf(k)]] }; }
-          return null;
-        };
-
-        console.log('[OrderManager] Raw Full Order Data:', fullOrder);
-
-        const resLoc = getLoc(fullOrder.restaurantId, ['latitude', 'lat'], ['longitude', 'lng']) || 
-                       getLoc(fullOrder, ['restaurant_lat', 'restaurantLat', 'latitude'], ['restaurant_lng', 'restaurantLng', 'longitude']);
-                       
-        const cusLoc = getLoc(fullOrder.deliveryAddress, ['latitude', 'lat'], ['longitude', 'lng']) || 
-                       getLoc(fullOrder, ['customer_lat', 'customerLat', 'latitude'], ['customer_lng', 'customerLng', 'longitude']);
-
-        console.log('[OrderManager] Locations Mapped Result:', { resLoc, cusLoc });
-
-        setActiveOrder({
+        const mappedOrder = mapOrderLocations({
           ...fullOrder,
-          orderId: orderId,
-          restaurantLocation: resLoc,
-          customerLocation: cusLoc
+          orderId,
         });
+        acceptOrderToQueue(mappedOrder);
+        removeNewOrder(orderId);
 
-        updateTripStatus('PICKING_UP');
-        // toast.success('Order Accepted! Opening Map...');
+        const capacity = response?.data?.data?.capacity;
+        if (capacity) {
+          setCapacity(capacity);
+        } else {
+          const current = useDeliveryStore.getState().capacity;
+          const active = useDeliveryStore.getState().acceptedOrders.length;
+          setCapacity({
+            max: current.max,
+            active,
+            remaining: Math.max(0, current.max - active),
+          });
+        }
       } else {
         toast.error(response?.data?.message || 'Order already taken or unavailable');
         throw new Error('Accept failed');
       }
     } catch (error) {
       console.error('Accept Order Error:', error);
-      const msg = error?.response?.data?.error || error?.response?.data?.message || 'Network error. Please try again.';
-      // If the backend says already accepted by another — show friendly message
-      if (error?.response?.status === 403 || msg.toLowerCase().includes('already accepted')) {
-        toast.error('This order was just taken by another delivery partner.', { duration: 4000 });
+      const msg =
+        error?.response?.data?.error ||
+        error?.response?.data?.message ||
+        'Network error. Please try again.';
+      if (
+        error?.response?.status === 403 ||
+        msg.toLowerCase().includes('already accepted')
+      ) {
+        toast.error('This order was just taken by another delivery partner.', {
+          duration: 4000,
+        });
+      } else if (msg.toLowerCase().includes('maximum concurrent')) {
+        toast.error('Maximum concurrent orders reached');
       } else {
         toast.error(msg);
       }
@@ -97,12 +93,8 @@ export const useOrderManager = () => {
     }
   };
 
-
-  /**
-   * Mark "Reached Pickup" (Arrival at restaurant)
-   */
-  const reachPickup = async () => {
-    const orderId = resolveOrderId();
+  const reachPickup = async (orderLike) => {
+    const orderId = resolveOrderId(orderLike);
     if (!orderId) {
       toast.error('Order id not found. Please refresh current trip.');
       throw new Error('Missing order id');
@@ -110,52 +102,52 @@ export const useOrderManager = () => {
     try {
       const response = await deliveryAPI.confirmReachedPickup(orderId);
       if (response?.data?.success) {
-        updateTripStatus('REACHED_PICKUP');
-        // toast.info('Arrived at Restaurant');
+        updateTripStatus('REACHED_PICKUP', orderId);
       } else {
         throw new Error('Confirm pickup failed');
       }
     } catch (error) {
-      toast.error(error?.response?.data?.error || error?.response?.data?.message || 'Failed to update status');
+      toast.error(
+        error?.response?.data?.error ||
+          error?.response?.data?.message ||
+          'Failed to update status',
+      );
       throw error;
     }
   };
 
-  /**
-   * Mark "Picked Up" (Confirm order ID & start delivery)
-   */
-  const pickUpOrder = async (billImageUrl) => {
-    const orderId = resolveOrderId();
+  const pickUpOrder = async (billImageUrl, orderLike) => {
+    const order = orderLike || getFocusedOrder();
+    const orderId = resolveOrderId(order);
     if (!orderId) {
       toast.error('Order id not found. Please refresh current trip.');
       throw new Error('Missing order id');
     }
     try {
-      // confirmOrderId(orderId, confirmedOrderId, location, data)
       const response = await deliveryAPI.confirmOrderId(
-        orderId, 
-        activeOrder.displayOrderId || orderId, 
+        orderId,
+        order?.displayOrderId || orderId,
         riderLocation || {},
-        { billImageUrl }
+        { billImageUrl },
       );
-      
+
       if (response?.data?.success) {
-        updateTripStatus('PICKED_UP');
-        // toast.success('Order Collected! Heading to Drop-off');
+        updateTripStatus('PICKED_UP', orderId);
       } else {
         throw new Error('Confirm order ID failed');
       }
     } catch (error) {
-      toast.error(error?.response?.data?.error || error?.response?.data?.message || 'Error confirming pickup');
+      toast.error(
+        error?.response?.data?.error ||
+          error?.response?.data?.message ||
+          'Error confirming pickup',
+      );
       throw error;
     }
   };
 
-  /**
-   * Mark "Reached Drop" (Arrival at customer)
-   */
-  const reachDrop = async () => {
-    const orderId = resolveOrderId();
+  const reachDrop = async (orderLike) => {
+    const orderId = resolveOrderId(orderLike);
     if (!orderId) {
       toast.error('Order id not found. Please refresh current trip.');
       throw new Error('Missing order id');
@@ -163,53 +155,52 @@ export const useOrderManager = () => {
     try {
       const response = await deliveryAPI.confirmReachedDrop(orderId);
       if (response?.data?.success) {
-        updateTripStatus('REACHED_DROP');
-        // toast.info('Arrived at Customer Location');
+        updateTripStatus('REACHED_DROP', orderId);
       } else {
         throw new Error('Confirm drop failed');
       }
     } catch (error) {
-      toast.error(error?.response?.data?.error || error?.response?.data?.message || 'Failed to notify arrival');
+      toast.error(
+        error?.response?.data?.error ||
+          error?.response?.data?.message ||
+          'Failed to notify arrival',
+      );
       throw error;
     }
   };
 
-  /**
-   * Finalize Delivery with OTP Check
-   */
-  const completeDelivery = async (otp, paymentMethodOverride = null) => {
-    const orderId = resolveOrderId();
+  const completeDelivery = async (otp, paymentMethodOverride = null, orderLike) => {
+    const order = orderLike || getFocusedOrder();
+    const orderId = resolveOrderId(order);
     if (!orderId) {
       toast.error('Order id not found. Please refresh current trip.');
       throw new Error('Missing order id');
     }
     try {
-      // 1. Verify OTP first (if not already verified by modal)
       const verifyRes = await deliveryAPI.verifyDropOtp(orderId, otp);
-      
+
       if (verifyRes?.data?.success) {
-        let finalOrder = verifyRes.data?.data?.order || activeOrder;
-        
+        let finalOrder = verifyRes.data?.data?.order || order;
+
         try {
-          // 2. Mark as complete
-          const completeRes = await deliveryAPI.completeDelivery(orderId, { 
-            otp, 
+          const completeRes = await deliveryAPI.completeDelivery(orderId, {
+            otp,
             rating: 5,
-            paymentMethod: paymentMethodOverride // Pass 'cash' or 'qr' if provided
+            paymentMethod: paymentMethodOverride,
           });
           if (completeRes.data?.success && completeRes.data?.data?.order) {
             finalOrder = completeRes.data.data.order;
           }
         } catch (completeErr) {
           console.warn('Complete call failed, but OTP was verified.', completeErr);
-          // If already completed, we proceed to show the summary with whatever we have
         }
-        
-        // Update local order state so Summary Modal shows 'delivered' status
-        if (finalOrder) setActiveOrder(finalOrder);
-        
-        updateTripStatus('COMPLETED');
-        // toast.success('Delivery Success!');
+
+        if (finalOrder) {
+          acceptOrderToQueue(mapOrderLocations({ ...finalOrder, orderId }));
+        }
+
+        updateTripStatus('COMPLETED', orderId);
+        updateOrderSession(orderId, { showVerification: false });
       } else {
         toast.error('Invalid OTP. Please check with customer.');
         throw new Error('Invalid OTP');
@@ -225,8 +216,35 @@ export const useOrderManager = () => {
     }
   };
 
-  const resetTrip = () => {
-    clearActiveOrder();
+  const resetTrip = (orderLike) => {
+    const orderId = resolveOrderId(orderLike);
+    if (!orderId) return;
+    removeAcceptedOrder(orderId);
+    const state = useDeliveryStore.getState();
+    const active = state.acceptedOrders.length;
+    setCapacity({
+      max: state.capacity.max,
+      active,
+      remaining: Math.max(0, state.capacity.max - active),
+    });
+  };
+
+  const switchFocusedOrder = (nextOrderId) => {
+    const currentId = focusedOrderId || resolveOrderKey(getFocusedOrder());
+    if (currentId) {
+      const currentSession = orderSessions[currentId] || {};
+      updateOrderSession(currentId, currentSession);
+    }
+    useDeliveryStore.getState().setFocusedOrder(nextOrderId);
+    const nextOrder = useDeliveryStore
+      .getState()
+      .acceptedOrders.find((item) => resolveOrderKey(item) === String(nextOrderId));
+    if (nextOrder) {
+      const existing = useDeliveryStore.getState().orderSessions[String(nextOrderId)];
+      if (!existing?.tripStatus) {
+        updateTripStatus(mapDeliveryPhaseToTripStatus(nextOrder), String(nextOrderId));
+      }
+    }
   };
 
   return {
@@ -236,5 +254,6 @@ export const useOrderManager = () => {
     reachDrop,
     completeDelivery,
     resetTrip,
+    switchFocusedOrder,
   };
 };

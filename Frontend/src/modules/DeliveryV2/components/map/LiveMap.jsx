@@ -41,7 +41,9 @@ const mapOptions = {
 const LIBRARIES = ['places', 'geometry'];
 
 export const LiveMap = ({ onMapClick, onMapLoad, onPathReceived, onPolylineReceived, zoom = 12 }) => {
-  const { riderLocation, activeOrder, tripStatus } = useDeliveryStore();
+  const riderLocation = useDeliveryStore((state) => state.riderLocation);
+  const activeOrder = useDeliveryStore((state) => state.getFocusedOrder());
+  const tripStatus = useDeliveryStore((state) => state.getFocusedTripStatus());
   
   const { isLoaded, loadError } = useJsApiLoader({
     googleMapsApiKey: import.meta.env.VITE_GOOGLE_MAPS_API_KEY,

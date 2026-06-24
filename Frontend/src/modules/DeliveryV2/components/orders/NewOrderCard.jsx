@@ -1,0 +1,212 @@
+import React, { useMemo } from 'react';
+import { ChefHat, ChevronDown, Clock, Lock, MapPin, Package } from 'lucide-react';
+import { ActionSlider } from '@/modules/DeliveryV2/components/ui/ActionSlider';
+import { useDeliveryStore } from '@/modules/DeliveryV2/store/useDeliveryStore';
+import { getHaversineDistance } from '@/modules/DeliveryV2/utils/geo';
+
+export default function NewOrderCard({
+  order,
+  onAccept,
+  onReject,
+  acceptDisabled = false,
+  disabledMessage = 'Complete an active order to accept more',
+  expanded = false,
+  onToggle,
+}) {
+  const riderLocation = useDeliveryStore((state) => state.riderLocation);
+
+  const { distanceKm, etaMins } = useMemo(() => {
+    if (!order) return { distanceKm: null, etaMins: null };
+
+    const rawDist = order.pickupDistanceKm || order.distanceKm;
+    const rawEta = order.estimatedTime || order.duration || order.eta;
+
+    if (rawDist != null) {
+      return {
+        distanceKm: Number(rawDist).toFixed(1),
+        etaMins:
+          rawEta && rawEta > 0
+            ? Math.ceil(rawEta)
+            : Math.ceil((rawDist * 1000) / 416) + 5,
+      };
+    }
+
+    const rest = order.restaurantLocation || order.restaurantId?.location || {};
+    const resLat = parseFloat(
+      order.restaurant_lat || order.restaurantLat || rest.latitude || rest.lat,
+    );
+    const resLng = parseFloat(
+      order.restaurant_lng || order.restaurantLng || rest.longitude || rest.lng,
+    );
+
+    if (riderLocation && !Number.isNaN(resLat) && !Number.isNaN(resLng)) {
+      const distM = getHaversineDistance(riderLocation.lat, riderLocation.lng, resLat, resLng);
+      const km = distM / 1000;
+      const mins = Math.ceil(distM / 416) + (order.prepTime || 5);
+      return { distanceKm: km.toFixed(1), etaMins: mins };
+    }
+
+    return { distanceKm: '??', etaMins: order.prepTime || 15 };
+  }, [order, riderLocation]);
+
+  if (!order) return null;
+
+  const earnings =
+    order.earnings ||
+    order.riderEarning ||
+    order.pricing?.total ||
+    (order.orderAmount ? order.orderAmount * 0.1 : 0);
+  const displayId = order?.orderId || order?.displayOrderId || order?._id;
+  const restaurantName =
+    order.restaurantName ||
+    order.restaurant_name ||
+    order.restaurantId?.restaurantName ||
+    order.restaurantId?.name ||
+    'Restaurant';
+  const restaurantAddress =
+    order.restaurantAddress ||
+    order.restaurant_address ||
+    order.restaurantId?.addressLine1 ||
+    order.restaurantId?.location?.address ||
+    'Address not available';
+  const deliveryAddress = order?.deliveryAddress || {};
+  const geoCoords =
+    Array.isArray(deliveryAddress?.location?.coordinates) &&
+    deliveryAddress.location.coordinates.length >= 2
+      ? {
+          lng: deliveryAddress.location.coordinates[0],
+          lat: deliveryAddress.location.coordinates[1],
+        }
+      : null;
+  const customerLocation = order.customerLocation || order.deliveryLocation || geoCoords || null;
+  const addressPartsFromSchema = [
+    deliveryAddress.street,
+    deliveryAddress.additionalDetails,
+    deliveryAddress.city,
+    deliveryAddress.state,
+    deliveryAddress.zipCode,
+  ]
+    .map((value) => String(value || '').trim())
+    .filter(Boolean);
+  const customerAddress =
+    order.customerAddress ||
+    order.customer_address ||
+    (addressPartsFromSchema.length ? addressPartsFromSchema.join(', ') : '') ||
+    (customerLocation?.lat != null && customerLocation?.lng != null
+      ? `Lat ${Number(customerLocation.lat).toFixed(5)}, Lng ${Number(customerLocation.lng).toFixed(5)}`
+      : 'Location not available');
+  const customerName =
+    order.userId?.name || order.customerName || order.user?.name || 'Customer';
+  const customerPhone = order.userId?.phone || order.customerPhone || order.user?.phone || '';
+
+  return (
+    <div
+      className={`bg-white rounded-2xl border transition-all overflow-hidden ${
+        expanded ? 'border-blue-200 shadow-lg shadow-blue-500/10' : 'border-gray-100 shadow-sm'
+      }`}
+    >
+      <button
+        type="button"
+        onClick={() => onToggle?.()}
+        className="w-full text-left p-4 active:scale-[0.99] transition-transform"
+      >
+        <div className="flex items-center justify-between gap-3">
+          <div className="flex items-center gap-3 min-w-0">
+            <div className="w-10 h-10 rounded-xl bg-[#15498b] text-white flex items-center justify-center shrink-0">
+              <Package className="w-5 h-5" />
+            </div>
+            <div className="min-w-0">
+              <p className="text-[10px] font-black uppercase tracking-widest text-gray-400">
+                New Order #{displayId}
+              </p>
+              <p className="text-sm font-bold text-gray-950 truncate">{restaurantName}</p>
+              <p className="text-[11px] font-semibold text-blue-600 mt-0.5">
+                ₹{Number(earnings || 0).toFixed(2)} · {distanceKm} km · {etaMins} min
+              </p>
+            </div>
+          </div>
+          <div className="flex items-center gap-2 shrink-0">
+            {acceptDisabled ? (
+              <span className="rounded-full bg-gray-100 border border-gray-200 p-1.5 text-gray-500">
+                <Lock className="w-3.5 h-3.5" />
+              </span>
+            ) : null}
+            <ChevronDown
+              className={`w-5 h-5 text-gray-400 transition-transform ${expanded ? 'rotate-180' : ''}`}
+            />
+          </div>
+        </div>
+      </button>
+
+      {expanded ? (
+        <div className="px-4 pb-4 space-y-4 border-t border-gray-100 pt-4">
+          <div className="flex gap-3">
+            <div className="flex flex-col items-center gap-1.5 mt-2">
+              <div className="w-4 h-4 rounded-full bg-green-500 border-4 border-green-50" />
+              <div className="w-0.5 h-12 border-l-2 border-dashed border-gray-100" />
+              <div className="w-4 h-4 rounded-full bg-blue-500 border-4 border-blue-50" />
+            </div>
+            <div className="flex-1 space-y-4">
+              <div>
+                <div className="flex items-center gap-2 mb-1 text-[10px] font-bold uppercase tracking-widest text-green-600">
+                  <ChefHat className="w-3.5 h-3.5" />
+                  <span>Restaurant Pickup</span>
+                </div>
+                <p className="text-gray-950 font-bold text-sm leading-tight">{restaurantName}</p>
+                <p className="text-gray-500 text-xs">{restaurantAddress}</p>
+              </div>
+              <div>
+                <div className="flex items-center gap-2 mb-1 text-[10px] font-bold uppercase tracking-widest text-blue-600">
+                  <MapPin className="w-3.5 h-3.5" />
+                  <span>Customer Drop</span>
+                </div>
+                <p className="text-gray-950 font-bold text-sm leading-tight">{customerName}</p>
+                {customerPhone ? <p className="text-gray-500 text-xs">{customerPhone}</p> : null}
+                <p className="text-gray-500 text-xs line-clamp-2">{customerAddress}</p>
+              </div>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-2 gap-2">
+            <div className="p-3 bg-gray-50 rounded-2xl border border-gray-100 flex items-center gap-2">
+              <Clock className="w-4 h-4 text-orange-500" />
+              <div>
+                <span className="text-[10px] text-gray-400 font-bold uppercase tracking-widest">Time</span>
+                <p className="text-sm font-bold text-gray-900">{etaMins} mins</p>
+              </div>
+            </div>
+            <div className="p-3 bg-gray-50 rounded-2xl border border-gray-100 flex items-center gap-2">
+              <MapPin className="w-4 h-4 text-gray-400" />
+              <div>
+                <span className="text-[10px] text-gray-400 font-bold uppercase tracking-widest">Distance</span>
+                <p className="text-sm font-bold text-gray-900">{distanceKm} km</p>
+              </div>
+            </div>
+          </div>
+
+          {acceptDisabled ? (
+            <div className="rounded-2xl bg-amber-50 border border-amber-200 px-4 py-3 flex items-start gap-2">
+              <Lock className="w-4 h-4 text-amber-700 mt-0.5 shrink-0" />
+              <p className="text-sm font-semibold text-amber-800">{disabledMessage}</p>
+            </div>
+          ) : (
+            <ActionSlider
+              label="Slide to Accept"
+              onConfirm={() => onAccept?.(order)}
+              color="bg-black"
+              successLabel="Order Accepted"
+            />
+          )}
+
+          <button
+            type="button"
+            onClick={() => onReject?.(order)}
+            className="w-full text-gray-400 font-bold text-[10px] uppercase tracking-widest hover:text-red-500 transition-colors py-2"
+          >
+            Pass this task
+          </button>
+        </div>
+      ) : null}
+    </div>
+  );
+}

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react"
-import { IndianRupee, Loader2, Wallet } from "lucide-react"
+import { IndianRupee, Loader2, Package, Wallet } from "lucide-react"
 import { adminAPI } from "@food/api"
 import { toast } from "sonner"
 const debugLog = (...args) => {}
@@ -13,6 +13,8 @@ export default function DeliveryCashLimit() {
   const [savingWithdrawal, setSavingWithdrawal] = useState(false)
   const [deliveryCashLimit, setDeliveryCashLimit] = useState("")
   const [deliveryWithdrawalLimit, setDeliveryWithdrawalLimit] = useState("")
+  const [maxConcurrentOrders, setMaxConcurrentOrders] = useState("1")
+  const [savingConcurrent, setSavingConcurrent] = useState(false)
   const isMountedRef = useRef(true)
 
   const fetchLimit = useCallback(async ({ silent = false } = {}) => {
@@ -24,9 +26,11 @@ export default function DeliveryCashLimit() {
       const data = response?.data?.data || response?.data || {}
       const limit = data.deliveryCashLimit
       const wl = data.deliveryWithdrawalLimit ?? 100
+      const maxOrders = data.maxConcurrentOrders ?? 1
       if (!isMountedRef.current) return
       setDeliveryCashLimit(limit !== undefined && limit !== null ? String(limit) : "")
       setDeliveryWithdrawalLimit(wl !== undefined && wl !== null ? String(wl) : "100")
+      setMaxConcurrentOrders(maxOrders !== undefined && maxOrders !== null ? String(maxOrders) : "1")
     } catch (error) {
       debugError("Error fetching delivery cash limit:", error)
       if (!isMountedRef.current) return
@@ -35,6 +39,7 @@ export default function DeliveryCashLimit() {
       }
       setDeliveryCashLimit("")
       setDeliveryWithdrawalLimit("100")
+      setMaxConcurrentOrders("1")
     } finally {
       if (!silent && isMountedRef.current) {
         setLoading(false)
@@ -110,6 +115,33 @@ export default function DeliveryCashLimit() {
     }
   }
 
+  const saveConcurrentLimit = async () => {
+    const value = Number(maxConcurrentOrders)
+    if (!Number.isFinite(value) || value < 1 || value > 5) {
+      toast.error("Concurrent order limit must be between 1 and 5")
+      return
+    }
+
+    try {
+      setSavingConcurrent(true)
+      const response = await adminAPI.updateDeliveryCashLimit({
+        maxConcurrentOrders: value,
+      })
+      const saved =
+        response?.data?.data?.maxConcurrentOrders ??
+        response?.data?.maxConcurrentOrders ??
+        value
+      setMaxConcurrentOrders(String(saved))
+      toast.success("Concurrent order limit updated successfully")
+      await fetchLimit({ silent: true })
+    } catch (error) {
+      debugError("Error saving concurrent order limit:", error)
+      toast.error(error.response?.data?.message || "Failed to update concurrent order limit")
+    } finally {
+      setSavingConcurrent(false)
+    }
+  }
+
   useEffect(() => {
     isMountedRef.current = true
     fetchLimit()
@@ -160,7 +192,7 @@ export default function DeliveryCashLimit() {
                     {loading && (
                       <p className="text-xs text-emerald-700/80 mt-1 flex items-center gap-2">
                         <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                        Loading current limit…
+                        Loading current limitï¿½
                       </p>
                     )}
                   </div>
@@ -204,7 +236,7 @@ export default function DeliveryCashLimit() {
                     {loading && (
                       <p className="text-xs text-amber-700/80 mt-1 flex items-center gap-2">
                         <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                        Loading…
+                        Loadingï¿½
                       </p>
                     )}
                   </div>
@@ -214,6 +246,45 @@ export default function DeliveryCashLimit() {
                     className="px-4 py-2.5 text-sm font-medium rounded-lg bg-amber-600 text-white hover:bg-amber-700 transition-all shadow-md disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
                   >
                     {savingWithdrawal && <Loader2 className="w-4 h-4 animate-spin" />}
+                    Save
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div className="p-4 bg-blue-50 border border-blue-200 rounded-lg mt-6">
+            <div className="flex items-start gap-3">
+              <Package className="w-5 h-5 text-blue-700 mt-0.5" />
+              <div className="flex-1">
+                <div className="font-semibold text-blue-900 mb-1">
+                  Concurrent Order Limit (Global)
+                </div>
+                <div className="text-sm text-blue-800/80 mb-3">
+                  Maximum number of orders a delivery partner can accept and work on at the same time.
+                  Minimum 1, maximum 5.
+                </div>
+
+                <div className="flex flex-col sm:flex-row gap-3 sm:items-center">
+                  <div className="flex-1">
+                    <input
+                      type="number"
+                      min="1"
+                      max="5"
+                      step="1"
+                      value={maxConcurrentOrders}
+                      onChange={(e) => setMaxConcurrentOrders(e.target.value)}
+                      className="w-full px-4 py-2.5 border rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm border-blue-200"
+                      placeholder={loading ? "Loading..." : "e.g., 3"}
+                      disabled={loading || savingConcurrent}
+                    />
+                  </div>
+                  <button
+                    onClick={saveConcurrentLimit}
+                    disabled={loading || savingConcurrent}
+                    className="px-4 py-2.5 text-sm font-medium rounded-lg bg-blue-600 text-white hover:bg-blue-700 transition-all shadow-md disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                  >
+                    {savingConcurrent && <Loader2 className="w-4 h-4 animate-spin" />}
                     Save
                   </button>
                 </div>
