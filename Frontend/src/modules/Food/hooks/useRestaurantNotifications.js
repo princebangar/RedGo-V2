@@ -101,6 +101,31 @@ if (typeof window !== 'undefined') {
   globalIsMuted = localStorage.getItem('restaurant_notifications_muted') === 'true';
 }
 
+let globalMutedOrderIds = new Set();
+if (typeof window !== 'undefined') {
+  try {
+    const saved = localStorage.getItem('restaurant_muted_order_ids');
+    if (saved) {
+      const parsed = JSON.parse(saved);
+      if (Array.isArray(parsed)) {
+        globalMutedOrderIds = new Set(parsed);
+      }
+    }
+  } catch (e) {
+    debugWarn('Failed to parse restaurant_muted_order_ids:', e);
+  }
+}
+
+const saveMutedOrderIds = () => {
+  if (typeof window !== 'undefined') {
+    try {
+      localStorage.setItem('restaurant_muted_order_ids', JSON.stringify(Array.from(globalMutedOrderIds)));
+    } catch (e) {
+      debugWarn('Failed to save restaurant_muted_order_ids:', e);
+    }
+  }
+};
+
 let globalNewOrder = null;
 let globalNewReservation = null;
 let globalActiveOrder = null;
@@ -147,6 +172,7 @@ const updateGlobalState = (updates) => {
     try {
       callback({
         isMuted: globalIsMuted,
+        mutedOrderIds: globalMutedOrderIds,
         newOrder: globalNewOrder,
         newReservation: globalNewReservation,
         isConnected: globalSocketConnected,
@@ -387,6 +413,7 @@ const showBackgroundOrderNotification = async (orderData) => {
 export const useRestaurantNotifications = () => {
   const [localState, setLocalState] = useState({
     isMuted: globalIsMuted,
+    mutedOrderIds: globalMutedOrderIds,
     newOrder: globalNewOrder,
     newReservation: globalNewReservation,
     isConnected: globalSocketConnected,
@@ -447,10 +474,13 @@ export const useRestaurantNotifications = () => {
 
     updateGlobalState({ newOrder: orderData });
 
-    if (!globalIsMuted) {
-      playGlobalNotificationSound(orderData);
+    const orderId = getOrderAlertKey(orderData);
+    if (!globalMutedOrderIds.has(orderId)) {
+      if (!globalIsMuted) {
+        playGlobalNotificationSound(orderData);
+      }
+      startGlobalAlertLoop(orderData);
     }
-    startGlobalAlertLoop(orderData);
 
     const isTabHidden = typeof document !== 'undefined' && document.visibilityState === 'hidden';
     if (isTabHidden) {
@@ -781,6 +811,7 @@ export const useRestaurantNotifications = () => {
   }, []);
 
   const clearNewOrder = useCallback((orderOrId) => {
+    let targetId = null;
     if (orderOrId) {
       if (typeof orderOrId === 'object') {
         const ids = [
@@ -792,13 +823,52 @@ export const useRestaurantNotifications = () => {
           orderOrId.order_id,
           orderOrId.order_mongo_id
         ].filter(Boolean);
-        ids.forEach(id => processedOrderIds.add(String(id).trim()));
+        ids.forEach(id => {
+          const cleanId = String(id).trim();
+          processedOrderIds.add(cleanId);
+          globalMutedOrderIds.delete(cleanId);
+        });
+        targetId = getOrderAlertKey(orderOrId);
       } else {
-        processedOrderIds.add(String(orderOrId).trim());
+        targetId = String(orderOrId).trim();
+        processedOrderIds.add(targetId);
+        globalMutedOrderIds.delete(targetId);
       }
+      saveMutedOrderIds();
     }
     stopGlobalAlertLoop();
-    updateGlobalState({ newOrder: null, activeOrder: null });
+    updateGlobalState({ newOrder: null, activeOrder: null, mutedOrderIds: new Set(globalMutedOrderIds) });
+  }, []);
+
+  const muteOrders = useCallback((orderIds) => {
+    if (!Array.isArray(orderIds)) return;
+    orderIds.forEach(id => {
+      if (id) globalMutedOrderIds.add(String(id).trim());
+    });
+    saveMutedOrderIds();
+    
+    // Stop alarm loop if active order is among the muted ones
+    if (globalActiveOrder) {
+      const activeId = getOrderAlertKey(globalActiveOrder);
+      if (globalMutedOrderIds.has(activeId)) {
+        stopGlobalAlertLoop();
+      }
+    }
+    
+    updateGlobalState({ mutedOrderIds: new Set(globalMutedOrderIds) });
+  }, []);
+
+  const unmuteOrder = useCallback((orderId) => {
+    if (!orderId) return;
+    const cleanId = String(orderId).trim();
+    globalMutedOrderIds.delete(cleanId);
+    saveMutedOrderIds();
+    
+    if (globalActiveOrder && getOrderAlertKey(globalActiveOrder) === cleanId) {
+      startGlobalAlertLoop(globalActiveOrder);
+    }
+    
+    updateGlobalState({ mutedOrderIds: new Set(globalMutedOrderIds) });
   }, []);
 
   const clearNewReservation = useCallback(() => {
@@ -815,5 +885,9 @@ export const useRestaurantNotifications = () => {
     setMuted,
     playNotificationSound: playGlobalNotificationSound,
     stopSound: stopGlobalAlertLoop,
+    startAlertLoop: startGlobalAlertLoop,
+    mutedOrderIds: localState.mutedOrderIds || new Set(),
+    muteOrders,
+    unmuteOrder,
   };
 };

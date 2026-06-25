@@ -141,7 +141,14 @@ export default function useAppBackNavigation() {
   const orderType = profile ? profile.orderType : null
 
   return useCallback(() => {
-    if (window.history.state && window.history.state.idx > 0) {
+    const explicitBackPath =
+      toFoodPath(location.state?.backTo) ||
+      toFoodPath(location.state?.from) ||
+      toFoodPath(location.state?.returnTo)
+
+    if (explicitBackPath && explicitBackPath !== location.pathname) {
+      navigate(explicitBackPath, { replace: true })
+    } else if (window.history.state && window.history.state.idx > 0) {
       navigate(-1)
     } else {
       navigate(resolveBackPath({ ...location, orderType }), { replace: true })

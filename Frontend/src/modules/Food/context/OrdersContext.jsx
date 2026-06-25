@@ -43,7 +43,12 @@ export function OrdersProvider({ children }) {
   }
 
   const getOrderById = useCallback((orderId) => {
-    return orders.find(order => order.id === orderId)
+    return orders.find(order => 
+      order.id === orderId || 
+      order._id === orderId || 
+      order.mongoId === orderId || 
+      order.orderId === orderId
+    )
   }, [orders])
 
   const getAllOrders = useCallback(() => {

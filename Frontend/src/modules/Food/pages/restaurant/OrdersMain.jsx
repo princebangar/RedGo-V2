@@ -134,6 +134,7 @@ const transformOrderForList = (order) => {
       : new Date(order.createdAt || Date.now()).getTime(),
     scheduledAt: order.scheduledAt || null,
     restaurantNote: order.restaurantNote || null,
+    acceptedAt: order.acceptedAt || null,
   };
 };
 
@@ -1323,6 +1324,17 @@ class OrdersErrorBoundary extends Component {
 
 function OrdersMainInner() {
   const navigate = useNavigate();
+  // Restaurant notifications hook for real-time orders
+  const {
+    newOrder,
+    clearNewOrder,
+    isConnected,
+    stopSound,
+    startAlertLoop,
+    mutedOrderIds = new Set(),
+    muteOrders,
+    unmuteOrder,
+  } = useRestaurantNotifications();
   const [activeFilter, setActiveFilter] = useState("all");
   const [isTransitioning, setIsTransitioning] = useState(false);
   const [selectedOrder, setSelectedOrder] = useState(null);
@@ -1349,6 +1361,62 @@ function OrdersMainInner() {
   const [cancelReason, setCancelReason] = useState("");
   const [orderToCancel, setOrderToCancel] = useState(null);
   const [acceptSwipeProgress, setAcceptSwipeProgress] = useState(0);
+  const [orderQueue, setOrderQueue] = useState([]);
+  const orderQueueRef = useRef([]);
+
+  useEffect(() => {
+    orderQueueRef.current = orderQueue;
+  }, [orderQueue]);
+
+  // Manage displaying the next order from the queue with a slight delay
+  useEffect(() => {
+    if (!showNewOrderPopup && orderQueue.length > 0 && !showRejectPopup) {
+      const timer = setTimeout(() => {
+        if (!showNewOrderPopupRef.current && orderQueueRef.current.length > 0 && !showRejectPopup) {
+          const nextOrder = orderQueueRef.current[0];
+          setPopupOrder(nextOrder);
+          setShowNewOrderPopup(true);
+          setCountdown(getInitialCountdown(nextOrder));
+        }
+      }, 800);
+      return () => clearTimeout(timer);
+    }
+  }, [orderQueue, showNewOrderPopup, showRejectPopup]);
+
+  // Trigger sound alert when any unmuted order exists in active popup or queue
+  useEffect(() => {
+    if (!showNewOrderPopup) {
+      if (stopSound) stopSound();
+      return;
+    }
+
+    const activeOrder = popupOrder || newOrder;
+    const activeId = resolveOrderActionId(activeOrder);
+    
+    let soundingOrder = null;
+    if (activeOrder && activeId && !mutedOrderIds.has(activeId)) {
+      soundingOrder = activeOrder;
+    } else {
+      // Find first unmuted order in queue
+      for (const order of orderQueue) {
+        const oid = resolveOrderActionId(order);
+        if (oid && !mutedOrderIds.has(oid)) {
+          soundingOrder = order;
+          break;
+        }
+      }
+    }
+
+    if (soundingOrder) {
+      if (startAlertLoop) {
+        startAlertLoop(soundingOrder);
+      }
+    } else {
+      if (stopSound) {
+        stopSound();
+      }
+    }
+  }, [showNewOrderPopup, popupOrder, newOrder, orderQueue, mutedOrderIds, startAlertLoop, stopSound]);
 
   // Takeaway OTP verification states
   const [showVerifyTakeawayPopup, setShowVerifyTakeawayPopup] = useState(false);
@@ -1535,8 +1603,6 @@ function OrdersMainInner() {
     return Number.isFinite(itemsTotal) ? itemsTotal : 0;
   };
 
-  // Restaurant notifications hook for real-time orders
-  const { newOrder, clearNewOrder, isConnected, stopSound, isMuted, setMuted } = useRestaurantNotifications();
   const lastOrderToastRef = useRef({ key: "", at: 0 });
 
   // Mobile error logging — only async rejections (safe, fires outside render)
@@ -1705,7 +1771,9 @@ function OrdersMainInner() {
       debugLog("?? New order received via Socket.IO:", newOrder);
 
       if (isAnyCancelledStatus(newOrder?.status || newOrder?.orderStatus)) {
-        clearNewOrder();
+        const cancelledId = resolveOrderActionId(newOrder);
+        setOrderQueue((prev) => prev.filter((o) => resolveOrderActionId(o) !== cancelledId));
+        clearNewOrder(cancelledId);
         return;
       }
 
@@ -1725,9 +1793,14 @@ function OrdersMainInner() {
 
       if (!hasOrderBeenShown(newOrder)) {
         markOrderAsShown(newOrder);
-        setPopupOrder(newOrder);
-        setShowNewOrderPopup(true);
-        setCountdown(getInitialCountdown(newOrder)); // Calculate relative to createdAt
+        const newId = resolveOrderActionId(newOrder);
+        setOrderQueue((prev) => {
+          const exists = prev.some((o) => resolveOrderActionId(o) === newId);
+          if (!exists) {
+            return [...prev, newOrder];
+          }
+          return prev;
+        });
         requestOrdersRefresh();
       }
     }
@@ -1761,7 +1834,13 @@ function OrdersMainInner() {
         .filter(Boolean);
 
       const isSameOrder = payloadIds.some((id) => activeIds.includes(id));
-      if (!isSameOrder) return;
+      if (!isSameOrder) {
+        const cancelledId = payload?.orderMongoId || payload?.orderId || payload?._id || payload?.id;
+        if (cancelledId) {
+          setOrderQueue((prev) => prev.filter((o) => resolveOrderActionId(o) !== cancelledId));
+        }
+        return;
+      }
 
       const cancelledStatus = normalizeOrderStatusValue(payloadStatus);
       const toastKey =
@@ -1784,6 +1863,11 @@ function OrdersMainInner() {
           orderStatus: cancelledStatus,
         };
       });
+
+      const cancelledId = payload?.orderMongoId || payload?.orderId || payload?._id || payload?.id;
+      if (cancelledId) {
+        setOrderQueue((prev) => prev.filter((o) => resolveOrderActionId(o) !== cancelledId));
+      }
       clearNewOrder();
     };
 
@@ -1805,9 +1889,13 @@ function OrdersMainInner() {
     showNewOrderPopupRef.current = showNewOrderPopup;
   }, [showNewOrderPopup]);
 
+  const activePopupOrder = popupOrder || newOrder;
+  const activePopupOrderId = resolveOrderActionId(activePopupOrder);
+  const isCurrentOrderMuted = activePopupOrderId ? mutedOrderIds.has(activePopupOrderId) : false;
+
   useEffect(() => {
-    isMutedRef.current = isMuted;
-  }, [isMuted]);
+    isMutedRef.current = isCurrentOrderMuted;
+  }, [isCurrentOrderMuted]);
 
   useEffect(() => {
     newOrderRef.current = newOrder;
@@ -1836,9 +1924,6 @@ function OrdersMainInner() {
   // Check for confirmed orders that haven't been shown in popup yet, or scheduled orders whose time has come
   useEffect(() => {
     const checkOrdersToPopup = async () => {
-      // Skip if popup is already showing or Socket.IO order exists
-      if (showNewOrderPopupRef.current || newOrderRef.current) return;
-
       try {
         const response = await restaurantAPI.getOrders();
         if (response.data?.success && response.data.data?.orders) {
@@ -1848,9 +1933,11 @@ function OrdersMainInner() {
           const targetOrders = response.data.data.orders.filter((order) => {
             if (hasOrderBeenShown(order)) return false;
 
+            const orderId = order.orderId || order._id;
+            const inQueue = orderQueueRef.current.some((o) => resolveOrderActionId(o) === orderId);
+            if (inQueue) return false;
+
             const isConfirmed = order.status === "confirmed";
-            const isCreatedScheduled =
-              order.status === "created" && order.scheduledAt;
 
             if (isConfirmed && !order.scheduledAt) return true; // ordinary confirmed fallback
 
@@ -1866,43 +1953,44 @@ function OrdersMainInner() {
             return false;
           });
 
-          // Show the most recent matching order in popup
-          if (
-            targetOrders.length > 0 &&
-            !showNewOrderPopupRef.current &&
-            !newOrderRef.current
-          ) {
-            const orderToPopup = targetOrders[0];
-            const orderId = orderToPopup.orderId || orderToPopup._id;
+          // Queue all matching orders
+          if (targetOrders.length > 0) {
+            const newQueueItems = [];
+            for (const orderToPopup of targetOrders) {
+              const orderId = orderToPopup.orderId || orderToPopup._id;
+              markOrderAsShown({ orderId, _id: orderToPopup._id });
 
-            // Transform order to match newOrder format (include payment so COD shows correctly)
-            const orderForPopup = {
-              orderId: orderToPopup.orderId,
-              orderMongoId: orderToPopup._id,
-              restaurantId: orderToPopup.restaurantId,
-              restaurantName: orderToPopup.restaurantName,
-              items: orderToPopup.items || [],
-              total: orderToPopup.pricing?.total || 0,
-              customerAddress: orderToPopup.address,
-              status: orderToPopup.status,
-              createdAt: orderToPopup.createdAt,
-              scheduledAt: orderToPopup.scheduledAt,
-              estimatedDeliveryTime: orderToPopup.estimatedDeliveryTime || 30,
-              note: orderToPopup.note || "",
-              sendCutlery: orderToPopup.sendCutlery,
-              paymentMethod:
-                orderToPopup.paymentMethod ||
-                orderToPopup.payment?.method ||
-                null,
-              payment: orderToPopup.payment,
-              orderType: orderToPopup.orderType || "delivery",
-            };
+              newQueueItems.push({
+                orderId: orderToPopup.orderId,
+                orderMongoId: orderToPopup._id,
+                restaurantId: orderToPopup.restaurantId,
+                restaurantName: orderToPopup.restaurantName,
+                items: orderToPopup.items || [],
+                total: orderToPopup.pricing?.total || 0,
+                customerAddress: orderToPopup.address,
+                status: orderToPopup.status,
+                createdAt: orderToPopup.createdAt,
+                scheduledAt: orderToPopup.scheduledAt,
+                estimatedDeliveryTime: orderToPopup.estimatedDeliveryTime || 30,
+                note: orderToPopup.note || "",
+                sendCutlery: orderToPopup.sendCutlery,
+                paymentMethod:
+                  orderToPopup.paymentMethod ||
+                  orderToPopup.payment?.method ||
+                  null,
+                payment: orderToPopup.payment,
+                orderType: orderToPopup.orderType || "delivery",
+              });
+            }
 
-            debugLog("?? Found order ready for popup:", orderForPopup);
-            markOrderAsShown({ orderId, _id: orderToPopup._id });
-            setPopupOrder(orderForPopup);
-            setShowNewOrderPopup(true);
-            setCountdown(getInitialCountdown(orderForPopup)); // Calculate relative to createdAt
+            if (newQueueItems.length > 0) {
+              setOrderQueue((prev) => {
+                const filteredNew = newQueueItems.filter(
+                  (item) => !prev.some((o) => resolveOrderActionId(o) === resolveOrderActionId(item))
+                );
+                return [...prev, ...filteredNew];
+              });
+            }
           }
         }
       } catch (error) {
@@ -1912,19 +2000,12 @@ function OrdersMainInner() {
       }
     };
 
-    // Check once on mount, and then every minute
+    // Check once on mount, and then every 8 seconds
     checkOrdersToPopup();
     const intervalId = setInterval(checkOrdersToPopup, 8000);
 
     return () => clearInterval(intervalId);
   }, []);
-
-  // Stop audio when popup closes
-  useEffect(() => {
-    if (!showNewOrderPopup) {
-      if (stopSound) stopSound();
-    }
-  }, [showNewOrderPopup, stopSound]);
 
   useEffect(() => {
     if (showNewOrderPopup && countdown > 0) {
@@ -1961,6 +2042,9 @@ function OrdersMainInner() {
             };
           });
 
+          // Remove from queue
+          setOrderQueue((prev) => prev.filter((o) => resolveOrderActionId(o) !== orderId));
+
           restaurantAPI.rejectOrder(orderId, "No response from restaurant (Auto-rejected)")
             .then(() => {
               toast.info("Order auto-rejected due to no response");
@@ -1980,6 +2064,10 @@ function OrdersMainInner() {
       } else {
         setShowRejectPopup(false);
         setShowNewOrderPopup(false);
+        setPopupOrder(null);
+        if (orderId) {
+          setOrderQueue((prev) => prev.filter((o) => resolveOrderActionId(o) !== orderId));
+        }
       }
     }
   }, [showNewOrderPopup, countdown, popupOrder, newOrder, isAcceptingOrder]);
@@ -2003,9 +2091,12 @@ function OrdersMainInner() {
     if (!isAnyCancelledStatus(popupStatus)) return;
 
     const timer = setTimeout(() => {
+      const activeId = resolveOrderActionId(activePopupOrder);
+      setOrderQueue((prev) => prev.filter((o) => resolveOrderActionId(o) !== activeId));
+
       setShowNewOrderPopup(false);
       setPopupOrder(null);
-      clearNewOrder();
+      clearNewOrder(activeId);
       setCountdown(240);
       setPrepTime(11);
     }, 2500);
@@ -2158,6 +2249,7 @@ function OrdersMainInner() {
       return;
     }
 
+    setOrderQueue((prev) => prev.filter((o) => resolveOrderActionId(o) !== orderId));
     setShowNewOrderPopup(false);
     setPopupOrder(null);
     clearNewOrder(orderId);
@@ -2208,6 +2300,9 @@ function OrdersMainInner() {
       }
     }
 
+    const targetId = resolveOrderActionId(orderToReject);
+    setOrderQueue((prev) => prev.filter((o) => resolveOrderActionId(o) !== targetId));
+
     setShowRejectPopup(false);
     setShowNewOrderPopup(false);
     setPopupOrder(null);
@@ -2220,6 +2315,8 @@ function OrdersMainInner() {
   const handleRejectCancel = () => {
     const orderToReject = popupOrder || newOrder;
     const orderId = orderToReject?.orderMongoId || orderToReject?.orderId || orderToReject?._id || orderToReject?.id;
+    const targetId = resolveOrderActionId(orderToReject);
+    setOrderQueue((prev) => prev.filter((o) => resolveOrderActionId(o) !== targetId));
     setShowRejectPopup(false);
     setShowNewOrderPopup(false);
     setPopupOrder(null);
@@ -2298,8 +2395,29 @@ function OrdersMainInner() {
 
   // Toggle mute
   const toggleMute = () => {
-    const nextMuted = !isMuted;
-    if (setMuted) setMuted(nextMuted);
+    const activeOrder = popupOrder || newOrder;
+    const activeId = resolveOrderActionId(activeOrder);
+    if (!activeId) return;
+
+    // Check if there are any unmuted orders in active popup or queue
+    const allPendingOrders = [activeOrder, ...orderQueue].filter(Boolean);
+    const hasUnmuted = allPendingOrders.some((o) => {
+      const oid = resolveOrderActionId(o);
+      return oid && !mutedOrderIds.has(oid);
+    });
+
+    if (hasUnmuted) {
+      // Mute all pending orders
+      const idsToMute = allPendingOrders.map(resolveOrderActionId).filter(Boolean);
+      if (muteOrders) {
+        muteOrders(idsToMute);
+      }
+    } else {
+      // Unmute the active popup order
+      if (unmuteOrder) {
+        unmuteOrder(activeId);
+      }
+    }
   };
 
   // Handle PDF download
@@ -3036,8 +3154,8 @@ function OrdersMainInner() {
                     <button
                       onClick={toggleMute}
                       className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
-                      aria-label={isMuted ? "Unmute" : "Mute"}>
-                      {isMuted ? (
+                      aria-label={isCurrentOrderMuted ? "Unmute" : "Mute"}>
+                      {isCurrentOrderMuted ? (
                         <VolumeX className="w-5 h-5 text-gray-700" />
                       ) : (
                         <Volume2 className="w-5 h-5 text-gray-700" />
@@ -3901,6 +4019,7 @@ const OrderCard = memo(function OrderCard({
   scheduledAt = null,
   restaurantNote = null,
   onVerifyTakeaway,
+  acceptedAt = null,
 }) {
   const normalizedStatus = String(status || "").toLowerCase();
   const normalizedType = String(type || "").toLowerCase();
@@ -3908,13 +4027,18 @@ const OrderCard = memo(function OrderCard({
   const isPreparing = normalizedStatus === "preparing";
   const brandColor = "#B80B3D";
 
+  const isAccepted = !!acceptedAt;
+  const isWaitingAcceptance = !isAccepted && (normalizedStatus === "confirmed" || normalizedStatus === "pending" || normalizedStatus === "created");
+
   const statusLabel = (normalizedStatus === "delivered" && normalizedType === "takeaway")
     ? "Picked Up"
     : normalizedStatus === "placed"
       ? "Order Placed"
-      : String(status || "")
-        .replace(/_/g, " ")
-        .replace(/\b\w/g, (c) => c.toUpperCase());
+      : isWaitingAcceptance
+        ? "Pending"
+        : String(status || "")
+          .replace(/_/g, " ")
+          .replace(/\b\w/g, (c) => c.toUpperCase());
 
   return (
     <div className="w-full bg-white rounded-xl p-3 mb-3 border border-slate-100 shadow-sm relative overflow-hidden active:bg-slate-50 transition-colors">
@@ -3957,7 +4081,9 @@ const OrderCard = memo(function OrderCard({
               )}
               <span className={`inline-flex items-center px-1.5 py-0.5 rounded-full text-[8px] font-black border uppercase tracking-wider ${(isReady || normalizedStatus === "delivered" || normalizedStatus === "completed" || normalizedStatus === "picked_up")
                   ? "bg-emerald-50 text-emerald-600 border-emerald-100" :
-                  normalizedStatus === "confirmed" ? "bg-amber-50 text-amber-600 border-amber-100" :
+                  isWaitingAcceptance
+                    ? "bg-amber-50 text-amber-600 border-amber-100 animate-pulse"
+                    : normalizedStatus === "confirmed" ? "bg-amber-50 text-amber-600 border-amber-100" :
                     (normalizedStatus.includes("cancel") || normalizedStatus.includes("reject") || normalizedStatus === "failed")
                       ? "bg-rose-50 text-rose-600 border-rose-100" :
                       "bg-slate-50 text-slate-500 border-slate-100"
@@ -4058,7 +4184,7 @@ const OrderCard = memo(function OrderCard({
                       </div>
                     )}
 
-                    {dispatchStatus && normalizedType !== "takeaway" && normalizedType !== "dining" && (
+                    {dispatchStatus && normalizedType !== "takeaway" && normalizedType !== "dining" && !isWaitingAcceptance && (
                       <span className="text-[8px] font-black uppercase tracking-wider text-slate-400 border border-slate-100 rounded-full px-2 py-0.5">
                         {dispatchStatus}
                       </span>
@@ -4067,7 +4193,8 @@ const OrderCard = memo(function OrderCard({
                     {normalizedType !== "takeaway" &&
                       normalizedType !== "dining" &&
                       dispatchStatus !== "accepted" &&
-                      !deliveryPartnerId && (
+                      !deliveryPartnerId &&
+                      !isWaitingAcceptance && (
                         <ResendNotificationButton
                           orderId={orderId}
                           mongoId={mongoId}
