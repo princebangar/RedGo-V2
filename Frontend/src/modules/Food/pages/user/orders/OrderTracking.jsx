@@ -1578,9 +1578,21 @@ export default function OrderTracking() {
 
       const now = Date.now();
       
+      let hasOrderData = !!orderRef.current;
+
+      // Check context immediately to avoid loaders if data exists locally
+      if (isInitial) {
+        const rawContext = getOrderById(orderId);
+        if (rawContext) {
+          setOrder(transformOrderForTracking(rawContext));
+          setLoading(false);
+          hasOrderData = true;
+        }
+      }
+
       // Global throttle across component remounts to prevent rapid API hammering
       const globalLastFetch = getGlobalLastFetchTime(orderId);
-      if (isInitial && now - globalLastFetch < 2000) {
+      if (isInitial && hasOrderData && now - globalLastFetch < 2000) {
         debugLog("?? Throttling initial poll - too soon since last fetch");
         setLoading(false);
         return;
@@ -1591,15 +1603,6 @@ export default function OrderTracking() {
 
       if (isInitial && now - lastPollExecutionRef.current < 1000) return;
       if (isInitial) lastPollExecutionRef.current = now;
-
-      // Check context immediately to avoid loaders if data exists locally
-      if (isInitial) {
-        const rawContext = getOrderById(orderId);
-        if (rawContext) {
-          setOrder(transformOrderForTracking(rawContext));
-          setLoading(false);
-        }
-      }
 
       requestInProgress = true;
       try {
