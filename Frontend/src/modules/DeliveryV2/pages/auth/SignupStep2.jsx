@@ -3,105 +3,37 @@ import { useNavigate } from "react-router-dom"
 import { ArrowLeft, Upload, X, Check, Camera, Image as ImageIcon } from "lucide-react"
 import { deliveryAPI } from "@food/api"
 import { toast } from "sonner"
-import { isFlutterBridgeAvailable, openCamera } from "@food/utils/imageUploadUtils"
-import useDeliveryBackNavigation from "../../hooks/useDeliveryBackNavigation"
+import { openCamera } from "@food/utils/imageUploadUtils"
+import useDeliveryOnboardingExitGuard from "../../hooks/useDeliveryOnboardingExitGuard"
+import {
+  DELIVERY_SIGNUP_DOC_TYPES,
+  loadStoredSignupDocs,
+  restoreSignupDocumentsFromStorage,
+  saveStoredSignupDocs,
+  serializeSignupDocument,
+} from "../../utils/deliveryOnboardingStorage"
 const debugLog = (...args) => {}
 const debugWarn = (...args) => {}
 const debugError = (...args) => {}
 
-const createEmptyUploadedDocs = () => ({
-  profilePhoto: null,
-  aadharPhoto: null,
-  panPhoto: null,
-  drivingLicensePhoto: null
-})
-
-const sanitizeUploadedDocValue = (value) => {
-  if (!value) return null
-
-  if (typeof value === "string") {
-    return value.startsWith("blob:") ? null : value
-  }
-
-  if (typeof value === "object") {
-    const url = typeof value.url === "string" ? value.url : ""
-    if (url.startsWith("blob:")) {
-      return null
-    }
-    return value
-  }
-
-  return null
-}
-
-const sanitizeUploadedDocs = (docs) => ({
-  profilePhoto: sanitizeUploadedDocValue(docs?.profilePhoto),
-  aadharPhoto: sanitizeUploadedDocValue(docs?.aadharPhoto),
-  panPhoto: sanitizeUploadedDocValue(docs?.panPhoto),
-  drivingLicensePhoto: sanitizeUploadedDocValue(docs?.drivingLicensePhoto)
-})
-
-const getFriendlyRegistrationError = (error) => {
-  const rawMessage =
-    error?.response?.data?.message ||
-    error?.response?.data?.error ||
-    error?.message ||
-    ""
-
-  if (/E11000 duplicate key error/i.test(rawMessage)) {
-    if (/vehicleNumber_1/i.test(rawMessage) || /vehicleNumber/i.test(rawMessage)) {
-      return "This vehicle number is already registered. Please use a different vehicle number."
-    }
-
-    if (/panNumber_1/i.test(rawMessage) || /panNumber/i.test(rawMessage)) {
-      return "This PAN number is already registered."
-    }
-
-    if (/aadharNumber_1/i.test(rawMessage) || /aadharNumber/i.test(rawMessage)) {
-      return "This Aadhar number is already registered."
-    }
-
-    if (/drivingLicense/i.test(rawMessage)) {
-      return "This driving license number is already registered."
-    }
-
-    return "This account detail is already registered. Please check your information."
-  }
-
-  return rawMessage || "Failed to register. Please try again."
-}
-
+const createEmptyUploadedDocs = () =>
+  DELIVERY_SIGNUP_DOC_TYPES.reduce((acc, docType) => {
+    acc[docType] = null
+    return acc
+  }, {})
 
 export default function SignupStep2() {
   const navigate = useNavigate()
-  const goBack = useDeliveryBackNavigation()
-  const isMobileDevice =
-    typeof navigator !== "undefined" &&
-    /android|iphone|ipad|ipod|mobile/i.test(navigator.userAgent || "")
+  const { handleBack } = useDeliveryOnboardingExitGuard("documents")
+  const initialStoredDocs = loadStoredSignupDocs()
   const fileInputRefs = useRef({
     profilePhoto: null,
     aadharPhoto: null,
     panPhoto: null,
     drivingLicensePhoto: null
   })
-  const [documents, setDocuments] = useState({
-    profilePhoto: null,
-    aadharPhoto: null,
-    panPhoto: null,
-    drivingLicensePhoto: null
-  })
-  const [uploadedDocs, setUploadedDocs] = useState(() => {
-    const saved = sessionStorage.getItem("deliverySignupDocs")
-    if (saved) {
-      try {
-        return sanitizeUploadedDocs(JSON.parse(saved))
-      } catch (e) {
-        debugError("Error parsing saved docs:", e)
-      }
-    }
-    return createEmptyUploadedDocs()
-  })
-  const [activePicker, setActivePicker] = useState(null) // { docType: string, title: string, ref: any }
+  const [documents, setDocuments] = useState(() => restoreSignupDocumentsFromStorage(initialStoredDocs))
+  const [uploadedDocs, setUploadedDocs] = useState(initialStoredDocs)
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [uploading, setUploading] = useState({})
   const [isDummyMode, setIsDummyMode] = useState(false)
@@ -112,58 +44,38 @@ export default function SignupStep2() {
     document.body.scrollTop = 0
   }, [])
 
-  // Save uploaded docs to session storage whenever they change
   useEffect(() => {
-    sessionStorage.setItem("deliverySignupDocs", JSON.stringify(uploadedDocs))
+    saveStoredSignupDocs(uploadedDocs)
   }, [uploadedDocs])
 
-  useEffect(() => {
-    return () => {
-      Object.values(documents).forEach((file) => {
-        if (file instanceof File) {
-          const previewUrl = file.previewUrl || file._previewUrl
-          if (previewUrl) {
-            URL.revokeObjectURL(previewUrl)
-          }
-        }
-      })
-    }
-  }, [documents])
+  const getPreviewSrc = (docType) => uploadedDocs[docType]?.dataUrl || null
 
-  const getPreviewSrc = (docType) => {
-    const uploaded = uploadedDocs[docType]
-    if (typeof uploaded === "string") return uploaded
-    if (uploaded?.url) return uploaded.url
+  const hasUploadedDoc = (docType) => Boolean(getPreviewSrc(docType))
 
-    const localFile = documents[docType]
-    if (localFile instanceof File) {
-      if (!localFile._previewUrl) {
-        localFile._previewUrl = URL.createObjectURL(localFile)
-      }
-      return localFile._previewUrl
-    }
-    return null
-  }
+  const getDocumentFile = (docType) => {
+    if (documents[docType] instanceof File) return documents[docType]
 
-  const handleOpenUploadOptions = (docType) => {
-    fileInputRefs.current[docType]?.click()
+    const restored = restoreSignupDocumentsFromStorage(uploadedDocs)
+    return restored[docType] || null
   }
 
   const handleFileSelect = async (docType, file) => {
     if (!file) return
 
     if (!file.type.startsWith("image/")) {
-      toast.error("Please select an image file")
       return
     }
     if (file.size > 5 * 1024 * 1024) {
-      toast.error("Image size should be less than 5MB")
       return
     }
 
-    setDocuments((prev) => ({ ...prev, [docType]: file }))
-    setUploadedDocs((prev) => ({ ...prev, [docType]: { file: true } }))
-    toast.success(`${docType.replace(/([A-Z])/g, " $1").trim()} selected`)
+    try {
+      const storedDoc = await serializeSignupDocument(file)
+      setDocuments((prev) => ({ ...prev, [docType]: file }))
+      setUploadedDocs((prev) => ({ ...prev, [docType]: storedDoc }))
+    } catch (error) {
+      debugError("Failed to store document preview:", error)
+    }
   }
 
   const handleTakeCameraPhoto = (docType, label) => {
@@ -178,11 +90,11 @@ export default function SignupStep2() {
   }
 
   const handleRemove = (docType) => {
-    setDocuments(prev => ({
+    setDocuments((prev) => ({
       ...prev,
       [docType]: null
     }))
-    setUploadedDocs(prev => ({
+    setUploadedDocs((prev) => ({
       ...prev,
       [docType]: null
     }))
@@ -191,14 +103,18 @@ export default function SignupStep2() {
   const handleSubmit = async (e) => {
     e.preventDefault()
 
-    if (!documents.profilePhoto || !documents.aadharPhoto || !documents.panPhoto || !documents.drivingLicensePhoto) {
-      toast.error("Please upload all required documents")
+    const resolvedDocuments = DELIVERY_SIGNUP_DOC_TYPES.reduce((acc, docType) => {
+      acc[docType] = getDocumentFile(docType)
+      return acc
+    }, {})
+
+    const missingDocument = DELIVERY_SIGNUP_DOC_TYPES.find((docType) => !resolvedDocuments[docType])
+    if (missingDocument) {
       return
     }
 
     const raw = sessionStorage.getItem("deliverySignupDetails")
     if (!raw) {
-      toast.error("Session expired. Please start from Create Account.")
       navigate("/food/delivery/signup", { replace: true })
       return
     }
@@ -207,7 +123,6 @@ export default function SignupStep2() {
     try {
       details = JSON.parse(raw)
     } catch {
-      toast.error("Invalid session. Please start from Create Account.")
       navigate("/food/delivery/signup", { replace: true })
       return
     }
@@ -230,39 +145,38 @@ export default function SignupStep2() {
     }
     if (details.panNumber) formData.append("panNumber", details.panNumber)
     if (details.aadharNumber) formData.append("aadharNumber", details.aadharNumber)
-    formData.append("profilePhoto", documents.profilePhoto)
-    formData.append("aadharPhoto", documents.aadharPhoto)
-    formData.append("panPhoto", documents.panPhoto)
-    formData.append("drivingLicensePhoto", documents.drivingLicensePhoto)
+    formData.append("profilePhoto", resolvedDocuments.profilePhoto)
+    formData.append("aadharPhoto", resolvedDocuments.aadharPhoto)
+    formData.append("panPhoto", resolvedDocuments.panPhoto)
+    formData.append("drivingLicensePhoto", resolvedDocuments.drivingLicensePhoto)
 
-    // Try to get FCM token before registering
-    let fcmToken = null;
-    let platform = "web";
+    let fcmToken = null
+    let platform = "web"
     try {
       if (typeof window !== "undefined") {
         if (window.flutter_inappwebview) {
-          platform = "mobile";
-          const handlerNames = ["getFcmToken", "getFCMToken", "getPushToken", "getFirebaseToken"];
+          platform = "mobile"
+          const handlerNames = ["getFcmToken", "getFCMToken", "getPushToken", "getFirebaseToken"]
           for (const handlerName of handlerNames) {
             try {
-              const t = await window.flutter_inappwebview.callHandler(handlerName, { module: "delivery" });
-              if (t && typeof t === "string" && t.length > 20) {
-                fcmToken = t.trim();
-                break;
+              const token = await window.flutter_inappwebview.callHandler(handlerName, { module: "delivery" })
+              if (token && typeof token === "string" && token.length > 20) {
+                fcmToken = token.trim()
+                break
               }
-            } catch (e) {}
+            } catch (error) {}
           }
         } else {
-          fcmToken = localStorage.getItem("fcm_web_registered_token_delivery") || null;
+          fcmToken = localStorage.getItem("fcm_web_registered_token_delivery") || null
         }
       }
-    } catch (e) {
-      debugWarn("Failed to get FCM token during signup", e);
+    } catch (error) {
+      debugWarn("Failed to get FCM token during signup", error)
     }
 
     if (fcmToken) {
-      formData.append("fcmToken", fcmToken);
-      formData.append("platform", platform);
+      formData.append("fcmToken", fcmToken)
+      formData.append("platform", platform)
     }
 
     const hasDeliveryAuth =
@@ -278,8 +192,6 @@ export default function SignupStep2() {
     setIsSubmitting(true)
 
     try {
-      // New partners must use POST /register (no auth). completeProfile is only for
-      // an already-authenticated delivery account updating an existing profile.
       const response = shouldRegister
         ? await deliveryAPI.register(formData)
         : await deliveryAPI.completeProfile(formData)
@@ -298,16 +210,14 @@ export default function SignupStep2() {
       }
     } catch (error) {
       debugError("Error submitting registration:", error)
-      const message = getFriendlyRegistrationError(error)
-      toast.error(message)
     } finally {
       setIsSubmitting(false)
     }
   }
 
   const DocumentUpload = ({ docType, label, required = true }) => {
-    const uploaded = uploadedDocs[docType]
     const isUploading = uploading[docType]
+    const uploaded = hasUploadedDoc(docType)
 
     return (
       <div className="bg-white rounded-lg p-4 border border-gray-200">
@@ -397,12 +307,13 @@ export default function SignupStep2() {
     )
   }
 
+  const allDocumentsUploaded = DELIVERY_SIGNUP_DOC_TYPES.every((docType) => hasUploadedDoc(docType))
+
   return (
     <div className="min-h-screen bg-gray-100">
-      {/* Header */}
       <div className="bg-white px-4 py-3 flex items-center gap-4 border-b border-gray-200">
         <button
-          onClick={goBack}
+          onClick={handleBack}
           className="p-2 hover:bg-gray-100 rounded-full transition-colors"
         >
           <ArrowLeft className="w-5 h-5" />
@@ -410,7 +321,6 @@ export default function SignupStep2() {
         <h1 className="text-lg font-medium">Upload Documents</h1>
       </div>
 
-      {/* Content */}
       <div className="px-4 py-6">
         <div className="mb-6 flex justify-between items-start">
           <div>
@@ -419,30 +329,29 @@ export default function SignupStep2() {
           </div>
           <button
             type="button"
-            onClick={() => {
-              const base64Png = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==";
-              const binaryString = atob(base64Png);
-              const bytes = new Uint8Array(binaryString.length);
-              for (let i = 0; i < binaryString.length; i++) bytes[i] = binaryString.charCodeAt(i);
-              const dummyBlob = new Blob([bytes], { type: "image/png" });
-              const dummyFile = new File([dummyBlob], "dummy_doc.png", { type: "image/png" });
-              
-              setDocuments({
-                profilePhoto: dummyFile,
-                aadharPhoto: dummyFile,
-                panPhoto: dummyFile,
-                drivingLicensePhoto: dummyFile
-              });
-              setUploadedDocs({
-                profilePhoto: { file: true },
-                aadharPhoto: { file: true },
-                panPhoto: { file: true },
-                drivingLicensePhoto: { file: true }
-              });
-              setIsDummyMode(true);
-              sessionStorage.setItem("deliveryNeedsRegistration", "true");
-              
-              toast.success("Dummy documents added!");
+            onClick={async () => {
+              const base64Png = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg=="
+              const binaryString = atob(base64Png)
+              const bytes = new Uint8Array(binaryString.length)
+              for (let index = 0; index < binaryString.length; index += 1) {
+                bytes[index] = binaryString.charCodeAt(index)
+              }
+              const dummyBlob = new Blob([bytes], { type: "image/png" })
+              const dummyFile = new File([dummyBlob], "dummy_doc.png", { type: "image/png" })
+              const storedDoc = await serializeSignupDocument(dummyFile)
+              const nextDocs = DELIVERY_SIGNUP_DOC_TYPES.reduce((acc, docType) => {
+                acc[docType] = storedDoc
+                return acc
+              }, {})
+              const nextFiles = DELIVERY_SIGNUP_DOC_TYPES.reduce((acc, docType) => {
+                acc[docType] = dummyFile
+                return acc
+              }, {})
+
+              setDocuments(nextFiles)
+              setUploadedDocs(nextDocs)
+              setIsDummyMode(true)
+              sessionStorage.setItem("deliveryNeedsRegistration", "true")
             }}
             className="bg-orange-50 text-orange-600 border border-orange-200 px-3 py-1.5 rounded-md text-[10px] font-bold uppercase tracking-wider hover:bg-orange-100 transition-colors"
           >
@@ -456,21 +365,18 @@ export default function SignupStep2() {
           <DocumentUpload docType="panPhoto" label="PAN Card Photo" required={true} />
           <DocumentUpload docType="drivingLicensePhoto" label="Driving License Photo" required={true} />
 
-          {/* Submit Button */}
           <button
             type="submit"
-            disabled={isSubmitting || !uploadedDocs.profilePhoto || !uploadedDocs.aadharPhoto || !uploadedDocs.panPhoto || !uploadedDocs.drivingLicensePhoto}
-            className={`w-full py-4 rounded-lg font-bold text-white text-base transition-colors mt-6 ${isSubmitting || !uploadedDocs.profilePhoto || !uploadedDocs.aadharPhoto || !uploadedDocs.panPhoto || !uploadedDocs.drivingLicensePhoto
-              ? "bg-gray-400 cursor-not-allowed"
-              : "bg-[#00B761] hover:bg-[#00A055]"
+            disabled={isSubmitting || !allDocumentsUploaded}
+            className={`w-full py-4 rounded-lg font-bold text-white text-base transition-all mt-6 active:scale-[0.98] ${isSubmitting || !allDocumentsUploaded
+              ? "bg-gray-400 cursor-not-allowed shadow-none"
+              : "bg-gradient-to-r from-[#0E4B9C] to-[#021024] hover:from-[#1157b5] hover:to-[#041630] shadow-[0_8px_20px_rgba(14,75,156,0.3)]"
               }`}
           >
             {isSubmitting ? "Submitting..." : "Complete Signup"}
           </button>
         </form>
       </div>
-
     </div>
   )
 }
-

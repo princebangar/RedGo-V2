@@ -1,8 +1,9 @@
-import { useState, useEffect } from "react"
+import { useState, useEffect, useCallback } from "react"
 import { useNavigate } from "react-router-dom"
 import { ArrowLeft } from "lucide-react"
-import { toast } from "sonner"
-import useDeliveryBackNavigation from "../../hooks/useDeliveryBackNavigation"
+import useDeliveryOnboardingExitGuard from "../../hooks/useDeliveryOnboardingExitGuard"
+import OnboardingExitModal from "@/shared/components/OnboardingExitModal"
+import { hasDeliveryStep1Progress } from "../../utils/deliveryOnboardingStorage"
 import { EMAIL_REGEX } from "@/shared/utils/emailValidation"
 const debugLog = (...args) => {}
 const debugWarn = (...args) => {}
@@ -11,7 +12,6 @@ const debugError = (...args) => {}
 
 export default function SignupStep1() {
   const navigate = useNavigate()
-  const goBack = useDeliveryBackNavigation()
   const [formData, setFormData] = useState(() => {
     const saved = sessionStorage.getItem("deliverySignupDetails")
     const base = {
@@ -41,6 +41,16 @@ export default function SignupStep1() {
   })
   const [errors, setErrors] = useState({})
   const [isSubmitting, setIsSubmitting] = useState(false)
+
+  const hasUnsavedProgress = useCallback(
+    () => hasDeliveryStep1Progress(formData),
+    [formData],
+  )
+
+  const { showExitModal, handleBack, handleStay, handleExit } = useDeliveryOnboardingExitGuard(
+    "details",
+    hasUnsavedProgress,
+  )
 
   const sanitizeLocationValue = (value) =>
     value.replace(/[^A-Za-z\s.-]/g, "").replace(/\s{2,}/g, " ")
@@ -185,7 +195,6 @@ export default function SignupStep1() {
     e.preventDefault()
 
     if (!validate()) {
-      toast.error("Please fill all required fields correctly")
       return
     }
 
@@ -209,11 +218,9 @@ export default function SignupStep1() {
         aadharNumber: formData.aadharNumber.replace(/\s/g, "")
       }
       sessionStorage.setItem("deliverySignupDetails", JSON.stringify(details))
-      toast.success("Details saved")
       navigate("/food/delivery/signup/documents")
     } catch (error) {
       debugError("Error saving details:", error)
-      toast.error("Failed to save. Please try again.")
     } finally {
       setIsSubmitting(false)
     }
@@ -224,7 +231,7 @@ export default function SignupStep1() {
       {/* Header */}
       <div className="bg-white px-4 py-3 flex items-center gap-4 border-b border-gray-200">
         <button
-          onClick={goBack}
+          onClick={handleBack}
           className="p-2 hover:bg-gray-100 rounded-full transition-colors"
         >
           <ArrowLeft className="w-5 h-5" />
@@ -278,7 +285,6 @@ export default function SignupStep1() {
                   phone: loginPhone || existingDetails.phone || "",
                 }),
               )
-              toast.success("Dummy data filled!")
             }}
             className="bg-orange-50 text-orange-600 border border-orange-200 px-3 py-1.5 rounded-md text-[10px] font-bold uppercase tracking-wider hover:bg-orange-100 transition-colors"
           >
@@ -487,15 +493,22 @@ export default function SignupStep1() {
           <button
             type="submit"
             disabled={isSubmitting || !formData.email || !isValidEmailValue(formData.email) || Object.values(errors).some(error => error !== "")}
-            className={`w-full py-4 rounded-lg font-bold text-white text-base transition-colors mt-6 ${isSubmitting || !formData.email || !isValidEmailValue(formData.email) || Object.values(errors).some(error => error !== "")
-              ? "bg-gray-400 cursor-not-allowed"
-              : "bg-[#00B761] hover:bg-[#00A055]"
+            className={`w-full py-4 rounded-lg font-bold text-white text-base transition-all mt-6 active:scale-[0.98] ${isSubmitting || !formData.email || !isValidEmailValue(formData.email) || Object.values(errors).some(error => error !== "")
+              ? "bg-gray-400 cursor-not-allowed shadow-none"
+              : "bg-gradient-to-r from-[#0E4B9C] to-[#021024] hover:from-[#1157b5] hover:to-[#041630] shadow-[0_8px_20px_rgba(14,75,156,0.3)]"
               }`}
           >
             {isSubmitting ? "Saving..." : "Continue"}
           </button>
         </form>
       </div>
+
+      <OnboardingExitModal
+        open={showExitModal}
+        onStay={handleStay}
+        onExit={handleExit}
+        theme="delivery"
+      />
     </div>
   )
 }

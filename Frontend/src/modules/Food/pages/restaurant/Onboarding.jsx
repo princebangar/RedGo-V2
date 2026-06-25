@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react"
+import { useCallback, useEffect, useRef, useState } from "react"
 import { motion, AnimatePresence } from "framer-motion"
 import { useNavigate, useSearchParams } from "react-router-dom"
 import { Input } from "@food/components/ui/input"
@@ -18,7 +18,7 @@ import { restaurantAPI, zoneAPI, uploadAPI, api } from "@food/api"
 import { MobileTimePicker } from "@mui/x-date-pickers/MobileTimePicker"
 import { LocalizationProvider } from "@mui/x-date-pickers/LocalizationProvider"
 import { AdapterDateFns } from "@mui/x-date-pickers/AdapterDateFns"
-import { determineStepToShow, clearOnboardingFromLocalStorage, clearAllFilesFromDB } from "@food/utils/onboardingUtils"
+import { determineStepToShow, clearOnboardingFromLocalStorage, clearAllFilesFromDB, hasRestaurantStep1Progress } from "@food/utils/onboardingUtils"
 import { toast } from "sonner"
 import { useCompanyName } from "@food/hooks/useCompanyName"
 import { getGoogleMapsApiKey } from "@food/utils/googleMapsApiKey"
@@ -26,6 +26,8 @@ import { clearModuleAuth, clearAuthData, isModuleAuthenticated, getModuleToken }
 import { ImageSourcePicker } from "@food/components/ImageSourcePicker"
 import { EMAIL_REGEX } from "@/shared/utils/emailValidation"
 import { OnboardingSkeleton } from "@food/components/ui/loading-skeletons"
+import OnboardingExitModal from "@/shared/components/OnboardingExitModal"
+import useOnboardingExitGuard from "@/shared/hooks/useOnboardingExitGuard"
 const debugLog = (...args) => {}
 const debugWarn = (...args) => {}
 const debugError = (...args) => {}
@@ -516,62 +518,33 @@ export default function RestaurantOnboarding() {
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState("")
   const [isLoggingOut, setIsLoggingOut] = useState(false)
-  const [showExitModal, setShowExitModal] = useState(false)
-  const [exitTrigger, setExitTrigger] = useState("back") // "cross" or "back"
 
-  const handleExitAnyway = async () => {
-    try {
-      restaurantAPI.logout().catch(() => {})
-    } catch (e) {}
-
-    try {
-      clearOnboardingFromLocalStorage()
-      clearOnboardingFileCache()
-      await clearAllFilesFromDB()
-      
-      clearModuleAuth("restaurant")
-      clearAuthData()
-      window.dispatchEvent(new Event("restaurantAuthChanged"))
-    } catch (e) {
-      debugError("Error clearing onboarding data on exit:", e)
-    }
+  const handleExitAnyway = useCallback(() => {
     navigate("/food/restaurant/login", { replace: true })
-  }
 
-  useEffect(() => {
-    if (showExitModal) {
-      document.body.style.overflow = "hidden"
-    } else {
-      document.body.style.overflow = "unset"
-    }
-    return () => {
-      document.body.style.overflow = "unset"
-    }
-  }, [showExitModal])
+    void (async () => {
+      try {
+        restaurantAPI.logout().catch(() => {})
+      } catch (e) {}
 
-  useEffect(() => {
-    window.history.pushState(null, null, window.location.href);
+      try {
+        clearOnboardingFromLocalStorage()
+        clearOnboardingFileCache()
+        await clearAllFilesFromDB()
 
-    const handlePopState = () => {
-      window.history.pushState(null, null, window.location.href);
-
-      if (step === 3) {
-        setStep(2);
-        window.scrollTo({ top: 0, behavior: "instant" });
-      } else if (step === 2) {
-        setStep(1);
-        window.scrollTo({ top: 0, behavior: "instant" });
-      } else if (step === 1) {
-        setExitTrigger("back");
-        setShowExitModal(true);
+        clearModuleAuth("restaurant")
+        clearAuthData()
+        window.dispatchEvent(new Event("restaurantAuthChanged"))
+      } catch (e) {
+        debugError("Error clearing onboarding data on exit:", e)
       }
-    };
+    })()
+  }, [navigate])
 
-    window.addEventListener("popstate", handlePopState);
-    return () => {
-      window.removeEventListener("popstate", handlePopState);
-    };
-  }, [step]);
+  const goToPreviousOnboardingStep = useCallback(() => {
+    setStep((currentStep) => Math.max(1, currentStep - 1))
+    window.scrollTo({ top: 0, behavior: "instant" })
+  }, [])
 
   const handleLogout = async () => {
     if (isLoggingOut) return
@@ -656,6 +629,24 @@ export default function RestaurantOnboarding() {
     ifscCode: "",
     accountHolderName: "",
     accountType: "",
+  })
+
+  const hasStep1UnsavedProgress = useCallback(
+    () => hasRestaurantStep1Progress(step1),
+    [step1],
+  )
+
+  const {
+    showExitModal,
+    handleBack,
+    handleStay,
+    handleExit,
+    requestExit,
+  } = useOnboardingExitGuard({
+    isFirstStep: step === 1,
+    onPreviousStep: goToPreviousOnboardingStep,
+    onExit: handleExitAnyway,
+    hasUnsavedProgress: hasStep1UnsavedProgress,
   })
 
   const previewUrlCacheRef = useRef(new Map())
@@ -802,14 +793,13 @@ export default function RestaurantOnboarding() {
       await restaurantAPI.updateProfile({
         menuImages: toPersistedMenuImagesPayload(nextMenuImages),
       })
-      toast.success("Menu image removed")
     } catch (error) {
       setStep2((prev) => ({
         ...prev,
         menuImages: currentMenuImages,
       }))
       await persistMenuImagesToDB(currentMenuImages)
-      toast.error(error?.response?.data?.message || "Failed to remove menu image")
+      setError(error?.response?.data?.message || "Failed to remove menu image")
     }
   }
 
@@ -826,13 +816,12 @@ export default function RestaurantOnboarding() {
 
     try {
       await restaurantAPI.updateProfile({ profileImage: "" })
-      toast.success("Profile image removed")
     } catch (error) {
       setStep2((prev) => ({
         ...prev,
         profileImage: currentProfileImage,
       }))
-      toast.error(error?.response?.data?.message || "Failed to remove profile image")
+      setError(error?.response?.data?.message || "Failed to remove profile image")
     }
   }
 
@@ -1383,10 +1372,7 @@ export default function RestaurantOnboarding() {
     }
 
     if (validationErrors.length > 0) {
-      // Surface only the first error so validation proceeds top-to-bottom.
-      toast.error(validationErrors[0], {
-        duration: 4000,
-      })
+      setError(validationErrors[0])
       debugLog('? Validation failed:', validationErrors)
       return
     }
@@ -1470,7 +1456,7 @@ export default function RestaurantOnboarding() {
           clearOnboardingFileCache()
           await clearAllFilesFromDB()
 
-          toast.success("Profile updated successfully", { duration: 4000 })
+          toast.success("Registration submitted. Awaiting admin approval.", { duration: 4000 })
           navigate("/food/restaurant/pending-verification", { replace: true })
           return
         }
@@ -1612,7 +1598,6 @@ export default function RestaurantOnboarding() {
       },
       zoneId: zones[0]?._id || zones[0]?.id || prev.zoneId
     }));
-    toast.success("Step 1 data filled!");
   };
 
   const fillStep2Dummy = (e) => {
@@ -1633,7 +1618,6 @@ export default function RestaurantOnboarding() {
       menuImages: [dummyFile],
       profileImage: dummyFile
     }));
-    toast.success("Step 2 data (including dummy images) filled!");
   };
 
   const fillStep3Dummy = (e) => {
@@ -1664,7 +1648,6 @@ export default function RestaurantOnboarding() {
       accountHolderName: "Prince Bangar",
       accountType: "Saving"
     }));
-    toast.success("Step 3 data (including dummy documents) filled!");
   };
 
   const renderStep1 = () => (
@@ -2458,11 +2441,11 @@ export default function RestaurantOnboarding() {
                 const closingMinutes = timeStringToMinutes(step2.closingTime)
                 if (openingMinutes !== null && closingMinutes !== null) {
                   if (openingMinutes === closingMinutes) {
-                    toast.error("Opening time and closing time cannot be same")
+                    setError("Opening time and closing time cannot be same")
                     return
                   }
                   if (closingMinutes < openingMinutes) {
-                    toast.error("Closing time cannot be less than opening time")
+                    setError("Closing time cannot be less than opening time")
                     return
                   }
                 }
@@ -2478,11 +2461,11 @@ export default function RestaurantOnboarding() {
                 const closingMinutes = timeStringToMinutes(nextClosing)
                 if (openingMinutes !== null && closingMinutes !== null) {
                   if (openingMinutes === closingMinutes) {
-                    toast.error("Opening time and closing time cannot be same")
+                    setError("Opening time and closing time cannot be same")
                     return
                   }
                   if (closingMinutes < openingMinutes) {
-                    toast.error("Closing time cannot be less than opening time")
+                    setError("Closing time cannot be less than opening time")
                     return
                   }
                 }
@@ -2935,7 +2918,7 @@ export default function RestaurantOnboarding() {
             <div className="flex items-center gap-3">
               {step === 1 ? (
                 <button
-                  onClick={() => { setExitTrigger("cross"); setShowExitModal(true) }}
+                  onClick={requestExit}
                   className="w-9 h-9 flex items-center justify-center bg-gray-50 hover:bg-gray-100 border border-gray-200/80 rounded-full shadow-sm transition-all duration-200 active:scale-90 hover:shadow"
                   aria-label="Close onboarding"
                 >
@@ -2943,10 +2926,7 @@ export default function RestaurantOnboarding() {
                 </button>
               ) : (
                 <button
-                  onClick={() => {
-                    setStep((s) => Math.max(1, s - 1))
-                    window.scrollTo({ top: 0, behavior: "instant" })
-                  }}
+                  onClick={handleBack}
                   className="w-9 h-9 flex items-center justify-center bg-gray-50 hover:bg-gray-100 border border-gray-200/80 rounded-full shadow-sm transition-all duration-200 active:scale-90 hover:shadow"
                   aria-label="Go back"
                 >
@@ -3013,75 +2993,12 @@ export default function RestaurantOnboarding() {
           galleryInputRef={sourcePicker.fallbackInputRef}
         />
 
-        <AnimatePresence>
-          {showExitModal && (
-            <motion.div
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0, transition: { duration: 0 } }}
-              transition={{ duration: 0.2 }}
-              className="fixed inset-0 z-[9999] flex items-center justify-center p-4"
-            >
-              <motion.div
-                initial={{ opacity: 0, backdropFilter: "blur(0px)" }}
-                animate={{ opacity: 1, backdropFilter: "blur(4px)" }}
-                exit={{ opacity: 0, backdropFilter: "blur(0px)", transition: { duration: 0 } }}
-                transition={{ duration: 0.15, ease: "easeOut" }}
-                onClick={() => setShowExitModal(false)}
-                className="absolute inset-0 bg-black/50"
-              />
-              <motion.div
-                custom={exitTrigger}
-                variants={{
-                  initial: (trigger) => trigger === "cross"
-                    ? { opacity: 0, scale: 0.05, x: "-40vw", y: "-45vh" }
-                    : { opacity: 0, scale: 0.94, y: 16 },
-                  animate: { opacity: 1, scale: 1, x: 0, y: 0 },
-                  exit: { opacity: 0, transition: { duration: 0 } },
-                }}
-                initial="initial"
-                animate="animate"
-                exit="exit"
-                transition={
-                  exitTrigger === "cross"
-                    ? { duration: 0.16, ease: [0.16, 1, 0.3, 1] }
-                    : { duration: 0.14, ease: [0.16, 1, 0.3, 1] }
-                }
-                className="w-full max-w-[320px] bg-white dark:bg-[#1a1a1a] rounded-3xl shadow-2xl overflow-hidden border border-gray-100 dark:border-gray-800 relative z-10"
-                onClick={(e) => e.stopPropagation()}
-              >
-                {/* Top Half: brand gradient */}
-                <div className="bg-gradient-to-br from-[#B80B3D] to-[#66001D] p-6 text-center relative">
-                  <div className="absolute top-[-20%] right-[-10%] w-28 h-28 bg-white/10 rounded-full blur-2xl pointer-events-none" />
-                  
-                  <div className="w-16 h-16 bg-white/20 backdrop-blur-md rounded-full flex items-center justify-center mx-auto mb-3 border border-white/30">
-                    <LogOut className="w-8 h-8 text-white" />
-                  </div>
-                  <h3 className="text-xl font-bold text-white mb-1.5">Exit Onboarding?</h3>
-                  <p className="text-white/80 text-[13px] leading-relaxed">
-                    Are you sure? All filled restaurant details will be removed if you leave this page.
-                  </p>
-                </div>
-
-                {/* Bottom Half: white bg with green/red buttons */}
-                <div className="p-6 pt-5 space-y-3 bg-white dark:bg-[#1a1a1a]">
-                  <button
-                    onClick={() => setShowExitModal(false)}
-                    className="w-full h-12 bg-green-700 hover:bg-green-800 text-white font-semibold text-[15px] tracking-wide rounded-2xl shadow-lg shadow-green-700/20 transition-all hover:scale-[1.02] active:scale-[0.98]"
-                  >
-                    Stay Here
-                  </button>
-                  <button
-                    onClick={handleExitAnyway}
-                    className="w-full h-12 bg-red-600 hover:bg-red-700 text-white font-semibold text-[15px] tracking-wide rounded-2xl shadow-lg shadow-red-600/20 transition-all hover:scale-[1.02] active:scale-[0.98]"
-                  >
-                    Exit Anyway
-                  </button>
-                </div>
-              </motion.div>
-            </motion.div>
-          )}
-        </AnimatePresence>
+        <OnboardingExitModal
+          open={showExitModal}
+          onStay={handleStay}
+          onExit={handleExit}
+          theme="restaurant"
+        />
 
         {error && (
           <div className="px-4 sm:px-6 pb-2 text-xs text-[#B80B3D]">
@@ -3089,12 +3006,22 @@ export default function RestaurantOnboarding() {
           </div>
         )}
 
-        <footer className={`px-4 sm:px-6 py-3 bg-white ${keyboardInset ? "hidden" : ""}`}>
-          <div className="flex justify-end items-center">
+        <footer className={`px-4 sm:px-6 py-3 bg-white border-t border-slate-100 ${keyboardInset ? "hidden" : ""}`}>
+          <div className={`flex items-center w-full ${step > 1 ? "gap-3" : ""}`}>
+            {step > 1 && (
+              <Button
+                type="button"
+                onClick={handleBack}
+                disabled={saving}
+                className="flex-1 text-base font-bold h-11 bg-gradient-to-br from-[#B80B3D] to-[#66001D] hover:from-[#c90f49] hover:to-[#7a0024] text-white border-0 shadow-md shadow-[#B80B3D]/20 transition-all active:scale-[0.98]"
+              >
+                Back
+              </Button>
+            )}
             <Button
               onClick={handleNext}
               disabled={saving || (step === 3 && !isEditing)}
-              className={`text-sm bg-gradient-to-br from-[#B80B3D] to-[#66001D] text-white px-6 ${(step === 3 && !isEditing) ? "opacity-50 cursor-not-allowed" : ""}`}
+              className={`text-base font-bold h-11 bg-gradient-to-br from-[#B80B3D] to-[#66001D] hover:from-[#c90f49] hover:to-[#7a0024] text-white px-6 shadow-md shadow-[#B80B3D]/20 transition-all active:scale-[0.98] ${step === 1 ? "w-full" : "flex-1"} ${(step === 3 && !isEditing) ? "opacity-50 cursor-not-allowed" : ""}`}
             >
               {step === 3 ? (saving ? "Saving..." : "Finish") : saving ? "Saving..." : "Continue"}
             </Button>
