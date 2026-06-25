@@ -2,7 +2,7 @@ import { Link, useLocation as useRouterLocation } from "react-router-dom"
 import { useState, useEffect } from "react"
 import { MapPin, ShoppingCart, Trophy } from "lucide-react"
 import { Button } from "@food/components/ui/button"
-import { Avatar, AvatarFallback } from "@food/components/ui/avatar"
+import { Avatar, AvatarFallback, AvatarImage } from "@food/components/ui/avatar"
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -187,15 +187,13 @@ export default function Navbar() {
                   }}
                 >
                   <Avatar className="h-10 w-10">
-                    {userProfile?.profileImage && (
-                      <AvatarImage 
-                        src={userProfile.profileImage} 
-                        alt="Profile" 
-                        className="object-cover"
-                      />
-                    )}
+                    <AvatarImage 
+                      src={userProfile?.profileImage || "/profile_avatar.png"} 
+                      alt="Profile" 
+                      className="object-cover"
+                    />
                     <AvatarFallback className="bg-primary text-white text-xs">
-                      {userProfile?.firstName?.[0]?.toUpperCase() || userProfile?.name?.[0]?.toUpperCase() || 'U'}
+                      <img src="/profile_avatar.png" alt="Profile" className="object-cover w-full h-full" />
                     </AvatarFallback>
                   </Avatar>
                 </Button>

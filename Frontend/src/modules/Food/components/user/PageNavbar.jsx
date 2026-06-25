@@ -1147,12 +1147,12 @@ export default function PageNavbar({
             >
               <Avatar className="h-9 w-9 rounded-full border border-white transition-all active:scale-95 shadow-none overflow-hidden cursor-pointer transform-gpu translate-z-0">
                 <AvatarImage 
-                  src={userProfile?.profileImage?.url || userProfile?.profileImage} 
+                  src={userProfile?.profileImage?.url || userProfile?.profileImage || "/profile_avatar.png"} 
                   alt="Profile" 
                   className="object-cover"
                 />
                 <AvatarFallback className="bg-gradient-to-br from-[#DC2626] to-[#991B1B] text-white font-bold text-sm uppercase">
-                  {(userProfile?.name || "U").charAt(0)}
+                  <img src="/profile_avatar.png" alt="Profile" className="object-cover w-full h-full" />
                 </AvatarFallback>
               </Avatar>
             </Link>

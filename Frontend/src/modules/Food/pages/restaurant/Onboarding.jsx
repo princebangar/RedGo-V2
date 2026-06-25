@@ -1373,6 +1373,7 @@ export default function RestaurantOnboarding() {
 
     if (validationErrors.length > 0) {
       setError(validationErrors[0])
+      toast.error(validationErrors[0])
       debugLog('? Validation failed:', validationErrors)
       return
     }
@@ -1562,6 +1563,7 @@ export default function RestaurantOnboarding() {
         err?.message ||
         "Failed to save onboarding data"
       setError(msg)
+      toast.error(msg)
     } finally {
       setSaving(false)
     }

@@ -15,7 +15,7 @@ import {
   saveSignupDocumentToDB,
 } from "../../utils/deliveryOnboardingStorage"
 
-const debugError = (...args) => {}
+const debugError = (...args) => { }
 
 const createEmptyPreviewState = () =>
   DELIVERY_SIGNUP_DOC_TYPES.reduce((acc, docType) => {
@@ -220,7 +220,7 @@ export default function SignupStep2() {
                 fcmToken = token.trim()
                 break
               }
-            } catch (error) {}
+            } catch (error) { }
           }
         } else {
           fcmToken = localStorage.getItem("fcm_web_registered_token_delivery") || null
@@ -267,6 +267,8 @@ export default function SignupStep2() {
       }
     } catch (error) {
       debugError("Error submitting registration:", error)
+      const errorMsg = error?.response?.data?.message || error?.response?.data?.error || error?.message || "Registration failed. Please try again."
+      toast.error(errorMsg)
     } finally {
       setIsSubmitting(false)
     }
@@ -296,8 +298,11 @@ export default function SignupStep2() {
             >
               <X className="w-4 h-4" />
             </button>
-            <div className="absolute bottom-2 left-2 bg-green-500 text-white px-3 py-1 rounded-full flex items-center gap-1 text-sm">
-              <Check className="w-4 h-4" />
+            <div
+              className="absolute bottom-2 left-2 text-white px-2.5 py-1 rounded-full flex items-center gap-1 text-xs font-semibold shadow-md"
+              style={{ backgroundColor: "#00B761" }}
+            >
+              <Check className="w-3.5 h-3.5" />
               <span>Uploaded</span>
             </div>
           </div>
@@ -306,7 +311,7 @@ export default function SignupStep2() {
             <div className="flex flex-col items-center justify-center pt-5 pb-3">
               {isUploading ? (
                 <>
-                  <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-green-500 mb-2"></div>
+                  <div className="animate-spin rounded-full h-8 w-8 border-2 border-transparent mb-2" style={{ borderBottomColor: "#00B761" }}></div>
                   <p className="text-sm text-gray-500">Uploading...</p>
                 </>
               ) : (

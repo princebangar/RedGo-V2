@@ -270,7 +270,9 @@ export default function EditProfile() {
     let normalizedValue = value
     let errorMessage = ""
 
-    if (field === "mobile") {
+    if (field === "name") {
+      normalizedValue = String(value || "").replace(/[^a-zA-Z\s]/g, "")
+    } else if (field === "mobile") {
       normalizedValue = String(value || "").replace(/\D/g, "").slice(0, 10)
       errorMessage = validateMobile(normalizedValue)
     } else if (field === "email") {
@@ -503,12 +505,11 @@ export default function EditProfile() {
                     className="w-full h-full object-cover rounded-full"
                   />
                 ) : (
-                  <div
-                    className="flex h-full w-full items-center justify-center rounded-full text-white text-3xl font-semibold"
-                    style={{ backgroundColor: getAvatarColor(formData.name || 'User') }}
-                  >
-                    {avatarInitial}
-                  </div>
+                  <img
+                    src="/profile_avatar.png"
+                    alt={formData.name || 'User'}
+                    className="w-full h-full object-cover rounded-full"
+                  />
                 )}
               </Avatar>
               {(imagePreview && typeof imagePreview === "string" && imagePreview.trim() !== "" && imagePreview !== "null" && imagePreview !== "undefined") ? (

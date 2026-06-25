@@ -611,15 +611,13 @@ export default function Dining() {
                 className="h-9 w-9 relative flex items-center justify-center rounded-full border border-white shadow-none cursor-pointer active:scale-95 transition-all overflow-hidden transform-gpu translate-z-0"
               >
                 <Avatar className="h-full w-full bg-[#FFF5E6]">
-                  {userProfile?.profileImage && (
-                    <AvatarImage 
-                      src={userProfile.profileImage} 
-                      alt="Profile" 
-                      className="object-cover"
-                    />
-                  )}
+                  <AvatarImage 
+                    src={userProfile?.profileImage || "/profile_avatar.png"} 
+                    alt="Profile" 
+                    className="object-cover"
+                  />
                   <AvatarFallback className="bg-[#FFF5E6] text-[20px] font-black text-[#DC2626] leading-none tracking-tighter antialiased">
-                    {initials || 'U'}
+                    <img src="/profile_avatar.png" alt="Profile" className="object-cover w-full h-full" />
                   </AvatarFallback>
                 </Avatar>
               </Link>

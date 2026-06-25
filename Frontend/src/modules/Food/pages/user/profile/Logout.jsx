@@ -75,6 +75,7 @@ export default function Logout() {
 
       // Clear sessionStorage
       sessionStorage.removeItem("userAuthData")
+      sessionStorage.removeItem("user_auth_session_data")
 
       // Dispatch auth change event to notify other components
       window.dispatchEvent(new Event("userAuthChanged"))
@@ -92,6 +93,7 @@ export default function Logout() {
       localStorage.removeItem("cart")
       USER_SESSION_PREFERENCE_KEYS.forEach((key) => localStorage.removeItem(key))
       sessionStorage.removeItem("userAuthData")
+      sessionStorage.removeItem("user_auth_session_data")
       window.dispatchEvent(new Event("userAuthChanged"))
 
       setError("An error occurred during logout, but you have been signed out locally.")

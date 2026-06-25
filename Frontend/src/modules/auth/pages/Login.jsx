@@ -222,17 +222,13 @@ export default function UnifiedOTPFastLogin() {
     setBlockTimer(0) // Clear block timer when changing number
     setOtpError("") // Clear error
     setOtp("") // Clear inputs
-    // Small delay for smooth transition so the background doesn't flicker while modal is closing
-    setTimeout(() => {
-      if (step === 2) {
-        // This naturally triggers the popstate listener which sets step back to 1
-        window.history.back()
-      } else {
-        setStep(1)
-        setOtp("")
-        setResendTimer(0)
-      }
-    }, 150)
+    setStep(1)
+    setResendTimer(0)
+
+    if (step === 2) {
+      // This naturally triggers the popstate listener which pops the navigation state
+      window.history.back()
+    }
   }
 
   const handleVerifyOTP = async (e, customOtp = null) => {
@@ -833,7 +829,10 @@ export default function UnifiedOTPFastLogin() {
                 <Input
                   id="name"
                   value={newName}
-                  onChange={(e) => setNewName(e.target.value)}
+                  onChange={(e) => {
+                    const filteredValue = e.target.value.replace(/[^a-zA-Z\s]/g, "");
+                    setNewName(filteredValue);
+                  }}
                   placeholder="Enter your name"
                   className="pl-4 h-14 bg-gray-50 dark:bg-gray-800 border-gray-100 dark:border-gray-700 rounded-2xl focus:ring-2 focus:ring-[#B80B3D] transition-all group-hover:border-[#B80B3D]/30"
                   autoFocus

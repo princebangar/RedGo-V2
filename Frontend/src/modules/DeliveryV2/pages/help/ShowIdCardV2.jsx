@@ -60,12 +60,10 @@ export default function ShowIdCardV2() {
     return "bg-gray-500";
   };
 
-  // Get profile image URL
   const getProfileImageUrl = () => {
     if (profileData?.profileImage?.url) return profileData.profileImage.url;
     if (profileData?.documents?.photo) return profileData.documents.photo;
-    const name = profileData?.name || "Delivery Partner";
-    return `https://ui-avatars.com/api/?name=${encodeURIComponent(name)}&background=ff8100&color=fff&size=128`;
+    return "/profile_avatar.png";
   };
 
   // Get vehicle display text
@@ -133,8 +131,7 @@ export default function ShowIdCardV2() {
                 alt={idCardData.name}
                 className="w-36 h-36 rounded-full object-cover border-4 border-gray-100"
                 onError={(e) => {
-                  const name = idCardData.name || "Delivery Partner";
-                  e.target.src = `https://ui-avatars.com/api/?name=${encodeURIComponent(name)}&background=ff8100&color=fff&size=128`;
+                  e.target.src = "/profile_avatar.png";
                 }}
               />
             </div>

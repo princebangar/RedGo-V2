@@ -138,11 +138,14 @@ export default function BottomNavigation() {
               }}
             />
           ) : (
-            <div className={`w-7 h-7 rounded-full border-2 flex items-center justify-center bg-gray-200 ${
-              isActive("/food/delivery/profile") ? "" : "border-gray-300"
-            }`} style={isActive("/food/delivery/profile") ? { borderColor: "var(--dv-primary)" } : undefined}>
-              <User className="w-4 h-4 text-gray-500" />
-            </div>
+            <img
+              src="/profile_avatar.png"
+              alt="Profile"
+              className={`w-7 h-7 rounded-full border-2 object-cover ${
+                isActive("/food/delivery/profile") ? "" : "border-gray-300"
+              }`}
+              style={isActive("/food/delivery/profile") ? { borderColor: "var(--dv-primary)" } : undefined}
+            />
           )}
           {TabLabel(isActive("/food/delivery/profile"), "Profile")}
         </button>

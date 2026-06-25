@@ -2671,15 +2671,13 @@ export default function Home() {
                         className="h-10 w-10 relative flex items-center justify-center rounded-full border-[1.5px] border-white shadow-none cursor-pointer active:scale-95 transition-all overflow-hidden ring-1 ring-red-500/80"
                       >
                         <Avatar className="h-full w-full bg-[#FFF5E6]">
-                          {userProfile?.profileImage && (
-                            <AvatarImage
-                              src={userProfile.profileImage}
-                              alt="Profile"
-                              className="object-cover"
-                            />
-                          )}
+                          <AvatarImage
+                            src={userProfile?.profileImage || "/profile_avatar.png"}
+                            alt="Profile"
+                            className="object-cover"
+                          />
                           <AvatarFallback className="bg-[#FFF5E6] text-[20px] font-black text-[#DC2626] leading-none tracking-tighter antialiased">
-                            {userProfile?.name ? userProfile.name.charAt(0).toUpperCase() : (userProfile?.fullName ? userProfile.fullName.charAt(0).toUpperCase() : (userProfile?.firstName ? userProfile.firstName.charAt(0).toUpperCase() : "U"))}
+                            <img src="/profile_avatar.png" alt="Profile" className="object-cover w-full h-full" />
                           </AvatarFallback>
                         </Avatar>
                       </Link>

@@ -419,7 +419,7 @@ export default function TableBookingConfirmation() {
                                 <input 
                                     type="text"
                                     value={tempUser.name}
-                                    onChange={(e) => setTempUser({ ...tempUser, name: e.target.value })}
+                                    onChange={(e) => setTempUser({ ...tempUser, name: e.target.value.replace(/[^a-zA-Z\s]/g, "") })}
                                     className="w-full h-12 px-4 rounded-xl bg-slate-50 border border-slate-100 font-bold text-sm focus:outline-none focus:ring-2 focus:ring-red-500/10 focus:border-red-500 transition-all"
                                     placeholder="Enter your name"
                                 />

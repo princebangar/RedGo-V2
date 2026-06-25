@@ -4,14 +4,13 @@ const debugError = (...args) => {}
 
 // Export utility functions for join requests
 export const exportJoinRequestsToCSV = (requests, filename = "join_requests") => {
-  const headers = ["SI", "Name", "Email", "Phone", "Zone", "Job Type", "Vehicle Type", "Status"]
+  const headers = ["SI", "Name", "Email", "Phone", "Zone", "Vehicle Type", "Status"]
   const rows = requests.map((request) => [
     request.sl,
     request.name,
     request.email,
     request.phone,
     request.zone,
-    request.jobType,
     request.vehicleType,
     request.status
   ])
@@ -33,14 +32,13 @@ export const exportJoinRequestsToCSV = (requests, filename = "join_requests") =>
 }
 
 export const exportJoinRequestsToExcel = (requests, filename = "join_requests") => {
-  const headers = ["SI", "Name", "Email", "Phone", "Zone", "Job Type", "Vehicle Type", "Status"]
+  const headers = ["SI", "Name", "Email", "Phone", "Zone", "Vehicle Type", "Status"]
   const rows = requests.map((request) => [
     request.sl,
     request.name,
     request.email,
     request.phone,
     request.zone,
-    request.jobType,
     request.vehicleType,
     request.status
   ])
@@ -99,14 +97,13 @@ export const exportJoinRequestsToPDF = (requests, filename = "join_requests") =>
           request.email || 'N/A',
           request.phone || 'N/A',
           request.zone || 'N/A',
-          request.jobType || 'N/A',
           request.vehicleType || 'N/A',
           request.status || 'N/A'
         ])
 
         // Add table using autoTable
         autoTable(doc, {
-          head: [["SI", "Name", "Email", "Phone", "Zone", "Job Type", "Vehicle Type", "Status"]],
+          head: [["SI", "Name", "Email", "Phone", "Zone", "Vehicle Type", "Status"]],
           body: tableData,
           startY: 28,
           styles: {
@@ -123,13 +120,12 @@ export const exportJoinRequestsToPDF = (requests, filename = "join_requests") =>
           },
           columnStyles: {
             0: { cellWidth: 15 }, // SI
-            1: { cellWidth: 35 }, // Name
-            2: { cellWidth: 45 }, // Email
-            3: { cellWidth: 30 }, // Phone
-            4: { cellWidth: 40 }, // Zone
-            5: { cellWidth: 30 }, // Job Type
-            6: { cellWidth: 30 }, // Vehicle Type
-            7: { cellWidth: 25 }, // Status
+            1: { cellWidth: 40 }, // Name
+            2: { cellWidth: 50 }, // Email
+            3: { cellWidth: 35 }, // Phone
+            4: { cellWidth: 45 }, // Zone
+            5: { cellWidth: 35 }, // Vehicle Type
+            6: { cellWidth: 30 }, // Status
           },
           margin: { top: 28, left: 14, right: 14 },
         })

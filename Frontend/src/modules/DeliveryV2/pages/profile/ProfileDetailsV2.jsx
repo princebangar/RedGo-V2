@@ -217,6 +217,7 @@ export const ProfileDetailsV2 = () => {
         upiId: pd?.documents?.bankDetails?.upiId || "",
         upiQrCode: pd?.documents?.bankDetails?.upiQrCode || null
       })
+      window.dispatchEvent(new Event('deliveryProfileRefresh'))
     }
   }
 
@@ -455,7 +456,7 @@ export const ProfileDetailsV2 = () => {
               {profileImageUrl ? (
                 <img src={profileImageUrl} alt="Avatar" className="w-full h-full object-cover transition-transform group-hover:scale-110" />
               ) : (
-                <div className="w-full h-full flex items-center justify-center"><User className="w-12 h-12 text-gray-300" /></div>
+                <img src="/profile_avatar.png" alt="Avatar" className="w-full h-full object-cover transition-transform group-hover:scale-110" />
               )}
               {isUploadingImage && (
                 <div className="absolute inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center">
