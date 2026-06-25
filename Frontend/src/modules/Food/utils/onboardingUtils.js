@@ -285,6 +285,33 @@ export const clearOnboardingFromLocalStorage = () => {
   localStorage.removeItem("restaurant_pendingPhone")
 }
 
+export const hasRestaurantStep1Progress = (step1 = {}) => {
+  const location = step1.location || {}
+  const scalarFields = [
+    step1.restaurantName,
+    step1.ownerName,
+    step1.ownerEmail,
+    step1.primaryContactNumber,
+    step1.zoneId,
+    location.formattedAddress,
+    location.addressLine1,
+    location.addressLine2,
+    location.area,
+    location.city,
+    location.state,
+    location.pincode,
+    location.landmark,
+    location.latitude,
+    location.longitude,
+  ]
+
+  if (scalarFields.some((value) => String(value || "").trim())) {
+    return true
+  }
+
+  return typeof step1.pureVegRestaurant === "boolean"
+}
+
 export const clearAllFilesFromDB = async () => {
   try {
     if (typeof indexedDB === "undefined") return
