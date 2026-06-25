@@ -19,6 +19,9 @@ pids
 *.seed
 *.pid.lock
 
+# local uploads (migrated from Cloudinary — not tracked in git)
+uploads/
+
 # IDE - VSCode
 .vscode/*
 !.vscode/settings.json

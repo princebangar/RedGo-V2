@@ -1,4 +1,6 @@
 import express from 'express';
+import path from 'path';
+import { fileURLToPath } from 'url';
 import cors from 'cors';
 import helmet from 'helmet';
 import morgan from 'morgan';
@@ -11,6 +13,10 @@ import { responseTimeLogger } from './middleware/responseTimeLogger.js';
 import { requestIdMiddleware } from './middleware/requestId.js';
 import { healthCheck } from './config/health.js';
 import { config } from './config/env.js';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+const uploadsDir = path.resolve(__dirname, '..', config.uploadPath);
 
 const app = express();
 
@@ -61,6 +67,9 @@ app.use((req, _res, next) => {
     next();
 });
 app.use(xssClean());
+
+// Serve locally stored uploads (migrated from Cloudinary)
+app.use('/uploads', express.static(uploadsDir));
 
 // Global rate limiting for API routes
 app.use('/api', apiRateLimiter);
