@@ -651,6 +651,7 @@ export default function RestaurantOnboarding() {
 
   const previewUrlCacheRef = useRef(new Map())
   const locationSearchInputRef = useRef(null)
+  const locationSearchContainerRef = useRef(null)
   const placesAutocompleteRef = useRef(null)
   const mapsScriptLoadedRef = useRef(false)
   const menuImagesInputRef = useRef(null)
@@ -670,6 +671,7 @@ export default function RestaurantOnboarding() {
   const [locationSearchValue, setLocationSearchValue] = useState("")
   const [locationSuggestions, setLocationSuggestions] = useState([])
   const [isSearchingLocation, setIsSearchingLocation] = useState(false)
+  const [isLocationSearchFocused, setIsLocationSearchFocused] = useState(false)
 
   const getPreviewImageUrl = (value) => {
     if (!value) return null
@@ -1819,16 +1821,18 @@ export default function RestaurantOnboarding() {
               Choose the service zone where your restaurant will be available.
             </p>
           </div>
-          <div className="relative">
+          <div ref={locationSearchContainerRef} className="relative">
             <Label className="text-xs text-gray-700">Search location</Label>
             <div className="relative">
               <Input
                 ref={locationSearchInputRef}
                 value={locationSearchValue}
                 onChange={(e) => setLocationSearchValue(e.target.value)}
-                className="mt-1 bg-white text-sm text-black! dark:text-white! placeholder:text-gray-500 dark:placeholder:text-gray-400 caret-black dark:caret-white"
-                style={{ color: "#000", WebkitTextFillColor: "#000" }}
-                placeholder="Start typing your restaurant address..."
+                onFocus={() => setIsLocationSearchFocused(true)}
+                onBlur={() => setIsLocationSearchFocused(false)}
+                className="mt-1 bg-white text-sm text-black! dark:text-white! placeholder:text-slate-400/70 dark:placeholder:text-slate-500/70 caret-black dark:caret-white"
+                style={locationSearchValue ? { color: "#000", WebkitTextFillColor: "#000" } : {}}
+                placeholder={isLocationSearchFocused ? "" : "Start typing your restaurant address..."}
               />
               {isSearchingLocation && (
                 <div className="absolute right-3 top-1/2 -translate-y-1/2">
@@ -1839,7 +1843,7 @@ export default function RestaurantOnboarding() {
 
             {/* Fallback suggestions dropdown */}
             {locationSuggestions.length > 0 && (
-              <div className="absolute top-full left-0 right-0 mt-1 bg-white border border-gray-200 rounded-md shadow-xl z-[999999] overflow-hidden max-h-60 overflow-y-auto">
+              <div className="absolute top-full left-0 right-0 mt-1.5 bg-white border border-gray-200 rounded-2xl shadow-[0_12px_40px_rgba(0,0,0,0.08)] z-[999999] max-h-60 overflow-y-auto p-1 font-['Poppins'] custom-scrollbar">
                 {locationSuggestions.map((s) => (
                   <button
                     key={s.id}
@@ -1868,9 +1872,14 @@ export default function RestaurantOnboarding() {
                       setLocationSearchValue(display)
                       setLocationSuggestions([])
                     }}
-                    className="w-full px-4 py-2 text-left text-[13px] hover:bg-orange-50 border-b border-gray-100 last:border-none font-medium text-gray-700"
+                    className="w-full pl-1.5 pr-3 py-2.5 text-left text-sm hover:bg-[#FEF2F2] border-b border-gray-100 last:border-none font-medium text-gray-700 flex items-center gap-2 transition-colors rounded-xl"
                   >
-                    <span className="truncate">{s.display}</span>
+                    {/* Premium red map pin icon */}
+                    <svg className="w-5 h-5 text-[#DC2626] shrink-0" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                      <path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0Z" />
+                      <circle cx="12" cy="10" r="3" />
+                    </svg>
+                    <span className="truncate text-gray-800 font-semibold">{s.display}</span>
                   </button>
                 ))}
               </div>
@@ -2088,11 +2097,28 @@ export default function RestaurantOnboarding() {
       if (inputElement.hasAttribute("data-google-places-initialized")) return
 
       try {
-        autocomplete = new window.google.maps.places.Autocomplete(inputElement, {
+        const autocompleteOptions = {
           fields: ["formatted_address", "address_components", "geometry"],
           componentRestrictions: { country: "in" },
           types: ["geocode", "establishment"]
-        })
+        }
+
+        // Apply strict bounds filtering if zone is selected
+        const selectedZone = zones.find(z => String(z?._id || z?.id) === String(step1.zoneId))
+        if (selectedZone && Array.isArray(selectedZone.coordinates) && selectedZone.coordinates.length > 0) {
+          const bounds = new window.google.maps.LatLngBounds()
+          selectedZone.coordinates.forEach(coord => {
+            const lat = parseFloat(coord.latitude || coord.lat)
+            const lng = parseFloat(coord.longitude || coord.lng)
+            if (Number.isFinite(lat) && Number.isFinite(lng)) {
+              bounds.extend({ lat, lng })
+            }
+          })
+          autocompleteOptions.bounds = bounds
+          autocompleteOptions.strictBounds = true
+        }
+
+        autocomplete = new window.google.maps.places.Autocomplete(inputElement, autocompleteOptions)
 
         inputElement.setAttribute("data-google-places-initialized", "true")
         placesAutocompleteRef.current = autocomplete
@@ -2128,8 +2154,13 @@ export default function RestaurantOnboarding() {
               containers.forEach((container) => {
                 container.style.zIndex = "999999"
                 container.style.pointerEvents = "auto"
-                container.style.visibility = "visible"
-                container.style.display = "block"
+                if (!inputElement.value?.trim()) {
+                  container.style.display = "none"
+                  container.style.visibility = "hidden"
+                } else {
+                  container.style.visibility = "visible"
+                  container.style.display = "block"
+                }
               })
             }
           }
@@ -2157,22 +2188,36 @@ export default function RestaurantOnboarding() {
       }
       placesAutocompleteRef.current = null
     }
-  }, [step])
+  }, [step, step1.zoneId, zones])
 
   // Hybrid Search Fallback (Nominatim)
   useEffect(() => {
     if (step !== 1) return
     const q = String(locationSearchValue || "").trim()
+
+    // Hide Google Places Autocomplete dropdown if query is cleared
+    if (!q) {
+      const containers = document.querySelectorAll(".pac-container")
+      containers.forEach((container) => {
+        container.style.display = "none"
+        container.style.visibility = "hidden"
+      })
+    }
+
     if (q.length < 3) {
       setLocationSuggestions([])
       setIsSearchingLocation(false)
       return
     }
 
+    const selectedZone = zones.find(z => String(z?._id || z?.id) === String(step1.zoneId))
+    const zoneName = selectedZone?.name || selectedZone?.zoneName || selectedZone?.serviceLocation || ""
+
     const t = setTimeout(async () => {
       try {
         setIsSearchingLocation(true)
-        const url = `https://nominatim.openstreetmap.org/search?format=json&addressdetails=1&limit=4&q=${encodeURIComponent(q)}&countrycodes=in`
+        const queryWithZone = zoneName ? `${q}, ${zoneName}` : q
+        const url = `https://nominatim.openstreetmap.org/search?format=json&addressdetails=1&limit=10&q=${encodeURIComponent(queryWithZone)}&countrycodes=in`
         const res = await fetch(url, { headers: { Accept: "application/json" } })
         const json = await res.json()
         const mapped = (Array.isArray(json) ? json : []).map(r => ({
@@ -2191,7 +2236,31 @@ export default function RestaurantOnboarding() {
     }, 400)
 
     return () => clearTimeout(t)
-  }, [locationSearchValue, step])
+  }, [locationSearchValue, step, step1.zoneId, zones])
+
+  // Click outside to close location search suggestions dropdown
+  useEffect(() => {
+    const handleClickOutside = (event) => {
+      const isPacContainerClick = event.target.closest(".pac-container")
+      if (
+        locationSearchContainerRef.current &&
+        !locationSearchContainerRef.current.contains(event.target) &&
+        !isPacContainerClick
+      ) {
+        setLocationSuggestions([])
+        const containers = document.querySelectorAll(".pac-container")
+        containers.forEach((container) => {
+          container.style.display = "none"
+          container.style.visibility = "hidden"
+        })
+      }
+    }
+
+    document.addEventListener("mousedown", handleClickOutside)
+    return () => {
+      document.removeEventListener("mousedown", handleClickOutside)
+    }
+  }, [])
 
   // Load zones for onboarding dropdown (public endpoint).
   useEffect(() => {
@@ -2912,6 +2981,97 @@ export default function RestaurantOnboarding() {
 
   return (
     <LocalizationProvider dateAdapter={AdapterDateFns}>
+      <style dangerouslySetInnerHTML={{ __html: `
+        .pac-container {
+          background-color: #ffffff !important;
+          border: 1px solid #e5e7eb !important;
+          border-radius: 16px !important;
+          box-shadow: 0 12px 40px rgba(0, 0, 0, 0.08) !important;
+          font-family: 'Poppins', sans-serif !important;
+          padding: 4px !important;
+          margin-top: 6px !important;
+          z-index: 999999 !important;
+          border-top: 1px solid #e5e7eb !important;
+          max-height: 280px !important;
+          overflow-y: auto !important;
+        }
+        /* Customize scrollbar inside pac-container and custom-scrollbar for premium styling */
+        .pac-container::-webkit-scrollbar,
+        .custom-scrollbar::-webkit-scrollbar {
+          width: 6px !important;
+        }
+        .pac-container::-webkit-scrollbar-track,
+        .custom-scrollbar::-webkit-scrollbar-track {
+          background: transparent !important;
+        }
+        .pac-container::-webkit-scrollbar-thumb,
+        .custom-scrollbar::-webkit-scrollbar-thumb {
+          background: #d1d5db !important;
+          border-radius: 20px !important;
+        }
+        .pac-container::-webkit-scrollbar-thumb:hover,
+        .custom-scrollbar::-webkit-scrollbar-thumb:hover {
+          background: #9ca3af !important;
+        }
+        .pac-item {
+          padding: 10px 6px !important;
+          font-size: 14px !important;
+          color: #4b5563 !important;
+          border-bottom: 1px solid #f3f4f6 !important;
+          cursor: pointer !important;
+          display: flex !important;
+          align-items: center !important;
+          transition: all 0.2s ease !important;
+          border-radius: 12px !important;
+          margin-bottom: 2px !important;
+        }
+        .pac-item:last-child {
+          border-bottom: none !important;
+          margin-bottom: 0 !important;
+        }
+        .pac-item:hover {
+          background-color: #fef2f2 !important;
+          color: #dc2626 !important;
+        }
+        .pac-item-query {
+          font-size: 14px !important;
+          color: #111827 !important;
+          font-weight: 600 !important;
+          padding-right: 4px !important;
+        }
+        .pac-item:hover .pac-item-query {
+          color: #dc2626 !important;
+        }
+        .pac-icon {
+          background-image: none !important;
+          width: 20px !important;
+          height: 20px !important;
+          margin-right: 6px !important;
+          margin-left: -2px !important;
+          margin-top: 0 !important;
+          display: inline-block !important;
+          position: relative !important;
+          flex-shrink: 0 !important;
+          background-repeat: no-repeat !important;
+        }
+        .pac-icon::before {
+          content: "" !important;
+          position: absolute !important;
+          inset: 0 !important;
+          background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23DC2626' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0Z'/%3E%3Ccircle cx='12' cy='10' r='3'/%3E%3C/svg%3E") !important;
+          background-size: contain !important;
+          background-repeat: no-repeat !important;
+        }
+        .pac-logo::after {
+          margin-right: 12px !important;
+          margin-bottom: 6px !important;
+          opacity: 0.5 !important;
+        }
+        .pac-matched {
+          color: #dc2626 !important;
+          font-weight: 700 !important;
+        }
+      ` }} />
       {loading ? (
         <OnboardingSkeleton />
       ) : (
