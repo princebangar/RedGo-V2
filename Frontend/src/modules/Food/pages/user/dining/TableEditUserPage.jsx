@@ -59,7 +59,7 @@ export default function TableEditUserPage() {
                             <input 
                                 type="text"
                                 value={name}
-                                onChange={(e) => setName(e.target.value)}
+                                onChange={(e) => setName(e.target.value.replace(/[^a-zA-Z\s]/g, ""))}
                                 placeholder="Enter your full name"
                                 className="w-full h-14 pl-12 pr-4 bg-white border border-slate-100 rounded-2xl font-bold text-slate-900 focus:outline-none focus:ring-4 focus:ring-red-500/5 focus:border-red-500 transition-all placeholder:text-slate-300 shadow-sm"
                             />

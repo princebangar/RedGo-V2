@@ -907,15 +907,13 @@ export default function Under250() {
               className="h-9 w-9 relative flex items-center justify-center rounded-full border-[1.5px] border-white ring-1 ring-red-500/80 cursor-pointer active:scale-95 transition-all overflow-hidden"
             >
               <Avatar className="h-full w-full bg-[#FFF5E6] dark:bg-gray-800">
-                {userProfile?.profileImage && (
-                  <AvatarImage 
-                    src={userProfile.profileImage} 
-                    alt="Profile" 
-                    className="object-cover"
-                  />
-                )}
+                <AvatarImage 
+                  src={userProfile?.profileImage || "/profile_avatar.png"} 
+                  alt="Profile" 
+                  className="object-cover"
+                />
                 <AvatarFallback className="bg-[#FFF5E6] dark:bg-gray-800 text-[20px] font-black text-[#DC2626] leading-none tracking-tighter antialiased">
-                  {userProfile?.name ? userProfile.name.charAt(0).toUpperCase() : "U"}
+                  <img src="/profile_avatar.png" alt="Profile" className="object-cover w-full h-full" />
                 </AvatarFallback>
               </Avatar>
             </Link>

@@ -3812,7 +3812,6 @@ export async function getDeliveryJoinRequests(query) {
         email: doc.email || '',
         phone: doc.phone || '',
         zone: doc.city || doc.state || doc.address || '',
-        jobType: doc.jobType || '',
         vehicleType: doc.vehicleType || '',
         status: doc.status === 'rejected' ? 'denied' : doc.status,
         rejectionReason: doc.rejectionReason || undefined,

@@ -481,7 +481,11 @@ export default function FeedNavbar({ className = "" }) {
               }}
             />
           ) : (
-            <User className="w-5 h-5 text-gray-500" />
+            <img
+              src="/profile_avatar.png"
+              alt="Profile"
+              className="w-full h-full object-cover"
+            />
           )}
         </button>
       </div>

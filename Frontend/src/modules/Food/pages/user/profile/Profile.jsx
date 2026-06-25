@@ -498,12 +498,11 @@ export default function Profile() {
                       className="w-full h-full object-cover rounded-full"
                     />
                   ) : (
-                    <div
-                      className="flex h-full w-full items-center justify-center rounded-full text-white text-2xl font-semibold"
-                      style={{ backgroundColor: getAvatarColor(displayName) }}
-                    >
-                      {avatarInitial}
-                    </div>
+                    <img
+                      src="/profile_avatar.png"
+                      alt={displayName}
+                      className="w-full h-full object-cover rounded-full"
+                    />
                   )}
                 </Avatar>
               </div>

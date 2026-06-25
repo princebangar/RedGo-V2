@@ -45,9 +45,8 @@ export default function LoginRequiredModal({ isOpen, onClose }) {
   if (!isOpen) return null
 
   const handleLoginClick = () => {
-    onClose()
-    // Navigate to the user login page
-    navigate("/food/user/auth/login")
+    // Navigate directly to the user login page to trigger instant transition
+    navigate("/user/auth/login")
   }
 
   return (

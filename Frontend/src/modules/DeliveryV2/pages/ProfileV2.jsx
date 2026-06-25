@@ -145,9 +145,7 @@ export const ProfileV2 = () => {
             {profile?.profileImage?.url ? (
               <img src={profile.profileImage.url} alt="Profile" className="w-20 h-20 md:w-24 md:h-24 rounded-full object-cover border-2 border-gray-200" />
             ) : (
-              <div className="w-20 h-20 md:w-24 md:h-24 rounded-full bg-gray-100 flex items-center justify-center border-2 border-gray-200">
-                <User className="w-10 h-10 md:w-12 md:h-12 text-gray-400" />
-              </div>
+              <img src="/profile_avatar.png" alt="Profile" className="w-20 h-20 md:w-24 md:h-24 rounded-full object-cover border-2 border-gray-200" />
             )}
             <div className="absolute bottom-0 right-0 bg-white rounded-full p-2 shadow-md border-2 border-white">
               <Briefcase className="w-4 h-4 text-gray-600" />
@@ -264,9 +262,7 @@ export const ProfileV2 = () => {
               {profile?.profileImage?.url ? (
                 <img src={profile.profileImage.url} alt="Profile" className="w-[84px] h-[84px] rounded-full object-cover shadow-sm ring-4 ring-gray-50" />
               ) : (
-                <div className="w-[84px] h-[84px] rounded-full bg-gray-100 flex items-center justify-center ring-4 ring-gray-50">
-                  <User className="w-10 h-10 text-gray-400" />
-                </div>
+                <img src="/profile_avatar.png" alt="Profile" className="w-[84px] h-[84px] rounded-full object-cover shadow-sm ring-4 ring-gray-50" />
               )}
             </div>
             
