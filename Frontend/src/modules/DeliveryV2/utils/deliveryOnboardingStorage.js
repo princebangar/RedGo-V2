@@ -14,21 +14,170 @@ const ONBOARDING_SESSION_KEYS = [
   "deliveryAuthData",
 ]
 
-const fileToDataUrl = (file) =>
+const DELIVERY_FILES_DB = "DeliveryOnboardingFiles"
+const DELIVERY_FILES_STORE = "files"
+
+const openDeliveryFilesDB = () =>
   new Promise((resolve, reject) => {
-    const reader = new FileReader()
-    reader.onload = () => resolve(reader.result)
-    reader.onerror = reject
-    reader.readAsDataURL(file)
+    const timeout = setTimeout(() => {
+      reject(new Error("IndexedDB connection timeout"))
+    }, 3000)
+
+    try {
+      if (typeof indexedDB === "undefined") {
+        clearTimeout(timeout)
+        reject(new Error("IndexedDB not supported"))
+        return
+      }
+
+      const request = indexedDB.open(DELIVERY_FILES_DB, 1)
+      request.onupgradeneeded = (event) => {
+        const db = event.target.result
+        if (!db.objectStoreNames.contains(DELIVERY_FILES_STORE)) {
+          db.createObjectStore(DELIVERY_FILES_STORE)
+        }
+      }
+      request.onsuccess = (event) => {
+        clearTimeout(timeout)
+        resolve(event.target.result)
+      }
+      request.onerror = (event) => {
+        clearTimeout(timeout)
+        reject(event.target.error)
+      }
+      request.onblocked = () => {
+        clearTimeout(timeout)
+        reject(new Error("IndexedDB blocked"))
+      }
+    } catch (error) {
+      clearTimeout(timeout)
+      reject(error)
+    }
   })
 
-export const serializeSignupDocument = async (file) => ({
-  dataUrl: await fileToDataUrl(file),
-  name: file.name || "document.jpg",
-  type: file.type || "image/jpeg",
-})
+const isUploadableFile = (file) => file instanceof File || file instanceof Blob
 
-export const deserializeSignupDocument = (stored) => {
+export const prepareSignupDocumentFile = async (file) => {
+  if (!isUploadableFile(file) || !String(file.type || "").startsWith("image/")) {
+    throw new Error("Invalid image file")
+  }
+
+  const maxBytes = 1.5 * 1024 * 1024
+  const maxDimension = 1600
+
+  if (file.size <= 400 * 1024) {
+    return file instanceof File ? file : new File([file], "document.jpg", { type: file.type || "image/jpeg" })
+  }
+
+  try {
+    const bitmap = await createImageBitmap(file)
+    const scale = Math.min(1, maxDimension / Math.max(bitmap.width, bitmap.height, 1))
+    const targetWidth = Math.max(1, Math.round(bitmap.width * scale))
+    const targetHeight = Math.max(1, Math.round(bitmap.height * scale))
+
+    const canvas = document.createElement("canvas")
+    canvas.width = targetWidth
+    canvas.height = targetHeight
+    const context = canvas.getContext("2d")
+    if (!context) {
+      bitmap.close?.()
+      return file instanceof File ? file : new File([file], "document.jpg", { type: file.type || "image/jpeg" })
+    }
+
+    context.drawImage(bitmap, 0, 0, targetWidth, targetHeight)
+    bitmap.close?.()
+
+    const blob = await new Promise((resolve, reject) => {
+      canvas.toBlob(
+        (result) => (result ? resolve(result) : reject(new Error("Image compression failed"))),
+        "image/jpeg",
+        0.82,
+      )
+    })
+
+    if (!blob || blob.size >= file.size) {
+      return file instanceof File ? file : new File([file], "document.jpg", { type: file.type || "image/jpeg" })
+    }
+
+    if (blob.size > maxBytes) {
+      return file instanceof File ? file : new File([file], "document.jpg", { type: file.type || "image/jpeg" })
+    }
+
+    const baseName = String(file.name || "document").replace(/\.[^.]+$/, "")
+    return new File([blob], `${baseName}.jpg`, { type: "image/jpeg" })
+  } catch {
+    return file instanceof File ? file : new File([file], "document.jpg", { type: file.type || "image/jpeg" })
+  }
+}
+
+export const saveSignupDocumentToDB = async (docType, file) => {
+  if (!DELIVERY_SIGNUP_DOC_TYPES.includes(docType) || !isUploadableFile(file)) return
+
+  const db = await openDeliveryFilesDB()
+  const tx = db.transaction(DELIVERY_FILES_STORE, "readwrite")
+  tx.objectStore(DELIVERY_FILES_STORE).put(file, docType)
+  await new Promise((resolve, reject) => {
+    tx.oncomplete = () => resolve(true)
+    tx.onerror = () => reject(tx.error || new Error("IndexedDB write failed"))
+    tx.onabort = () => reject(tx.error || new Error("IndexedDB write aborted"))
+  })
+}
+
+export const getSignupDocumentFromDB = async (docType) => {
+  if (!DELIVERY_SIGNUP_DOC_TYPES.includes(docType)) return null
+
+  try {
+    const db = await openDeliveryFilesDB()
+    const tx = db.transaction(DELIVERY_FILES_STORE, "readonly")
+    const request = tx.objectStore(DELIVERY_FILES_STORE).get(docType)
+    return await new Promise((resolve) => {
+      request.onsuccess = () => {
+        const result = request.result
+        resolve(isUploadableFile(result) ? result : null)
+      }
+      request.onerror = () => resolve(null)
+    })
+  } catch {
+    return null
+  }
+}
+
+export const deleteSignupDocumentFromDB = async (docType) => {
+  if (!DELIVERY_SIGNUP_DOC_TYPES.includes(docType)) return
+
+  try {
+    const db = await openDeliveryFilesDB()
+    const tx = db.transaction(DELIVERY_FILES_STORE, "readwrite")
+    tx.objectStore(DELIVERY_FILES_STORE).delete(docType)
+    await new Promise((resolve, reject) => {
+      tx.oncomplete = () => resolve(true)
+      tx.onerror = () => reject(tx.error || new Error("IndexedDB delete failed"))
+      tx.onabort = () => reject(tx.error || new Error("IndexedDB delete aborted"))
+    })
+  } catch {
+    // Ignore delete failures during cleanup.
+  }
+}
+
+export const clearSignupDocumentsFromDB = async () => {
+  try {
+    if (typeof indexedDB === "undefined") return
+    await Promise.all(DELIVERY_SIGNUP_DOC_TYPES.map((docType) => deleteSignupDocumentFromDB(docType)))
+  } catch {
+    try {
+      await new Promise((resolve, reject) => {
+        const request = indexedDB.deleteDatabase(DELIVERY_FILES_DB)
+        request.onsuccess = () => resolve(true)
+        request.onerror = () => reject(request.error)
+        request.onblocked = () => resolve(true)
+      })
+    } catch {
+      // Ignore cleanup failures.
+    }
+  }
+}
+
+const deserializeLegacySignupDocument = (stored) => {
   if (!stored) return null
 
   const dataUrl =
@@ -56,66 +205,46 @@ export const deserializeSignupDocument = (stored) => {
   }
 }
 
-export const sanitizeStoredSignupDocs = (docs) => {
-  const sanitized = {}
-
-  DELIVERY_SIGNUP_DOC_TYPES.forEach((docType) => {
-    const value = docs?.[docType]
-    if (!value) {
-      sanitized[docType] = null
-      return
-    }
-
-    const dataUrl =
-      typeof value === "string"
-        ? value
-        : typeof value?.dataUrl === "string"
-          ? value.dataUrl
-          : ""
-
-    if (!dataUrl.startsWith("data:image")) {
-      sanitized[docType] = null
-      return
-    }
-
-    sanitized[docType] = {
-      dataUrl,
-      name: value?.name || "document.jpg",
-      type: value?.type || "image/jpeg",
-    }
-  })
-
-  return sanitized
-}
-
-export const loadStoredSignupDocs = () => {
-  if (typeof sessionStorage === "undefined") {
-    return sanitizeStoredSignupDocs({})
-  }
+const migrateLegacySignupDocsToIndexedDB = async () => {
+  if (typeof sessionStorage === "undefined") return
 
   try {
     const saved = sessionStorage.getItem("deliverySignupDocs")
-    if (!saved) return sanitizeStoredSignupDocs({})
-    return sanitizeStoredSignupDocs(JSON.parse(saved))
+    if (!saved) return
+
+    const parsed = JSON.parse(saved)
+    let migrated = false
+
+    for (const docType of DELIVERY_SIGNUP_DOC_TYPES) {
+      const legacyFile = deserializeLegacySignupDocument(parsed?.[docType])
+      if (legacyFile) {
+        const prepared = await prepareSignupDocumentFile(legacyFile)
+        await saveSignupDocumentToDB(docType, prepared)
+        migrated = true
+      }
+    }
+
+    if (migrated) {
+      sessionStorage.removeItem("deliverySignupDocs")
+    }
   } catch {
-    return sanitizeStoredSignupDocs({})
+    sessionStorage.removeItem("deliverySignupDocs")
   }
 }
 
-export const saveStoredSignupDocs = (docs) => {
-  if (typeof sessionStorage === "undefined") return
-  sessionStorage.setItem("deliverySignupDocs", JSON.stringify(sanitizeStoredSignupDocs(docs)))
-}
+export const loadSignupDocumentPreviews = async () => {
+  await migrateLegacySignupDocsToIndexedDB()
 
-export const restoreSignupDocumentsFromStorage = (storedDocs = loadStoredSignupDocs()) => {
-  const restored = {}
+  const previews = {}
 
-  DELIVERY_SIGNUP_DOC_TYPES.forEach((docType) => {
-    const file = deserializeSignupDocument(storedDocs[docType])
-    if (file) restored[docType] = file
-  })
+  for (const docType of DELIVERY_SIGNUP_DOC_TYPES) {
+    const file = await getSignupDocumentFromDB(docType)
+    if (file) {
+      previews[docType] = URL.createObjectURL(file)
+    }
+  }
 
-  return restored
+  return previews
 }
 
 export const hasDeliveryStep1Progress = (formData = {}) => {
@@ -154,7 +283,7 @@ const getOnboardingPhoneDigits = () => {
   }
 }
 
-export function clearDeliveryOnboardingData() {
+export async function clearDeliveryOnboardingData() {
   if (typeof sessionStorage !== "undefined") {
     const phone = getOnboardingPhoneDigits()
 
@@ -169,5 +298,6 @@ export function clearDeliveryOnboardingData() {
     sessionStorage.removeItem("delivery_resend_expires_at")
   }
 
+  await clearSignupDocumentsFromDB()
   clearModuleAuth("delivery")
 }

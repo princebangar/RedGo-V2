@@ -7,16 +7,17 @@ import { openCamera } from "@food/utils/imageUploadUtils"
 import useDeliveryOnboardingExitGuard from "../../hooks/useDeliveryOnboardingExitGuard"
 import {
   DELIVERY_SIGNUP_DOC_TYPES,
-  loadStoredSignupDocs,
-  restoreSignupDocumentsFromStorage,
-  saveStoredSignupDocs,
-  serializeSignupDocument,
+  clearSignupDocumentsFromDB,
+  deleteSignupDocumentFromDB,
+  getSignupDocumentFromDB,
+  loadSignupDocumentPreviews,
+  prepareSignupDocumentFile,
+  saveSignupDocumentToDB,
 } from "../../utils/deliveryOnboardingStorage"
-const debugLog = (...args) => {}
-const debugWarn = (...args) => {}
+
 const debugError = (...args) => {}
 
-const createEmptyUploadedDocs = () =>
+const createEmptyPreviewState = () =>
   DELIVERY_SIGNUP_DOC_TYPES.reduce((acc, docType) => {
     acc[docType] = null
     return acc
@@ -25,15 +26,15 @@ const createEmptyUploadedDocs = () =>
 export default function SignupStep2() {
   const navigate = useNavigate()
   const { handleBack } = useDeliveryOnboardingExitGuard("documents")
-  const initialStoredDocs = loadStoredSignupDocs()
   const fileInputRefs = useRef({
     profilePhoto: null,
     aadharPhoto: null,
     panPhoto: null,
-    drivingLicensePhoto: null
+    drivingLicensePhoto: null,
   })
-  const [documents, setDocuments] = useState(() => restoreSignupDocumentsFromStorage(initialStoredDocs))
-  const [uploadedDocs, setUploadedDocs] = useState(initialStoredDocs)
+  const previewUrlsRef = useRef(createEmptyPreviewState())
+  const [previewUrls, setPreviewUrls] = useState(createEmptyPreviewState)
+  const [isHydrating, setIsHydrating] = useState(true)
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [uploading, setUploading] = useState({})
   const [isDummyMode, setIsDummyMode] = useState(false)
@@ -45,22 +46,52 @@ export default function SignupStep2() {
   }, [])
 
   useEffect(() => {
-    saveStoredSignupDocs(uploadedDocs)
-  }, [uploadedDocs])
+    let cancelled = false
 
-  const getPreviewSrc = (docType) => uploadedDocs[docType]?.dataUrl || null
+    const hydrateDocuments = async () => {
+      try {
+        const previews = await loadSignupDocumentPreviews()
+        if (cancelled) {
+          Object.values(previews).forEach((url) => {
+            if (url) URL.revokeObjectURL(url)
+          })
+          return
+        }
+
+        previewUrlsRef.current = previews
+        setPreviewUrls(previews)
+      } catch (error) {
+        debugError("Failed to hydrate signup documents:", error)
+      } finally {
+        if (!cancelled) {
+          setIsHydrating(false)
+        }
+      }
+    }
+
+    hydrateDocuments()
+
+    return () => {
+      cancelled = true
+      Object.values(previewUrlsRef.current).forEach((url) => {
+        if (url) {
+          try {
+            URL.revokeObjectURL(url)
+          } catch {
+            // Ignore revoke errors.
+          }
+        }
+      })
+      previewUrlsRef.current = createEmptyPreviewState()
+    }
+  }, [])
+
+  const getPreviewSrc = (docType) => previewUrls[docType] || null
 
   const hasUploadedDoc = (docType) => Boolean(getPreviewSrc(docType))
 
-  const getDocumentFile = (docType) => {
-    if (documents[docType] instanceof File) return documents[docType]
-
-    const restored = restoreSignupDocumentsFromStorage(uploadedDocs)
-    return restored[docType] || null
-  }
-
   const handleFileSelect = async (docType, file) => {
-    if (!file) return
+    if (!file || isHydrating) return
 
     if (!file.type.startsWith("image/")) {
       return
@@ -69,19 +100,37 @@ export default function SignupStep2() {
       return
     }
 
+    setUploading((prev) => ({ ...prev, [docType]: true }))
+
     try {
-      const storedDoc = await serializeSignupDocument(file)
-      setDocuments((prev) => ({ ...prev, [docType]: file }))
-      setUploadedDocs((prev) => ({ ...prev, [docType]: storedDoc }))
+      const preparedFile = await prepareSignupDocumentFile(file)
+      await saveSignupDocumentToDB(docType, preparedFile)
+
+      const nextPreviewUrl = URL.createObjectURL(preparedFile)
+      const previousPreviewUrl = previewUrlsRef.current[docType]
+      if (previousPreviewUrl) {
+        URL.revokeObjectURL(previousPreviewUrl)
+      }
+
+      previewUrlsRef.current = {
+        ...previewUrlsRef.current,
+        [docType]: nextPreviewUrl,
+      }
+      setPreviewUrls((prev) => ({
+        ...prev,
+        [docType]: nextPreviewUrl,
+      }))
     } catch (error) {
       debugError("Failed to store document preview:", error)
+    } finally {
+      setUploading((prev) => ({ ...prev, [docType]: false }))
     }
   }
 
-  const handleTakeCameraPhoto = (docType, label) => {
+  const handleTakeCameraPhoto = (docType) => {
     openCamera({
       onSelectFile: (file) => handleFileSelect(docType, file),
-      fileNamePrefix: `signup-${docType}`
+      fileNamePrefix: `signup-${docType}`,
     })
   }
 
@@ -89,24 +138,31 @@ export default function SignupStep2() {
     fileInputRefs.current[docType]?.click()
   }
 
-  const handleRemove = (docType) => {
-    setDocuments((prev) => ({
+  const handleRemove = async (docType) => {
+    await deleteSignupDocumentFromDB(docType)
+
+    const previousPreviewUrl = previewUrlsRef.current[docType]
+    if (previousPreviewUrl) {
+      URL.revokeObjectURL(previousPreviewUrl)
+    }
+
+    previewUrlsRef.current = {
+      ...previewUrlsRef.current,
+      [docType]: null,
+    }
+    setPreviewUrls((prev) => ({
       ...prev,
-      [docType]: null
-    }))
-    setUploadedDocs((prev) => ({
-      ...prev,
-      [docType]: null
+      [docType]: null,
     }))
   }
 
   const handleSubmit = async (e) => {
     e.preventDefault()
 
-    const resolvedDocuments = DELIVERY_SIGNUP_DOC_TYPES.reduce((acc, docType) => {
-      acc[docType] = getDocumentFile(docType)
-      return acc
-    }, {})
+    const resolvedDocuments = {}
+    for (const docType of DELIVERY_SIGNUP_DOC_TYPES) {
+      resolvedDocuments[docType] = await getSignupDocumentFromDB(docType)
+    }
 
     const missingDocument = DELIVERY_SIGNUP_DOC_TYPES.find((docType) => !resolvedDocuments[docType])
     if (missingDocument) {
@@ -171,7 +227,7 @@ export default function SignupStep2() {
         }
       }
     } catch (error) {
-      debugWarn("Failed to get FCM token during signup", error)
+      debugError("Failed to get FCM token during signup", error)
     }
 
     if (fcmToken) {
@@ -199,6 +255,7 @@ export default function SignupStep2() {
       if (response?.data?.success) {
         sessionStorage.removeItem("deliverySignupDetails")
         sessionStorage.removeItem("deliverySignupDocs")
+        await clearSignupDocumentsFromDB()
         if (shouldRegister) {
           sessionStorage.removeItem("deliveryNeedsRegistration")
           toast.success("Registration successful. Please login with OTP.")
@@ -265,7 +322,7 @@ export default function SignupStep2() {
               <div className="w-full grid grid-cols-2 gap-2 pb-4">
                 <button
                   type="button"
-                  onClick={() => handleTakeCameraPhoto(docType, label)}
+                  onClick={() => handleTakeCameraPhoto(docType)}
                   className="flex items-center justify-center gap-2 px-3 py-2.5 rounded-xl bg-gray-900 text-white text-xs font-bold cursor-pointer hover:bg-black transition-all active:scale-95"
                 >
                   <Camera className="w-4 h-4" />
@@ -299,7 +356,7 @@ export default function SignupStep2() {
                 }
                 e.target.value = ""
               }}
-              disabled={isUploading}
+              disabled={isUploading || isHydrating}
             />
           </div>
         )}
@@ -308,6 +365,27 @@ export default function SignupStep2() {
   }
 
   const allDocumentsUploaded = DELIVERY_SIGNUP_DOC_TYPES.every((docType) => hasUploadedDoc(docType))
+
+  if (isHydrating) {
+    return (
+      <div className="min-h-screen bg-gray-100">
+        <div className="bg-white px-4 py-3 flex items-center gap-4 border-b border-gray-200">
+          <button
+            onClick={handleBack}
+            className="p-2 hover:bg-gray-100 rounded-full transition-colors"
+          >
+            <ArrowLeft className="w-5 h-5" />
+          </button>
+          <h1 className="text-lg font-medium">Upload Documents</h1>
+        </div>
+        <div className="px-4 py-6 space-y-4 animate-pulse">
+          {DELIVERY_SIGNUP_DOC_TYPES.map((docType) => (
+            <div key={docType} className="bg-white rounded-lg p-4 border border-gray-200 h-56" />
+          ))}
+        </div>
+      </div>
+    )
+  }
 
   return (
     <div className="min-h-screen bg-gray-100">
@@ -338,18 +416,18 @@ export default function SignupStep2() {
               }
               const dummyBlob = new Blob([bytes], { type: "image/png" })
               const dummyFile = new File([dummyBlob], "dummy_doc.png", { type: "image/png" })
-              const storedDoc = await serializeSignupDocument(dummyFile)
-              const nextDocs = DELIVERY_SIGNUP_DOC_TYPES.reduce((acc, docType) => {
-                acc[docType] = storedDoc
-                return acc
-              }, {})
-              const nextFiles = DELIVERY_SIGNUP_DOC_TYPES.reduce((acc, docType) => {
-                acc[docType] = dummyFile
-                return acc
-              }, {})
 
-              setDocuments(nextFiles)
-              setUploadedDocs(nextDocs)
+              for (const docType of DELIVERY_SIGNUP_DOC_TYPES) {
+                await saveSignupDocumentToDB(docType, dummyFile)
+                const nextPreviewUrl = URL.createObjectURL(dummyFile)
+                const previousPreviewUrl = previewUrlsRef.current[docType]
+                if (previousPreviewUrl) {
+                  URL.revokeObjectURL(previousPreviewUrl)
+                }
+                previewUrlsRef.current[docType] = nextPreviewUrl
+              }
+
+              setPreviewUrls({ ...previewUrlsRef.current })
               setIsDummyMode(true)
               sessionStorage.setItem("deliveryNeedsRegistration", "true")
             }}
