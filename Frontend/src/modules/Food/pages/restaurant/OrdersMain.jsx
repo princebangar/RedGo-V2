@@ -3146,12 +3146,6 @@ function OrdersMainInner() {
                   </div>
                   <div className="flex items-center gap-2">
                     <button
-                      onClick={handlePrint}
-                      className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
-                      aria-label="Print">
-                      <Printer className="w-5 h-5 text-gray-700" />
-                    </button>
-                    <button
                       onClick={toggleMute}
                       className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
                       aria-label={isCurrentOrderMuted ? "Unmute" : "Mute"}>
