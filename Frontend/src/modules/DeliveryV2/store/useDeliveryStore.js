@@ -1,5 +1,7 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
+import { mapOrderLocations } from '@/modules/DeliveryV2/utils/orderMapping';
+import { sanitizeOrderDispatchMetrics } from '@/modules/DeliveryV2/utils/pickupMetrics';
 
 const collectOrderKeys = (order) => {
   if (!order) return [];
@@ -122,20 +124,21 @@ export const useDeliveryStore = create(
       },
 
       addNewOrder: (order) => {
-        const incomingKeys = collectOrderKeys(order);
+        const normalized = sanitizeOrderDispatchMetrics(mapOrderLocations(order) || order);
+        const incomingKeys = collectOrderKeys(normalized);
         if (!incomingKeys.length) return;
         set((state) => {
-          const acceptedExists = state.acceptedOrders.some((item) => ordersShareIdentity(item, order));
+          const acceptedExists = state.acceptedOrders.some((item) => ordersShareIdentity(item, normalized));
           if (acceptedExists) return state;
 
-          const existingIndex = state.newOrders.findIndex((item) => ordersShareIdentity(item, order));
+          const existingIndex = state.newOrders.findIndex((item) => ordersShareIdentity(item, normalized));
           if (existingIndex >= 0) {
             const next = [...state.newOrders];
-            next[existingIndex] = { ...next[existingIndex], ...order };
+            next[existingIndex] = { ...next[existingIndex], ...normalized };
             return { newOrders: next };
           }
 
-          return { newOrders: [order, ...state.newOrders] };
+          return { newOrders: [normalized, ...state.newOrders] };
         });
       },
 

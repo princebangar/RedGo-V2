@@ -1,8 +1,41 @@
 import React, { useMemo } from 'react';
-import { ChefHat, ChevronDown, Clock, Lock, MapPin, Package } from 'lucide-react';
+import {
+  ChefHat,
+  ChevronDown,
+  Clock,
+  Loader2,
+  Lock,
+  MapPin,
+  Package,
+  Volume2,
+  VolumeX,
+} from 'lucide-react';
 import { ActionSlider } from '@/modules/DeliveryV2/components/ui/ActionSlider';
 import { useDeliveryStore } from '@/modules/DeliveryV2/store/useDeliveryStore';
-import { getHaversineDistance } from '@/modules/DeliveryV2/utils/geo';
+import { computePickupMetrics, formatPickupRouteSummary } from '@/modules/DeliveryV2/utils/pickupMetrics';
+
+/** Time / distance cell — live values or locating state (shared with NewOrderModal). */
+export function PickupMetricsValue({ metrics, label, unit, className = '' }) {
+  const isReady = metrics?.isReady;
+
+  return (
+    <div className={className}>
+      <span className="text-[10px] text-gray-400 font-bold uppercase tracking-widest">{label}</span>
+      {isReady ? (
+        <p className="text-sm font-bold text-gray-900 tabular-nums">
+          {unit === 'km'
+            ? `${Number(metrics.distanceKm).toFixed(1)} km`
+            : `${metrics.etaMins} mins`}
+        </p>
+      ) : (
+        <p className="text-sm font-semibold text-gray-500 flex items-center gap-1.5">
+          <Loader2 className="w-3.5 h-3.5 animate-spin shrink-0" aria-hidden />
+          <span>Locating…</span>
+        </p>
+      )}
+    </div>
+  );
+}
 
 export default function NewOrderCard({
   order,
@@ -12,42 +45,16 @@ export default function NewOrderCard({
   disabledMessage = 'Complete an active order to accept more',
   expanded = false,
   onToggle,
+  isMuted = false,
+  onToggleMute,
 }) {
   const riderLocation = useDeliveryStore((state) => state.riderLocation);
 
-  const { distanceKm, etaMins } = useMemo(() => {
-    if (!order) return { distanceKm: null, etaMins: null };
-
-    const rawDist = order.pickupDistanceKm || order.distanceKm;
-    const rawEta = order.estimatedTime || order.duration || order.eta;
-
-    if (rawDist != null) {
-      return {
-        distanceKm: Number(rawDist).toFixed(1),
-        etaMins:
-          rawEta && rawEta > 0
-            ? Math.ceil(rawEta)
-            : Math.ceil((rawDist * 1000) / 416) + 5,
-      };
-    }
-
-    const rest = order.restaurantLocation || order.restaurantId?.location || {};
-    const resLat = parseFloat(
-      order.restaurant_lat || order.restaurantLat || rest.latitude || rest.lat,
-    );
-    const resLng = parseFloat(
-      order.restaurant_lng || order.restaurantLng || rest.longitude || rest.lng,
-    );
-
-    if (riderLocation && !Number.isNaN(resLat) && !Number.isNaN(resLng)) {
-      const distM = getHaversineDistance(riderLocation.lat, riderLocation.lng, resLat, resLng);
-      const km = distM / 1000;
-      const mins = Math.ceil(distM / 416) + (order.prepTime || 5);
-      return { distanceKm: km.toFixed(1), etaMins: mins };
-    }
-
-    return { distanceKm: '??', etaMins: order.prepTime || 15 };
-  }, [order, riderLocation]);
+  const metrics = useMemo(
+    () => computePickupMetrics(order, riderLocation),
+    [order, riderLocation],
+  );
+  const routeSummary = formatPickupRouteSummary(metrics);
 
   if (!order) return null;
 
@@ -105,38 +112,62 @@ export default function NewOrderCard({
         expanded ? 'border-blue-200 shadow-lg shadow-blue-500/10' : 'border-gray-100 shadow-sm'
       }`}
     >
-      <button
-        type="button"
-        onClick={() => onToggle?.()}
-        className="w-full text-left p-4 active:scale-[0.99] transition-transform"
-      >
-        <div className="flex items-center justify-between gap-3">
-          <div className="flex items-center gap-3 min-w-0">
-            <div className="w-10 h-10 rounded-xl bg-[#15498b] text-white flex items-center justify-center shrink-0">
-              <Package className="w-5 h-5" />
-            </div>
-            <div className="min-w-0">
-              <p className="text-[10px] font-black uppercase tracking-widest text-gray-400">
-                New Order #{displayId}
-              </p>
-              <p className="text-sm font-bold text-gray-950 truncate">{restaurantName}</p>
-              <p className="text-[11px] font-semibold text-blue-600 mt-0.5">
-                ₹{Number(earnings || 0).toFixed(2)} · {distanceKm} km · {etaMins} min
-              </p>
-            </div>
+      <div className="flex items-center justify-between gap-3 p-4">
+        <button
+          type="button"
+          onClick={() => onToggle?.()}
+          className="flex flex-1 min-w-0 items-center gap-3 text-left active:scale-[0.99] transition-transform"
+        >
+          <div className="w-10 h-10 rounded-xl bg-[#15498b] text-white flex items-center justify-center shrink-0">
+            <Package className="w-5 h-5" />
           </div>
-          <div className="flex items-center gap-2 shrink-0">
-            {acceptDisabled ? (
-              <span className="rounded-full bg-gray-100 border border-gray-200 p-1.5 text-gray-500">
-                <Lock className="w-3.5 h-3.5" />
-              </span>
-            ) : null}
+          <div className="min-w-0">
+            <p className="text-[10px] font-black uppercase tracking-widest text-gray-400">
+              New Order #{displayId}
+            </p>
+            <p className="text-sm font-bold text-gray-950 truncate">{restaurantName}</p>
+            <p
+              className={`text-[11px] font-semibold mt-0.5 ${
+                metrics.isReady ? 'text-blue-600' : 'text-gray-500'
+              }`}
+            >
+              ₹{Number(earnings || 0).toFixed(2)} · {routeSummary}
+            </p>
+          </div>
+        </button>
+        <div className="flex items-center gap-1 shrink-0">
+          {acceptDisabled ? (
+            <span className="rounded-full bg-gray-100 border border-gray-200 p-1.5 text-gray-500">
+              <Lock className="w-3.5 h-3.5" />
+            </span>
+          ) : null}
+          <button
+            type="button"
+            onClick={(event) => {
+              event.stopPropagation();
+              onToggleMute?.();
+            }}
+            className={`rounded-full p-2 transition-colors ${
+              isMuted
+                ? 'bg-red-50 text-red-600 border border-red-200'
+                : 'text-gray-500 hover:bg-gray-100'
+            }`}
+            aria-label={isMuted ? 'Unmute order alerts' : 'Mute order alerts'}
+          >
+            {isMuted ? <VolumeX className="w-4 h-4" /> : <Volume2 className="w-4 h-4" />}
+          </button>
+          <button
+            type="button"
+            onClick={() => onToggle?.()}
+            className="rounded-full p-2 text-gray-400 hover:bg-gray-100 transition-colors"
+            aria-label={expanded ? 'Collapse order' : 'Expand order'}
+          >
             <ChevronDown
-              className={`w-5 h-5 text-gray-400 transition-transform ${expanded ? 'rotate-180' : ''}`}
+              className={`w-5 h-5 transition-transform ${expanded ? 'rotate-180' : ''}`}
             />
-          </div>
+          </button>
         </div>
-      </button>
+      </div>
 
       {expanded ? (
         <div className="px-4 pb-4 space-y-4 border-t border-gray-100 pt-4">
@@ -170,17 +201,11 @@ export default function NewOrderCard({
           <div className="grid grid-cols-2 gap-2">
             <div className="p-3 bg-gray-50 rounded-2xl border border-gray-100 flex items-center gap-2">
               <Clock className="w-4 h-4 text-orange-500" />
-              <div>
-                <span className="text-[10px] text-gray-400 font-bold uppercase tracking-widest">Time</span>
-                <p className="text-sm font-bold text-gray-900">{etaMins} mins</p>
-              </div>
+              <PickupMetricsValue metrics={metrics} label="Time" unit="min" />
             </div>
             <div className="p-3 bg-gray-50 rounded-2xl border border-gray-100 flex items-center gap-2">
               <MapPin className="w-4 h-4 text-gray-400" />
-              <div>
-                <span className="text-[10px] text-gray-400 font-bold uppercase tracking-widest">Distance</span>
-                <p className="text-sm font-bold text-gray-900">{distanceKm} km</p>
-              </div>
+              <PickupMetricsValue metrics={metrics} label="Distance" unit="km" />
             </div>
           </div>
 

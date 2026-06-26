@@ -356,6 +356,10 @@ export const adminAPI = {
     apiClient.patch("/food/admin/customization-settings", data, { contextModule: "admin" }),
   getTakeawayCodStatus: () =>
     apiClient.get("/food/admin/customization-settings/takeaway-cod", { contextModule: "admin" }),
+  getRestaurantSettings: () =>
+    apiClient.get("/food/admin/restaurant-settings", { contextModule: "admin" }),
+  updateRestaurantSettings: (data) =>
+    apiClient.patch("/food/admin/restaurant-settings", data, { contextModule: "admin" }),
   /** GET /food/admin/delivery/support-tickets/stats - counts by status. */
   getDeliverySupportTicketStats: () =>
     apiClient.get("/food/admin/delivery/support-tickets/stats", {
@@ -986,6 +990,11 @@ export const restaurantAPI = {
   getWithdrawalHistory: () =>
     apiClient.get("/food/restaurant/withdrawals", {
       contextModule: "restaurant"
+    }),
+  /** Platform restaurant settings (public). */
+  getRestaurantSettings: () =>
+    apiClient.get("/food/public/restaurant-settings", {
+      contextModule: "restaurant",
     }),
   /** Update restaurant profile fields (name/cuisines/location/menuImages). */
   updateProfile: (body) =>

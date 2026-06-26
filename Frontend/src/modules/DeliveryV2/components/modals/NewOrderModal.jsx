@@ -3,7 +3,8 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { User, MapPin, FastForward, Clock, Phone, ChefHat, ChevronDown } from 'lucide-react';
 import { ActionSlider } from '@/modules/DeliveryV2/components/ui/ActionSlider';
 import { useDeliveryStore } from '@/modules/DeliveryV2/store/useDeliveryStore';
-import { getHaversineDistance, calculateETA } from '@/modules/DeliveryV2/utils/geo';
+import { computePickupMetrics } from '@/modules/DeliveryV2/utils/pickupMetrics';
+import { PickupMetricsValue } from '@/modules/DeliveryV2/components/orders/NewOrderCard';
 
 /**
  * NewOrderModal - Ported to Original 1:1 Theme with Slider Accept.
@@ -12,42 +13,10 @@ import { getHaversineDistance, calculateETA } from '@/modules/DeliveryV2/utils/g
 export const NewOrderModal = ({ order, onAccept, onReject, onMinimize }) => {
   const { riderLocation } = useDeliveryStore();
 
-  const { distanceKm, etaMins } = useMemo(() => {
-    if (!order) return { distanceKm: null, etaMins: null };
-
-    // A. Use provided data if available (Direct distance from socket)
-    const rawDist = order.pickupDistanceKm || order.distanceKm;
-    const rawEta = order.estimatedTime || order.duration || order.eta;
-    
-    if (rawDist != null) {
-      return { 
-        distanceKm: Number(rawDist).toFixed(1), 
-        etaMins: rawEta && rawEta > 0 ? Math.ceil(rawEta) : Math.ceil((rawDist * 1000) / 416) + 5
-      };
-    }
-
-    // B. Calculate from locations (Local calculation fallback)
-    const rest = order.restaurantLocation || order.restaurantId?.location || {};
-    const resLat = parseFloat(order.restaurant_lat || order.restaurantLat || rest.latitude || rest.lat);
-    const resLng = parseFloat(order.restaurant_lng || order.restaurantLng || rest.longitude || rest.lng);
-
-    if (riderLocation && !isNaN(resLat) && !isNaN(resLng)) {
-      const distM = getHaversineDistance(
-        riderLocation.lat, riderLocation.lng,
-        resLat, resLng
-      );
-      const km = distM / 1000;
-      // Assume 25km/h avg for initial estimate (roughly 416m/min)
-      const mins = Math.ceil(distM / 416) + (order.prepTime || 5);
-      
-      return { 
-        distanceKm: km.toFixed(1), 
-        etaMins: mins 
-      };
-    }
-
-    return { distanceKm: '??', etaMins: order.prepTime || 15 };
-  }, [order, riderLocation]);
+  const metrics = useMemo(
+    () => computePickupMetrics(order, riderLocation),
+    [order, riderLocation],
+  );
 
   if (!order) return null;
 
@@ -165,17 +134,11 @@ export const NewOrderModal = ({ order, onAccept, onReject, onMinimize }) => {
            <div className="grid grid-cols-2 gap-2.5 sm:gap-4">
              <div className="p-3 sm:p-4 bg-gray-50 rounded-2xl border border-gray-100 flex items-center gap-2.5 sm:gap-3">
                <Clock className="w-5 h-5 text-orange-500" />
-               <div className="flex flex-col">
-                  <span className="text-[10px] text-gray-400 font-bold uppercase tracking-widest">Time</span>
-                  <span className="text-sm font-bold text-gray-900">{etaMins} MINS</span>
-               </div>
+               <PickupMetricsValue metrics={metrics} label="Time" unit="min" />
              </div>
              <div className="p-3 sm:p-4 bg-gray-50 rounded-2xl border border-gray-100 flex items-center gap-2.5 sm:gap-3">
                <MapPin className="w-5 h-5 text-gray-400" />
-               <div className="flex flex-col">
-                  <span className="text-[10px] text-gray-400 font-bold uppercase tracking-widest">Distance</span>
-                  <span className="text-sm font-bold text-gray-900">{distanceKm} KM</span>
-               </div>
+               <PickupMetricsValue metrics={metrics} label="Distance" unit="km" />
              </div>
           </div>
 

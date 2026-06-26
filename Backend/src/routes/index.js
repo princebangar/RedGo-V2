@@ -45,6 +45,7 @@ router.use('/v1/uploads', uploadRoutes);
 // Mark business-settings/public as truly public (must be before protected admin block)
 router.get('/v1/food/admin/business-settings/public', businessSettingsController.getBusinessSettings);
 router.get('/v1/food/public/customization-settings', systemConfigController.getCustomizationSettings);
+router.get('/v1/food/public/restaurant-settings', systemConfigController.getRestaurantSettings);
 
 router.use('/v1/food/admin', authMiddleware, requireRoles('ADMIN'), restaurantAdminRoutes);
 router.use('/v1/food/user', authMiddleware, requireRoles('USER'), userRoutes);

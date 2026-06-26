@@ -46,7 +46,6 @@ const filterTabs = [
   { id: "preparing", label: "Preparing" },
   { id: "ready", label: "Ready" },
   { id: "out-for-delivery", label: "Out for delivery" },
-  { id: "scheduled", label: "Scheduled" },
   { id: "completed", label: "Completed" },
   { id: "cancelled", label: "Cancelled" },
 ];
@@ -58,7 +57,6 @@ const allOrdersStatusGroup = {
   preparing: 0,
   ready: 0,
   out_for_delivery: 0,
-  scheduled: 0,
   delivered: 1,
   completed: 1,
   picked_up: 1,
@@ -72,7 +70,6 @@ const allOrdersStatusPriority = {
   preparing: 2,
   ready: 3,
   out_for_delivery: 4,
-  scheduled: 5,
   delivered: 6,
   completed: 6,
   picked_up: 6,
@@ -132,7 +129,6 @@ const transformOrderForList = (order) => {
     sortTimestamp: isTerminal
       ? new Date(getAllOrdersTimestamp(order)).getTime()
       : new Date(order.createdAt || Date.now()).getTime(),
-    scheduledAt: order.scheduledAt || null,
     restaurantNote: order.restaurantNote || null,
     acceptedAt: order.acceptedAt || null,
   };
@@ -1171,112 +1167,27 @@ function SearchResults({ query, results, isLoading, onSelectOrder, onVerifyTakea
   );
 }
 
-// Scheduled Orders Component
-function ScheduledOrders({ onSelectOrder, refreshToken }) {
-  const navigate = useNavigate();
-  const [orders, setOrders] = useState([]);
-  const [loading, setLoading] = useState(true);
+// Helper to calculate initial countdown based on order creation time
+const isTakeawayOrder = (order) =>
+  String(order?.orderType || order?.type || "").toLowerCase() === "takeaway";
 
-  useEffect(() => {
-    const fetchScheduledOrders = async () => {
-      try {
-        setLoading(true);
-        const response = await restaurantAPI.getOrders({ page: 1, limit: 100 });
-        const list = response?.data?.data?.orders || [];
+const resolveAcceptOrderTimeoutSeconds = (
+  order,
+  deliveryTimeoutSeconds,
+  takeawayTimeoutSeconds,
+) => {
+  if (isTakeawayOrder(order)) return takeawayTimeoutSeconds;
+  return deliveryTimeoutSeconds;
+};
 
-        // Filter for scheduled orders that are NOT yet out for delivery/delivered
-        // And match 'created' or 'confirmed' status with scheduledAt
-        const scheduled = list
-          .filter((o) => {
-            const hasScheduledDate = o.scheduledAt || o.isScheduled;
-            const status = String(o.orderStatus || o.status || "").toLowerCase();
-            // In Scheduled tab, show anything that is scheduled and not yet finished
-            // regardless of whether the kitchen has already started "preparing" it.
-            return (
-              hasScheduledDate &&
-              ["created", "confirmed", "preparing", "ready"].includes(status)
-            );
-          })
-          .map(transformOrderForList)
-          .sort((a, b) => {
-            // Sort by scheduled time
-            const timeA = new Date(a.scheduledAt || 0).getTime();
-            const timeB = new Date(b.scheduledAt || 0).getTime();
-            return timeA - timeB;
-          });
-
-        setOrders(scheduled);
-      } catch (error) {
-        debugError("Error fetching scheduled orders:", error);
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    fetchScheduledOrders();
-  }, [refreshToken]);
-
-  if (loading) {
-    return (
-      <div className="flex justify-center p-10">
-        <Loader2 className="w-8 h-8 animate-spin text-primary-orange" />
-      </div>
-    );
-  }
-
-  return (
-    <div className="pt-4 pb-6">
-      <div className="flex items-baseline justify-between mb-3">
-        <div className="flex items-center gap-2">
-          <h2 className="text-base font-semibold text-black">Scheduled orders</h2>
-          <span className="text-xs text-gray-500">({orders.length})</span>
-        </div>
-        <button
-          onClick={() => navigate("/food/restaurant/orders/all")}
-          className="text-xs font-bold text-[#B80B3D] hover:underline flex items-center gap-1">
-          Full History
-          <svg
-            className="w-3 h-3"
-            fill="none"
-            stroke="currentColor"
-            viewBox="0 0 24 24">
-            <path
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              strokeWidth={3}
-              d="M9 5l7 7-7 7"
-            />
-          </svg>
-        </button>
-      </div>
-
-      {orders.length === 0 ? (
-        <div className="text-center py-8 text-gray-500 text-sm italic">
-          No scheduled orders found
-        </div>
-      ) : (
-        <div className="space-y-3">
-          {orders.map((order) => (
-            <OrderCard
-              key={order.orderId || order.mongoId}
-              {...order}
-              onSelect={onSelectOrder}
-            />
-          ))}
-        </div>
-      )}
-    </div>
-  );
-}
-
-// Helper to calculate initial countdown based on order creation time (3 minutes window)
-const getInitialCountdown = (order) => {
-  if (!order?.createdAt) return 240;
+const getInitialCountdown = (order, timeoutSeconds) => {
+  if (!timeoutSeconds || timeoutSeconds <= 0) return 0;
+  if (!order?.createdAt) return timeoutSeconds;
   const now = Date.now();
   const created = new Date(order.createdAt).getTime();
   const diffInSeconds = Math.floor((now - created) / 1000);
-  const remaining = 240 - diffInSeconds;
-  return Math.max(0, Math.min(240, remaining));
+  const remaining = timeoutSeconds - diffInSeconds;
+  return Math.max(0, Math.min(timeoutSeconds, remaining));
 }
 
 class OrdersErrorBoundary extends Component {
@@ -1353,7 +1264,11 @@ function OrdersMainInner() {
   const [showNewOrderPopup, setShowNewOrderPopup] = useState(false);
   const [popupOrder, setPopupOrder] = useState(null); // Store order for popup (from Socket.IO or API)
   const [prepTime, setPrepTime] = useState(11);
-  const [countdown, setCountdown] = useState(240); // 4 minutes in seconds
+  const [deliveryAcceptOrderTimeoutSeconds, setDeliveryAcceptOrderTimeoutSeconds] = useState(null);
+  const [takeawayAcceptOrderTimeoutSeconds, setTakeawayAcceptOrderTimeoutSeconds] = useState(null);
+  const deliveryAcceptOrderTimeoutSecondsRef = useRef(null);
+  const takeawayAcceptOrderTimeoutSecondsRef = useRef(null);
+  const [countdown, setCountdown] = useState(0);
   const [isDetailsExpanded, setIsDetailsExpanded] = useState(true);
   const [showRejectPopup, setShowRejectPopup] = useState(false);
   const [rejectReason, setRejectReason] = useState("");
@@ -1368,20 +1283,76 @@ function OrdersMainInner() {
     orderQueueRef.current = orderQueue;
   }, [orderQueue]);
 
+  useEffect(() => {
+    deliveryAcceptOrderTimeoutSecondsRef.current = deliveryAcceptOrderTimeoutSeconds;
+  }, [deliveryAcceptOrderTimeoutSeconds]);
+
+  useEffect(() => {
+    takeawayAcceptOrderTimeoutSecondsRef.current = takeawayAcceptOrderTimeoutSeconds;
+  }, [takeawayAcceptOrderTimeoutSeconds]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    const loadRestaurantSettings = async () => {
+      try {
+        const res = await restaurantAPI.getRestaurantSettings();
+        const data = res?.data?.data || {};
+        const deliveryMinutes = Number(data.deliveryAcceptOrderTimeMinutes);
+        const takeawayMinutes = Number(data.takeawayAcceptOrderTimeMinutes);
+
+        if (!cancelled) {
+          if (Number.isFinite(deliveryMinutes) && deliveryMinutes >= 1 && deliveryMinutes <= 60) {
+            setDeliveryAcceptOrderTimeoutSeconds(Math.round(deliveryMinutes) * 60);
+          } else {
+            setDeliveryAcceptOrderTimeoutSeconds(null);
+          }
+
+          if (Number.isFinite(takeawayMinutes) && takeawayMinutes >= 1 && takeawayMinutes <= 60) {
+            setTakeawayAcceptOrderTimeoutSeconds(Math.round(takeawayMinutes) * 60);
+          } else {
+            setTakeawayAcceptOrderTimeoutSeconds(null);
+          }
+        }
+      } catch (error) {
+        debugError("Failed to load restaurant accept order time:", error);
+      }
+    };
+
+    loadRestaurantSettings();
+    const refreshInterval = setInterval(loadRestaurantSettings, 30000);
+    return () => {
+      cancelled = true;
+      clearInterval(refreshInterval);
+    };
+  }, []);
+
   // Manage displaying the next order from the queue with a slight delay
   useEffect(() => {
     if (!showNewOrderPopup && orderQueue.length > 0 && !showRejectPopup) {
       const timer = setTimeout(() => {
         if (!showNewOrderPopupRef.current && orderQueueRef.current.length > 0 && !showRejectPopup) {
           const nextOrder = orderQueueRef.current[0];
+          const activeTimeout = resolveAcceptOrderTimeoutSeconds(
+            nextOrder,
+            deliveryAcceptOrderTimeoutSecondsRef.current,
+            takeawayAcceptOrderTimeoutSecondsRef.current,
+          );
+          if (!activeTimeout || activeTimeout <= 0) return;
           setPopupOrder(nextOrder);
           setShowNewOrderPopup(true);
-          setCountdown(getInitialCountdown(nextOrder));
+          setCountdown(getInitialCountdown(nextOrder, activeTimeout));
         }
       }, 800);
       return () => clearTimeout(timer);
     }
-  }, [orderQueue, showNewOrderPopup, showRejectPopup]);
+  }, [
+    orderQueue,
+    showNewOrderPopup,
+    showRejectPopup,
+    deliveryAcceptOrderTimeoutSeconds,
+    takeawayAcceptOrderTimeoutSeconds,
+  ]);
 
   // Trigger sound alert when any unmuted order exists in active popup or queue
   useEffect(() => {
@@ -1777,20 +1748,6 @@ function OrdersMainInner() {
         return;
       }
 
-      const scheduledAt = newOrder.scheduledAt
-        ? new Date(newOrder.scheduledAt).getTime()
-        : null;
-      const isFutureScheduled =
-        scheduledAt && scheduledAt > Date.now() + 30 * 60000;
-
-      if (isFutureScheduled) {
-        toast.info(
-          `New scheduled order received for ${new Date(scheduledAt).toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit" })}`,
-        );
-        requestOrdersRefresh();
-        return; // Do not show the immediate popup
-      }
-
       if (!hasOrderBeenShown(newOrder)) {
         markOrderAsShown(newOrder);
         const newId = resolveOrderActionId(newOrder);
@@ -1921,15 +1878,12 @@ function OrdersMainInner() {
   const [ordersRefreshToken, setOrdersRefreshToken] = useState(0);
   const requestOrdersRefresh = () => setOrdersRefreshToken((t) => t + 1);
 
-  // Check for confirmed orders that haven't been shown in popup yet, or scheduled orders whose time has come
+  // Check for confirmed orders that haven't been shown in popup yet
   useEffect(() => {
     const checkOrdersToPopup = async () => {
       try {
         const response = await restaurantAPI.getOrders();
         if (response.data?.success && response.data.data?.orders) {
-          const now = Date.now();
-
-          // Find orders that should trigger the popup
           const targetOrders = response.data.data.orders.filter((order) => {
             if (hasOrderBeenShown(order)) return false;
 
@@ -1937,20 +1891,7 @@ function OrdersMainInner() {
             const inQueue = orderQueueRef.current.some((o) => resolveOrderActionId(o) === orderId);
             if (inQueue) return false;
 
-            const isConfirmed = order.status === "confirmed";
-
-            if (isConfirmed && !order.scheduledAt) return true; // ordinary confirmed fallback
-
-            if (
-              order.scheduledAt &&
-              (order.status === "created" || order.status === "confirmed")
-            ) {
-              const scheduledTime = new Date(order.scheduledAt).getTime();
-              // Show popup if scheduled time is <= 30 mins from now
-              if (scheduledTime <= now + 30 * 60000) return true;
-            }
-
-            return false;
+            return order.status === "confirmed";
           });
 
           // Queue all matching orders
@@ -1970,7 +1911,6 @@ function OrdersMainInner() {
                 customerAddress: orderToPopup.address,
                 status: orderToPopup.status,
                 createdAt: orderToPopup.createdAt,
-                scheduledAt: orderToPopup.scheduledAt,
                 estimatedDeliveryTime: orderToPopup.estimatedDeliveryTime || 30,
                 note: orderToPopup.note || "",
                 sendCutlery: orderToPopup.sendCutlery,
@@ -2008,6 +1948,14 @@ function OrdersMainInner() {
   }, []);
 
   useEffect(() => {
+    const orderToReject = popupOrder || newOrder;
+    const timeoutSeconds = resolveAcceptOrderTimeoutSeconds(
+      orderToReject,
+      deliveryAcceptOrderTimeoutSecondsRef.current,
+      takeawayAcceptOrderTimeoutSecondsRef.current,
+    );
+    if (!timeoutSeconds || timeoutSeconds <= 0) return;
+
     if (showNewOrderPopup && countdown > 0) {
       const timer = setInterval(() => {
         setCountdown((prev) => prev - 1);
@@ -2019,11 +1967,16 @@ function OrdersMainInner() {
       const orderId = resolveOrderActionId(orderToReject);
 
       if (orderId && !isAcceptingOrder) {
-        // Safety: Double check if order has genuinely expired (4 minutes = 240s) using createdAt
+        // Safety: Double check if order has genuinely expired using createdAt
         const orderTime = orderToReject?.createdAt ? new Date(orderToReject.createdAt).getTime() : Date.now();
         const secondsElapsed = Math.floor((Date.now() - orderTime) / 1000);
+        const timeoutSeconds = resolveAcceptOrderTimeoutSeconds(
+          orderToReject,
+          deliveryAcceptOrderTimeoutSecondsRef.current,
+          takeawayAcceptOrderTimeoutSecondsRef.current,
+        );
 
-        if (secondsElapsed >= 235) {
+        if (secondsElapsed >= timeoutSeconds - 5) {
           debugLog("⏰ Timer expired. Auto-rejecting order:", orderId);
           if (stopSound) {
             stopSound();
@@ -2057,7 +2010,7 @@ function OrdersMainInner() {
             });
         } else {
           // If time is still remaining in reality, correct the countdown state instead of auto-cancelling!
-          const remaining = Math.max(0, 240 - secondsElapsed);
+          const remaining = Math.max(0, timeoutSeconds - secondsElapsed);
           debugLog("⏳ Recalculated countdown state to match real time elapsed:", remaining);
           setCountdown(remaining);
         }
@@ -2097,7 +2050,7 @@ function OrdersMainInner() {
       setShowNewOrderPopup(false);
       setPopupOrder(null);
       clearNewOrder(activeId);
-      setCountdown(240);
+      setCountdown(0);
       setPrepTime(11);
     }, 2500);
 
@@ -2253,7 +2206,7 @@ function OrdersMainInner() {
     setShowNewOrderPopup(false);
     setPopupOrder(null);
     clearNewOrder(orderId);
-    setCountdown(240);
+    setCountdown(0);
     setPrepTime(11);
     setAcceptSwipeProgress(0);
     setIsAcceptingOrder(false);
@@ -2308,7 +2261,7 @@ function OrdersMainInner() {
     setPopupOrder(null);
     clearNewOrder(orderId);
     setRejectReason("");
-    setCountdown(240);
+    setCountdown(0);
     setPrepTime(11);
   };
 
@@ -2322,7 +2275,7 @@ function OrdersMainInner() {
     setPopupOrder(null);
     clearNewOrder(orderId);
     setRejectReason("");
-    setCountdown(240);
+    setCountdown(0);
   };
 
   // Handle cancel order (for preparing orders)
@@ -2740,13 +2693,6 @@ function OrdersMainInner() {
             refreshToken={ordersRefreshToken}
           />
         );
-      case "scheduled":
-        return (
-          <ScheduledOrders
-            onSelectOrder={handleSelectOrder}
-            refreshToken={ordersRefreshToken}
-          />
-        );
       case "completed":
         return (
           <CompletedOrders
@@ -3008,7 +2954,6 @@ function OrdersMainInner() {
           activeFilter === 'preparing' ||
           activeFilter === 'ready' ||
           activeFilter === 'out-for-delivery' ||
-          activeFilter === 'scheduled' ||
           activeFilter === 'table-booking' ||
           activeFilter === 'takeaway-orders'
         ) && (
@@ -3244,32 +3189,6 @@ function OrdersMainInner() {
                     );
                   })()}
 
-                  {/* Scheduled Indicator */}
-                  {(popupOrder || newOrder)?.scheduledAt && (
-                    <div className="mb-4 bg-green-50 border border-green-200 rounded-lg p-3 flex items-center gap-3">
-                      <div className="w-8 h-8 rounded-full bg-green-100 flex items-center justify-center shrink-0">
-                        <Calendar className="w-4 h-4 text-green-600" />
-                      </div>
-                      <div>
-                        <p className="text-[10px] font-bold text-green-800 uppercase tracking-wider">
-                          Scheduled Order
-                        </p>
-                        <p className="text-sm font-semibold text-green-900 mt-0.5">
-                          For{" "}
-                          {new Date(
-                            (popupOrder || newOrder).scheduledAt,
-                          ).toLocaleString("en-US", {
-                            day: "numeric",
-                            month: "short",
-                            hour: "2-digit",
-                            minute: "2-digit",
-                            hour12: true,
-                          })}
-                        </p>
-                      </div>
-                    </div>
-                  )}
-
                   {/* Customer info */}
                   <div className="mb-4">
                     <h4 className="text-sm font-semibold text-gray-900">
@@ -3452,6 +3371,11 @@ function OrdersMainInner() {
                     const activePopupOrder = popupOrder || newOrder;
                     const popupStatus =
                       activePopupOrder?.orderStatus || activePopupOrder?.status;
+                    const popupTimeoutSeconds = resolveAcceptOrderTimeoutSeconds(
+                      activePopupOrder,
+                      deliveryAcceptOrderTimeoutSeconds,
+                      takeawayAcceptOrderTimeoutSeconds,
+                    );
                     const userCancelled = isUserCancelledStatus(popupStatus);
                     const anyCancelled = isAnyCancelledStatus(popupStatus);
 
@@ -3478,7 +3402,7 @@ function OrdersMainInner() {
                           <motion.div
                             className="absolute inset-y-0 left-0 bg-gradient-to-br from-[#B80B3D] to-[#66001D]"
                             initial={{ width: "100%" }}
-                            animate={{ width: `${(countdown / 240) * 100}%` }}
+                            animate={{ width: `${popupTimeoutSeconds > 0 ? (countdown / popupTimeoutSeconds) * 100 : 0}%` }}
                             transition={{ duration: 1, ease: "linear" }}
                           />
                           <div className="absolute inset-0 flex items-center justify-center px-16">
@@ -4010,7 +3934,6 @@ const OrderCard = memo(function OrderCard({
   onCancel,
   onMarkReady,
   isMarkingReady = false,
-  scheduledAt = null,
   restaurantNote = null,
   onVerifyTakeaway,
   acceptedAt = null,
@@ -4042,7 +3965,7 @@ const OrderCard = memo(function OrderCard({
       />
 
       <div
-        onClick={() => onSelect?.({ orderId, status, customerName, type, tableOrToken, timePlaced, eta, itemsSummary, paymentMethod, scheduledAt, restaurantNote })}
+        onClick={() => onSelect?.({ orderId, status, customerName, type, tableOrToken, timePlaced, eta, itemsSummary, paymentMethod, restaurantNote })}
         className="flex gap-3 items-center cursor-pointer pl-1">
 
         {/* Photo Container - Centered vertically and slightly larger */}
@@ -4067,12 +3990,6 @@ const OrderCard = memo(function OrderCard({
             </h3>
 
             <div className="flex items-center gap-1.5 flex-shrink-0">
-              {scheduledAt && (
-                <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full bg-green-50 text-green-600 border border-green-100 text-[8px] font-black uppercase">
-                  <Calendar className="w-2 h-2" />
-                  Scheduled
-                </span>
-              )}
               <span className={`inline-flex items-center px-1.5 py-0.5 rounded-full text-[8px] font-black border uppercase tracking-wider ${(isReady || normalizedStatus === "delivered" || normalizedStatus === "completed" || normalizedStatus === "picked_up")
                   ? "bg-emerald-50 text-emerald-600 border-emerald-100" :
                   isWaitingAcceptance
@@ -4141,31 +4058,16 @@ const OrderCard = memo(function OrderCard({
           )}
 
           {/* Bottom Actions Row - Only shown if actions/ETA exist */}
-          {(scheduledAt || (!isReady && eta) || (isPreparing || isReady || normalizedStatus === "confirmed")) && (
+          {((!isReady && eta) || (isPreparing || isReady || normalizedStatus === "confirmed")) && (
             <div className="flex flex-wrap items-center justify-between gap-2 pt-2 border-t border-slate-50 mt-1.5">
-              {scheduledAt ? (
-                <div className="flex flex-col gap-0.5">
-                  <span className="text-[8px] font-bold text-green-600 uppercase">Scheduled For</span>
-                  <span className="text-[10px] font-black text-green-700">
-                    {new Date(scheduledAt).toLocaleString("en-US", {
-                      day: "numeric",
-                      month: "short",
-                      hour: "2-digit",
-                      minute: "2-digit",
-                      hour12: true,
-                    })}
-                  </span>
-                </div>
-              ) : (
-                <div className="flex flex-col gap-0.5">
-                  {!isReady && eta && (
-                    <div className="flex items-center gap-1">
-                      <span className="text-[8px] font-bold text-slate-400 uppercase">ETA</span>
-                      <span className="text-[11px] font-black text-slate-800">{eta}</span>
-                    </div>
-                  )}
-                </div>
-              )}
+              <div className="flex flex-col gap-0.5">
+                {!isReady && eta && (
+                  <div className="flex items-center gap-1">
+                    <span className="text-[8px] font-bold text-slate-400 uppercase">ETA</span>
+                    <span className="text-[11px] font-black text-slate-800">{eta}</span>
+                  </div>
+                )}
+              </div>
 
               <div className="flex flex-wrap items-center gap-1.5 flex-shrink-0">
                 {(isPreparing || isReady || normalizedStatus === "confirmed") && (
@@ -4303,7 +4205,6 @@ function PreparingOrders({
               dispatchStatus: order.dispatch?.status || null,
               paymentMethod:
                 order.paymentMethod || order.payment?.method || null,
-              scheduledAt: order.scheduledAt || null,
               restaurantNote: order.restaurantNote || null,
             };
           });
@@ -4609,7 +4510,6 @@ function ReadyOrders({ onSelectOrder, onVerifyTakeaway, refreshToken = 0 }) {
             paymentMethod: order.paymentMethod || order.payment?.method || null,
             deliveryPartnerId: order.deliveryPartnerId || null,
             dispatchStatus: order.dispatch?.status || null,
-            scheduledAt: order.scheduledAt || null,
             restaurantNote: order.restaurantNote || null,
           }));
 
@@ -4734,7 +4634,6 @@ const OutForDeliveryOrders = ({ onSelectOrder, refreshToken = 0 }) => {
             paymentMethod: order.paymentMethod || order.payment?.method || null,
             deliveryPartnerId: order.deliveryPartnerId || null,
             dispatchStatus: order.dispatch?.status || null,
-            scheduledAt: order.scheduledAt || null,
             restaurantNote: order.restaurantNote || null,
           }));
 

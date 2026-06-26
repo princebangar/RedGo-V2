@@ -124,3 +124,133 @@ export async function getTakeawayCodStatus(req, res) {
         data: { takeaway_cod_enabled: takeawayCodEnabled }
     });
 }
+
+const RESTAURANT_SETTINGS = {
+    deliveryAcceptOrderTimeMinutes: {
+        key: 'restaurant_delivery_accept_order_time_minutes',
+        min: 1,
+        max: 60,
+        description: 'Minutes a restaurant has to accept a new delivery order before auto-rejection'
+    },
+    takeawayAcceptOrderTimeMinutes: {
+        key: 'restaurant_takeaway_accept_order_time_minutes',
+        min: 1,
+        max: 60,
+        description: 'Minutes a restaurant has to accept a new takeaway order before auto-rejection'
+    }
+};
+
+const LEGACY_ACCEPT_ORDER_TIME_KEY = 'restaurant_accept_order_time_minutes';
+
+function parseAcceptOrderTimeMinutes(value, fieldName = 'acceptOrderTimeMinutes') {
+    const parsed = Number(value);
+    if (!Number.isFinite(parsed)) {
+        throw new ValidationError(`${fieldName} must be a number between 1 and 60`);
+    }
+    const rounded = Math.round(parsed);
+    if (rounded < 1 || rounded > 60) {
+        throw new ValidationError(`${fieldName} must be between 1 and 60`);
+    }
+    return rounded;
+}
+
+function readStoredAcceptOrderMinutes(configValue) {
+    if (configValue == null) return null;
+    try {
+        return parseAcceptOrderTimeMinutes(configValue);
+    } catch {
+        return null;
+    }
+}
+
+async function resolveRestaurantSettings() {
+    const keys = [
+        RESTAURANT_SETTINGS.deliveryAcceptOrderTimeMinutes.key,
+        RESTAURANT_SETTINGS.takeawayAcceptOrderTimeMinutes.key,
+        LEGACY_ACCEPT_ORDER_TIME_KEY
+    ];
+    const docs = await FoodSystemConfig.find({ key: { $in: keys } }).lean();
+    const map = new Map(docs.map((d) => [d.key, d]));
+
+    const legacyMinutes = map.get(LEGACY_ACCEPT_ORDER_TIME_KEY)?.value ?? null;
+
+    let deliveryAcceptOrderTimeMinutes = readStoredAcceptOrderMinutes(
+        map.get(RESTAURANT_SETTINGS.deliveryAcceptOrderTimeMinutes.key)?.value ?? null
+    );
+    let takeawayAcceptOrderTimeMinutes = readStoredAcceptOrderMinutes(
+        map.get(RESTAURANT_SETTINGS.takeawayAcceptOrderTimeMinutes.key)?.value ?? null
+    );
+
+    if (deliveryAcceptOrderTimeMinutes == null && legacyMinutes != null) {
+        deliveryAcceptOrderTimeMinutes = readStoredAcceptOrderMinutes(legacyMinutes);
+    }
+    if (takeawayAcceptOrderTimeMinutes == null && legacyMinutes != null) {
+        takeawayAcceptOrderTimeMinutes = readStoredAcceptOrderMinutes(legacyMinutes);
+    }
+
+    return { deliveryAcceptOrderTimeMinutes, takeawayAcceptOrderTimeMinutes };
+}
+
+export async function getRestaurantSettings(req, res) {
+    const data = await resolveRestaurantSettings();
+    res.json({ success: true, data });
+}
+
+export async function updateRestaurantSettings(req, res) {
+    const body = req.body ?? {};
+    const updates = [];
+
+    if (body.deliveryAcceptOrderTimeMinutes !== undefined) {
+        const value = parseAcceptOrderTimeMinutes(
+            body.deliveryAcceptOrderTimeMinutes,
+            'deliveryAcceptOrderTimeMinutes'
+        );
+        updates.push({
+            key: RESTAURANT_SETTINGS.deliveryAcceptOrderTimeMinutes.key,
+            value,
+            description: RESTAURANT_SETTINGS.deliveryAcceptOrderTimeMinutes.description
+        });
+    }
+
+    if (body.takeawayAcceptOrderTimeMinutes !== undefined) {
+        const value = parseAcceptOrderTimeMinutes(
+            body.takeawayAcceptOrderTimeMinutes,
+            'takeawayAcceptOrderTimeMinutes'
+        );
+        updates.push({
+            key: RESTAURANT_SETTINGS.takeawayAcceptOrderTimeMinutes.key,
+            value,
+            description: RESTAURANT_SETTINGS.takeawayAcceptOrderTimeMinutes.description
+        });
+    }
+
+    if (updates.length === 0) {
+        throw new ValidationError(
+            'Provide deliveryAcceptOrderTimeMinutes and/or takeawayAcceptOrderTimeMinutes (1-60)'
+        );
+    }
+
+    await Promise.all(
+        updates.map((u) =>
+            FoodSystemConfig.findOneAndUpdate(
+                { key: u.key },
+                {
+                    $set: {
+                        key: u.key,
+                        value: u.value,
+                        description: u.description,
+                        updatedBy: {
+                            role: req.user?.role || 'ADMIN',
+                            adminId: req.user?._id,
+                            at: new Date()
+                        }
+                    }
+                },
+                { upsert: true, new: true }
+            )
+        )
+    );
+
+    const data = await resolveRestaurantSettings();
+    res.json({ success: true, data });
+}

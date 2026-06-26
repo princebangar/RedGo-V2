@@ -1,6 +1,10 @@
 import React from 'react';
 import { ChevronRight, Package } from 'lucide-react';
-import { resolveOrderKey, mapDeliveryPhaseToTripStatus } from '@/modules/DeliveryV2/store/useDeliveryStore';
+import {
+  resolveOrderKey,
+  mapDeliveryPhaseToTripStatus,
+  useDeliveryStore,
+} from '@/modules/DeliveryV2/store/useDeliveryStore';
 
 const phaseLabel = (order, session) => {
   const tripStatus = session?.tripStatus || mapDeliveryPhaseToTripStatus(order);
@@ -20,6 +24,9 @@ const phaseLabel = (order, session) => {
 
 export default function AcceptedOrderCard({ order, focused = false, onSelect }) {
   const orderId = resolveOrderKey(order);
+  const session = useDeliveryStore((state) =>
+    orderId ? state.orderSessions[orderId] : null,
+  );
   const displayId = order?.orderId || order?.displayOrderId || orderId;
   const restaurantName =
     order?.restaurantName ||
@@ -33,30 +40,28 @@ export default function AcceptedOrderCard({ order, focused = false, onSelect }) 
       onClick={() => onSelect?.(order)}
       className={`w-full text-left rounded-2xl border p-4 transition-all active:scale-[0.98] ${
         focused
-          ? 'border-orange-400 bg-orange-50 shadow-md shadow-orange-500/10'
+          ? 'border-[#15498b]/35 bg-[#e7effa] shadow-md shadow-[#15498b]/10'
           : 'border-gray-100 bg-white hover:border-gray-200'
       }`}
     >
       <div className="flex items-center justify-between gap-3">
         <div className="flex items-center gap-3 min-w-0">
-          <div
-            className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 ${
-              focused ? 'bg-orange-500 text-white' : 'bg-gray-100 text-gray-700'
-            }`}
-          >
-            <Package className="w-5 h-5" />
+          <div className="w-10 h-10 rounded-xl flex items-center justify-center shrink-0 !bg-[#15498b] !text-white shadow-sm">
+            <Package className="w-5 h-5" strokeWidth={2.25} />
           </div>
           <div className="min-w-0">
-            <p className="text-[10px] font-black uppercase tracking-widest text-gray-400">
+            <p className="text-[10px] font-black uppercase tracking-widest text-gray-500">
               Order #{displayId}
             </p>
             <p className="text-sm font-bold text-gray-950 truncate">{restaurantName}</p>
-            <p className="text-[11px] font-semibold text-orange-600 mt-0.5">
-              {phaseLabel(order)}
+            <p className="text-[11px] font-semibold !text-[#15498b] mt-0.5">
+              {phaseLabel(order, session)}
             </p>
           </div>
         </div>
-        <ChevronRight className={`w-5 h-5 shrink-0 ${focused ? 'text-orange-500' : 'text-gray-300'}`} />
+        <ChevronRight
+          className={`w-5 h-5 shrink-0 ${focused ? '!text-[#15498b]' : 'text-gray-300'}`}
+        />
       </div>
     </button>
   );
