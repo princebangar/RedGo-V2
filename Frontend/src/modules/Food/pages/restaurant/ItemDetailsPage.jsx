@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from "react"
+import { useState, useRef, useEffect, useMemo, useCallback } from "react"
 import { useNavigate, useParams, useLocation } from "react-router-dom"
 import useRestaurantBackNavigation from "@food/hooks/useRestaurantBackNavigation"
 import { motion, AnimatePresence } from "framer-motion"
@@ -14,7 +14,8 @@ import {
   ThumbsUp,
   ChevronLeft,
   ChevronRight,
-  Loader2
+  Loader2,
+  Search
 } from "lucide-react"
 import { Switch } from "@food/components/ui/switch"
 // Removed getAllFoods and saveFood - now using menu API
@@ -70,9 +71,6 @@ export default function ItemDetailsPage() {
   const [itemDescription, setItemDescription] = useState("")
   const [foodType, setFoodType] = useState("Non-Veg")
   const [basePrice, setBasePrice] = useState("")
-  const [priceOnOtherPlatforms, setPriceOnOtherPlatforms] = useState("")
-  const [otherPlatformGst, setOtherPlatformGst] = useState("")
-  const [otherPlatformGstError, setOtherPlatformGstError] = useState(false)
   const [variants, setVariants] = useState([])
   const [preparationTime, setPreparationTime] = useState("")
   const [gst, setGst] = useState("5.0")
@@ -97,6 +95,9 @@ export default function ItemDetailsPage() {
   const [direction, setDirection] = useState(0)
   const carouselRef = useRef(null)
   const [isCategoryPopupOpen, setIsCategoryPopupOpen] = useState(false)
+  const [categorySearchQuery, setCategorySearchQuery] = useState("")
+  const [debouncedCategorySearch, setDebouncedCategorySearch] = useState("")
+  const categorySearchInputRef = useRef(null)
   const [isServesPopupOpen, setIsServesPopupOpen] = useState(false)
   const [isItemSizePopupOpen, setIsItemSizePopupOpen] = useState(false)
   const [isGstPopupOpen, setIsGstPopupOpen] = useState(false)
@@ -129,8 +130,6 @@ export default function ItemDetailsPage() {
     const itemVariants = getFoodVariants(item)
     setVariants(itemVariants.map(createVariantDraft))
     setBasePrice(itemVariants.length === 0 ? item.price?.toString() || "" : "")
-    setPriceOnOtherPlatforms(item.priceOnOtherPlatforms?.toString() || "")
-    setOtherPlatformGst(item.otherPlatformGst?.toString() || "")
     setPreparationTime(item.preparationTime || "")
     setGst(item.gst?.toString() || "5.0")
     setIsRecommended(item.isRecommended || false)
@@ -241,46 +240,64 @@ export default function ItemDetailsPage() {
     fetchItemData()
   }, [id, isNewItem, location.state, defaultCategory])
 
-  // Fetch categories from restaurant-specific API
-  useEffect(() => {
-    const fetchCategories = async () => {
-      try {
-        setLoadingCategories(true)
-        const response = await restaurantAPI.getCategories()
-        if (response.data.success && response.data.data.categories) {
-          // Format categories for the UI - flat list, no subcategories
-          const formattedCategories = response.data.data.categories.map(cat => ({
-            id: cat._id || cat.id,
-            name: cat.name,
-            foodTypeScope: cat.foodTypeScope || "Both",
-          }))
-
-          debugLog('Formatted restaurant categories:', formattedCategories)
-          setCategories(formattedCategories)
-          if (!selectedCategoryId && formattedCategories.length > 0) {
-            const preferredName = String(category || defaultCategory || "").trim()
-            const matchedByName = formattedCategories.find((cat) => cat.name === preferredName)
-            const nextCategory = matchedByName || (isNewItem ? formattedCategories[0] : null)
-            if (nextCategory) {
-              setSelectedCategoryId(nextCategory.id)
-              setCategory(nextCategory.name)
-            }
-          }
-        } else {
-          // If no categories exist, show empty array (user can add categories)
-          setCategories([])
-        }
-      } catch (error) {
-        debugError('Error fetching restaurant categories:', error)
-        // Show empty array on error - user can add categories
-        setCategories([])
-      } finally {
-        setLoadingCategories(false)
+  // Fetch categories once on mount
+  const fetchCategories = useCallback(async () => {
+    try {
+      setLoadingCategories(true)
+      const response = await restaurantAPI.getCategories()
+      if (response.data.success && response.data.data.categories) {
+        const formattedCategories = response.data.data.categories.map(cat => ({
+          id: cat._id || cat.id,
+          name: cat.name,
+          foodTypeScope: cat.foodTypeScope || "Both",
+        }))
+        setCategories(formattedCategories)
+        return formattedCategories
       }
+      setCategories([])
+      return []
+    } catch (error) {
+      debugError('Error fetching restaurant categories:', error)
+      setCategories([])
+      return []
+    } finally {
+      setLoadingCategories(false)
     }
+  }, [])
 
-    fetchCategories()
-  }, [category, defaultCategory, defaultCategoryId, isNewItem, selectedCategoryId])
+  // Fetch categories once on mount; auto-match by name if category passed via nav state
+  useEffect(() => {
+    fetchCategories().then((formattedCategories) => {
+      if (!defaultCategoryId && defaultCategory && defaultCategory !== "Select category") {
+        const matched = formattedCategories.find((cat) => cat.name === defaultCategory)
+        if (matched) {
+          setSelectedCategoryId(matched.id)
+          setCategory(matched.name)
+        }
+      }
+    })
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  useEffect(() => {
+    const timer = window.setTimeout(() => {
+      setDebouncedCategorySearch(categorySearchQuery.trim())
+    }, 300)
+    return () => window.clearTimeout(timer)
+  }, [categorySearchQuery])
+
+  useEffect(() => {
+    if (!isCategoryPopupOpen) {
+      setCategorySearchQuery("")
+      setDebouncedCategorySearch("")
+    }
+  }, [isCategoryPopupOpen])
+
+  const filteredCategories = useMemo(() => {
+    if (!debouncedCategorySearch) return categories
+    const query = debouncedCategorySearch.toLowerCase()
+    return categories.filter((cat) => String(cat.name || "").toLowerCase().includes(query))
+  }, [categories, debouncedCategorySearch])
 
   // Keep focused form fields visible above mobile keyboard
   useEffect(() => {
@@ -639,14 +656,6 @@ export default function ItemDetailsPage() {
         return
       }
 
-      if (otherPlatformGst === "" || !Number.isFinite(Number(otherPlatformGst))) {
-        setOtherPlatformGstError(true)
-        toast.error("Other platform GST is required")
-        setUploadingImages(false)
-        return
-      }
-      setOtherPlatformGstError(false)
-
       const variantPayload = normalizedVariants.map((variant) => ({
         ...(variant.persistedId ? { _id: variant.persistedId } : {}),
         name: variant.name,
@@ -660,8 +669,6 @@ export default function ItemDetailsPage() {
           name: itemName.trim(),
           description: itemDescription.trim(),
           price: hasVariants ? undefined : parsedBasePrice,
-          priceOnOtherPlatforms: priceOnOtherPlatforms ? Number(priceOnOtherPlatforms) : null,
-          otherPlatformGst: Number(otherPlatformGst),
           variants: variantPayload,
           image: allImageUrls.length > 0 ? allImageUrls[0] : "",
           foodType: foodType,
@@ -685,8 +692,6 @@ export default function ItemDetailsPage() {
           name: itemName.trim(),
           description: itemDescription.trim(),
           price: hasVariants ? undefined : parsedBasePrice,
-          priceOnOtherPlatforms: priceOnOtherPlatforms ? Number(priceOnOtherPlatforms) : null,
-          otherPlatformGst: Number(otherPlatformGst),
           variants: variantPayload,
           image: allImageUrls.length > 0 ? allImageUrls[0] : "",
           foodType: foodType,
@@ -944,8 +949,8 @@ export default function ItemDetailsPage() {
               onClick={() => setIsCategoryPopupOpen(true)}
               className="w-full px-4 py-3 border border-gray-300 rounded-lg text-left flex items-center justify-between bg-white hover:bg-gray-50 transition-colors"
             >
-              <span className="text-sm text-gray-900">
-                {category || "Select category"}
+              <span className={`text-sm ${selectedCategoryId ? "text-gray-900" : "text-gray-400"}`}>
+                {selectedCategoryId ? category : "Select category"}
               </span>
               <ChevronDown className="w-5 h-5 text-gray-500" />
             </button>
@@ -976,9 +981,8 @@ export default function ItemDetailsPage() {
             </div>
           </div>
 
-
           {/* Item Description */}
-          <div>
+          <div className="-mt-1">
             <label className="block text-sm font-medium text-gray-900 mb-2">
               Item description
             </label>
@@ -1063,69 +1067,6 @@ export default function ItemDetailsPage() {
                         <EditIcon className="w-4 h-4 text-gray-500" />
                       </button>
                     </div>
-                  </div>
-
-                  <div className="relative">
-                    <label className="block text-xs text-gray-600 mb-1">
-                      Price on other platforms{" "}
-                      <span className="text-gray-400 text-xs font-normal">(Optional)</span>
-                    </label>
-                    <div className="relative">
-                      <input
-                        type="text"
-                        value={priceOnOtherPlatforms}
-                        onChange={(e) => {
-                          const value = e.target.value.replace(/[\u20B9\s,]/g, '').replace(/[^0-9.]/g, '')
-                          const parts = value.split('.')
-                          const cleanedValue = parts.length > 2
-                            ? parts[0] + '.' + parts.slice(1).join('')
-                            : value
-                          setPriceOnOtherPlatforms(cleanedValue)
-                        }}
-                        onFocus={(e) => {
-                          if (e.target.value.startsWith('\u20B9')) {
-                            e.target.value = e.target.value.replace(/[\u20B9\s]+/g, '')
-                          }
-                        }}
-                        placeholder="e.g., 299 (Enter the price on Swiggy, Zomato, etc.)"
-                        className="w-full pl-8 pr-3 py-3 border border-gray-300 rounded-lg text-sm text-gray-900 bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                      />
-                      <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm text-gray-600">{"\u20B9"}</span>
-                    </div>
-                    <p className="mt-1.5 text-xs text-gray-500">
-                      Help customers see how much they save by ordering with us. We'll show the savings in their cart.
-                    </p>
-                  </div>
-
-                  <div className="relative">
-                    <label className="block text-xs text-gray-600 mb-1">
-                      Other platform GST (%) <span className="text-[#B80B3D]">*</span>
-                    </label>
-                    <div className="relative">
-                      <input
-                        type="text"
-                        value={otherPlatformGst}
-                        onChange={(e) => {
-                          const value = e.target.value.replace(/[^0-9.]/g, '')
-                          const parts = value.split('.')
-                          const cleanedValue = parts.length > 2
-                            ? parts[0] + '.' + parts.slice(1).join('')
-                            : value
-                          const parsed = cleanedValue === '' ? '' : Math.min(100, Number(cleanedValue))
-                          setOtherPlatformGst(parsed === '' ? '' : String(parsed))
-                          setOtherPlatformGstError(false)
-                        }}
-                        placeholder="e.g., 5"
-                        className={`w-full pr-8 pl-3 py-3 border ${otherPlatformGstError ? 'border-red-500' : 'border-gray-300'} rounded-lg text-sm text-gray-900 bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent`}
-                      />
-                      <span className="absolute right-3 top-1/2 -translate-y-1/2 text-sm text-gray-600">%</span>
-                    </div>
-                    {otherPlatformGstError && (
-                      <p className="mt-1.5 text-xs text-[#B80B3D]">Other platform GST is required</p>
-                    )}
-                    <p className="mt-1.5 text-xs text-gray-500">
-                      Enter the GST rate applied on other platforms for this item.
-                    </p>
                   </div>
                 </>
               ) : (
@@ -1273,16 +1214,18 @@ export default function ItemDetailsPage() {
               animate={{ y: 0 }}
               exit={{ y: "100%" }}
               transition={{ type: "spring", damping: 30, stiffness: 300 }}
-              className="fixed bottom-0 left-0 right-0 bg-white rounded-t-2xl shadow-2xl z-50 max-h-[85vh] flex flex-col"
+              className="fixed bottom-0 left-0 right-0 bg-white rounded-t-2xl shadow-2xl z-50 h-[85vh] flex flex-col"
               onClick={(e) => e.stopPropagation()}
             >
-              <div className="flex items-center justify-between px-4 py-4 border-b border-gray-200">
+              <div className="shrink-0 flex items-center justify-between px-4 py-4 border-b border-gray-200">
                 <h2 className="text-lg font-bold text-gray-900">Select category</h2>
                 <div className="flex items-center gap-2">
                   <button
                     onClick={() => {
                       setIsCategoryPopupOpen(false)
-                      navigate('/restaurant/menu-categories')
+                      navigate('/restaurant/menu-categories', {
+                        state: { backTo: location.pathname, openCategoryPopup: true }
+                      })
                     }}
                     className="p-2 rounded-lg bg-gradient-to-br from-[#B80B3D] to-[#66001D] text-white hover:bg-gray-800 transition-colors flex items-center gap-1.5"
                     title="Add Category"
@@ -1298,18 +1241,43 @@ export default function ItemDetailsPage() {
                   </button>
                 </div>
               </div>
-              <div className="flex-1 overflow-y-auto p-2">
+              <div className="shrink-0 border-b border-gray-200 bg-white px-4 py-3">
+                <div className="relative">
+                  <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" />
+                  <input
+                    ref={categorySearchInputRef}
+                    type="text"
+                    value={categorySearchQuery}
+                    onChange={(e) => setCategorySearchQuery(e.target.value)}
+                    placeholder="Search categories..."
+                    className="w-full pl-10 pr-10 py-2.5 rounded-xl border border-gray-200 bg-gray-50 text-sm text-gray-900 placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-[#B80B3D]/25 focus:border-[#B80B3D]/40 focus:bg-white transition-colors"
+                  />
+                  {categorySearchQuery && (
+                    <button
+                      type="button"
+                      onClick={() => setCategorySearchQuery("")}
+                      className="absolute right-2.5 top-1/2 -translate-y-1/2 p-1 rounded-full text-gray-400 hover:text-gray-600 hover:bg-gray-100 transition-colors"
+                      aria-label="Clear search"
+                    >
+                      <X className="w-4 h-4" />
+                    </button>
+                  )}
+                </div>
+              </div>
+              <div className="flex-1 min-h-0 overflow-y-auto p-2 flex flex-col">
                 {loadingCategories ? (
-                  <div className="flex items-center justify-center py-12">
+                  <div className="flex flex-1 items-center justify-center">
                     <Loader2 className="w-6 h-6 animate-spin text-gray-600" />
                   </div>
                 ) : categories.length === 0 ? (
-                  <div className="text-center py-12 space-y-4">
+                  <div className="flex flex-1 flex-col items-center justify-center space-y-4">
                     <p className="text-sm text-gray-500">No categories available</p>
                     <button
                       onClick={() => {
                         setIsCategoryPopupOpen(false)
-                        navigate('/restaurant/menu-categories')
+                        navigate('/restaurant/menu-categories', {
+                          state: { backTo: location.pathname, openCategoryPopup: true }
+                        })
                       }}
                       className="inline-flex items-center gap-2 px-4 py-2 bg-gradient-to-br from-[#B80B3D] to-[#66001D] text-white rounded-lg font-semibold hover:bg-gray-800 transition-colors"
                     >
@@ -1317,30 +1285,50 @@ export default function ItemDetailsPage() {
                       Add Category
                     </button>
                   </div>
+                ) : filteredCategories.length === 0 ? (
+                  <div className="flex flex-1 items-center justify-center">
+                    <p className="text-sm text-gray-500">No matching categories found.</p>
+                  </div>
                 ) : (
-                  <div className="space-y-2">
-                    {categories.map((cat) => (
-                      <button
-                        key={cat.id}
-                        onClick={() => handleCategorySelect(cat.id, cat.name)}
-                        className={`w-full rounded-lg px-4 py-3 text-left transition-colors ${String(selectedCategoryId || "") === String(cat.id)
-                          ? "bg-gradient-to-br from-[#B80B3D] to-[#66001D] text-white"
-                          : "bg-gray-50 text-gray-900 hover:bg-gray-100"
-                          }`}
-                      >
-                        <div className="flex items-center justify-between gap-3">
-                          <span className="text-sm font-medium">{cat.name}</span>
-                          <span className={`rounded-full border px-2 py-0.5 text-[11px] font-semibold ${cat.foodTypeScope === "Veg"
-                            ? "border-green-200 bg-green-50 text-green-700"
-                            : cat.foodTypeScope === "Non-Veg"
-                              ? "border-red-200 bg-red-50 text-red-700"
-                              : "border-slate-200 bg-slate-100 text-slate-700"
-                            }`}>
-                            {cat.foodTypeScope || "Both"}
-                          </span>
-                        </div>
-                      </button>
-                    ))}
+                  <div className="space-y-1.5">
+                    {filteredCategories.map((cat) => {
+                      const isSelected = String(selectedCategoryId || "") === String(cat.id)
+                      const isVeg = cat.foodTypeScope === "Veg"
+                      const isNonVeg = cat.foodTypeScope === "Non-Veg"
+                      return (
+                        <button
+                          key={cat.id}
+                          onClick={() => handleCategorySelect(cat.id, cat.name)}
+                          className={`w-full rounded-xl px-4 py-3 text-left transition-all ${isSelected
+                            ? "bg-gradient-to-br from-[#B80B3D] to-[#66001D] text-white shadow-md"
+                            : "bg-gray-50 text-gray-900 hover:bg-gray-100"
+                            }`}
+                        >
+                          <div className="flex items-center justify-between gap-3">
+                            <span className="text-sm font-medium">{cat.name}</span>
+                            {isVeg ? (
+                              <div className={`flex items-center gap-1.5 px-2.5 py-1 rounded-full border text-[11px] font-semibold ${isSelected ? "border-green-400 bg-green-900/40 text-green-300" : "border-green-300 bg-green-50 text-green-700"}`}>
+                                <span className={`w-3.5 h-3.5 rounded-sm border-2 flex items-center justify-center flex-shrink-0 ${isSelected ? "border-green-400" : "border-green-600"}`}>
+                                  <span className={`w-1.5 h-1.5 rounded-full block ${isSelected ? "bg-green-400" : "bg-green-600"}`} />
+                                </span>
+                                Veg
+                              </div>
+                            ) : isNonVeg ? (
+                              <div className={`flex items-center gap-1.5 px-2.5 py-1 rounded-full border text-[11px] font-semibold ${isSelected ? "border-white/40 bg-white/15 text-white" : "border-red-300 bg-red-50 text-red-700"}`}>
+                                <span className={`w-3.5 h-3.5 rounded-sm border-2 flex items-center justify-center flex-shrink-0 ${isSelected ? "border-white" : "border-red-600"}`}>
+                                  <span className={`w-1.5 h-1.5 rounded-full block ${isSelected ? "bg-white" : "bg-red-600"}`} />
+                                </span>
+                                Non-Veg
+                              </div>
+                            ) : (
+                              <div className={`flex items-center gap-1 px-2.5 py-1 rounded-full border text-[11px] font-semibold ${isSelected ? "border-white/40 bg-white/15 text-white" : "border-slate-200 bg-slate-100 text-slate-600"}`}>
+                                Both
+                              </div>
+                            )}
+                          </div>
+                        </button>
+                      )
+                    })}
                   </div>
                 )}
               </div>

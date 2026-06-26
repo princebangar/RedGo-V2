@@ -21,6 +21,7 @@ export default function JoinRequest() {
   const [selectedRequest, setSelectedRequest] = useState(null)
   const [viewDetails, setViewDetails] = useState(null)
   const [processing, setProcessing] = useState(false)
+  const [loadingDetails, setLoadingDetails] = useState(false)
   const [rejectionReason, setRejectionReason] = useState("")
   const [filters, setFilters] = useState({
     zone: "",
@@ -36,9 +37,9 @@ export default function JoinRequest() {
   }, [searchQuery])
 
   // Fetch join requests from API (single source of truth for when to fetch)
-  const fetchJoinRequests = async () => {
+  const fetchJoinRequests = async ({ silent = false } = {}) => {
     try {
-      setLoading(true)
+      if (!silent) setLoading(true)
       setError(null)
 
       const params = {
@@ -83,10 +84,12 @@ export default function JoinRequest() {
         errorMessage = err.message
       }
       
-      setError(errorMessage)
-      setRequests([])
+      if (!silent) {
+        setError(errorMessage)
+        setRequests([])
+      }
     } finally {
-      setLoading(false)
+      if (!silent) setLoading(false)
     }
   }
 
@@ -112,19 +115,18 @@ export default function JoinRequest() {
 
     try {
       setProcessing(true)
-      await adminAPI.approveDeliveryPartner(selectedRequest._id)
-      
-      // Refresh the list
-      await fetchJoinRequests()
-      
+      const id = selectedRequest._id
+      setRequests(prev => prev.filter(r => r._id !== id))
       setIsApproveOpen(false)
       setSelectedRequest(null)
-      
+      await adminAPI.approveDeliveryPartner(id)
       toast.success(`Successfully approved ${selectedRequest.name}'s join request!`)
+      await fetchJoinRequests({ silent: true })
     } catch (err) {
       debugError("Error approving request:", err)
       const msg = err.response?.data?.message ?? err.response?.data?.error ?? err?.message
       toast.error(msg || "Failed to approve request. Please try again.")
+      await fetchJoinRequests({ silent: true })
     } finally {
       setProcessing(false)
     }
@@ -147,20 +149,19 @@ export default function JoinRequest() {
 
     try {
       setProcessing(true)
-      await adminAPI.rejectDeliveryPartner(selectedRequest._id, rejectionReason.trim())
-      
-      // Refresh the list
-      await fetchJoinRequests()
-      
+      const id = selectedRequest._id
+      setRequests(prev => prev.filter(r => r._id !== id))
       setIsDenyOpen(false)
       setSelectedRequest(null)
       setRejectionReason("")
-      
+      await adminAPI.rejectDeliveryPartner(id, rejectionReason.trim())
       toast.success(`Successfully rejected ${selectedRequest.name}'s join request.`)
+      await fetchJoinRequests({ silent: true })
     } catch (err) {
       debugError("Error rejecting request:", err)
       const msg = err.response?.data?.message ?? err.response?.data?.error ?? err?.message
       toast.error(msg || "Failed to reject request. Please try again.")
+      await fetchJoinRequests({ silent: true })
     } finally {
       setProcessing(false)
     }
@@ -168,9 +169,8 @@ export default function JoinRequest() {
 
   const handleView = async (request) => {
     try {
-      setLoading(true)
+      setLoadingDetails(true)
       const response = await adminAPI.getDeliveryPartnerById(request._id)
-      
       if (response.data && response.data.success) {
         setViewDetails(response.data.data.delivery)
         setIsViewOpen(true)
@@ -181,7 +181,7 @@ export default function JoinRequest() {
       debugError("Error fetching details:", err)
       toast.error(err.response?.data?.message || "Failed to load details")
     } finally {
-      setLoading(false)
+      setLoadingDetails(false)
     }
   }
 

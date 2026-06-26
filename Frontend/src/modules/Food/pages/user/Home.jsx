@@ -1032,13 +1032,14 @@ export default function Home() {
 
     if (newValue && !prevVegMode) {
       // Veg mode was just turned ON
-      // Calculate popup position relative to toggle
+      // Calculate popup position relative to toggle (right-aligned to button)
       if (vegModeToggleRef.current) {
         const rect = vegModeToggleRef.current.getBoundingClientRect();
         const screenWidth = window.innerWidth;
-        const popupWidth = Math.min(screenWidth - 32, 320); // 320 is max-w-xs
+        const popupWidth = Math.min(screenWidth - 32, 320);
 
-        let left = rect.left + rect.width / 2 - popupWidth / 2;
+        // Right-align popup to the button's right edge
+        let left = rect.right - popupWidth;
         left = Math.max(16, Math.min(left, screenWidth - popupWidth - 16));
 
         const triangleLeft = rect.left + rect.width / 2 - left;
@@ -1063,6 +1064,16 @@ export default function Home() {
     }
   };
 
+  // Lock body scroll when veg mode popup is open
+  useEffect(() => {
+    if (showVegModePopup) {
+      document.body.style.overflow = 'hidden'
+    } else {
+      document.body.style.overflow = ''
+    }
+    return () => { document.body.style.overflow = '' }
+  }, [showVegModePopup])
+
   // Update popup position on scroll/resize
   useEffect(() => {
     if (!showVegModePopup) return;
@@ -1073,7 +1084,7 @@ export default function Home() {
         const screenWidth = window.innerWidth;
         const popupWidth = Math.min(screenWidth - 32, 320);
 
-        let left = rect.left + rect.width / 2 - popupWidth / 2;
+        let left = rect.right - popupWidth;
         left = Math.max(16, Math.min(left, screenWidth - popupWidth - 16));
 
         const triangleLeft = rect.left + rect.width / 2 - left;
@@ -3783,14 +3794,14 @@ export default function Home() {
 
                 {/* Popup */}
                 <motion.div
-                  initial={{ opacity: 0, scale: 0.5, y: -20 }}
+                  initial={{ opacity: 0, scale: 0.8, y: -8 }}
                   animate={{ opacity: 1, scale: 1, y: 0 }}
-                  exit={{ opacity: 0, scale: 0.5, y: -20 }}
+                  exit={{ opacity: 0, scale: 0.8, y: -8 }}
                   transition={{
                     type: "spring",
-                    damping: 25,
-                    stiffness: 400,
-                    mass: 0.8,
+                    damping: 22,
+                    stiffness: 380,
+                    mass: 0.7,
                   }}
                   className="fixed z-[9999] bg-white dark:bg-[#1a1a1a] rounded-2xl shadow-2xl p-4 w-[calc(100%-2rem)] max-w-xs"
                   style={{

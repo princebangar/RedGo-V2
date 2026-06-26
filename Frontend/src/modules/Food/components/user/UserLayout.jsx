@@ -178,6 +178,59 @@ function UserLayoutContent() {
     }
   }, [])
 
+  useEffect(() => {
+    const handleNotificationToast = (e) => {
+      const { title, message } = e.detail || {}
+      toast.custom(() => (
+        <div className="w-[calc(100vw-32px)] sm:w-[380px] bg-white shadow-[0_8px_30px_rgb(0,0,0,0.12)] rounded-3xl pointer-events-auto flex items-center gap-4 p-3.5 border border-gray-50 animate-in fade-in slide-in-from-top-4">
+          <div className="flex-shrink-0">
+            <div className="h-12 w-12 rounded-2xl bg-gradient-to-br from-[#DC2626] to-[#991B1B] flex items-center justify-center shadow-lg">
+              <img src="/assets/images/redgo-toast-logo.png" alt="RedGo" className="w-7 h-7 object-contain brightness-0 invert" />
+            </div>
+          </div>
+          <div className="flex-1 pr-1 min-w-0">
+            <p className="text-[13px] font-bold text-gray-900 leading-tight truncate">{title || "Notification"}</p>
+            {message ? <p className="text-[12px] font-medium text-gray-500 mt-0.5 line-clamp-2 leading-snug">{message}</p> : null}
+          </div>
+        </div>
+      ), {
+        id: 'user-notif-toast',
+        duration: 6000,
+        position: 'top-center',
+      })
+    }
+    window.addEventListener('show-user-notification-toast', handleNotificationToast)
+    return () => window.removeEventListener('show-user-notification-toast', handleNotificationToast)
+  }, [])
+
+  // Save order status notifications to localStorage so bell badge updates everywhere
+  useEffect(() => {
+    const handleOrderNotif = (e) => {
+      const { orderId, status, title, message } = e.detail || {}
+      const isCancelled = String(status || '').toLowerCase().includes('cancel')
+      const newNotif = {
+        id: `order-${orderId}-${status}-${Date.now()}`,
+        type: isCancelled ? 'alert' : 'order',
+        title: title || `Order #${orderId} ${status}`,
+        message: message || `Your order status is now ${String(status || '').replace(/_/g, ' ')}`,
+        time: 'Just now',
+        timestamp: Date.now(),
+        read: false,
+        icon: isCancelled ? 'AlertCircle' : 'CheckCircle2',
+        iconColor: isCancelled ? 'text-red-600' : 'text-[#DC2626]'
+      }
+      try {
+        const existing = JSON.parse(localStorage.getItem('food_user_notifications') || '[]')
+        const updated = [newNotif, ...(Array.isArray(existing) ? existing : [])]
+        localStorage.setItem('food_user_notifications', JSON.stringify(updated))
+        const unreadCount = updated.filter(n => !n.read).length
+        window.dispatchEvent(new CustomEvent('notificationsUpdated', { detail: { count: unreadCount } }))
+      } catch {}
+    }
+    window.addEventListener('orderStatusNotification', handleOrderNotif)
+    return () => window.removeEventListener('orderStatusNotification', handleOrderNotif)
+  }, [])
+
   const path = location.pathname.startsWith("/food")
     ? location.pathname.substring(5) || "/"
     : location.pathname
@@ -296,7 +349,7 @@ function UserLayoutContent() {
     // Only show toast if out of zone, loader is gone, and we are on a main page where the out-of-zone screen is shown
     if (isOutOfZone && !lastOutOfZoneRef.current && !showGlobalLoader && isMainPage) {
       const timer = setTimeout(() => {
-        toast.custom((t) => (
+        toast.custom(() => (
           <div
             className="w-[calc(100vw-32px)] sm:w-[380px] bg-white shadow-[0_8px_30px_rgb(0,0,0,0.12)] rounded-3xl pointer-events-auto flex items-center gap-4 p-3.5 border border-gray-50 duration-300 animate-in fade-in slide-in-from-top-4"
           >

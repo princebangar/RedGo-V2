@@ -292,59 +292,59 @@ export default function TableBookingConfirmation() {
             </div>
 
              {/* Sticky Action Button */}
-            <div className="fixed bottom-0 left-0 w-full bg-white dark:bg-slate-950 border-t border-slate-100 dark:border-slate-800 p-4 pb-[max(1rem,env(safe-area-inset-bottom))] shadow-[0_-10px_30px_rgba(0,0,0,0.05)] z-50 transition-colors">
+            <div className="fixed bottom-0 left-0 w-full bg-white dark:bg-[#0d0d0d] border-t border-slate-100 dark:border-white/5 p-4 pb-[max(1rem,env(safe-area-inset-bottom))] z-50">
                 <Button
                     onClick={handleBooking}
                     disabled={bookingInProgress}
-                    className="w-full h-14 bg-[#ef4444] hover:bg-red-600 text-white font-bold text-lg rounded-2xl shadow-xl shadow-red-200 transition-all active:scale-[0.98]"
+                    className="w-full h-14 bg-[#DC2626] hover:bg-[#b91c1c] text-white font-bold text-lg rounded-2xl transition-all active:scale-[0.98] disabled:opacity-60"
                 >
                     {bookingInProgress ? "Confirming..." : "Confirm your seat"}
                 </Button>
             </div>
             {/* Special Request Modal Overlay */}
             {showRequestModal && (
-                <div className="fixed inset-0 z-[100] flex items-end sm:items-center justify-center p-0 sm:p-4">
-                    <div 
-                        className="absolute inset-0 bg-black/40 backdrop-blur-sm" 
+                <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
+                    <div
+                        className="absolute inset-0 bg-black/50 backdrop-blur-sm"
                         onClick={() => setShowRequestModal(false)}
                     />
-                    <div className="relative w-full max-w-lg bg-white rounded-t-3xl sm:rounded-2xl shadow-2xl p-6 overflow-hidden animate-in slide-in-from-bottom duration-300">
-                        <div className="flex justify-between items-center mb-6">
-                            <h3 className="text-lg font-black text-gray-900 uppercase tracking-tight">Special Request</h3>
-                            <button 
+                    <div className="relative w-full max-w-sm bg-white dark:bg-[#1a1a1a] rounded-3xl shadow-2xl p-6 overflow-hidden animate-in zoom-in-95 duration-200">
+                        <div className="flex justify-between items-center mb-4">
+                            <h3 className="text-lg font-black text-gray-900 dark:text-white uppercase tracking-tight">Special Request</h3>
+                            <button
                                 onClick={() => setShowRequestModal(false)}
-                                className="w-8 h-8 flex items-center justify-center rounded-full bg-slate-100 text-slate-500"
+                                className="w-8 h-8 flex items-center justify-center rounded-full bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400"
                             >
                                 <ArrowLeft className="w-4 h-4 rotate-90" />
                             </button>
                         </div>
-                        
+
                         <div className="space-y-4">
-                            <p className="text-xs text-slate-500 font-bold uppercase tracking-widest leading-relaxed">
+                            <p className="text-sm text-slate-500 dark:text-slate-400 leading-relaxed">
                                 Let the restaurant know if you have any allergies or special requirements (e.g. Birthday, Anniversary).
                             </p>
-                            
+
                             <textarea
                                 value={tempRequest}
                                 onChange={(e) => setTempRequest(e.target.value)}
                                 placeholder="E.g. I have a peanut allergy, or we are celebrating a birthday..."
-                                className="w-full h-32 p-4 rounded-2xl bg-slate-50 border border-slate-100 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-[#DC2626]/20 focus:border-[#DC2626] transition-all resize-none"
+                                className="w-full h-32 p-4 rounded-2xl bg-slate-50 dark:bg-[#242424] border border-slate-200 dark:border-white/10 text-sm font-medium text-gray-900 dark:text-gray-100 placeholder:text-slate-400 dark:placeholder:text-slate-600 focus:outline-none focus:ring-2 focus:ring-[#DC2626]/20 focus:border-[#DC2626] transition-all resize-none"
                                 autoFocus
                             />
 
-                            <div className="grid grid-cols-2 gap-3 pt-2">
-                                <button 
+                            <div className="grid grid-cols-2 gap-3 pt-1">
+                                <button
                                     onClick={() => setShowRequestModal(false)}
-                                    className="h-12 rounded-xl bg-slate-100 text-slate-600 font-bold text-sm uppercase tracking-widest active:scale-95 transition-all"
+                                    className="h-12 rounded-xl bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 font-bold text-sm uppercase tracking-widest active:scale-95 transition-all"
                                 >
                                     Cancel
                                 </button>
-                                <button 
+                                <button
                                     onClick={() => {
                                         setSpecialRequest(tempRequest)
                                         setShowRequestModal(false)
                                     }}
-                                    className="h-12 rounded-xl bg-[#DC2626] text-white font-bold text-sm uppercase tracking-widest shadow-lg shadow-purple-200 active:scale-95 transition-all"
+                                    className="h-12 rounded-xl bg-[#DC2626] text-white font-bold text-sm uppercase tracking-widest shadow-lg shadow-red-200 dark:shadow-none active:scale-95 transition-all"
                                 >
                                     Save
                                 </button>

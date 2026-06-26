@@ -247,12 +247,17 @@ export default function OrdersTable({
                       {order.items && Array.isArray(order.items) && order.items.length > 0 ? (
                         order.items.map((item, idx) => (
                           <div key={idx || item.itemId || idx} className="flex items-center gap-2 text-sm">
-                            <span className="font-bold text-slate-900 bg-slate-100 px-2 py-0.5 rounded min-w-[2.5rem] text-center">
+                            <span className="font-bold text-slate-900 bg-slate-100 px-2 py-0.5 rounded min-w-[2.5rem] text-center self-start mt-0.5">
                               {item.quantity || 1}x
                             </span>
-                            <span className="text-slate-800 font-medium flex-1">
-                              {item.name || item.itemName || item.title || 'Unknown Item'}
-                            </span>
+                            <div className="flex-1">
+                              <span className="text-slate-800 font-medium">
+                                {item.name || item.itemName || item.title || 'Unknown Item'}
+                              </span>
+                              {item.variantName && (
+                                <p className="text-xs text-slate-500 font-medium">{item.variantName}</p>
+                              )}
+                            </div>
                           </div>
                         ))
                       ) : (

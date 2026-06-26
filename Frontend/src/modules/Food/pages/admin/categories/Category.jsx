@@ -122,9 +122,9 @@ export default function Category() {
     })
   }, [categories, searchQuery])
 
-  const fetchCategories = async () => {
+  const fetchCategories = async ({ silent = false } = {}) => {
     try {
-      setLoading(true)
+      if (!silent) setLoading(true)
       const params = {}
       if (searchQuery) params.search = searchQuery
       if (showPendingOnly) params.approvalStatus = "pending"
@@ -144,9 +144,9 @@ export default function Category() {
       } else {
         toast.error(error?.response?.data?.message || "Failed to load categories")
       }
-      setCategories([])
+      if (!silent) setCategories([])
     } finally {
-      setLoading(false)
+      if (!silent) setLoading(false)
     }
   }
 
@@ -214,7 +214,7 @@ export default function Category() {
       const response = await adminAPI.toggleCategoryStatus(String(id))
       if (response?.data?.success) {
         toast.success("Category status updated successfully")
-        fetchCategories()
+        fetchCategories({ silent: true })
       }
     } catch (error) {
       toast.error(error?.response?.data?.message || "Failed to update category status")
@@ -222,14 +222,16 @@ export default function Category() {
   }
 
   const handleApprove = async (id) => {
+    setCategories(prev => prev.map(c => String(c?.id || c?._id) === String(id) ? { ...c, approvalStatus: 'approved' } : c))
     try {
       const response = await adminAPI.approveCategory(String(id))
       if (response?.data?.success) {
         toast.success("Category approved successfully")
-        fetchCategories()
+        fetchCategories({ silent: true })
       }
     } catch (error) {
       toast.error(error?.response?.data?.message || "Failed to approve category")
+      fetchCategories({ silent: true })
     }
   }
 
@@ -241,14 +243,17 @@ export default function Category() {
       return
     }
 
+    const id = String(category?.id || category?._id)
+    setCategories(prev => prev.map(c => String(c?.id || c?._id) === id ? { ...c, approvalStatus: 'rejected' } : c))
     try {
-      const response = await adminAPI.rejectCategory(String(category?.id || category?._id), reason)
+      const response = await adminAPI.rejectCategory(id, reason)
       if (response?.data?.success) {
         toast.success("Category rejected successfully")
-        fetchCategories()
+        fetchCategories({ silent: true })
       }
     } catch (error) {
       toast.error(error?.response?.data?.message || "Failed to reject category")
+      fetchCategories({ silent: true })
     }
   }
 
@@ -259,7 +264,7 @@ export default function Category() {
       const response = await adminAPI.makeCategoryGlobal(String(category?.id || category?._id))
       if (response?.data?.success) {
         toast.success("Category is now global")
-        fetchCategories()
+        fetchCategories({ silent: true })
       }
     } catch (error) {
       toast.error(error?.response?.data?.message || "Failed to make category global")
@@ -270,11 +275,12 @@ export default function Category() {
     const categoryName = categories.find((category) => String(category?.id) === String(id))?.name || "this category"
     if (!window.confirm(`Delete "${categoryName}"? This action cannot be undone.`)) return
 
+    setCategories(prev => prev.filter(c => String(c?.id || c?._id) !== String(id)))
     try {
       const response = await adminAPI.deleteCategory(String(id))
       if (response?.data?.success) {
         toast.success("Category deleted successfully")
-        fetchCategories()
+        fetchCategories({ silent: true })
       }
     } catch (error) {
       toast.error(error?.response?.data?.message || "Failed to delete category")
@@ -355,7 +361,7 @@ export default function Category() {
       }
 
       resetModal()
-      fetchCategories()
+      fetchCategories({ silent: true })
     } catch (error) {
       if (error?.code === "ERR_NETWORK" || error?.message === "Network Error") {
         toast.error("Cannot connect to server. Please check if backend is running on " + API_BASE_URL.replace("/api", ""))

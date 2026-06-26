@@ -3585,28 +3585,27 @@ function RestaurantDetailsContent() {
                   onClick={() => setShowLocationSheet(false)}
                 />
 
-                {/* Bottom Sheet */}
+                {/* Centered Modal */}
                 <motion.div
-                  className="fixed left-0 right-0 bottom-0 md:left-1/2 md:right-auto md:-translate-x-1/2 md:bottom-auto md:top-1/2 md:-translate-y-1/2 z-[10000] bg-white dark:bg-[#1a1a1a] rounded-t-3xl md:rounded-3xl shadow-2xl h-[75vh] md:h-auto md:max-h-[90vh] md:max-w-xl w-full md:w-auto flex flex-col"
-                  initial={{ y: "100%" }}
-                  animate={{ y: 0 }}
-                  exit={{ y: "100%" }}
-                  transition={{ duration: 0.2, type: "spring", damping: 30, stiffness: 400 }}
-                  style={{ willChange: "transform" }}
+                  className="fixed left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 z-[10000] bg-white dark:bg-[#1a1a1a] rounded-3xl shadow-2xl w-[88vw] max-w-sm flex flex-col max-h-[80vh]"
+                  initial={{ opacity: 0, scale: 0.92 }}
+                  animate={{ opacity: 1, scale: 1 }}
+                  exit={{ opacity: 0, scale: 0.92 }}
+                  transition={{ duration: 0.18, type: "spring", damping: 25, stiffness: 400 }}
                 >
                   {/* Header */}
-                  <div className="px-4 pt-4 pb-3 border-b border-gray-200 dark:border-gray-800">
-                    <p className="text-xs text-gray-500 dark:text-gray-400 mb-1.5">All delivery outlets for</p>
-                    <div className="flex items-center gap-2">
-                      <div className="w-8 h-8 bg-red-600 dark:bg-red-500 rounded-lg flex items-center justify-center">
-                        <span className="text-white font-bold text-base">{(restaurant.name || "R").charAt(0).toUpperCase()}</span>
-                      </div>
-                      <h2 className="text-lg font-bold text-gray-900 dark:text-white">{restaurant?.name || "Unknown Restaurant"}</h2>
-                    </div>
+                  <div className="px-4 pt-4 pb-3 flex items-start justify-between gap-2">
+                    <h2 className="text-lg font-bold text-gray-900 dark:text-white">{restaurant?.name || "Unknown Restaurant"}</h2>
+                    <button
+                      onClick={() => setShowLocationSheet(false)}
+                      className="p-1.5 rounded-full hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-400 shrink-0"
+                    >
+                      <X className="w-4 h-4" />
+                    </button>
                   </div>
 
                   {/* Outlets List */}
-                  <div className="flex-1 overflow-y-auto px-4 py-3">
+                  <div className="flex-1 overflow-y-auto px-4 pb-4">
                     {restaurant?.outlets && Array.isArray(restaurant.outlets) && restaurant.outlets.length > 0 ? (
                       <div className="space-y-2">
                         {restaurant.outlets.map((outlet) => (
@@ -3656,8 +3655,14 @@ function RestaurantDetailsContent() {
                         ))}
                       </div>
                     ) : (
-                      <div className="text-center py-8 text-gray-500 dark:text-gray-400">
-                        No outlets available
+                      <div className="pt-1 pb-3">
+                        <p className="text-xs font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-wider mb-2">Restaurant Address</p>
+                        <div className="flex items-start gap-3 p-3 rounded-xl bg-gray-50 dark:bg-[#2a2a2a] border border-gray-100 dark:border-gray-700">
+                          <MapPin className="h-4 w-4 text-red-500 shrink-0 mt-0.5" />
+                          <p className="text-sm text-gray-700 dark:text-gray-300 leading-relaxed">
+                            {restaurant?.location || "Address not available"}
+                          </p>
+                        </div>
                       </div>
                     )}
                   </div>

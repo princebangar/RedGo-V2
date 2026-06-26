@@ -888,9 +888,14 @@ export default function OrderDetails() {
                        <div className={`w-3 h-3 rounded-full border ${String(item.type).toLowerCase().includes("non") ? "border-red-600" : "border-green-600"} flex items-center justify-center p-[1px]`}>
                         <div className={`w-1.5 h-1.5 rounded-full ${String(item.type).toLowerCase().includes("non") ? "bg-gradient-to-br from-[#B80B3D] to-[#66001D]" : "bg-green-600"}`}></div>
                       </div>
-                      <p className="text-sm font-semibold text-gray-900">
-                        {item.quantity} x {item.name}
-                      </p>
+                      <div>
+                        <p className="text-sm font-semibold text-gray-900">
+                          {item.quantity} x {item.name}
+                        </p>
+                        {item.variantName && (
+                          <p className="text-xs text-gray-500 font-medium mt-0.5">{item.variantName}</p>
+                        )}
+                      </div>
                     </div>
                     <p className="text-sm font-semibold text-gray-900">{formatMoney(item.price)}</p>
                   </div>

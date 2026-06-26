@@ -106,20 +106,50 @@ export default function MyBookings() {
         return "bg-slate-100 text-slate-700"
     }
 
+    const fetchBookings = async ({ silent = false } = {}) => {
+        try {
+            if (!silent) setLoading(true)
+            const response = await diningAPI.getBookings()
+            if (response.data.success) {
+                setBookings(response.data.data)
+            }
+        } catch (error) {
+            debugError("Error fetching bookings:", error)
+        } finally {
+            if (!silent) setLoading(false)
+        }
+    }
+
     useEffect(() => {
-        const fetchBookings = async () => {
-            try {
-                const response = await diningAPI.getBookings()
-                if (response.data.success) {
-                    setBookings(response.data.data)
-                }
-            } catch (error) {
-                debugError("Error fetching bookings:", error)
-            } finally {
-                setLoading(false)
+        fetchBookings()
+
+        // Poll every 15s for status updates
+        const interval = setInterval(() => fetchBookings({ silent: true }), 15000)
+
+        // Refetch when user comes back to the tab
+        const onVisible = () => {
+            if (document.visibilityState === 'visible') fetchBookings({ silent: true })
+        }
+        document.addEventListener('visibilitychange', onVisible)
+
+        // Instant update via socket event
+        const onSocketUpdate = (e) => {
+            const { bookingId, status } = e.detail || {}
+            if (bookingId && status) {
+                setBookings(prev =>
+                    prev.map(b => String(b._id) === String(bookingId) ? { ...b, status } : b)
+                )
+            } else {
+                fetchBookings({ silent: true })
             }
         }
-        fetchBookings()
+        window.addEventListener('diningBookingStatusUpdate', onSocketUpdate)
+
+        return () => {
+            clearInterval(interval)
+            document.removeEventListener('visibilitychange', onVisible)
+            window.removeEventListener('diningBookingStatusUpdate', onSocketUpdate)
+        }
     }, [])
 
     const handleReviewSubmit = async (reviewData) => {

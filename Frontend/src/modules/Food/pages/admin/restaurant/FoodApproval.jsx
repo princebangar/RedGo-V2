@@ -481,6 +481,38 @@ export default function FoodApproval() {
                        <ComparisonField label="Category" oldVal={selectedRequest.oldData.categoryName || selectedRequest.oldData.category} newVal={selectedRequest.newData?.categoryName || selectedRequest.newData?.category} />
                        <ComparisonField label="Price" oldVal={selectedRequest.oldData.price} newVal={selectedRequest.newData?.price} type="price" />
                        <ComparisonField label="Food Type" oldVal={selectedRequest.oldData.foodType} newVal={selectedRequest.newData?.foodType} />
+                       {(() => {
+                         const oldV = selectedRequest.oldData.variants || []
+                         const newV = selectedRequest.newData?.variants || []
+                         const oldStr = oldV.map(v => `${v.name}:₹${v.price}`).join(', ')
+                         const newStr = newV.map(v => `${v.name}:₹${v.price}`).join(', ')
+                         if (oldStr === newStr || (!oldStr && !newStr)) return null
+                         return (
+                           <div className="col-span-full">
+                             <label className="block text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-2">Variants</label>
+                             <div className="grid grid-cols-2 gap-3">
+                               <div>
+                                 <p className="text-[10px] text-gray-400 mb-1">Before</p>
+                                 {oldV.length > 0 ? oldV.map((v, i) => (
+                                   <div key={i} className="flex justify-between bg-red-50 border border-red-100 rounded-lg px-3 py-1.5 mb-1">
+                                     <span className="text-sm text-gray-700">{v.name}</span>
+                                     <span className="text-sm font-bold text-red-600">₹{v.price}</span>
+                                   </div>
+                                 )) : <p className="text-sm text-gray-400 italic">None</p>}
+                               </div>
+                               <div>
+                                 <p className="text-[10px] text-gray-400 mb-1">After</p>
+                                 {newV.length > 0 ? newV.map((v, i) => (
+                                   <div key={i} className="flex justify-between bg-green-50 border border-green-100 rounded-lg px-3 py-1.5 mb-1">
+                                     <span className="text-sm text-gray-700">{v.name}</span>
+                                     <span className="text-sm font-bold text-green-600">₹{v.price}</span>
+                                   </div>
+                                 )) : <p className="text-sm text-gray-400 italic">None</p>}
+                               </div>
+                             </div>
+                           </div>
+                         )
+                       })()}
                        <ComparisonField label="Preparation Time" oldVal={selectedRequest.oldData.preparationTime} newVal={selectedRequest.newData?.preparationTime} />
                        <ComparisonField label="Recommend" oldVal={selectedRequest.oldData.isRecommended} newVal={selectedRequest.newData?.isRecommended} type="boolean" />
                        <ComparisonField label="In Stock" oldVal={selectedRequest.oldData.isAvailable} newVal={selectedRequest.newData?.isAvailable} type="boolean" />
@@ -511,8 +543,25 @@ export default function FoodApproval() {
                       </div>
                       <div>
                           <label className="block text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-1">Price</label>
-                          <p className="text-sm font-bold text-green-600">{selectedRequest.price !== null && selectedRequest.price !== undefined ? `₹${selectedRequest.price}` : '-'}</p>
+                          {selectedRequest.variants && selectedRequest.variants.length > 0 ? (
+                            <p className="text-xs text-gray-500 font-medium">Starts from ₹{selectedRequest.price}</p>
+                          ) : (
+                            <p className="text-sm font-bold text-green-600">{selectedRequest.price !== null && selectedRequest.price !== undefined ? `₹${selectedRequest.price}` : '-'}</p>
+                          )}
                       </div>
+                      {selectedRequest.variants && selectedRequest.variants.length > 0 && (
+                        <div>
+                          <label className="block text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-2">Variants</label>
+                          <div className="space-y-1.5">
+                            {selectedRequest.variants.map((v, i) => (
+                              <div key={i} className="flex items-center justify-between bg-slate-50 border border-slate-100 rounded-lg px-3 py-2">
+                                <span className="text-sm font-medium text-gray-800">{v.name}</span>
+                                <span className="text-sm font-bold text-green-600">₹{v.price}</span>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
                       <div>
                           <label className="block text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-1">Status</label>
                           <p className="text-sm text-gray-700 capitalize font-medium">{selectedRequest.approvalStatus || 'pending'}</p>

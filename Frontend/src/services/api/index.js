@@ -2601,6 +2601,9 @@ export const diningAPI = {
   getBookings: () => apiClient.get("/food/dining/bookings", {
     contextModule: 'user'
   }),
+  getBookingById: (id) => apiClient.get(`/food/dining/bookings/${id}`, {
+    contextModule: 'user'
+  }),
   getRestaurantBookings: (restaurantRef) => {
     const idOrSlug = restaurantRef?._id || restaurantRef?.id || restaurantRef?.restaurantId || (typeof restaurantRef === 'string' ? restaurantRef : '');
     const isRestaurantPortal = typeof window !== 'undefined' && window.location.pathname.includes('/restaurant');

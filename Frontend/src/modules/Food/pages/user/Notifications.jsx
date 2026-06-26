@@ -167,7 +167,7 @@ export default function Notifications() {
       <div className="max-w-md md:max-w-2xl lg:max-w-4xl xl:max-w-5xl mx-auto px-3 sm:px-4 md:px-6 lg:px-8 py-4 sm:py-6 md:py-8">
         {/* Header */}
         <div className="flex items-center gap-3 sm:gap-4 mb-4 md:mb-6 lg:mb-8">
-          <Link to="/user">
+          <Link to="/food/user">
             <Button variant="ghost" size="icon" className="rounded-full h-8 w-8 sm:h-10 sm:w-10">
               <ArrowLeft className="h-4 w-4 sm:h-5 sm:w-5" />
             </Button>
@@ -176,7 +176,7 @@ export default function Notifications() {
             <Bell className="h-5 w-5 sm:h-6 sm:w-6 text-[#DC2626] fill-[#DC2626]" />
             <h1 className="text-lg sm:text-xl md:text-2xl lg:text-3xl font-bold text-gray-800 dark:text-white">Notifications</h1>
             {unreadCount > 0 && (
-              <Badge className="bg-[#DC2626] text-white text-xs md:text-sm">
+              <Badge className="bg-green-500 text-white text-xs md:text-sm">
                 {unreadCount}
               </Badge>
             )}

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { BellRing, Loader2, Search, Send, Trash2 } from "lucide-react";
 import { adminAPI } from "@food/api";
 
@@ -51,21 +51,24 @@ export default function NotificationBroadcast() {
   });
   const [history, setHistory] = useState([]);
   const [historyLoading, setHistoryLoading] = useState(true);
+  const [deletingIds, setDeletingIds] = useState(new Set());
   const [submitting, setSubmitting] = useState(false);
+  const initialLoadDone = useRef(false);
   const [recipientLoading, setRecipientLoading] = useState(false);
   const [search, setSearch] = useState("");
   const [allRecipients, setAllRecipients] = useState([]);
   const [selectedRecipients, setSelectedRecipients] = useState([]);
 
-  const loadHistory = async () => {
+  const loadHistory = async ({ silent = false } = {}) => {
     try {
-      setHistoryLoading(true);
+      if (!silent) setHistoryLoading(true);
       const response = await adminAPI.getBroadcastNotifications({ page: 1, limit: 50 });
       setHistory(response?.data?.data?.items || []);
     } catch {
-      setHistory([]);
+      if (!silent) setHistory([]);
     } finally {
-      setHistoryLoading(false);
+      if (!silent) setHistoryLoading(false);
+      initialLoadDone.current = true;
     }
   };
 
@@ -178,19 +181,24 @@ export default function NotificationBroadcast() {
       setSelectedRecipients([]);
       setSearch("");
       window.dispatchEvent(new Event("adminBroadcastUpdated"));
-      await loadHistory();
+      await loadHistory({ silent: true });
     } finally {
       setSubmitting(false);
     }
   };
 
   const handleDelete = async (id) => {
-    if (!id) return;
+    if (!id || deletingIds.has(id)) return;
+    setDeletingIds((prev) => new Set([...prev, id]));
+    setHistory((prev) => prev.filter((item) => item?._id !== id));
     try {
       await adminAPI.deleteBroadcastNotification(id);
       window.dispatchEvent(new Event("adminBroadcastUpdated"));
-      await loadHistory();
-    } catch {}
+    } catch {
+      await loadHistory({ silent: true });
+    } finally {
+      setDeletingIds((prev) => { const next = new Set(prev); next.delete(id); return next; });
+    }
   };
 
   return (
@@ -346,7 +354,7 @@ export default function NotificationBroadcast() {
               </thead>
               <tbody>
                 {history.map((item) => (
-                  <tr key={item?._id} className="border-b border-slate-100 align-top">
+                  <tr key={item?._id} className={`border-b border-slate-100 align-top transition-opacity duration-300 ${deletingIds.has(item?._id) ? 'opacity-0' : 'opacity-100'}`}>
                     <td className="py-4 pr-4 font-semibold text-slate-900">{item?.title || "Notification"}</td>
                     <td className="py-4 pr-4 text-slate-600 max-w-sm">{item?.message || "-"}</td>
                     <td className="py-4 pr-4 text-slate-700">{item?.targetLabel || item?.targetType}</td>

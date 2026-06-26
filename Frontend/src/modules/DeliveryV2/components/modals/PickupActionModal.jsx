@@ -241,9 +241,14 @@ export const PickupActionModal = ({
           {showItems && (
             <div className="overflow-hidden space-y-2 px-1">
               {items.map((item, idx) => (
-                <div key={idx} className="flex justify-between items-center p-3 border-b border-gray-50 last:border-0">
-                  <span className="text-gray-700 text-sm font-bold">{item.name || 'Item Name'}</span>
-                  <span className="text-green-600 font-bold bg-green-50 px-2.5 py-1 rounded-lg text-xs">x{item.quantity || 1}</span>
+                <div key={idx} className="flex justify-between items-start p-3 border-b border-gray-50 last:border-0">
+                  <div>
+                    <span className="text-gray-700 text-sm font-bold">{item.name || 'Item Name'}</span>
+                    {item.variantName && (
+                      <p className="text-xs text-gray-500 font-medium mt-0.5">{item.variantName}</p>
+                    )}
+                  </div>
+                  <span className="text-green-600 font-bold bg-green-50 px-2.5 py-1 rounded-lg text-xs shrink-0 ml-2">x{item.quantity || 1}</span>
                 </div>
               ))}
             </div>

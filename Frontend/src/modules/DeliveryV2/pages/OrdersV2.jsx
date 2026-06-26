@@ -23,7 +23,7 @@ export default function OrdersV2() {
   const setFocusedOrder = useDeliveryStore((state) => state.setFocusedOrder);
 
   const { acceptOrder } = useOrderManager();
-  const { isMuted, toggleMuted, clearNewOrder } = useDeliveryNotificationsContext();
+  const { isOrderAlertMuted, toggleOrderAlertMuted, clearNewOrder } = useDeliveryNotificationsContext();
   const [activeTab, setActiveTab] = useState('new');
   const [expandedOrderId, setExpandedOrderId] = useState(null);
   const prevNewCountRef = useRef(visibleNewOrders.length);
@@ -215,8 +215,8 @@ export default function OrdersV2() {
                     onAccept={handleAccept}
                     onReject={handleReject}
                     acceptDisabled={acceptDisabled}
-                    isMuted={isMuted}
-                    onToggleMute={toggleMuted}
+                    isMuted={isOrderAlertMuted(order)}
+                    onToggleMute={() => toggleOrderAlertMuted(order)}
                     disabledMessage={`All ${capacity.max} slots in use — complete an active order to accept more`}
                   />
                 );
