@@ -2898,7 +2898,7 @@ export default function OrderTracking() {
               <div className="bg-orange-50/50 rounded-xl p-4 border border-orange-100 flex gap-3">
                 <MessageSquare className="w-5 h-5 text-[#DC2626] shrink-0 mt-0.5" />
                 <div>
-                  <p className="text-xs text-#991B1B font-bold uppercase tracking-wider mb-1">Delivery Instructions</p>
+                  <p className="text-xs text-[#DC2626] dark:text-red-400 font-bold uppercase tracking-wider mb-1">Delivery Instructions</p>
                   <p className="text-sm text-gray-800 leading-relaxed font-medium capitalize">
                     {order.note}
                   </p>
@@ -3016,7 +3016,7 @@ export default function OrderTracking() {
       <Dialog open={isInstructionsModalOpen} onOpenChange={setIsInstructionsModalOpen}>
         <DialogContent className="sm:max-w-md w-[95vw] rounded-3xl p-6 border-0 shadow-2xl bg-white dark:bg-[#1a1a1a] max-h-[90vh] overflow-y-auto z-[200]">
           <DialogHeader className="mb-2">
-            <DialogTitle className="text-xl font-bold bg-gradient-to-r from-#991B1B to-orange-400 bg-clip-text text-transparent">
+            <DialogTitle className="text-xl font-bold text-gray-900 dark:text-white">
               Delivery Instructions
             </DialogTitle>
           </DialogHeader>
@@ -3028,12 +3028,12 @@ export default function OrderTracking() {
               value={deliveryInstructions}
               onChange={(e) => setDeliveryInstructions(e.target.value)}
               placeholder="E.g. Ring the doorbell, leave at the front desk..."
-              className="min-h-[120px] resize-none border-gray-200 focus:ring-[#DC2626] rounded-xl bg-gray-50 text-base"
+              className="min-h-[120px] resize-none border-gray-200 focus:ring-[#DC2626] rounded-xl bg-gray-50 dark:bg-gray-800 text-gray-800 dark:text-gray-100 placeholder:text-slate-400 dark:placeholder:text-slate-500 text-base"
             />
             <Button 
               onClick={handleUpdateInstructions} 
               disabled={isUpdatingInstructions}
-              className="w-full bg-gradient-to-r from-[#DC2626] to-amber-500 hover:from-#991B1B hover:to-amber-600 text-white font-bold h-12 rounded-xl border-none"
+              className="w-full bg-[#DC2626] hover:bg-[#B91C1C] text-white font-bold h-12 rounded-xl border-none transition-colors"
             >
               {isUpdatingInstructions ? <Loader2 className="w-5 h-5 animate-spin mx-auto" /> : "Save Instructions"}
             </Button>
@@ -3081,7 +3081,7 @@ export default function OrderTracking() {
                 placeholder="Write a quick review for the food (optional)"
                 value={restaurantFeedbackText}
                 onChange={(e) => setRestaurantFeedbackText(e.target.value)}
-                className="min-h-[80px] text-sm bg-gray-50 dark:bg-gray-800/50 border-gray-100 dark:border-gray-800 resize-none rounded-xl"
+                className="min-h-[80px] text-sm bg-gray-50 dark:bg-gray-800/50 border-gray-100 dark:border-gray-800 resize-none rounded-xl text-gray-800 dark:text-gray-100 placeholder:text-slate-400 dark:placeholder:text-slate-500"
               />
             </div>
 
@@ -3115,7 +3115,7 @@ export default function OrderTracking() {
                   placeholder={`How was ${order?.deliveryPartnerName || 'the rider'}? (optional)`}
                   value={deliveryFeedbackText}
                   onChange={(e) => setDeliveryFeedbackText(e.target.value)}
-                  className="min-h-[80px] text-sm bg-gray-50 dark:bg-gray-800/50 border-gray-100 dark:border-gray-800 resize-none rounded-xl"
+                  className="min-h-[80px] text-sm bg-gray-50 dark:bg-gray-800/50 border-gray-100 dark:border-gray-800 resize-none rounded-xl text-gray-800 dark:text-gray-100 placeholder:text-slate-400 dark:placeholder:text-slate-500"
                 />
               </div>
             )}
