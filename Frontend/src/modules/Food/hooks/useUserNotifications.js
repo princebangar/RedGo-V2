@@ -97,11 +97,8 @@ export const useUserNotifications = () => {
       const title = data.title || `Order #${data.orderId || 'Update'}`;
       const message = data.message || `Your order status is now ${String(data.orderStatus || '').replace(/_/g, ' ')}`;
 
-      // Optional: Show toast for important updates (Cancel, Ready, etc.)
-      const isImportant = String(data.orderStatus).includes('cancel') || ['ready_for_pickup', 'ready', 'confirmed'].includes(data.orderStatus);
-      const isOrderTrackingScreen =
-        typeof window !== 'undefined' &&
-        String(window.location?.pathname || '').includes('/user/orders/');
+      const isImportant = String(data.orderStatus).includes('cancel') ||
+        ['ready_for_pickup', 'ready', 'confirmed', 'delivered', 'out_for_delivery'].includes(data.orderStatus);
 
       const statusKey = `${String(data.orderId || '')}:${String(data.orderStatus || '')}`;
       const now = Date.now();
@@ -110,14 +107,12 @@ export const useUserNotifications = () => {
         statusKey === lastOrderStatusToastRef.current.key &&
         now - lastOrderStatusToastRef.current.at < ORDER_STATUS_DEDUPE_MS;
 
-      if (isImportant && !isOrderTrackingScreen && !isDuplicateStatusToast) {
+      if (isImportant && !isDuplicateStatusToast) {
         lastOrderStatusToastRef.current = { key: statusKey, at: now };
-        toast.dismiss(ORDER_STATUS_TOAST_ID);
-        toast.message(title, {
-          id: ORDER_STATUS_TOAST_ID,
-          description: message,
-          duration: 6000
-        });
+        window.dispatchEvent(new CustomEvent('show-user-notification-toast', {
+          detail: { title, message }
+        }));
+        dispatchNotificationInboxRefresh();
       }
 
       // Dispatch custom event for OrderTrackingCard and other listeners
@@ -183,17 +178,24 @@ export const useUserNotifications = () => {
       });
     });
 
+    socketRef.current.on('dining_booking_update', (payload) => {
+      debugLog('🍽️ Dining booking update:', payload);
+      window.dispatchEvent(new CustomEvent('diningBookingStatusUpdate', { detail: payload }));
+    });
+
     socketRef.current.on('admin_notification', (payload) => {
-      toast.message(payload?.title || 'Notification', {
-        description: payload?.message || 'New broadcast notification received.',
-        duration: 8000
-      });
+      window.dispatchEvent(new CustomEvent('show-user-notification-toast', {
+        detail: {
+          title: payload?.title || 'Notification',
+          message: payload?.message || '',
+        }
+      }));
       dispatchNotificationInboxRefresh();
     });
 
-    socketRef.current.on('connect_error', (error) => {
+    socketRef.current.on('connect_error', () => {
       if (import.meta.env.DEV) {
-        // debugLog('❌ Socket connection error:', error.message);
+        // debugLog('❌ Socket connection error');
       }
       setIsConnected(false);
       if (typeof window !== 'undefined') {

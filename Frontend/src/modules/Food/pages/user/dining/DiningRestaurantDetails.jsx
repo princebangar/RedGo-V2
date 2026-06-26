@@ -104,9 +104,10 @@ export default function DiningRestaurantDetails() {
   const [error, setError] = useState(null)
   const [selectedGuests, setSelectedGuests] = useState(2)
   const [isBookingSheetOpen, setIsBookingSheetOpen] = useState(false)
-  const [activeTab, setActiveTab] = useState("prebook")
+  const [activeTab, setActiveTab] = useState("menu")
   const [currentBookings, setCurrentBookings] = useState([])
   const [isFetchingBookings, setIsFetchingBookings] = useState(false)
+  const [outletTimings, setOutletTimings] = useState({})
 
   const fetchRestaurantData = async () => {
     try {
@@ -217,6 +218,10 @@ export default function DiningRestaurantDetails() {
         setIsFetchingBookings(false)
       }
 
+      restaurantAPI.getOutletTimingsByRestaurantId(restaurantId)
+        .then(r => setOutletTimings(r?.data?.data?.outletTimings || {}))
+        .catch(() => {})
+
       const menuResponse = await restaurantAPI.getMenuByRestaurantId(restaurantId).catch(() => null)
       const resolvedMenu = menuResponse ? getMenuFromResponse(menuResponse) : null
       setMenuSections(Array.isArray(resolvedMenu?.sections) ? resolvedMenu.sections : [])
@@ -231,6 +236,15 @@ export default function DiningRestaurantDetails() {
   useEffect(() => {
     fetchRestaurantData()
   }, [location.state?.restaurant, slug])
+
+  useEffect(() => {
+    if (isBookingSheetOpen) {
+      document.body.style.overflow = 'hidden'
+    } else {
+      document.body.style.overflow = ''
+    }
+    return () => { document.body.style.overflow = '' }
+  }, [isBookingSheetOpen])
 
   // Calculate current occupied seats
   const occupiedSeats = useMemo(() => {
@@ -290,12 +304,43 @@ export default function DiningRestaurantDetails() {
   const facilities = buildFacilities(restaurant)
   const rating = Number(restaurant?.rating || restaurant?.avgRating || 0).toFixed(1)
   const reviewCount = restaurant?.totalRatings || restaurant?.reviewCount || restaurant?.reviewsCount || 0
-  const openingTime = formatTimeLabel(restaurant?.openingTime || restaurant?.diningSettings?.openingTime || "12:00")
-  const closingTime = formatTimeLabel(restaurant?.closingTime || restaurant?.diningSettings?.closingTime || "23:59")
+  const todayName = new Date().toLocaleDateString("en-US", { weekday: "long" })
+  const todayTiming = outletTimings?.[todayName] || null
+  const rawOpeningTime = todayTiming?.openingTime || restaurant?.openingTime || restaurant?.diningSettings?.openingTime || "12:00"
+  const rawClosingTime = todayTiming?.closingTime || restaurant?.closingTime || restaurant?.diningSettings?.closingTime || "23:59"
+  const openingTime = formatTimeLabel(rawOpeningTime)
+  const closingTime = formatTimeLabel(rawClosingTime)
+
+  const isOpenNow = (() => {
+    if (todayTiming?.isOpen === false) return false
+    const parseMin = (val) => {
+      if (!val) return null
+      const raw = String(val).trim()
+      // HH:MM 24h format
+      const hhmm = raw.match(/^(\d{1,2}):(\d{2})$/)
+      if (hhmm) return Number(hhmm[1]) * 60 + Number(hhmm[2])
+      // 12h AM/PM format e.g. "1:00 AM", "11:30 PM"
+      const ampm = raw.match(/^(\d{1,2})(?::(\d{2}))?\s*(AM|PM)$/i)
+      if (ampm) {
+        let h = Number(ampm[1])
+        const m = Number(ampm[2] || 0)
+        const period = ampm[3].toUpperCase()
+        if (period === 'PM' && h !== 12) h += 12
+        if (period === 'AM' && h === 12) h = 0
+        return h * 60 + m
+      }
+      return null
+    }
+    const now = new Date()
+    const cur = now.getHours() * 60 + now.getMinutes()
+    const open = parseMin(rawOpeningTime)
+    let close = parseMin(rawClosingTime)
+    if (open === null || close === null) return true
+    if (close <= open) close += 24 * 60
+    return cur >= open && cur <= close
+  })()
   const isDiningEnabled = restaurant?.diningSettings?.isEnabled !== false
   const topTabs = [
-    { id: "prebook", label: "Pre-book offers", target: "restaurant-prebook" },
-    { id: "walkin", label: "Walk-in offers", target: "restaurant-prebook" },
     { id: "menu", label: "Menu", target: "restaurant-menu" },
     { id: "photos", label: "Photos", target: "restaurant-photos" },
     { id: "about", label: "About", target: "restaurant-about" },
@@ -418,10 +463,18 @@ export default function DiningRestaurantDetails() {
                   {cuisines}
                 </p>
                 <div className="mt-2 inline-flex items-center gap-1.5 rounded-full bg-black/28 px-2.5 py-1 text-[13px] font-medium backdrop-blur-sm">
-                  <CheckCircle2 className="h-4 w-4 text-[#48d597]" />
-                  <span>Open now</span>
-                  <span className="text-white/70">|</span>
-                  <span>{openingTime} to {closingTime}</span>
+                  {isOpenNow ? (
+                    <CheckCircle2 className="h-4 w-4 text-[#48d597]" />
+                  ) : (
+                    <span className="h-4 w-4 rounded-full bg-red-500 inline-block" />
+                  )}
+                  <span className={isOpenNow ? "text-[#48d597]" : "text-red-400"}>{isOpenNow ? "Open now" : "Closed"}</span>
+                  {openingTime && closingTime && (
+                    <>
+                      <span className="text-white/70">|</span>
+                      <span>{openingTime} to {closingTime}</span>
+                    </>
+                  )}
                 </div>
               </div>
 
@@ -462,8 +515,8 @@ export default function DiningRestaurantDetails() {
       </section>
 
       <div className="sticky top-0 z-30 border-b border-[#ececf3] dark:border-slate-800 bg-white/95 dark:bg-slate-950/95 backdrop-blur-xl transition-colors">
-        <div className="mx-auto max-w-md px-3 pb-3 pt-3">
-          <div className="flex gap-2 overflow-x-auto pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+        <div className="mx-auto max-w-md px-3 py-2">
+          <div className="flex gap-2 justify-center">
             {topTabs.map((tab) => (
               <button
                 key={tab.id}
@@ -471,7 +524,7 @@ export default function DiningRestaurantDetails() {
                   setActiveTab(tab.id)
                   scrollToSection(tab.target)
                 }}
-                className={`shrink-0 rounded-full border px-4 py-2 text-sm transition-colors ${
+                className={`shrink-0 rounded-full border px-5 py-2 text-sm transition-colors ${
                   activeTab === tab.id
                     ? "border-[#DC2626] bg-white dark:bg-slate-900 text-[#2a2018] dark:text-slate-100"
                     : "border-[#ece9e1] dark:border-slate-800 bg-[#fafafa] dark:bg-slate-900 text-[#8b8881] dark:text-slate-400"
@@ -484,32 +537,8 @@ export default function DiningRestaurantDetails() {
         </div>
       </div>
 
-      <div className="mx-auto max-w-md px-4 pt-4">
-        <section id="restaurant-prebook">
-          <div>
-            <h2 className="text-[29px] font-black leading-none text-[#23180f] dark:text-slate-100">Pre-book offers</h2>
-            <p className="mt-1 text-[15px] text-[#DC2626] dark:text-purple-400">Limited slots with extra offers</p>
-          </div>
-
-          <div className="mt-3 overflow-hidden rounded-[18px] bg-[linear-gradient(135deg,#0f4a87,#0b2954_70%)] text-white shadow-[0_10px_26px_rgba(8,52,95,0.25)]">
-            <div className="flex items-start justify-between px-4 pb-3 pt-4">
-              <div>
-                <p className="text-[28px] font-black leading-none">Flat 50% OFF</p>
-                <p className="mt-2 text-[14px] text-white/80">Dining Carnival offer</p>
-              </div>
-              <button 
-                onClick={handleOpenBookingSheet}
-                className="rounded-full bg-black/45 px-4 py-2 text-[13px] font-semibold text-white backdrop-blur-sm">
-                Book now
-              </button>
-            </div>
-            <div className="border-t border-white/10 px-4 py-2 text-center text-[12px] text-white/75">
-              3 slots available from 3:30 PM today
-            </div>
-          </div>
-        </section>
-
-        <section id="restaurant-menu" className="mt-5 border-t border-[#e8e8ef] dark:border-slate-800 pt-4">
+      <div className="mx-auto max-w-md px-4 pt-2">
+        <section id="restaurant-menu" className="mt-2">
           <div className="flex items-end justify-between gap-3">
             <div>
               <h2 className="text-[28px] font-black leading-none text-[#23180f] dark:text-slate-100">Menu</h2>

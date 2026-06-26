@@ -1,7 +1,7 @@
 import { useState, useCallback, useEffect, useMemo, useRef } from "react"
 import { Link, useNavigate } from "react-router-dom"
 import { motion, AnimatePresence } from "framer-motion"
-import { MapPin, Search, Mic, SlidersHorizontal, Star, X, ArrowDownUp, Timer, IndianRupee, Clock, Bookmark, UtensilsCrossed, ChevronDown, Wallet } from "lucide-react"
+import { MapPin, Search, SlidersHorizontal, Star, X, ArrowDownUp, Timer, IndianRupee, Clock, Bookmark, UtensilsCrossed, ChevronDown, Wallet } from "lucide-react"
 import { Button } from "@food/components/ui/button"
 import { Input } from "@food/components/ui/input"
 import { Badge } from "@food/components/ui/badge"
@@ -418,6 +418,16 @@ export default function Dining() {
       filtered = filtered.filter(r => r.cuisine.toLowerCase().includes(selectedCuisine.toLowerCase()))
     }
 
+    // Apply search query
+    if (heroSearch.trim()) {
+      const q = heroSearch.trim().toLowerCase()
+      filtered = filtered.filter(r =>
+        String(r.name || r.restaurantName || '').toLowerCase().includes(q) ||
+        String(r.cuisine || '').toLowerCase().includes(q) ||
+        String(r.location || '').toLowerCase().includes(q)
+      )
+    }
+
     // Apply sorting
     if (sortBy === 'rating-high') {
       filtered.sort((a, b) => b.rating - a.rating)
@@ -426,7 +436,7 @@ export default function Dining() {
     }
 
     return filtered
-  }, [nearbyPopularRestaurants, activeFilters, selectedCuisine, sortBy])
+  }, [nearbyPopularRestaurants, activeFilters, selectedCuisine, sortBy, heroSearch])
 
   useEffect(() => {
     setCurrentBannerIndex((prev) => {
@@ -637,24 +647,16 @@ export default function Dining() {
               <Input
                 value={heroSearch}
                 onChange={(e) => setHeroSearch(e.target.value)}
-                onFocus={handleSearchFocus}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter' && heroSearch.trim()) {
-                    navigate(`/food/user/search?q=${encodeURIComponent(heroSearch.trim())}`)
-                    closeSearch()
-                    setHeroSearch("")
-                  }
-                }}
+                onKeyDown={(e) => { if (e.key === 'Escape') setHeroSearch("") }}
                 className="h-6 w-full bg-transparent border-0 text-[13px] font-bold text-gray-700 dark:text-white focus-visible:ring-0 focus-visible:ring-offset-0 p-0 leading-none placeholder:text-gray-400"
-                placeholder="Search restaurant, dish or cuisine..."
+                placeholder="Search dining restaurants..."
               />
             </div>
-            <div className="flex items-center gap-3 pr-2">
-              <div className="h-4 w-[1px] bg-gray-200 dark:bg-gray-700" />
-              <button className="flex items-center justify-center p-1 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-full transition-colors">
-                <Mic className="h-4 w-4 text-[#DC2626]" strokeWidth={2.5} />
+            {heroSearch && (
+              <button onClick={() => setHeroSearch("")} className="mr-2 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300">
+                <X className="h-4 w-4" />
               </button>
-            </div>
+            )}
           </div>
         </section>
       </div>
@@ -1027,9 +1029,11 @@ export default function Dining() {
                             }}
                             transition={{ duration: 0.3 }}
                           >
+                            {restaurant.featuredDish && restaurant.featuredDish !== "Chef's special" && restaurant.featuredPrice > 0 && (
                             <div className="bg-gray-800/90 backdrop-blur-sm text-white px-3 py-1.5 rounded-lg text-xs sm:text-sm font-medium shadow-lg">
                               {restaurant.featuredDish} • ₹{restaurant.featuredPrice}
                             </div>
+                            )}
                           </motion.div>
 
                           {/* Bookmark Icon - Top Right */}
@@ -1257,11 +1261,13 @@ export default function Dining() {
                           />
 
                           {/* Featured Dish Badge - Top Left */}
+                          {restaurant.featuredDish && restaurant.featuredDish !== "Chef's special" && restaurant.featuredPrice > 0 && (
                           <div className="absolute top-3 left-3">
                             <div className="bg-gray-800/80 backdrop-blur-sm text-white px-3 py-1.5 rounded-lg text-xs sm:text-sm font-medium">
                               {restaurant.featuredDish} • ₹{restaurant.featuredPrice}
                             </div>
                           </div>
+                          )}
 
                           {/* Bookmark Icon - Top Right */}
                           <Button

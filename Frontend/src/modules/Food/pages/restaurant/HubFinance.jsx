@@ -33,6 +33,14 @@ export default function HubFinance() {
   const [restaurantData, setRestaurantData] = useState(null)
   const [loadingRestaurant, setLoadingRestaurant] = useState(true)
   const [showWithdrawalModal, setShowWithdrawalModal] = useState(false)
+  useEffect(() => {
+    if (showWithdrawalModal) {
+      document.body.style.overflow = 'hidden'
+    } else {
+      document.body.style.overflow = ''
+    }
+    return () => { document.body.style.overflow = '' }
+  }, [showWithdrawalModal])
   const [withdrawalAmount, setWithdrawalAmount] = useState('')
   const [submittingWithdrawal, setSubmittingWithdrawal] = useState(false)
   const [withdrawalRequests, setWithdrawalRequests] = useState([])
@@ -812,7 +820,7 @@ export default function HubFinance() {
                       {financeData?.currentCycle?.totalOrders || 0} {financeData?.currentCycle?.totalOrders === 1 ? 'order' : 'orders'}
                     </p>
                     <button
-                      onClick={() => setShowWithdrawalModal(true)}
+                      onClick={() => { setWithdrawalAmount(''); setShowWithdrawalModal(true) }}
                       disabled={!(financeData?.currentCycle?.estimatedPayout > 0)}
                       className={`w-full py-3 px-4 rounded-lg font-semibold flex items-center justify-center gap-2 mt-4 transition-colors ${
                         financeData?.currentCycle?.estimatedPayout > 0
@@ -1247,13 +1255,22 @@ export default function HubFinance() {
                     Enter Amount to Withdraw
                   </label>
                   <input
-                    type="number"
-                    min="0.01"
-                    max={financeData?.currentCycle?.estimatedPayout || 0}
-                    step="0.01"
+                    type="text"
+                    inputMode="decimal"
                     value={withdrawalAmount}
-                    onChange={(e) => setWithdrawalAmount(e.target.value)}
-                    placeholder="0.00"
+                    onChange={(e) => {
+                      let val = e.target.value.replace(/[^0-9.]/g, '')
+                      // Remove multiple dots
+                      const parts = val.split('.')
+                      if (parts.length > 2) val = parts[0] + '.' + parts.slice(1).join('')
+                      // Remove leading zeros unless it's "0."
+                      if (val.length > 1 && val.startsWith('0') && !val.startsWith('0.')) {
+                        val = val.replace(/^0+/, '')
+                      }
+                      setWithdrawalAmount(val)
+                    }}
+                    autoComplete="off"
+                    placeholder="Enter amount"
                     className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-black focus:border-transparent outline-none"
                   />
                   {withdrawalAmount && parseFloat(withdrawalAmount) > (financeData?.currentCycle?.estimatedPayout || 0) && (

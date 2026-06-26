@@ -199,10 +199,6 @@ export async function createRestaurantFood(restaurantId, body = {}) {
         name,
         description,
         price,
-        priceOnOtherPlatforms: body.priceOnOtherPlatforms ? Number(body.priceOnOtherPlatforms) : null,
-        otherPlatformGst: body.otherPlatformGst !== undefined && body.otherPlatformGst !== null
-            ? Number(body.otherPlatformGst)
-            : null,
         variants,
         image,
         foodType,
@@ -217,10 +213,6 @@ export async function createRestaurantFood(restaurantId, body = {}) {
             name,
             description,
             price,
-            priceOnOtherPlatforms: body.priceOnOtherPlatforms ? Number(body.priceOnOtherPlatforms) : null,
-            otherPlatformGst: body.otherPlatformGst !== undefined && body.otherPlatformGst !== null
-                ? Number(body.otherPlatformGst)
-                : null,
             variants,
             image,
             foodType,
@@ -268,12 +260,6 @@ export async function updateRestaurantFood(restaurantId, foodId, body = {}) {
     }
     if (body.description !== undefined) update.description = toStr(body.description);
     if (body.image !== undefined) update.image = toStr(body.image);
-    if (body.priceOnOtherPlatforms !== undefined) update.priceOnOtherPlatforms = body.priceOnOtherPlatforms ? Number(body.priceOnOtherPlatforms) : null;
-    if (body.otherPlatformGst !== undefined) {
-        update.otherPlatformGst = body.otherPlatformGst !== null && body.otherPlatformGst !== ''
-            ? Number(body.otherPlatformGst)
-            : null;
-    }
     Object.assign(update, getUpdatedFoodPricing(existing, body));
     if (body.isAvailable !== undefined) update.isAvailable = body.isAvailable !== false;
     if (body.isRecommended !== undefined) update.isRecommended = body.isRecommended === true;

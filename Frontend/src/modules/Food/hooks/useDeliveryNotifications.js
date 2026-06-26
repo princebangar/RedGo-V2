@@ -185,6 +185,26 @@ export const useDeliveryNotifications = () => {
   const lastAlertAtByOrderRef = useRef(new Map());
   const lastBrowserNotificationAtByOrderRef = useRef(new Map());
   const processedOrderIdsRef = useRef(new Set());
+  const mutedOrderIdsRef = useRef((() => {
+    const ids = new Set();
+    if (typeof window !== 'undefined') {
+      try {
+        const saved = localStorage.getItem('delivery_muted_order_ids');
+        if (saved) {
+          const parsed = JSON.parse(saved);
+          if (Array.isArray(parsed)) {
+            parsed.forEach((id) => {
+              const key = String(id || '').trim();
+              if (key) ids.add(key);
+            });
+          }
+        }
+        localStorage.removeItem('delivery_notifications_muted');
+      } catch (_) {}
+    }
+    return ids;
+  })());
+  const [muteUiTick, setMuteUiTick] = useState(0);
   
   // Step 2: All state hooks (unconditional)
   const [newOrder, setNewOrder] = useState(null);
@@ -200,11 +220,7 @@ export const useDeliveryNotifications = () => {
   const ALERT_DEDUPE_MS = 15000;
   const BROWSER_NOTIFICATION_DEDUPE_MS = 20000;
   const NOTIFICATION_PERMISSION_ASKED_KEY = 'delivery_notification_permission_asked';
-  const DELIVERY_MUTED_KEY = 'delivery_notifications_muted';
-  const isMutedRef = useRef(
-    typeof window !== 'undefined' && localStorage.getItem(DELIVERY_MUTED_KEY) === 'true',
-  );
-  const [isMuted, setIsMutedState] = useState(isMutedRef.current);
+  const DELIVERY_MUTED_ORDER_IDS_KEY = 'delivery_muted_order_ids';
 
   // Step 3: All callbacks before effects (unconditional)
   const getOrderAlertKey = (orderData = {}) => (
@@ -217,6 +233,63 @@ export const useDeliveryNotifications = () => {
       orderData?.id ||
       ''
     ).trim()
+  );
+
+  const collectOrderAlertKeys = (orderData) => {
+    if (!orderData) return [];
+    if (typeof orderData === 'string') {
+      const key = String(orderData).trim();
+      return key ? [key] : [];
+    }
+    return [
+      ...new Set(
+        [
+          orderData.orderMongoId,
+          orderData.order_mongo_id,
+          orderData.orderId,
+          orderData.order_id,
+          orderData._id,
+          orderData.id,
+          orderData.mongoId,
+        ]
+          .map((id) => String(id || '').trim())
+          .filter(Boolean),
+      ),
+    ];
+  };
+
+  const saveMutedOrderIds = useCallback(() => {
+    if (typeof window === 'undefined') return;
+    try {
+      localStorage.setItem(
+        DELIVERY_MUTED_ORDER_IDS_KEY,
+        JSON.stringify([...mutedOrderIdsRef.current]),
+      );
+    } catch (_) {}
+  }, []);
+
+  const isOrderAlertMuted = useCallback((orderData) => {
+    const keys = collectOrderAlertKeys(orderData);
+    if (!keys.length) return false;
+    return keys.some((key) => mutedOrderIdsRef.current.has(key));
+  }, []);
+
+  const clearOrderMuteState = useCallback(
+    (orderData) => {
+      const keys = collectOrderAlertKeys(orderData);
+      if (!keys.length) return;
+      let changed = false;
+      keys.forEach((key) => {
+        if (mutedOrderIdsRef.current.delete(key)) {
+          changed = true;
+        }
+      });
+      if (changed) {
+        saveMutedOrderIds();
+        setMuteUiTick((tick) => tick + 1);
+      }
+    },
+    [saveMutedOrderIds],
   );
 
   const isProcessedOrder = useCallback((orderData) => {
@@ -297,14 +370,14 @@ export const useDeliveryNotifications = () => {
         return;
       }
 
-      if (!isMutedRef.current) {
+      if (!isOrderAlertMuted(activeOrderRef.current)) {
         playSoundFn(activeOrderRef.current);
       }
     }, ALERT_LOOP_INTERVAL_MS);
-  }, [stopAlertLoop]);
+  }, [isOrderAlertMuted, stopAlertLoop]);
   
   const playNotificationSound = useCallback(async (orderData = {}) => {
-    if (isMutedRef.current) {
+    if (isOrderAlertMuted(orderData)) {
       return;
     }
 
@@ -321,17 +394,14 @@ export const useDeliveryNotifications = () => {
         return;
       }
 
-      // Get current selected sound preference from localStorage
       const selectedSound = localStorage.getItem('delivery_alert_sound') || 'zomato_tone';
       const soundFile = selectedSound === 'original'
         ? resolveAudioSource(originalSound, 'delivery-original')
         : resolveAudioSource(alertSound, 'delivery-alert');
       
-      // Update audio source if preference changed or initialize if not exists
       if (audioRef.current) {
         const currentSrc = audioRef.current.src;
         const newSrc = soundFile;
-        // Check if source needs to be updated
         if (!currentSrc.includes(newSrc.split('/').pop())) {
           audioRef.current.pause();
           audioRef.current.src = newSrc;
@@ -339,7 +409,6 @@ export const useDeliveryNotifications = () => {
           debugLog('?? Audio source updated to:', selectedSound === 'original' ? 'Original' : 'Zomato Tone');
         }
       } else {
-        // Initialize audio if not exists
         audioRef.current = new Audio();
         audioRef.current.src = soundFile;
         audioRef.current.preload = 'auto';
@@ -352,48 +421,56 @@ export const useDeliveryNotifications = () => {
         audioRef.current.muted = false;
         audioRef.current.volume = 0.9;
         audioRef.current.currentTime = 0;
-        audioRef.current.play().catch(error => {
-          // On strict autoplay environments, we still keep vibration/native bridge path active.
+        audioRef.current.play().catch((error) => {
           if (!error.message?.includes('user didn\'t interact') && !error.name?.includes('NotAllowedError')) {
             debugWarn('Error playing notification sound:', error);
           }
         });
       }
     } catch (error) {
-      // Don't log autoplay policy errors
       if (!error.message?.includes('user didn\'t interact') && !error.name?.includes('NotAllowedError')) {
         debugWarn('Error playing sound:', error);
       }
     }
-  }, []);
+  }, [isOrderAlertMuted]);
 
-  const setMuted = useCallback(
-    (nextMuted) => {
+  const setOrderAlertMuted = useCallback(
+    (orderData, nextMuted) => {
+      const keys = collectOrderAlertKeys(orderData);
+      if (!keys.length) return;
+
       const muted = Boolean(nextMuted);
-      isMutedRef.current = muted;
-      setIsMutedState(muted);
-      try {
-        localStorage.setItem(DELIVERY_MUTED_KEY, muted ? 'true' : 'false');
-      } catch (_) {}
+      keys.forEach((key) => {
+        if (muted) {
+          mutedOrderIdsRef.current.add(key);
+        } else {
+          mutedOrderIdsRef.current.delete(key);
+        }
+      });
+      saveMutedOrderIds();
+      setMuteUiTick((tick) => tick + 1);
 
       if (muted) {
         stopAlertLoop();
         return;
       }
 
-      const pendingOrders = useDeliveryStore.getState().newOrders;
-      if (pendingOrders.length > 0) {
-        activeOrderRef.current = pendingOrders[0];
+      const activeKeys = collectOrderAlertKeys(activeOrderRef.current);
+      const affectsActive = activeKeys.some((key) => keys.includes(key));
+      if (affectsActive && activeOrderRef.current) {
         playNotificationSound(activeOrderRef.current);
         startAlertLoop(playNotificationSound);
       }
     },
-    [stopAlertLoop, playNotificationSound, startAlertLoop],
+    [saveMutedOrderIds, stopAlertLoop, playNotificationSound, startAlertLoop],
   );
 
-  const toggleMuted = useCallback(() => {
-    setMuted(!isMutedRef.current);
-  }, [setMuted]);
+  const toggleOrderAlertMuted = useCallback(
+    (orderData) => {
+      setOrderAlertMuted(orderData, !isOrderAlertMuted(orderData));
+    },
+    [isOrderAlertMuted, setOrderAlertMuted],
+  );
 
   const stopAlertsWhenQueueEmpty = useCallback(() => {
     const pending = useDeliveryStore.getState().newOrders || [];
@@ -664,10 +741,13 @@ export const useDeliveryNotifications = () => {
     };
   }, [playNotificationSound, showBackgroundOrderNotification]);
 
-  // Track user interaction for autoplay policy
+  // Track user interaction for autoplay policy (one-time audio unlock)
   useEffect(() => {
     const handleUserInteraction = async () => {
       userInteractedRef.current = true;
+      if (typeof window !== 'undefined') {
+        window.__userHasInteracted = true;
+      }
 
       const selectedSound = localStorage.getItem('delivery_alert_sound') || 'zomato_tone';
       const soundFile = selectedSound === 'original'
@@ -684,13 +764,8 @@ export const useDeliveryNotifications = () => {
         audioUnlockAttemptedRef.current = true;
         try {
           audioRef.current.muted = true;
-          // Ensure src is set even if it was just initialized
           if (!audioRef.current.src || audioRef.current.src === window.location.href) {
-             const selectedSound = localStorage.getItem('delivery_alert_sound') || 'zomato_tone';
-             const soundFile = selectedSound === 'original'
-                ? resolveAudioSource(originalSound)
-                : resolveAudioSource(alertSound);
-             audioRef.current.src = soundFile;
+            audioRef.current.src = soundFile;
           }
           audioRef.current.load();
           await audioRef.current.play();
@@ -703,21 +778,18 @@ export const useDeliveryNotifications = () => {
             debugWarn('Error unlocking notification audio:', error, 'Audio src:', audioRef.current?.src);
           }
         } finally {
-          // Ensure audio never remains muted after unlock attempts.
           if (audioRef.current) {
             audioRef.current.muted = false;
           }
         }
       }
 
-      // Remove listeners after first interaction
       document.removeEventListener('click', handleUserInteraction);
       document.removeEventListener('touchstart', handleUserInteraction);
       document.removeEventListener('keydown', handleUserInteraction);
       window.removeEventListener('pointerdown', handleUserInteraction);
     };
     
-    // Listen for user interaction
     document.addEventListener('click', handleUserInteraction, { once: true });
     document.addEventListener('touchstart', handleUserInteraction, { once: true });
     document.addEventListener('keydown', handleUserInteraction, { once: true });
@@ -1024,6 +1096,7 @@ export const useDeliveryNotifications = () => {
       const mapped = mapOrderLocations(orderData);
       if (mapped) {
         markOrderIdsProcessed(mapped);
+        clearOrderMuteState(mapped);
         useDeliveryStore.getState().acceptOrderToQueue(mapped);
         stopAlertLoop();
         activeOrderRef.current = null;
@@ -1040,7 +1113,7 @@ export const useDeliveryNotifications = () => {
         orderMongoId: data?.orderMongoId || data?.order_mongo_id,
         ...data
       };
-      if (isMutedRef.current || isOrderInAcceptedQueue(normalizedData) || isProcessedOrder(normalizedData)) {
+      if (isOrderAlertMuted(normalizedData) || isOrderInAcceptedQueue(normalizedData) || isProcessedOrder(normalizedData)) {
         return;
       }
       handleIncomingOrderAlert(normalizedData);
@@ -1158,7 +1231,7 @@ export const useDeliveryNotifications = () => {
         socketRef.current = null;
       }
     };
-  }, [deliveryPartnerId, handleIncomingOrderAlert, isOrderInAcceptedQueue, isProcessedOrder, joinDeliveryRoomIfPossible, markOrderIdsProcessed, playNotificationSound, recoverDeliveryState, showBackgroundOrderNotification, startAlertLoop, stopAlertLoop]);
+  }, [deliveryPartnerId, handleIncomingOrderAlert, isOrderAlertMuted, isOrderInAcceptedQueue, isProcessedOrder, joinDeliveryRoomIfPossible, markOrderIdsProcessed, clearOrderMuteState, playNotificationSound, recoverDeliveryState, showBackgroundOrderNotification, startAlertLoop, stopAlertLoop]);
 
   useEffect(() => {
     if (!deliveryPartnerId) {
@@ -1184,8 +1257,10 @@ export const useDeliveryNotifications = () => {
     if (target) {
       if (typeof target === 'object') {
         markOrderIdsProcessed(target);
+        clearOrderMuteState(target);
       } else {
         processedOrderIdsRef.current.add(String(target).trim());
+        clearOrderMuteState(target);
       }
     }
     stopAlertLoop();
@@ -1199,7 +1274,7 @@ export const useDeliveryNotifications = () => {
       useDeliveryStore.getState().removeNewOrder(removeId);
     }
     stopAlertsWhenQueueEmpty();
-  }, [markOrderIdsProcessed, newOrder, stopAlertLoop, stopAlertsWhenQueueEmpty]);
+  }, [clearOrderMuteState, markOrderIdsProcessed, newOrder, stopAlertLoop, stopAlertsWhenQueueEmpty]);
 
   const clearClaimedOrderId = () => setClaimedOrderId(null);
 
@@ -1238,9 +1313,10 @@ export const useDeliveryNotifications = () => {
     isConnected,
     playNotificationSound,
     stopSound: stopAlertLoop,
-    isMuted,
-    setMuted,
-    toggleMuted,
+    isOrderAlertMuted,
+    setOrderAlertMuted,
+    toggleOrderAlertMuted,
+    muteUiTick,
     emitLocation
   };
 };

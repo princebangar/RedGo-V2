@@ -1,7 +1,7 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
-import { MapPin, ChevronDown, Search, Mic, CheckCircle2, Tag, Gift, AlertCircle, Clock, X, IndianRupee, User, Wallet, Utensils, Soup } from 'lucide-react';
+import { MapPin, ChevronDown, Search, Mic, Wallet, Utensils, Soup, Bell } from 'lucide-react';
 import { Avatar, AvatarFallback, AvatarImage } from "@food/components/ui/avatar";
 import { useProfile } from "@food/context/ProfileContext";
 import useNotificationInbox from "@food/hooks/useNotificationInbox";
@@ -27,18 +27,8 @@ const bannerImages = {
   ]
 };
 
-const ICON_MAP = {
-  CheckCircle2,
-  Tag,
-  Gift,
-  AlertCircle
-};
-
 export default function HomeHeader({
-  activeTab,
-  setActiveTab,
   location,
-  savedAddressText,
   handleSearchFocus,
   placeholderIndex,
   placeholders,
@@ -54,11 +44,25 @@ export default function HomeHeader({
   const navigate = useNavigate();
   const { userProfile } = useProfile();
   const [isVoiceOverlayOpen, setIsVoiceOverlayOpen] = useState(false);
+  const { unreadCount: broadcastUnread } = useNotificationInbox('user', { pollMs: 60000 });
+  const [localUnread, setLocalUnread] = useState(() => {
+    try {
+      const saved = JSON.parse(localStorage.getItem('food_user_notifications') || '[]')
+      return Array.isArray(saved) ? saved.filter(n => !n.read).length : 0
+    } catch { return 0 }
+  });
+
+  useEffect(() => {
+    const handler = (e) => setLocalUnread(e.detail?.count ?? 0)
+    window.addEventListener('notificationsUpdated', handler)
+    return () => window.removeEventListener('notificationsUpdated', handler)
+  }, []);
+
+  const unreadCount = broadcastUnread + localUnread;
 
   // FestBanner Logic
   const [imgIndex, setImgIndex] = useState(0);
   const currentPool = vegMode ? bannerImages.veg : bannerImages.nonVeg;
-  const hasVideo = typeof videoUrl === "string" && videoUrl.trim().length > 0;
 
   useEffect(() => {
     if (!showBanner) return;
@@ -77,12 +81,6 @@ export default function HomeHeader({
     currentPool[(imgIndex + 1) % currentPool.length],
     currentPool[(imgIndex + 2) % currentPool.length]
   ];
-  const initials = useMemo(() => {
-    if (!userProfile) return "";
-    const name = userProfile.firstName || userProfile.name || "";
-    return name[0]?.toUpperCase() || "U";
-  }, [userProfile]);
-
   return (
     <div className="relative pt-2 pb-4 px-4 transition-all duration-700 overflow-hidden bg-transparent shadow-none">
       {/* Main Header Content */}
@@ -154,8 +152,21 @@ export default function HomeHeader({
 
           {/* Right: Actions Column (Wallet, Profile, Veg Toggle) */}
           <div className="flex flex-col items-end gap-3 shrink-0">
-            {/* Row 1: Wallet and Profile */}
+            {/* Row 1: Bell, Wallet, Profile */}
             <div className="flex items-center gap-3">
+              {/* Notification Bell */}
+              <button
+                onClick={() => navigate('/food/user/notifications')}
+                className="relative flex items-center justify-center p-1.5 active:scale-90 transition-all transform-gpu translate-z-0 overflow-visible"
+              >
+                <Bell className="h-[24px] w-[24px] text-white antialiased" strokeWidth={2} />
+                {unreadCount > 0 && (
+                  <span className="absolute -top-1 -right-1 min-w-[15px] h-[15px] bg-green-400 text-white text-[8px] font-semibold rounded-full flex items-center justify-center px-[3px] leading-none border border-white/80 shadow z-10">
+                    {unreadCount > 9 ? '9+' : unreadCount}
+                  </span>
+                )}
+              </button>
+
               <Link
                 to="/food/user/wallet"
                 state={{ from: '/food/user' }}
@@ -388,6 +399,7 @@ export default function HomeHeader({
           </div>
         )}
       </div>
+
     </div>
   );
 }

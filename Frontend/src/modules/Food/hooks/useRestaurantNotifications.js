@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
 import io from 'socket.io-client';
+import { toast } from 'sonner';
 import { API_BASE_URL } from '@food/api/config';
 import { restaurantAPI } from '@food/api';
 import { dispatchNotificationInboxRefresh } from '@food/hooks/useNotificationInbox';
@@ -630,6 +631,16 @@ export const useRestaurantNotifications = () => {
             detail: data || {},
           }),
         );
+      }
+      const status = String(data?.orderStatus || '').toLowerCase();
+      if (status === 'delivered') {
+        const orderId = data?.orderId ? `#${data.orderId}` : '';
+        toast.success(`Order ${orderId} delivered successfully!`, {
+          description: 'The order has been delivered to the customer.',
+          duration: 6000,
+          id: `delivered-${data?.orderId || Date.now()}`
+        });
+        dispatchNotificationInboxRefresh();
       }
     });
 

@@ -767,8 +767,6 @@ export default function Inventory() {
   const [togglePopupOpen, setTogglePopupOpen] = useState(false)
   const [toggleTarget, setToggleTarget] = useState(null)
   const [isMenuOpen, setIsMenuOpen] = useState(false)
-  const [isAddPopupOpen, setIsAddPopupOpen] = useState(false)
-
   // Toggle popup state
   const [selectedOption, setSelectedOption] = useState("specific-time")
   const [hours, setHours] = useState(3)
@@ -2703,54 +2701,13 @@ export default function Inventory() {
         onConfirm={handleTimePickerConfirm}
       />
 
-      {/* Add Popup */}
-      <AnimatePresence>
-        {isAddPopupOpen && (
-          <>
-            <motion.div
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-              onClick={() => setIsAddPopupOpen(false)}
-              className="fixed inset-0 bg-black/50 z-[70]"
-            />
-            <motion.div
-              initial={{ y: "100%" }}
-              animate={{ y: 0 }}
-              exit={{ y: "100%" }}
-              transition={{ type: "spring", damping: 30, stiffness: 300 }}
-              className="fixed bottom-0 left-0 right-0 bg-white rounded-t-2xl shadow-2xl z-[71] max-h-[70vh] overflow-y-auto pb-[calc(1rem+env(safe-area-inset-bottom)+5.5rem)]"
-              onClick={(e) => e.stopPropagation()}
-            >
-              <div className="sticky top-0 bg-white px-4 py-4 border-b border-gray-200">
-                <h2 className="text-lg font-bold text-gray-900 text-center">Add item</h2>
-              </div>
-              <div className="px-4 py-4 space-y-2">
-                <button
-                  onClick={() => {
-                    setIsAddPopupOpen(false)
-                    navigate(`/food/restaurant/hub-menu/item/new`, {
-                      state: {
-                        backTo: "/food/restaurant/inventory",
-                      },
-                    })
-                  }}
-                  className="w-full py-3 px-4 text-left rounded-lg hover:bg-gray-50 transition-colors"
-                >
-                  <span className="text-sm font-medium text-gray-900">Add item</span>
-                </button>
-              </div>
-            </motion.div>
-          </>
-        )}
-      </AnimatePresence>
 
       {/* Floating Menu Button & Popup (hidden on Add-ons tab) */}
       {activeTab !== "add-ons" && (
         <div className="fixed right-4 bottom-24 z-30 flex flex-col items-end gap-2">
           <motion.button
             whileTap={{ scale: 0.96 }}
-            onClick={() => setIsAddPopupOpen(true)}
+            onClick={() => navigate(`/food/restaurant/hub-menu/item/new`, { state: { backTo: "/food/restaurant/inventory" } })}
             className="rounded-full bg-gradient-to-br from-[#B80B3D] to-[#66001D] px-5 py-3 text-sm font-semibold text-white shadow-[0_22px_40px_-24px_rgba(126,56,102,0.72)]"
           >
             + Add item

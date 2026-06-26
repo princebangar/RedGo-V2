@@ -1,17 +1,80 @@
 import { useLocation, useNavigate } from "react-router-dom"
-import { CheckCircle2, Calendar, Clock, Users, MapPin, Share2, Home, List, Info } from "lucide-react"
+import { CheckCircle2, Calendar, Clock, Users, MapPin, Home, List, Info } from "lucide-react"
 import { Button } from "@food/components/ui/button"
 import AnimatedPage from "@food/components/user/AnimatedPage"
 import { motion } from "framer-motion"
 import confetti from "canvas-confetti"
-import { useEffect } from "react"
+import { useEffect, useRef, useState } from "react"
+import { diningAPI } from "@food/api"
+import { toast } from "sonner"
+
+const CONFIRMED_STATUSES = ['accepted', 'confirmed']
+const FINAL_STATUSES = ['accepted', 'confirmed', 'cancelled', 'rejected']
 
 export default function TableBookingSuccess() {
     const location = useLocation()
     const navigate = useNavigate()
-    const { booking } = location.state || {}
+    const { booking: initialBooking } = location.state || {}
+    const [liveStatus, setLiveStatus] = useState(initialBooking?.status || 'pending')
+    const prevStatusRef = useRef(initialBooking?.status || 'pending')
+    const booking = initialBooking
+
+    // Poll for live status updates
+    useEffect(() => {
+        if (!booking?._id || FINAL_STATUSES.includes(liveStatus)) return
+
+        const fetchStatus = async () => {
+            try {
+                const res = await diningAPI.getBookings()
+                if (res?.data?.success) {
+                    const all = Array.isArray(res.data.data) ? res.data.data : []
+                    const found = all.find(b =>
+                        String(b._id) === String(booking._id) ||
+                        String(b.bookingId) === String(booking.bookingId)
+                    )
+                    const newStatus = found?.status
+                    if (newStatus && newStatus !== prevStatusRef.current) {
+                        prevStatusRef.current = newStatus
+                        setLiveStatus(newStatus)
+                        if (CONFIRMED_STATUSES.includes(newStatus)) {
+                            toast.success('Your booking has been confirmed! 🎉')
+                        } else if (newStatus === 'cancelled' || newStatus === 'rejected') {
+                            toast.error('Your booking was not accepted.')
+                        }
+                    }
+                }
+            } catch {}
+        }
+
+        fetchStatus()
+        const interval = setInterval(fetchStatus, 10000)
+
+        const onSocket = (e) => {
+            const { bookingId, status } = e.detail || {}
+            if (bookingId && String(bookingId) === String(booking._id) && status) {
+                prevStatusRef.current = status
+                setLiveStatus(status)
+            }
+        }
+        window.addEventListener('diningBookingStatusUpdate', onSocket)
+
+        const onVisible = () => {
+            if (document.visibilityState === 'visible') fetchStatus()
+        }
+        document.addEventListener('visibilitychange', onVisible)
+
+        return () => {
+            clearInterval(interval)
+            window.removeEventListener('diningBookingStatusUpdate', onSocket)
+            document.removeEventListener('visibilitychange', onVisible)
+        }
+    }, [booking?._id, liveStatus])
+
+    const isConfirmed = CONFIRMED_STATUSES.includes(liveStatus)
+    const isPending = liveStatus === 'pending'
 
     useEffect(() => {
+        if (!isConfirmed) return
         // Trigger confetti on mount
         const duration = 3 * 1000
         const animationEnd = Date.now() + duration
@@ -44,14 +107,15 @@ export default function TableBookingSuccess() {
     return (
         <AnimatedPage className="bg-white dark:bg-slate-950 min-h-screen flex flex-col items-center justify-center p-6 pb-24 transition-colors">
             <motion.div
+                key={liveStatus}
                 initial={{ scale: 0.5, opacity: 0 }}
                 animate={{ scale: 1, opacity: 1 }}
-                className={`w-20 h-20 ${booking.status === 'pending' ? 'bg-amber-50 dark:bg-amber-950/20' : 'bg-[#F9F9FB] dark:bg-slate-900'} rounded-full flex items-center justify-center mb-6 transition-colors`}
+                className={`w-20 h-20 ${isPending ? 'bg-amber-50 dark:bg-amber-950/20' : 'bg-[#F9F9FB] dark:bg-slate-900'} rounded-full flex items-center justify-center mb-6 transition-colors`}
             >
-                {booking.status === 'pending' ? (
+                {isPending ? (
                     <Clock className="w-12 h-12 text-amber-500" />
                 ) : (
-                    <CheckCircle2 className="w-12 h-12 text-[#DC2626]" />
+                    <CheckCircle2 className="w-12 h-12 text-green-500" />
                 )}
             </motion.div>
 
@@ -62,10 +126,10 @@ export default function TableBookingSuccess() {
                 className="text-center space-y-2 mb-10"
             >
                 <h1 className="text-3xl font-black text-gray-900 dark:text-slate-100">
-                    {booking.status === 'pending' ? 'Booking Requested!' : 'Seat Confirmed!'}
+                    {isPending ? 'Booking Requested!' : 'Seat Confirmed!'}
                 </h1>
                 <p className="text-gray-500 dark:text-slate-400 font-medium tracking-wide italic">
-                    {booking.status === 'pending' ? 'Waiting for restaurant approval' : 'Your table is ready for you'}
+                    {isPending ? 'Waiting for restaurant approval' : 'Your table is ready for you'}
                 </p>
                 <div className="pt-2">
                     <span className="bg-[#F9F9FB] dark:bg-slate-900 text-[#DC2626] dark:text-purple-400 px-4 py-1 rounded-full text-xs font-bold uppercase tracking-widest border border-[#DC2626]/20 dark:border-purple-400/20">
@@ -73,7 +137,7 @@ export default function TableBookingSuccess() {
                     </span>
                 </div>
 
-                {booking.status === 'pending' && (
+                {isPending && (
                     <div className="mt-6 mx-auto max-w-xs bg-amber-50 dark:bg-amber-950/20 border border-amber-100 dark:border-amber-900/30 rounded-2xl p-4 text-left flex gap-3 shadow-sm shadow-amber-100/50 dark:shadow-none transition-colors">
                         <div className="bg-amber-100 p-2 rounded-xl h-fit">
                             <Info className="w-4 h-4 text-amber-600" />
@@ -148,8 +212,8 @@ export default function TableBookingSuccess() {
                         </div>
                         <div className="space-y-1">
                             <p className="text-[10px] uppercase font-bold text-slate-400 dark:text-slate-500 tracking-wider">Status</p>
-                            <div className={`${booking.status === 'pending' ? 'bg-amber-500 text-white' : 'bg-emerald-500 text-white'} px-2 py-0.5 rounded-lg text-[10px] font-black tracking-widest w-fit uppercase`}>
-                                {booking.status === 'pending' ? 'PENDING' : 'CONFIRMED'}
+                            <div className={`${isPending ? 'bg-amber-500' : isConfirmed ? 'bg-emerald-500' : 'bg-red-500'} text-white px-2 py-0.5 rounded-lg text-[10px] font-black tracking-widest w-fit uppercase`}>
+                                {isPending ? 'PENDING' : isConfirmed ? 'CONFIRMED' : liveStatus.toUpperCase()}
                             </div>
                         </div>
                     </div>
@@ -178,11 +242,10 @@ export default function TableBookingSuccess() {
                     <Home className="w-5 h-5" />
                     Go to Home
                 </Button>
+                <p className="text-center text-[10px] font-bold text-slate-300 dark:text-slate-600 uppercase tracking-widest mt-2">
+                    Show this ticket at the restaurant for a smooth entry
+                </p>
             </motion.div>
-
-            <p className="fixed bottom-10 text-[10px] font-bold text-slate-300 uppercase tracking-widest px-10 text-center">
-                Show this ticket at the restaurant for a smooth entry
-            </p>
         </AnimatedPage>
     )
 }

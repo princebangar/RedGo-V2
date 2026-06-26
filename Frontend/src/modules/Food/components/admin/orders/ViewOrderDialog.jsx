@@ -290,7 +290,12 @@ export default function ViewOrderDialog({ isOpen, onOpenChange, order }) {
                         <span className="text-xs font-bold text-slate-700 bg-white px-2 py-1 rounded">
                           {item.quantity || 1}x
                         </span>
-                        <p className="text-sm font-medium text-slate-900">{item.name || "Unknown Item"}</p>
+                        <div>
+                          <p className="text-sm font-medium text-slate-900">{item.name || "Unknown Item"}</p>
+                          {item.variantName && (
+                            <p className="text-xs text-slate-500 font-medium">{item.variantName}</p>
+                          )}
+                        </div>
                         {item.isVeg !== undefined && (
                           <span className={`text-xs px-1.5 py-0.5 rounded ${item.isVeg ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>
                             {item.isVeg ? 'Veg' : 'Non-Veg'}

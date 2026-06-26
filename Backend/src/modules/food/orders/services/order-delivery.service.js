@@ -13,6 +13,7 @@ import {
 import { buildPaginatedResult, buildPaginationOptions } from '../../../../utils/helpers.js';
 import { logger } from '../../../../utils/logger.js';
 import { getIO, rooms } from '../../../../config/socket.js';
+import { createInboxNotifications } from '../../../../core/notifications/notification.service.js';
 import { getFirebaseDB } from '../../../../config/firebase.js';
 import {
   fetchRazorpayPaymentLink,
@@ -1095,6 +1096,35 @@ export async function completeDelivery(orderId, deliveryPartnerId, body = {}) {
   });
 
   await order.save();
+
+  // Create inbox notifications for user and restaurant
+  try {
+    const orderId = order.orderId || order._id.toString();
+    const notifs = [];
+    if (order.userId) {
+      notifs.push({
+        ownerType: 'USER',
+        ownerId: order.userId,
+        title: `Order #${orderId} Delivered!`,
+        message: 'Your order has been delivered. Enjoy your meal!',
+        category: 'order',
+        source: 'ORDER_UPDATE',
+      });
+    }
+    if (order.restaurantId) {
+      notifs.push({
+        ownerType: 'RESTAURANT',
+        ownerId: order.restaurantId,
+        title: `Order #${orderId} Delivered`,
+        message: 'The order has been successfully delivered to the customer.',
+        category: 'order',
+        source: 'ORDER_UPDATE',
+      });
+    }
+    if (notifs.length) await createInboxNotifications({ notifications: notifs });
+  } catch (notifErr) {
+    logger.warn('Failed to create delivered notifications:', notifErr?.message);
+  }
 
   // 5. Update Financial Ledger (FoodTransaction)
   // This triggers the sync back to FoodOrder.payment.method which updates the Rider's Cash Limit (if cash) or Pocket (always).
