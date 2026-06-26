@@ -83,7 +83,7 @@ export default function DeliveryHomeV2({ tab = 'feed' }) {
   };
   const { isWithinRange, distanceToTarget } = useProximityCheck();
   const { reachPickup, pickUpOrder, reachDrop, completeDelivery, resetTrip } = useOrderManager();
-  const { newOrder, clearNewOrder, orderStatusUpdate, clearOrderStatusUpdate, claimedOrderId, clearClaimedOrderId, adminNotification, clearAdminNotification, isConnected: isSocketConnected, emitLocation, stopSound } = useDeliveryNotificationsContext();
+  const { clearNewOrder, orderStatusUpdate, clearOrderStatusUpdate, claimedOrderId, clearClaimedOrderId, adminNotification, clearAdminNotification, isConnected: isSocketConnected, emitLocation } = useDeliveryNotificationsContext();
   const companyName = useCompanyName();
   const { items: broadcastItems, unreadCount: notificationUnreadCount, markAsRead: markBroadcastAsRead, dismissAll: dismissAllBroadcast } = useNotificationInbox("delivery", { limit: 20 });
 
@@ -385,9 +385,9 @@ export default function DeliveryHomeV2({ tab = 'feed' }) {
     deliveryAPI.updateOnlineStatus(isOnline).catch(() => {});
   }, [isOnline]);
 
-  // 3. Location logic (Smart Frequency Tracking)
+  // 3. Location logic (Smart Frequency Tracking) — Feed map only
   useEffect(() => {
-    if (!isOnline) {
+    if (!isOnline || currentTab !== 'feed') {
       return;
     }
     
@@ -479,7 +479,7 @@ export default function DeliveryHomeV2({ tab = 'feed' }) {
     });
     
     return () => navigator.geolocation.clearWatch(watchId);
-  }, [isOnline, setRiderLocation, isSimMode]);
+  }, [isOnline, currentTab, setRiderLocation, isSimMode]);
 
   // 3.5. Background Ping / Heartbeat
   // If watchPosition stops firing (e.g. app in background or device stationary),
@@ -504,13 +504,6 @@ export default function DeliveryHomeV2({ tab = 'feed' }) {
     
     return () => clearInterval(pingInterval);
   }, [isOnline]);
-
-  useEffect(() => {
-    if (newOrder) {
-      useDeliveryStore.getState().addNewOrder(newOrder);
-      stopSound?.();
-    }
-  }, [newOrder, stopSound]);
 
   useEffect(() => {
     if (!claimedOrderId) return;

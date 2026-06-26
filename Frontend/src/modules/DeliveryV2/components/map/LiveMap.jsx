@@ -39,6 +39,19 @@ const mapOptions = {
   ]
 };
 const LIBRARIES = ['places', 'geometry'];
+const MARKER_OVERLAP_HIDE_METERS = 40;
+const DESTINATION_MARKER_Z_INDEX = 20;
+
+function distanceBetweenMeters(a, b) {
+  if (!a || !b || !window.google?.maps?.geometry) return Infinity;
+  try {
+    const p1 = new window.google.maps.LatLng(a.lat, a.lng);
+    const p2 = new window.google.maps.LatLng(b.lat, b.lng);
+    return window.google.maps.geometry.spherical.computeDistanceBetween(p1, p2);
+  } catch {
+    return Infinity;
+  }
+}
 
 export const LiveMap = ({ onMapClick, onMapLoad, onPathReceived, onPolylineReceived, zoom = 12 }) => {
   const riderLocation = useDeliveryStore((state) => state.riderLocation);
@@ -245,6 +258,18 @@ export const LiveMap = ({ onMapClick, onMapLoad, onPathReceived, onPolylineRecei
     return { remainingPath: remaining, traveledPath: traveled };
   }, [directions, parsedRiderLocation]);
 
+  const showRestaurantMarker = useMemo(() => {
+    if (!restaurantPoint) return false;
+    if (!parsedRiderLocation) return true;
+    return distanceBetweenMeters(parsedRiderLocation, restaurantPoint) > MARKER_OVERLAP_HIDE_METERS;
+  }, [restaurantPoint, parsedRiderLocation]);
+
+  const showCustomerMarker = useMemo(() => {
+    if (!customerPoint) return false;
+    if (!parsedRiderLocation) return true;
+    return distanceBetweenMeters(parsedRiderLocation, customerPoint) > MARKER_OVERLAP_HIDE_METERS;
+  }, [customerPoint, parsedRiderLocation]);
+
   if (loadError) return <div className="absolute inset-0 flex items-center justify-center bg-gray-50 text-red-500 font-bold">Map Load Error</div>;
   if (!isLoaded) return <div className="absolute inset-0 flex items-center justify-center bg-gray-50"><div className="w-10 h-10 border-4 border-green-500 border-t-transparent rounded-full animate-spin" /></div>;
 
@@ -311,34 +336,48 @@ export const LiveMap = ({ onMapClick, onMapLoad, onPathReceived, onPolylineRecei
           />
         )}
 
-        {parsedRiderLocation && (
-          <OverlayView position={parsedRiderLocation} mapPaneName={OverlayView.MARKER_LAYER}>
-            <div style={{ transform: `translate(-50%, -50%) rotate(${parsedRiderLocation.heading || 0}deg)`, transition: 'transform 0.5s linear' }} className="relative w-[72px] h-[72px]">
-              <img src="/MapRider.png" alt="Rider" className="w-full h-full object-contain" />
-            </div>
-          </OverlayView>
-        )}
-
-        {restaurantPoint && (
+        {showRestaurantMarker && (
           <Marker
             position={restaurantPoint}
+            zIndex={DESTINATION_MARKER_Z_INDEX}
             icon={{
               url: restaurantMarkerUrl,
               scaledSize: new window.google.maps.Size(44, 44),
-              anchor: new window.google.maps.Point(22, 22)
+              anchor: new window.google.maps.Point(22, 40),
             }}
           />
         )}
 
-        {customerPoint && (
+        {showCustomerMarker && (
           <Marker
             position={customerPoint}
+            zIndex={DESTINATION_MARKER_Z_INDEX}
             icon={{
               url: customerMarkerUrl,
               scaledSize: new window.google.maps.Size(44, 44),
-              anchor: new window.google.maps.Point(22, 22)
+              anchor: new window.google.maps.Point(22, 40),
             }}
           />
+        )}
+
+        {parsedRiderLocation && (
+          <OverlayView
+            position={parsedRiderLocation}
+            mapPaneName={OverlayView.OVERLAY_LAYER}
+          >
+            <div
+              style={{
+                transform: `translate(-50%, -50%) rotate(${parsedRiderLocation.heading || 0}deg)`,
+                transition: 'transform 0.5s linear',
+                zIndex: 999,
+                position: 'relative',
+                pointerEvents: 'none',
+              }}
+              className="relative w-[72px] h-[72px]"
+            >
+              <img src="/MapRider.png" alt="Rider" className="w-full h-full object-contain drop-shadow-md" />
+            </div>
+          </OverlayView>
         )}
 
         {zones.map((zone) => (

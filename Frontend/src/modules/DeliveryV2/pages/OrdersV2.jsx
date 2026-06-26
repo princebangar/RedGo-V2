@@ -5,6 +5,7 @@ import { deliveryAPI } from '@food/api';
 import { useDeliveryStore, resolveOrderKey, dedupeOrdersByIdentity } from '@/modules/DeliveryV2/store/useDeliveryStore';
 import { useOrderManager } from '@/modules/DeliveryV2/hooks/useOrderManager';
 import { mapOrderLocations } from '@/modules/DeliveryV2/utils/orderMapping';
+import { useDeliveryNotificationsContext } from '@/modules/DeliveryV2/components/DeliveryRealtimeShell';
 import NewOrderCard from '@/modules/DeliveryV2/components/orders/NewOrderCard';
 import AcceptedOrderCard from '@/modules/DeliveryV2/components/orders/AcceptedOrderCard';
 import DeliveryBottomNav from '@/modules/DeliveryV2/components/DeliveryBottomNav';
@@ -17,12 +18,12 @@ export default function OrdersV2() {
   const focusedOrderId = useDeliveryStore((state) => state.focusedOrderId);
   const capacity = useDeliveryStore((state) => state.capacity);
   const addNewOrder = useDeliveryStore((state) => state.addNewOrder);
-  const removeNewOrder = useDeliveryStore((state) => state.removeNewOrder);
   const setAcceptedOrders = useDeliveryStore((state) => state.setAcceptedOrders);
   const setCapacity = useDeliveryStore((state) => state.setCapacity);
   const setFocusedOrder = useDeliveryStore((state) => state.setFocusedOrder);
 
   const { acceptOrder } = useOrderManager();
+  const { isMuted, toggleMuted, clearNewOrder } = useDeliveryNotificationsContext();
   const [activeTab, setActiveTab] = useState('new');
   const [expandedOrderId, setExpandedOrderId] = useState(null);
   const prevNewCountRef = useRef(visibleNewOrders.length);
@@ -98,7 +99,7 @@ export default function OrdersV2() {
 
     try {
       await acceptOrder(order);
-      removeNewOrder(orderId);
+      clearNewOrder(order);
       setExpandedOrderId(null);
 
       if (isFirstAcceptedOrder) {
@@ -123,7 +124,7 @@ export default function OrdersV2() {
     } catch (error) {
       console.warn('[OrdersV2] reject failed:', error?.message || error);
     } finally {
-      removeNewOrder(orderId);
+      clearNewOrder(order);
       if (expandedOrderId === orderId) {
         setExpandedOrderId(null);
       }
@@ -161,7 +162,13 @@ export default function OrdersV2() {
           >
             New Orders
             {visibleNewOrders.length > 0 ? (
-              <span className="ml-1.5 inline-flex min-w-[18px] h-[18px] items-center justify-center rounded-full bg-orange-500 text-white text-[9px] px-1">
+              <span
+                className={`ml-1.5 inline-flex min-w-[20px] h-5 shrink-0 items-center justify-center rounded-full px-1.5 text-[10px] font-black leading-none ${
+                  activeTab === 'new'
+                    ? '!bg-[#15498b] !text-white'
+                    : '!bg-orange-500 !text-white shadow-sm ring-1 ring-white/25'
+                }`}
+              >
                 {visibleNewOrders.length > 9 ? '9+' : visibleNewOrders.length}
               </span>
             ) : null}
@@ -175,7 +182,13 @@ export default function OrdersV2() {
           >
             Accepted
             {acceptedOrders.length > 0 ? (
-              <span className="ml-1.5 inline-flex min-w-[18px] h-[18px] items-center justify-center rounded-full bg-orange-500 text-white text-[9px] px-1">
+              <span
+                className={`ml-1.5 inline-flex min-w-[20px] h-5 shrink-0 items-center justify-center rounded-full px-1.5 text-[10px] font-black leading-none ${
+                  activeTab === 'accepted'
+                    ? '!bg-[#15498b] !text-white'
+                    : '!bg-orange-500 !text-white shadow-sm ring-1 ring-white/25'
+                }`}
+              >
                 {acceptedOrders.length > 9 ? '9+' : acceptedOrders.length}
               </span>
             ) : null}
@@ -202,6 +215,8 @@ export default function OrdersV2() {
                     onAccept={handleAccept}
                     onReject={handleReject}
                     acceptDisabled={acceptDisabled}
+                    isMuted={isMuted}
+                    onToggleMute={toggleMuted}
                     disabledMessage={`All ${capacity.max} slots in use — complete an active order to accept more`}
                   />
                 );

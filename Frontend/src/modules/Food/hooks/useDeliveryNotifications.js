@@ -5,8 +5,9 @@ import { deliveryAPI } from '@food/api';
 const alertSound = '/restaurant_alert.mp3';
 const originalSound = '/restaurant_alert.mp3';
 import { dispatchNotificationInboxRefresh } from '@food/hooks/useNotificationInbox';
-import { useDeliveryStore, resolveOrderKey } from '@/modules/DeliveryV2/store/useDeliveryStore';
+import { useDeliveryStore, resolveOrderKey, ordersShareIdentity } from '@/modules/DeliveryV2/store/useDeliveryStore';
 import { mapOrderLocations } from '@/modules/DeliveryV2/utils/orderMapping';
+import { sanitizeOrderDispatchMetrics } from '@/modules/DeliveryV2/utils/pickupMetrics';
 
 const shouldLogDeliverySocket = () => {
   if (typeof window === 'undefined') return import.meta.env.DEV;
@@ -199,6 +200,11 @@ export const useDeliveryNotifications = () => {
   const ALERT_DEDUPE_MS = 15000;
   const BROWSER_NOTIFICATION_DEDUPE_MS = 20000;
   const NOTIFICATION_PERMISSION_ASKED_KEY = 'delivery_notification_permission_asked';
+  const DELIVERY_MUTED_KEY = 'delivery_notifications_muted';
+  const isMutedRef = useRef(
+    typeof window !== 'undefined' && localStorage.getItem(DELIVERY_MUTED_KEY) === 'true',
+  );
+  const [isMuted, setIsMutedState] = useState(isMutedRef.current);
 
   // Step 3: All callbacks before effects (unconditional)
   const getOrderAlertKey = (orderData = {}) => (
@@ -225,6 +231,26 @@ export const useDeliveryNotifications = () => {
       orderData.order_mongo_id
     ].filter(Boolean);
     return ids.some(id => processedOrderIdsRef.current.has(String(id).trim()));
+  }, []);
+
+  const isOrderInAcceptedQueue = useCallback((orderData) => {
+    if (!orderData) return false;
+    const accepted = useDeliveryStore.getState().acceptedOrders || [];
+    return accepted.some((item) => ordersShareIdentity(item, orderData));
+  }, []);
+
+  const markOrderIdsProcessed = useCallback((orderData) => {
+    if (!orderData) return;
+    const ids = [
+      orderData.orderMongoId,
+      orderData.order_mongo_id,
+      orderData.orderId,
+      orderData.order_id,
+      orderData._id,
+      orderData.id,
+      orderData.mongoId,
+    ].filter(Boolean);
+    ids.forEach((id) => processedOrderIdsRef.current.add(String(id).trim()));
   }, []);
 
   const shouldProcessOrderAlert = (orderData = {}) => {
@@ -271,13 +297,17 @@ export const useDeliveryNotifications = () => {
         return;
       }
 
-      if (typeof document !== 'undefined' && document.visibilityState === 'hidden') {
+      if (!isMutedRef.current) {
         playSoundFn(activeOrderRef.current);
       }
     }, ALERT_LOOP_INTERVAL_MS);
   }, [stopAlertLoop]);
   
   const playNotificationSound = useCallback(async (orderData = {}) => {
+    if (isMutedRef.current) {
+      return;
+    }
+
     try {
       const usedNativeBridge = await triggerWebViewNativeNotification(orderData);
 
@@ -337,6 +367,43 @@ export const useDeliveryNotifications = () => {
     }
   }, []);
 
+  const setMuted = useCallback(
+    (nextMuted) => {
+      const muted = Boolean(nextMuted);
+      isMutedRef.current = muted;
+      setIsMutedState(muted);
+      try {
+        localStorage.setItem(DELIVERY_MUTED_KEY, muted ? 'true' : 'false');
+      } catch (_) {}
+
+      if (muted) {
+        stopAlertLoop();
+        return;
+      }
+
+      const pendingOrders = useDeliveryStore.getState().newOrders;
+      if (pendingOrders.length > 0) {
+        activeOrderRef.current = pendingOrders[0];
+        playNotificationSound(activeOrderRef.current);
+        startAlertLoop(playNotificationSound);
+      }
+    },
+    [stopAlertLoop, playNotificationSound, startAlertLoop],
+  );
+
+  const toggleMuted = useCallback(() => {
+    setMuted(!isMutedRef.current);
+  }, [setMuted]);
+
+  const stopAlertsWhenQueueEmpty = useCallback(() => {
+    const pending = useDeliveryStore.getState().newOrders || [];
+    if (pending.length === 0) {
+      stopAlertLoop();
+      activeOrderRef.current = null;
+      setNewOrder(null);
+    }
+  }, [stopAlertLoop]);
+
   const showBackgroundOrderNotification = useCallback(async (orderData = {}) => {
     if (!shouldShowBrowserNotification(orderData)) {
       return;
@@ -380,6 +447,9 @@ export const useDeliveryNotifications = () => {
   }, []);
 
   const handleIncomingOrderAlert = useCallback((orderData = {}) => {
+    if (isOrderInAcceptedQueue(orderData)) {
+      return;
+    }
     if (isProcessedOrder(orderData)) {
       return;
     }
@@ -387,15 +457,16 @@ export const useDeliveryNotifications = () => {
       return;
     }
 
-    activeOrderRef.current = orderData || { id: Date.now() };
-    useDeliveryStore.getState().addNewOrder(orderData);
-    playNotificationSound(orderData);
+    const mappedOrder = sanitizeOrderDispatchMetrics(mapOrderLocations(orderData) || orderData);
+    activeOrderRef.current = mappedOrder || { id: Date.now() };
+    useDeliveryStore.getState().addNewOrder(mappedOrder);
+    playNotificationSound(mappedOrder);
     startAlertLoop(playNotificationSound);
 
     if (typeof document !== 'undefined' && document.visibilityState === 'hidden') {
       showBackgroundOrderNotification(orderData);
     }
-  }, [isProcessedOrder, playNotificationSound, showBackgroundOrderNotification, startAlertLoop]);
+  }, [isOrderInAcceptedQueue, isProcessedOrder, playNotificationSound, showBackgroundOrderNotification, startAlertLoop]);
 
   const recoverDeliveryState = useCallback(async () => {
     if (!deliveryPartnerId) return;
@@ -914,8 +985,10 @@ export const useDeliveryNotifications = () => {
         orderId: orderData?.orderId || orderData?.orderMongoId || orderData?._id,
         dispatchStatus: orderData?.dispatch?.status,
       });
+      if (isOrderInAcceptedQueue(orderData) || isProcessedOrder(orderData)) {
+        return;
+      }
       setNewOrder(orderData);
-      useDeliveryStore.getState().addNewOrder(orderData);
       handleIncomingOrderAlert(orderData);
     });
 
@@ -926,6 +999,9 @@ export const useDeliveryNotifications = () => {
         phase: orderData?.phase || 'unknown',
         dispatchStatus: orderData?.dispatch?.status,
       });
+      if (isOrderInAcceptedQueue(orderData) || isProcessedOrder(orderData)) {
+        return;
+      }
       setNewOrder(orderData);
       useDeliveryStore.getState().addNewOrder(orderData);
     });
@@ -947,7 +1023,11 @@ export const useDeliveryNotifications = () => {
       if (!orderData) return;
       const mapped = mapOrderLocations(orderData);
       if (mapped) {
+        markOrderIdsProcessed(mapped);
         useDeliveryStore.getState().acceptOrderToQueue(mapped);
+        stopAlertLoop();
+        activeOrderRef.current = null;
+        setNewOrder(null);
       }
     });
 
@@ -960,12 +1040,8 @@ export const useDeliveryNotifications = () => {
         orderMongoId: data?.orderMongoId || data?.order_mongo_id,
         ...data
       };
-      // Force immediate buzz for notification events, even if dedupe would skip.
-      activeOrderRef.current = normalizedData || { id: Date.now() };
-      playNotificationSound(normalizedData);
-      startAlertLoop(playNotificationSound);
-      if (typeof document !== 'undefined' && document.visibilityState === 'hidden') {
-        showBackgroundOrderNotification(normalizedData);
+      if (isMutedRef.current || isOrderInAcceptedQueue(normalizedData) || isProcessedOrder(normalizedData)) {
+        return;
       }
       handleIncomingOrderAlert(normalizedData);
     });
@@ -1082,7 +1158,7 @@ export const useDeliveryNotifications = () => {
         socketRef.current = null;
       }
     };
-  }, [deliveryPartnerId, handleIncomingOrderAlert, joinDeliveryRoomIfPossible, playNotificationSound, recoverDeliveryState, showBackgroundOrderNotification, startAlertLoop, stopAlertLoop]);
+  }, [deliveryPartnerId, handleIncomingOrderAlert, isOrderInAcceptedQueue, isProcessedOrder, joinDeliveryRoomIfPossible, markOrderIdsProcessed, playNotificationSound, recoverDeliveryState, showBackgroundOrderNotification, startAlertLoop, stopAlertLoop]);
 
   useEffect(() => {
     if (!deliveryPartnerId) {
@@ -1107,16 +1183,7 @@ export const useDeliveryNotifications = () => {
     const target = orderOrId || newOrder || activeOrderRef.current;
     if (target) {
       if (typeof target === 'object') {
-        const ids = [
-          target.orderMongoId,
-          target.orderId,
-          target._id,
-          target.id,
-          target.mongoId,
-          target.order_id,
-          target.order_mongo_id
-        ].filter(Boolean);
-        ids.forEach(id => processedOrderIdsRef.current.add(String(id).trim()));
+        markOrderIdsProcessed(target);
       } else {
         processedOrderIdsRef.current.add(String(target).trim());
       }
@@ -1131,7 +1198,8 @@ export const useDeliveryNotifications = () => {
     if (removeId) {
       useDeliveryStore.getState().removeNewOrder(removeId);
     }
-  }, [newOrder, stopAlertLoop]);
+    stopAlertsWhenQueueEmpty();
+  }, [markOrderIdsProcessed, newOrder, stopAlertLoop, stopAlertsWhenQueueEmpty]);
 
   const clearClaimedOrderId = () => setClaimedOrderId(null);
 
@@ -1170,6 +1238,9 @@ export const useDeliveryNotifications = () => {
     isConnected,
     playNotificationSound,
     stopSound: stopAlertLoop,
+    isMuted,
+    setMuted,
+    toggleMuted,
     emitLocation
   };
 };

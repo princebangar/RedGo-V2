@@ -1,6 +1,7 @@
 import React, { createContext, useContext } from 'react';
 import { Outlet } from 'react-router-dom';
 import { useDeliveryNotifications } from '@food/hooks/useDeliveryNotifications';
+import { useRiderLocationSync } from '@/modules/DeliveryV2/hooks/useRiderLocationSync';
 
 const DeliveryNotificationsContext = createContext(null);
 
@@ -17,6 +18,7 @@ export function useDeliveryNotificationsContext() {
  */
 export default function DeliveryRealtimeShell() {
   const notifications = useDeliveryNotifications();
+  useRiderLocationSync();
 
   return (
     <DeliveryNotificationsContext.Provider value={notifications}>
