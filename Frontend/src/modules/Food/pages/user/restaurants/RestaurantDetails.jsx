@@ -269,8 +269,19 @@ function RestaurantDetailsContent() {
   }
 
   const getDishQuantity = (item, preferredVariantId = "") => {
-    const variant = getVariantForDish(item, preferredVariantId)
-    const lineItemId = getLineItemIdForDish(item, variant)
+    if (preferredVariantId) {
+      const variant = getVariantForDish(item, preferredVariantId)
+      const lineItemId = getLineItemIdForDish(item, variant)
+      return quantities[lineItemId] || 0
+    }
+    if (hasFoodVariants(item)) {
+      const variants = getFoodVariants(item)
+      return variants.reduce((sum, v) => {
+        const lineItemId = getLineItemIdForDish(item, v)
+        return sum + (quantities[lineItemId] || 0)
+      }, 0)
+    }
+    const lineItemId = getLineItemIdForDish(item, null)
     return quantities[lineItemId] || 0
   }
 
@@ -1255,9 +1266,19 @@ function RestaurantDetailsContent() {
       setSelectedVariantId("")
       return
     }
-    const defaultVariant = getDefaultFoodVariant(selectedItem)
-    setSelectedVariantId(defaultVariant?.id || "")
-  }, [selectedItem])
+    const variants = getFoodVariants(selectedItem)
+    const variantInCart = variants.find(v => {
+      const lineItemId = getLineItemIdForDish(selectedItem, v)
+      return quantities[lineItemId] > 0
+    })
+    
+    if (variantInCart) {
+      setSelectedVariantId(variantInCart.id)
+    } else {
+      const defaultVariant = getDefaultFoodVariant(selectedItem)
+      setSelectedVariantId(defaultVariant?.id || "")
+    }
+  }, [selectedItem, quantities])
 
   // Helper function to update item quantity in both local state and cart
   const updateItemQuantity = (item, newQuantity, event = null, preferredVariant = null) => {
@@ -2952,31 +2973,47 @@ function RestaurantDetailsContent() {
                                       : 'hover:bg-[#FFF5F5]'
                                       }`}
                                   >
-                                    <button
-                                      onClick={(e) => {
-                                        e.stopPropagation()
-                                        if (!shouldShowGrayscale) {
-                                          updateItemQuantity(item, Math.max(0, quantity - 1), e)
-                                        }
-                                      }}
-                                      disabled={shouldShowGrayscale}
-                                      className={shouldShowGrayscale ? 'text-gray-400 cursor-not-allowed' : 'text-[#DC2626] hover:text-[#991B1B]'}
-                                    >
-                                      <Minus size={14} />
-                                    </button>
-                                    <span className={`mx-2 text-sm ${shouldShowGrayscale ? 'text-gray-400' : 'text-[#DC2626]'}`}>{quantity}</span>
-                                    <button
-                                      onClick={(e) => {
-                                        e.stopPropagation()
-                                        if (!shouldShowGrayscale) {
-                                          updateItemQuantity(item, quantity + 1, e)
-                                        }
-                                      }}
-                                      disabled={shouldShowGrayscale}
-                                      className={shouldShowGrayscale ? 'text-gray-400 cursor-not-allowed' : 'text-[#DC2626] hover:text-[#991B1B]'}
-                                    >
-                                      <Plus size={14} className="stroke-[3px]" />
-                                    </button>
+                                    {hasFoodVariants(item) ? (
+                                      <button
+                                        onClick={(e) => {
+                                          e.stopPropagation()
+                                          if (!shouldShowGrayscale) {
+                                            handleItemClick(item)
+                                          }
+                                        }}
+                                        className="text-xs uppercase font-extrabold px-1 text-[#DC2626] whitespace-nowrap"
+                                      >
+                                        Customised ({quantity})
+                                      </button>
+                                    ) : (
+                                      <>
+                                        <button
+                                          onClick={(e) => {
+                                            e.stopPropagation()
+                                            if (!shouldShowGrayscale) {
+                                              updateItemQuantity(item, Math.max(0, quantity - 1), e)
+                                            }
+                                          }}
+                                          disabled={shouldShowGrayscale}
+                                          className={shouldShowGrayscale ? 'text-gray-400 cursor-not-allowed' : 'text-[#DC2626] hover:text-[#991B1B]'}
+                                        >
+                                          <Minus size={14} />
+                                        </button>
+                                        <span className={`mx-2 text-sm ${shouldShowGrayscale ? 'text-gray-400' : 'text-[#DC2626]'}`}>{quantity}</span>
+                                        <button
+                                          onClick={(e) => {
+                                            e.stopPropagation()
+                                            if (!shouldShowGrayscale) {
+                                              updateItemQuantity(item, quantity + 1, e)
+                                            }
+                                          }}
+                                          disabled={shouldShowGrayscale}
+                                          className={shouldShowGrayscale ? 'text-gray-400 cursor-not-allowed' : 'text-[#DC2626] hover:text-[#991B1B]'}
+                                        >
+                                          <Plus size={14} className="stroke-[3px]" />
+                                        </button>
+                                      </>
+                                    )}
                                   </div>
                                 ) : (
                                   <>
@@ -3174,31 +3211,47 @@ function RestaurantDetailsContent() {
                                                 : 'border-[#DC2626] text-[#DC2626] hover:bg-[#DC262605]'
                                                 }`}
                                             >
-                                              <button
-                                                onClick={(e) => {
-                                                  e.stopPropagation()
-                                                  if (!shouldShowGrayscale) {
-                                                    updateItemQuantity(item, Math.max(0, quantity - 1), e)
-                                                  }
-                                                }}
-                                                disabled={shouldShowGrayscale}
-                                                className={shouldShowGrayscale ? 'text-gray-400 cursor-not-allowed' : 'text-[#DC2626] hover:text-[#991B1B]'}
-                                              >
-                                                <Minus size={14} />
-                                              </button>
-                                              <span className={`mx-2 text-sm ${shouldShowGrayscale ? 'text-gray-400' : ''}`}>{quantity}</span>
-                                              <button
-                                                onClick={(e) => {
-                                                  e.stopPropagation()
-                                                  if (!shouldShowGrayscale) {
-                                                    updateItemQuantity(item, quantity + 1, e)
-                                                  }
-                                                }}
-                                                disabled={shouldShowGrayscale}
-                                                className={shouldShowGrayscale ? 'text-gray-400 cursor-not-allowed' : 'text-[#DC2626] hover:text-[#991B1B]'}
-                                              >
-                                                <Plus size={14} className="stroke-[3px]" />
-                                              </button>
+                                              {hasFoodVariants(item) ? (
+                                                <button
+                                                  onClick={(e) => {
+                                                    e.stopPropagation()
+                                                    if (!shouldShowGrayscale) {
+                                                      handleItemClick(item)
+                                                    }
+                                                  }}
+                                                  className="text-xs uppercase font-extrabold px-1 text-[#DC2626] whitespace-nowrap"
+                                                >
+                                                  Customised ({quantity})
+                                                </button>
+                                              ) : (
+                                                <>
+                                                  <button
+                                                    onClick={(e) => {
+                                                      e.stopPropagation()
+                                                      if (!shouldShowGrayscale) {
+                                                        updateItemQuantity(item, Math.max(0, quantity - 1), e)
+                                                      }
+                                                    }}
+                                                    disabled={shouldShowGrayscale}
+                                                    className={shouldShowGrayscale ? 'text-gray-400 cursor-not-allowed' : 'text-[#DC2626] hover:text-[#991B1B]'}
+                                                  >
+                                                    <Minus size={14} />
+                                                  </button>
+                                                  <span className={`mx-2 text-sm ${shouldShowGrayscale ? 'text-gray-400' : ''}`}>{quantity}</span>
+                                                  <button
+                                                    onClick={(e) => {
+                                                      e.stopPropagation()
+                                                      if (!shouldShowGrayscale) {
+                                                        updateItemQuantity(item, quantity + 1, e)
+                                                      }
+                                                    }}
+                                                    disabled={shouldShowGrayscale}
+                                                    className={shouldShowGrayscale ? 'text-gray-400 cursor-not-allowed' : 'text-[#DC2626] hover:text-[#991B1B]'}
+                                                  >
+                                                    <Plus size={14} className="stroke-[3px]" />
+                                                  </button>
+                                                </>
+                                              )}
                                             </motion.div>
                                           ) : (
                                             <motion.button
