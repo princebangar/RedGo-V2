@@ -5213,8 +5213,8 @@ export async function getSidebarBadges() {
         ] = await Promise.all([
             FoodRestaurant.countDocuments({ status: 'pending' }),
             FoodDeliveryPartner.countDocuments({ status: 'pending' }),
-            FoodItem.countDocuments({ status: 'pending' }),
-            FoodAddon.countDocuments({ status: 'pending' }),
+            FoodItem.countDocuments({ approvalStatus: 'pending' }),
+            FoodAddon.countDocuments({ approvalStatus: 'pending' }),
             FoodOrder.countDocuments({ orderStatus: 'pending' }),
             FoodOrder.countDocuments({ paymentMethod: 'offline_payment', orderStatus: 'pending' }),
             FoodRestaurantWithdrawal.countDocuments({ status: 'pending' }),

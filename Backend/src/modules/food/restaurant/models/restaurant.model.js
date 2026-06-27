@@ -269,7 +269,7 @@ const restaurantSchema = new mongoose.Schema(
 restaurantSchema.pre("validate", function normalizeDerivedFields(next) {
   const name =
     typeof this.restaurantName === "string" ? this.restaurantName : "";
-  const normalizedName = name.trim().toLowerCase().replace(/\s+/g, " ");
+  const normalizedName = name.trim().toLowerCase().replace(/-/g, " ").replace(/\s+/g, " ");
   this.restaurantNameNormalized = normalizedName || undefined;
 
   const phoneRaw =

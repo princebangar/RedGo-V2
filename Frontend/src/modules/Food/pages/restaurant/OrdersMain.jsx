@@ -111,7 +111,7 @@ const transformOrderForList = (order) => {
     ),
     eta: null,
     itemsSummary:
-      order.items?.map((item) => `${item.quantity}x ${item.name}`).join(", ") ||
+      order.items?.map((item) => `${item.quantity}x ${item.name}${item.variantName ? ` (${item.variantName})` : ''}`).join(", ") ||
       "No items",
     photoUrl: order.items?.[0]?.image || null,
     photoAlt: order.items?.[0]?.name || "Order",
@@ -173,7 +173,7 @@ function CompletedOrders({ onSelectOrder, refreshToken = 0 }) {
               order.deliveredAt || order.updatedAt || order.createdAt,
             itemsSummary:
               order.items
-                ?.map((item) => `${item.quantity}x ${item.name}`)
+                ?.map((item) => `${item.quantity}x ${item.name}${item.variantName ? ` (${item.variantName})` : ''}`)
                 .join(", ") || "No items",
             photoUrl: order.items?.[0]?.image || null,
             photoAlt: order.items?.[0]?.name || "Order",
@@ -386,7 +386,7 @@ function CancelledOrders({ onSelectOrder, refreshToken = 0 }) {
               order.cancellationReason || "No reason provided",
             itemsSummary:
               order.items
-                ?.map((item) => `${item.quantity}x ${item.name}`)
+                ?.map((item) => `${item.quantity}x ${item.name}${item.variantName ? ` (${item.variantName})` : ''}`)
                 .join(", ") || "No items",
             photoUrl: order.items?.[0]?.image || null,
             photoAlt: order.items?.[0]?.name || "Order",
@@ -1278,6 +1278,7 @@ function OrdersMainInner() {
   const [acceptSwipeProgress, setAcceptSwipeProgress] = useState(0);
   const [orderQueue, setOrderQueue] = useState([]);
   const orderQueueRef = useRef([]);
+  const autoRejectInitiatedRef = useRef(false);
 
   useEffect(() => {
     orderQueueRef.current = orderQueue;
@@ -1967,6 +1968,8 @@ function OrdersMainInner() {
       const orderId = resolveOrderActionId(orderToReject);
 
       if (orderId && !isAcceptingOrder) {
+        if (autoRejectInitiatedRef.current) return;
+
         // Safety: Double check if order has genuinely expired using createdAt
         const orderTime = orderToReject?.createdAt ? new Date(orderToReject.createdAt).getTime() : Date.now();
         const secondsElapsed = Math.floor((Date.now() - orderTime) / 1000);
@@ -1977,6 +1980,7 @@ function OrdersMainInner() {
         );
 
         if (secondsElapsed >= timeoutSeconds - 5) {
+          autoRejectInitiatedRef.current = true;
           debugLog("⏰ Timer expired. Auto-rejecting order:", orderId);
           if (stopSound) {
             stopSound();
@@ -2031,6 +2035,7 @@ function OrdersMainInner() {
       setIsAcceptingOrder(false);
       acceptSwipeActiveRef.current = false;
       acceptSwipeStartXRef.current = 0;
+      autoRejectInitiatedRef.current = false;
     }
   }, [showNewOrderPopup]);
 
@@ -2411,8 +2416,9 @@ function OrdersMainInner() {
           year: "numeric",
           hour: "2-digit",
           minute: "2-digit",
+          hour12: true,
         })
-        : new Date().toLocaleString("en-GB");
+        : new Date().toLocaleString("en-GB", { hour12: true });
 
       doc.text(`Date: ${orderDate}`, 20, 52);
 
@@ -2442,7 +2448,7 @@ function OrdersMainInner() {
 
         // Prepare table data
         const tableData = orderToPrint.items.map((item) => [
-          item.name || "Item",
+          item.variantName ? `${item.name || "Item"} (${item.variantName})` : (item.name || "Item"),
           item.quantity || 1,
           `₹${(item.price || 0).toFixed(2)}`,
           `₹${((item.price || 0) * (item.quantity || 1)).toFixed(2)}`,
@@ -2521,7 +2527,7 @@ function OrdersMainInner() {
       doc.setFontSize(8);
       doc.setFont("helvetica", "italic");
       doc.text(
-        `Generated on ${new Date().toLocaleString("en-GB")}`,
+        `Generated on ${new Date().toLocaleString("en-GB", { hour12: true })}`,
         105,
         pageHeight - 10,
         { align: "center" },
@@ -3056,7 +3062,7 @@ function OrdersMainInner() {
                 <div className="px-4 py-3 bg-white border-b border-gray-200 flex items-center justify-between">
                   <div className="flex-1">
                     <div className="flex items-center gap-2">
-                      <h3 className="text-base font-bold text-gray-900">
+                      <h3 className="text-sm font-bold text-gray-900">
                         {(popupOrder || newOrder)?.orderId || "#Order"}
                       </h3>
                       {(() => {
@@ -3204,6 +3210,7 @@ function OrdersMainInner() {
                           month: "short",
                           hour: "2-digit",
                           minute: "2-digit",
+                          hour12: true,
                         })
                         : "Just now"}
                     </p>
@@ -3277,9 +3284,16 @@ function OrdersMainInner() {
                                     className={`w-2 h-2 rounded-full mt-1.5 shrink-0 ${item.isVeg ? "bg-green-500" : "bg-gradient-to-br from-[#B80B3D] to-[#66001D]"}`}></div>
                                   <div className="flex-1">
                                     <div className="flex items-start justify-between">
-                                      <p className="text-sm font-medium text-gray-900">
-                                        {item.quantity} x {item.name}
-                                      </p>
+                                      <div>
+                                        <p className="text-sm font-medium text-gray-900">
+                                          {item.quantity} x {item.name}
+                                        </p>
+                                        {item.variantName && (
+                                          <p className="text-[10px] text-gray-500 font-semibold bg-gray-50 px-1.5 py-0.5 rounded border border-gray-100 mt-0.5 inline-block">
+                                            {item.variantName}
+                                          </p>
+                                        )}
+                                      </div>
                                       <p className="text-xs text-gray-600 ml-2">
                                         ₹{item.price * item.quantity}
                                       </p>
@@ -3985,7 +3999,7 @@ const OrderCard = memo(function OrderCard({
         <div className="flex-1 min-w-0 flex flex-col justify-center">
           {/* Top Row: ID & Status Badge */}
           <div className="flex items-center justify-between gap-2 mb-1.5">
-            <h3 className="text-[13px] font-black text-slate-900 truncate">
+            <h3 className="text-[11px] font-black text-slate-900 truncate">
               #<span style={{ color: brandColor }}>{orderId}</span>
             </h3>
 
@@ -4197,7 +4211,7 @@ function PreparingOrders({
               preparingTimestamp, // Store when order started preparing
               itemsSummary:
                 order.items
-                  ?.map((item) => `${item.quantity}x ${item.name}`)
+                  ?.map((item) => `${item.quantity}x ${item.name}${item.variantName ? ` (${item.variantName})` : ''}`)
                   .join(", ") || "No items",
               photoUrl: order.items?.[0]?.image || null,
               photoAlt: order.items?.[0]?.name || "Order",
@@ -4503,7 +4517,7 @@ function ReadyOrders({ onSelectOrder, onVerifyTakeaway, refreshToken = 0 }) {
             eta: null, // Don't show ETA for ready orders
             itemsSummary:
               order.items
-                ?.map((item) => `${item.quantity}x ${item.name}`)
+                ?.map((item) => `${item.quantity}x ${item.name}${item.variantName ? ` (${item.variantName})` : ''}`)
                 .join(", ") || "No items",
             photoUrl: order.items?.[0]?.image || null,
             photoAlt: order.items?.[0]?.name || "Order",
@@ -4627,7 +4641,7 @@ const OutForDeliveryOrders = ({ onSelectOrder, refreshToken = 0 }) => {
             eta: null,
             itemsSummary:
               order.items
-                ?.map((item) => `${item.quantity}x ${item.name}`)
+                ?.map((item) => `${item.quantity}x ${item.name}${item.variantName ? ` (${item.variantName})` : ''}`)
                 .join(", ") || "No items",
             photoUrl: order.items?.[0]?.image || null,
             photoAlt: order.items?.[0]?.name || "Order",

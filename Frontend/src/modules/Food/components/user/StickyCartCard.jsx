@@ -7,7 +7,7 @@ import { motion, AnimatePresence } from "framer-motion"
 export default function StickyCartCard() {
   const { cart, getCartCount } = useCart()
   const [isVisible, setIsVisible] = useState(true)
-  const [bottomPosition, setBottomPosition] = useState("bottom-[70px]") // Fixed above bottom navigation
+  const [bottomPosition, setBottomPosition] = useState("bottom-[85px]") // Fixed above bottom navigation
   const cartCount = getCartCount()
 
   // Set fixed position above bottom navigation (no scroll-based movement)
@@ -17,7 +17,7 @@ export default function StickyCartCard() {
       if (window.innerWidth >= 768) {
         setBottomPosition("bottom-6") // Desktop: fixed position
       } else {
-        setBottomPosition("bottom-[70px]") // Mobile: above bottom nav (fixed, doesn't move with scroll)
+        setBottomPosition("bottom-[85px]") // Mobile: above bottom nav (fixed, doesn't move with scroll)
       }
     }
 
@@ -27,7 +27,7 @@ export default function StickyCartCard() {
       if (window.innerWidth >= 768) {
         setBottomPosition("bottom-6") // Desktop: always fixed
       } else {
-        setBottomPosition("bottom-[70px]") // Mobile: above bottom nav (fixed)
+        setBottomPosition("bottom-[85px]") // Mobile: above bottom nav (fixed)
       }
     }
 
@@ -106,7 +106,7 @@ export default function StickyCartCard() {
                 </div>
 
                 {/* Restaurant Info */}
-                <Link to={`/user/restaurants/${restaurantSlug}`} className="flex-1 min-w-0">
+                 <Link to={`/food/user/restaurants/${restaurantSlug}`} className="flex-1 min-w-0">
                   <h3 className="font-bold text-gray-900 dark:text-gray-200 text-base md:text-lg mb-0.5 line-clamp-1">
                     {restaurantName}
                   </h3>
@@ -118,7 +118,7 @@ export default function StickyCartCard() {
 
                 {/* View Cart Button */}
                 <Link
-                  to="/user/cart"
+                  to="/food/user/cart"
                   className="flex-shrink-0 bg-[#DC2626] dark:bg-[#991B1B] hover:bg-[#991B1B] dark:hover:bg-[#7a0d2a] text-white px-4 py-2.5 md:px-5 md:py-3 rounded-lg font-semibold transition-colors"
                 >
                   <div className="text-center">

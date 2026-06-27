@@ -1461,23 +1461,7 @@ export default function Cart() {
   }
 
   const handleBack = () => {
-    // Check if the previous page was the restaurant details page
-    const cameFromRestaurant = 
-      location.state?.from?.includes('/restaurants/') || 
-      location.state?.fromRestaurant ||
-      document.referrer.includes('/restaurants/') // fallback
-      
-    if (cameFromRestaurant) {
-      goBack()
-    } else {
-      // Replaces Cart page with the restaurant page to break redirect loop
-      const idOrSlug = restaurantData?.slug || restaurantId
-      if (idOrSlug) {
-        navigate(`/food/user/restaurants/${idOrSlug}`, { replace: true })
-      } else {
-        goBack()
-      }
-    }
+    goBack()
   }
 
   // Handler to select address by label (Home, Office, Other)
@@ -3137,7 +3121,7 @@ export default function Cart() {
                           <div className="text-xs text-gray-600 dark:text-gray-400 space-y-1 border-t border-[#DC2626]/15 pt-2">
                             {platformPricingSavings.items.slice(0, 2).map((item, idx) => (
                               <div key={idx} className="flex justify-between">
-                                <span>{item.name} x{item.quantity}</span>
+                                <span>{item.name}{item.variantName ? ` (${item.variantName})` : ''} x{item.quantity}</span>
                                 <span className="font-medium text-[#DC2626]">-{RUPEE_SYMBOL}{item.savings.toFixed(0)}</span>
                               </div>
                             ))}
@@ -3389,7 +3373,7 @@ export default function Cart() {
                     <div className="space-y-2">
                       {congratsSavingsItems.slice(0, 3).map((item, idx) => (
                         <div key={idx} className="flex justify-between text-sm">
-                          <span className="text-gray-600 dark:text-gray-400">{item.name}</span>
+                          <span className="text-gray-600 dark:text-gray-400">{item.name}{item.variantName ? ` (${item.variantName})` : ''}</span>
                           <span className="font-semibold text-green-600 dark:text-green-400">-{RUPEE_SYMBOL}{item.savings.toFixed(0)}</span>
                         </div>
                       ))}

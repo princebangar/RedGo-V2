@@ -199,6 +199,7 @@ export default function FoodApproval() {
       }
       
       await fetchFoodRequests({ silent: true })
+      window.dispatchEvent(new Event('refresh-sidebar-badges'))
       setShowDetailModal(false)
       setSelectedRequest(null)
     } catch (error) {
@@ -235,6 +236,7 @@ export default function FoodApproval() {
       }
       
       await fetchFoodRequests({ silent: true })
+      window.dispatchEvent(new Event('refresh-sidebar-badges'))
       setShowRejectModal(false)
       setShowDetailModal(false)
       setSelectedRequest(null)
