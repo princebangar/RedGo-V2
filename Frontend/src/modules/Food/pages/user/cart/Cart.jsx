@@ -2399,7 +2399,7 @@ export default function Cart() {
                             <div className="min-w-0 flex-1">
                               <h3 className="text-sm md:text-base font-bold text-gray-900 dark:text-gray-100 leading-tight truncate">{item.name}</h3>
                               {item.variantName ? (
-                                <p className="text-[10px] md:text-xs text-gray-500 dark:text-gray-400 mt-1 font-medium bg-gray-50 dark:bg-gray-800/50 w-fit px-2 py-0.5 rounded-full">
+                                <p className="text-[10px] md:text-xs text-red-600 dark:text-red-300 mt-1 font-semibold bg-red-50 dark:bg-red-950/20 border border-red-100/50 dark:border-red-900/30 w-fit px-2.5 py-0.5 rounded-full">
                                   {item.variantName}
                                 </p>
                               ) : null}
