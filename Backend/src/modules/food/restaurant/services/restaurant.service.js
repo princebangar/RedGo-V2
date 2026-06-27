@@ -1482,7 +1482,11 @@ export const listApprovedRestaurants = async (query = {}) => {
         menuImages: Array.isArray(r.menuImages) ? r.menuImages : [],
         recommendedDishes: recommendedMap[String(r._id)] || [],
         totalMenuItems: menuCountMap[String(r._id)] || 0,
-        hasDishes: (menuCountMap[String(r._id)] || 0) > 0
+        hasDishes: (menuCountMap[String(r._id)] || 0) > 0,
+        image: r.coverImages?.[0] || r.profileImage || (r.menuImages?.length > 0 ? r.menuImages[0] : null) || null,
+        images: Array.isArray(r.coverImages) && r.coverImages.length > 0
+            ? r.coverImages
+            : (r.profileImage ? [r.profileImage] : [])
     }));
 
     return { restaurants, total, page, limit };
@@ -1498,11 +1502,24 @@ export const getApprovedRestaurantByIdOrSlug = async (idOrSlug, userId = null) =
         doc = await FoodRestaurant.findOne({ _id: value, status: 'approved' }).lean();
     } else {
         // Slug path
-        const restaurantNameNormalized = normalizeName(value);
-        if (restaurantNameNormalized) {
+        const variantWithSpaces = normalizeName(value);
+        const variantWithHyphens = value.trim().toLowerCase().replace(/\s+/g, ' ');
+        
+        // Robust query supporting exact normalization (with spaces), literal slug (with hyphens),
+        // or a regex fallback allowing any spaces/hyphens interchanged.
+        const escapedValue = escapeRegex(value.trim().toLowerCase());
+        const regexPattern = new RegExp('^' + escapedValue.replace(/-/g, '[\\s-]') + '$', 'i');
+        
+        if (variantWithSpaces || variantWithHyphens) {
             doc = await FoodRestaurant.findOne({
                 status: 'approved',
-                restaurantNameNormalized
+                $or: [
+                    { slug: value },
+                    { restaurantSlug: value },
+                    { restaurantNameNormalized: variantWithSpaces },
+                    { restaurantNameNormalized: variantWithHyphens },
+                    { restaurantNameNormalized: regexPattern }
+                ]
             }).lean();
         }
     }
@@ -1524,7 +1541,11 @@ export const getApprovedRestaurantByIdOrSlug = async (idOrSlug, userId = null) =
         ...doc,
         rating: normalizeRatingValue(doc.rating),
         totalRatings: normalizeTotalRatingsValue(doc.totalRatings),
-        hasOrderedBefore
+        hasOrderedBefore,
+        image: doc.coverImages?.[0] || doc.profileImage || (doc.menuImages?.length > 0 ? doc.menuImages[0] : null) || null,
+        images: Array.isArray(doc.coverImages) && doc.coverImages.length > 0
+            ? doc.coverImages
+            : (doc.profileImage ? [doc.profileImage] : [])
     };
 };
 
@@ -1671,7 +1692,11 @@ export const listRestaurantsUnderPriceLimit = async (query = {}, priceLimit = 25
             restaurantId: rid,
             name: r.restaurantName,
             menuItems: items,
-            outletTimings: { timings }
+            outletTimings: { timings },
+            image: r.coverImages?.[0] || r.profileImage || (r.menuImages?.length > 0 ? r.menuImages[0] : null) || null,
+            images: Array.isArray(r.coverImages) && r.coverImages.length > 0
+                ? r.coverImages
+                : (r.profileImage ? [r.profileImage] : [])
         };
     });
 

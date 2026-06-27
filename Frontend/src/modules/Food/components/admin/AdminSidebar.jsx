@@ -124,8 +124,14 @@ export default function AdminSidebar({ isOpen = false, onClose, onCollapseChange
       }
     }
     fetchBadges()
-    const timer = setInterval(fetchBadges, 60000)
-    return () => clearInterval(timer)
+    const timer = setInterval(fetchBadges, 15000)
+
+    window.addEventListener('refresh-sidebar-badges', fetchBadges)
+
+    return () => {
+      clearInterval(timer)
+      window.removeEventListener('refresh-sidebar-badges', fetchBadges)
+    }
   }, [])
 
   const getBadgeCount = (label = "", path = "") => {
@@ -134,7 +140,6 @@ export default function AdminSidebar({ isOpen = false, onClose, onCollapseChange
 
     // Path-based (sub-menu items & direct links)
     if (p.includes("food-approval")) return badges.foodApprovals ?? 0
-    if (p.includes("/foods") || p.includes("/addons")) return badges.foods ?? 0
     if (p.includes("restaurants/joining-request")) return badges.restaurants ?? 0
     if (p.includes("restaurants/complaints")) return badges.restaurantComplaints ?? 0
     if (p.includes("orders/pending")) return badges.orders ?? 0
@@ -151,7 +156,6 @@ export default function AdminSidebar({ isOpen = false, onClose, onCollapseChange
 
     // Label-based (expandable parents without paths)
     if (l.includes("food approval")) return badges.foodApprovals ?? 0
-    if (l === "foods") return badges.foods ?? 0
     if (l === "restaurants" || l.includes("new joining request")) return badges.restaurants ?? 0
     if (l.includes("restaurant complaints")) return badges.restaurantComplaints ?? 0
     if (l.includes("support tickets")) return l.includes("delivery") ? (badges.deliverySupportTickets ?? 0) : (badges.userSupportTickets ?? 0)

@@ -2979,21 +2979,32 @@ function RestaurantDetailsContent() {
                                     </button>
                                   </div>
                                 ) : (
-                                  <button
-                                    onClick={(e) => {
-                                      e.stopPropagation()
-                                      if (!shouldShowGrayscale) {
-                                        updateItemQuantity(item, 1, e)
-                                      }
-                                    }}
-                                    disabled={shouldShowGrayscale}
-                                    className={`absolute -bottom-2 left-1/2 -translate-x-1/2 bg-white border border-[#DC2626] text-[#DC2626] font-bold px-6 py-1.5 rounded-lg shadow-md flex items-center gap-1 transition-all ${shouldShowGrayscale
-                                      ? 'bg-gray-50 border-gray-300 text-gray-400 cursor-not-allowed opacity-50'
-                                      : 'hover:bg-[#FFF5F5] hover:scale-105 active:scale-95'
-                                      }`}
-                                  >
-                                    ADD <Plus size={14} className="stroke-[3px]" />
-                                  </button>
+                                  <>
+                                    <button
+                                      onClick={(e) => {
+                                        e.stopPropagation()
+                                        if (!shouldShowGrayscale) {
+                                          if (hasFoodVariants(item)) {
+                                            handleItemClick(item)
+                                          } else {
+                                            updateItemQuantity(item, 1, e)
+                                          }
+                                        }
+                                      }}
+                                      disabled={shouldShowGrayscale}
+                                      className={`absolute -bottom-2 left-1/2 -translate-x-1/2 bg-white border border-[#DC2626] text-[#DC2626] font-bold px-6 py-1.5 rounded-lg shadow-md flex items-center gap-1 transition-all ${shouldShowGrayscale
+                                        ? 'bg-gray-50 border-gray-300 text-gray-400 cursor-not-allowed opacity-50'
+                                        : 'hover:bg-[#FFF5F5] hover:scale-105 active:scale-95'
+                                        }`}
+                                    >
+                                      ADD <Plus size={14} className="stroke-[3px]" />
+                                    </button>
+                                    {hasFoodVariants(item) && (
+                                      <span className="absolute -bottom-6 left-1/2 -translate-x-1/2 text-[9px] text-gray-400 dark:text-gray-500 font-bold tracking-wider uppercase whitespace-nowrap">
+                                        Customisable
+                                      </span>
+                                    )}
+                                  </>
                                 )}
                               </div>
                             </div>
@@ -3198,16 +3209,25 @@ function RestaurantDetailsContent() {
                                               onClick={(e) => {
                                                 e.stopPropagation()
                                                 if (!shouldShowGrayscale) {
-                                                  updateItemQuantity(item, 1, e)
+                                                  if (hasFoodVariants(item)) {
+                                                    handleItemClick(item)
+                                                  } else {
+                                                    updateItemQuantity(item, 1, e)
+                                                  }
                                                 }
                                               }}
                                               disabled={shouldShowGrayscale}
                                               className={`absolute -bottom-2 left-1/2 -translate-x-1/2 bg-white border border-[#DC2626] text-[#DC2626] font-bold px-6 py-1.5 rounded-lg shadow-md flex items-center gap-1 transition-all ${shouldShowGrayscale
-                                                ? 'border-gray-300 text-gray-400 cursor-not-allowed opacity-50'
+                                                ? 'bg-gray-50 border-gray-300 text-gray-400 cursor-not-allowed opacity-50'
                                                 : 'hover:bg-[#FFF5F5] hover:scale-105 active:scale-95'
                                                 }`}
                                             >
                                               ADD <Plus size={14} className="stroke-[3px]" />
+                                              {hasFoodVariants(item) && (
+                                                <span className="absolute -bottom-6 left-1/2 -translate-x-1/2 text-[9px] text-gray-400 dark:text-gray-500 font-bold tracking-wider uppercase whitespace-nowrap">
+                                                  Customisable
+                                                </span>
+                                              )}
                                             </motion.button>
                                           )}
                                         </div>
