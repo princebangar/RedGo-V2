@@ -42,7 +42,7 @@ const FoodAppWrapper = () => {
     location.pathname.startsWith('/food/admin');
 
   const isUserPath = !isNonUserModulePath && (
-                     location.pathname === '/' || 
+                     location.pathname.startsWith('/home') ||
                      location.pathname === '/food' || 
                      location.pathname === '/food/' ||
                      location.pathname.startsWith('/food/user'));
@@ -75,7 +75,7 @@ const RedirectToFood = () => {
   return <Navigate to={`/food${location.pathname}${location.search}`} replace />;
 };
 
-// const MasterLandingPage = lazy(() => import('./MasterLandingPage'))
+const MasterLandingPage = lazy(() => import('./MasterLandingPage'))
 const AdminRouter = lazy(() => import('../modules/Food/components/admin/AdminRouter'))
 
 const AppRoutes = () => {
@@ -118,6 +118,13 @@ const AppRoutes = () => {
         <Route path="/admin/*" element={
           <Suspense fallback={<AppShellSkeleton />}>
             <AdminRouter />
+          </Suspense>
+        } />
+
+        {/* Landing Page ONLY on / */}
+        <Route path="/" element={
+          <Suspense fallback={<AppShellSkeleton />}>
+            <MasterLandingPage />
           </Suspense>
         } />
 
