@@ -2914,7 +2914,7 @@ export default function Home() {
                         onClick={() => setIsFilterOpen(true)}
                         className="h-9 px-4 rounded-full flex items-center gap-1.5 whitespace-nowrap flex-shrink-0 font-bold transition-all bg-white dark:bg-[#1a1a1a] border border-gray-200 shadow-sm active:scale-95"
                       >
-                        <SlidersHorizontal className="h-4 w-4 text-black" />
+                        <SlidersHorizontal className="h-4 w-4 text-black dark:text-white" />
                         <span className="text-xs font-bold text-black dark:text-white uppercase tracking-tight">
                           Filters
                         </span>

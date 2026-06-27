@@ -2176,24 +2176,24 @@ function OrdersMainInner() {
         requestOrdersRefresh();
       } catch (error) {
         debugError("? Error accepting order:", error);
-        const errorMessage =
-          error.response?.data?.message ||
-          error.message ||
-          "Failed to accept order. Please try again.";
+        const errorMessage = error.response?.data?.message || error.message || "";
 
-        // Show specific error message
-        if (error.response?.status === 400) {
-          toast.error(errorMessage);
+        // If order already moved to a forward status, treat as success
+        if (errorMessage.includes('further ahead') || errorMessage.includes('cannot be moved backwards')) {
+          toast.success("Order already accepted");
+          requestOrdersRefresh();
+          // fall through to close popup
         } else if (error.response?.status === 404) {
-          toast.error(
-            "Order not found. It may have been cancelled or already processed.",
-          );
+          toast.error("Order not found. It may have been cancelled or already processed.");
+          setIsAcceptingOrder(false);
+          setAcceptSwipeProgress(0);
+          return;
         } else {
-          toast.error(errorMessage);
+          toast.error(errorMessage || "Failed to accept order. Please try again.");
+          setIsAcceptingOrder(false);
+          setAcceptSwipeProgress(0);
+          return;
         }
-        setIsAcceptingOrder(false);
-        setAcceptSwipeProgress(0);
-        return;
       }
     } else {
       toast.error("Unable to accept this order: order id missing");

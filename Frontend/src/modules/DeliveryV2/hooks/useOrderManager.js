@@ -177,34 +177,37 @@ export const useOrderManager = () => {
       throw new Error('Missing order id');
     }
     try {
-      const verifyRes = await deliveryAPI.verifyDropOtp(orderId, otp);
+      const alreadyVerified = !!order?.deliveryVerification?.dropOtp?.verified;
 
-      if (verifyRes?.data?.success) {
-        let finalOrder = verifyRes.data?.data?.order || order;
-
-        try {
-          const completeRes = await deliveryAPI.completeDelivery(orderId, {
-            otp,
-            rating: 5,
-            paymentMethod: paymentMethodOverride,
-          });
-          if (completeRes.data?.success && completeRes.data?.data?.order) {
-            finalOrder = completeRes.data.data.order;
-          }
-        } catch (completeErr) {
-          console.warn('Complete call failed, but OTP was verified.', completeErr);
+      if (!alreadyVerified) {
+        // OTP not yet verified — verify first
+        const verifyRes = await deliveryAPI.verifyDropOtp(orderId, otp);
+        if (!verifyRes?.data?.success) {
+          toast.error('Invalid OTP. Please check with customer.');
+          throw new Error('Invalid OTP');
         }
-
-        if (finalOrder) {
-          acceptOrderToQueue(mapOrderLocations({ ...finalOrder, orderId }));
-        }
-
-        updateTripStatus('COMPLETED', orderId);
-        updateOrderSession(orderId, { showVerification: false });
-      } else {
-        toast.error('Invalid OTP. Please check with customer.');
-        throw new Error('Invalid OTP');
       }
+
+      let finalOrder = order;
+      try {
+        const completeRes = await deliveryAPI.completeDelivery(orderId, {
+          otp,
+          rating: 5,
+          paymentMethod: paymentMethodOverride,
+        });
+        if (completeRes.data?.success && completeRes.data?.data?.order) {
+          finalOrder = completeRes.data.data.order;
+        }
+      } catch (completeErr) {
+        console.warn('Complete call failed, but OTP was verified.', completeErr);
+      }
+
+      if (finalOrder) {
+        acceptOrderToQueue(mapOrderLocations({ ...finalOrder, orderId }));
+      }
+
+      updateTripStatus('COMPLETED', orderId);
+      updateOrderSession(orderId, { showVerification: false });
     } catch (error) {
       console.error('Completion Error:', error);
       toast.error(

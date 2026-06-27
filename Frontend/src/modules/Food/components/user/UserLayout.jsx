@@ -207,17 +207,20 @@ function UserLayoutContent() {
   useEffect(() => {
     const handleOrderNotif = (e) => {
       const { orderId, status, title, message } = e.detail || {}
-      const isCancelled = String(status || '').toLowerCase().includes('cancel')
+      const statusLower = String(status || '').toLowerCase()
+      // Only save to bell inbox for delivered or cancelled orders
+      if (statusLower !== 'delivered' && !statusLower.includes('cancel')) return
+      const isDelivered = statusLower === 'delivered'
       const newNotif = {
         id: `order-${orderId}-${status}-${Date.now()}`,
-        type: isCancelled ? 'alert' : 'order',
-        title: title || `Order #${orderId} ${status}`,
-        message: message || `Your order status is now ${String(status || '').replace(/_/g, ' ')}`,
+        type: isDelivered ? 'order' : 'alert',
+        title: title || (isDelivered ? `Order #${orderId} Delivered!` : `Order #${orderId} ${status}`),
+        message: message || (isDelivered ? 'Your order has been delivered. Enjoy!' : `Your order status is now ${statusLower.replace(/_/g, ' ')}`),
         time: 'Just now',
         timestamp: Date.now(),
         read: false,
-        icon: isCancelled ? 'AlertCircle' : 'CheckCircle2',
-        iconColor: isCancelled ? 'text-red-600' : 'text-[#DC2626]'
+        icon: isDelivered ? 'CheckCircle2' : 'AlertCircle',
+        iconColor: isDelivered ? 'text-green-600' : 'text-red-600'
       }
       try {
         const existing = JSON.parse(localStorage.getItem('food_user_notifications') || '[]')

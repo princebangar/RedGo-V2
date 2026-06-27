@@ -1,6 +1,6 @@
 import React from 'react';
 import { motion } from 'framer-motion';
-import { CheckCircle, ArrowRight, Wallet, History, Star } from 'lucide-react';
+import { CheckCircle, ArrowRight, Wallet, Star } from 'lucide-react';
 
 /**
  * OrderSummaryModal - Ported to Original White/Green Theme.
@@ -10,7 +10,7 @@ export const OrderSummaryModal = ({ order, onDone }) => {
   const earnings = order?.earnings || order?.riderEarning || (order?.orderAmount * 0.1) || 0;
 
   return (
-    <div className="fixed inset-0 z-160 bg-green-500 overflow-y-auto">
+    <div className="fixed inset-0 z-[160] overflow-y-auto bg-[#15498b]">
       <div className="min-h-screen flex flex-col items-center justify-center p-4 sm:p-6 text-center">
         <motion.div
           initial={{ scale: 0.8, opacity: 0 }}
@@ -19,11 +19,11 @@ export const OrderSummaryModal = ({ order, onDone }) => {
         >
           {/* Success Icon (White Style) */}
           <div className="w-20 h-20 sm:w-24 sm:h-24 bg-white rounded-full flex items-center justify-center mx-auto mb-6 sm:mb-8 shadow-2xl animate-bounce">
-            <CheckCircle className="w-14 h-14 sm:w-16 sm:h-16 text-green-500" />
+            <CheckCircle className="w-14 h-14 sm:w-16 sm:h-16 text-[#15498b]" />
           </div>
           
-          <h1 className="text-white text-4xl sm:text-5xl font-bold mb-2 tracking-tight">Well Done!</h1>
-          <p className="text-white/90 text-base sm:text-lg mb-8 sm:mb-12">Trip completed successfully.</p>
+          <h1 className="text-white text-4xl sm:text-5xl font-black mb-2 tracking-tight drop-shadow-lg" style={{ textShadow: '0 2px 8px rgba(0,0,0,0.25)' }}>Well Done!</h1>
+          <p className="text-white text-base sm:text-lg mb-8 sm:mb-12 font-semibold drop-shadow" style={{ textShadow: '0 1px 4px rgba(0,0,0,0.2)' }}>Trip completed successfully.</p>
 
           <div className="bg-white rounded-3xl p-5 sm:p-8 mb-8 sm:mb-12 shadow-2xl text-gray-900 border border-white/20">
             <div className="flex items-center justify-center gap-2 mb-2">
@@ -47,8 +47,8 @@ export const OrderSummaryModal = ({ order, onDone }) => {
             Go Back Home <ArrowRight className="w-6 h-6" />
           </button>
 
-          <p className="text-white/50 text-[10px] font-bold uppercase tracking-widest mt-8 sm:mt-12 opacity-80">
-            Order Reference: {order?.orderId || order?.displayOrderId || 'FOD-1234'}
+          <p className="text-white/80 text-xs font-semibold tracking-wider mt-8 sm:mt-12 bg-white/10 rounded-xl px-4 py-2 border border-white/20">
+            Order Ref: <span className="font-black text-white">{order?.orderId || order?.displayOrderId || 'FOD-1234'}</span>
           </p>
         </motion.div>
       </div>
