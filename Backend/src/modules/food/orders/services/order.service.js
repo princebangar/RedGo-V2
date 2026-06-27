@@ -51,6 +51,7 @@ import {
   notifyRestaurantNewOrder,
   isStatusAdvance,
   isOtpMatch,
+  STATUS_PRIORITY,
 } from './order.helpers.js';
 
 
@@ -1080,7 +1081,12 @@ export async function updateOrderStatusRestaurant(
   if (!order) throw new NotFoundError("Order not found");
   const from = order.orderStatus;
   if (!isStatusAdvance(from, orderStatus)) {
-      throw new ValidationError(`Current order status '${from}' is further ahead than '${orderStatus}'. Order cannot be moved backwards.`);
+    // If order is already at a further-forward status (e.g. 'preparing' when accepting),
+    // treat as success — the outcome is already achieved
+    if (STATUS_PRIORITY[from] > STATUS_PRIORITY[orderStatus]) {
+      return sanitizeOrderForExternal(order);
+    }
+    throw new ValidationError(`Current order status '${from}' is further ahead than '${orderStatus}'. Order cannot be moved backwards.`);
   }
   order.orderStatus = orderStatus;
 

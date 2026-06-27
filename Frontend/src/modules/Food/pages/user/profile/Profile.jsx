@@ -99,7 +99,7 @@ export default function Profile() {
   const [logoutConfirmOpen, setLogoutConfirmOpen] = useState(false);
   const [isLoggingOut, setIsLoggingOut] = useState(false);
   const [referralReward, setReferralReward] = useState(0);
-  const [walletBalance, setWalletBalance] = useState(0);
+  const [walletBalance, setWalletBalance] = useState(null);
   const [deleteAccountOpen, setDeleteAccountOpen] = useState(false);
   const [deleteCaptcha, setDeleteCaptcha] = useState("");
   const [isDeleting, setIsDeleting] = useState(false);
@@ -557,9 +557,13 @@ export default function Profile() {
                     </span>
                   </div>
                   <div className="flex items-center gap-2">
-                    <span className="text-base font-semibold text-green-600 dark:text-green-400">
-                      {"\u20B9"}{Number(walletBalance || 0).toFixed(0)}
-                    </span>
+                    {walletBalance === null ? (
+                      <span className="inline-block w-12 h-4 rounded bg-gray-200 dark:bg-gray-700 animate-pulse" />
+                    ) : (
+                      <span className="text-base font-semibold text-green-600 dark:text-green-400">
+                        {"\u20B9"}{Number(walletBalance).toFixed(0)}
+                      </span>
+                    )}
                     <motion.div
                       whileHover={{ x: 4 }}
                       transition={{ duration: 0.2 }}>

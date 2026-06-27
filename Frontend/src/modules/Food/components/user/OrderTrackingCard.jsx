@@ -67,6 +67,7 @@ const ACTIVE_PHASES = new Set([
   "en_route_to_delivery",
   "at_pickup",
   "at_drop",
+  "reached_drop",
 ]);
 
 /** Orders that should show the live tracking strip (any in-flight order, not terminal). */
@@ -103,16 +104,28 @@ const isActiveOrder = (order) => {
   return true;
 };
 
+const parsePrepMinutes = (preparationTime) => {
+  if (!preparationTime) return null;
+  const num = Number(preparationTime);
+  if (Number.isFinite(num) && num > 0) return num;
+  // Parse strings like "10-20 mins", "25-35 mins" → take the max value
+  const match = String(preparationTime).match(/(\d+)\s*-\s*(\d+)/);
+  if (match) return Number(match[2]); // use upper bound
+  const single = String(preparationTime).match(/(\d+)/);
+  if (single) return Number(single[1]);
+  return null;
+};
+
 const getTimeRemaining = (order) => {
   if (!order) return null;
 
   // If preparationTime is set by the restaurant, use acceptedAt + preparationTime
-  // Return negative values so callers can detect expired state
-  if (order.preparationTime && order.acceptedAt) {
+  const prepMins = parsePrepMinutes(order.preparationTime);
+  if (prepMins && order.acceptedAt) {
     const acceptTime = new Date(order.acceptedAt);
-    const targetTime = new Date(acceptTime.getTime() + order.preparationTime * 60000);
+    const targetTime = new Date(acceptTime.getTime() + prepMins * 60000);
     const diff = (targetTime - new Date()) / 60000;
-    return Math.ceil(diff); // matches OrderTracking.jsx; can be negative when expired
+    return Math.ceil(diff);
   }
 
   // Use scheduled time if available, fallback to creation time
@@ -521,6 +534,7 @@ const TrackingCardContent = memo(({
           {(() => {
             const isTakeawayOrDining = orderType === "takeaway" || orderType === "dining" || activeOrder?.orderType === "takeaway" || activeOrder?.orderType === "dining";
             const rawStatus = getOrderStatus(activeOrder);
+            const rawPhase = getOrderPhase(activeOrder);
             const isReadyOrder = rawStatus === "ready" || rawStatus === "ready_for_pickup" || orderStatus === "ready" || orderStatus === "ready_for_pickup";
             const isAccepted = !["created", "pending", "confirmed", "placed", ""].includes(rawStatus);
 
@@ -556,6 +570,20 @@ const TrackingCardContent = memo(({
                   </p>
                   <p className="text-white text-base md:text-[17px] font-black leading-tight drop-shadow-sm">
                     Preparing
+                  </p>
+                </div>
+              );
+            }
+
+            // Delivery boy reached customer location
+            if (rawStatus === 'reached_drop' || orderStatus === 'reached_drop' || rawPhase === 'at_drop') {
+              return (
+                <div className="bg-gradient-to-br from-green-600 to-emerald-500 shadow-lg shadow-green-600/20 rounded-xl px-4 py-2 shrink-0 flex flex-col items-center justify-center border border-green-400">
+                  <p className="text-green-50 text-[10px] font-bold uppercase tracking-wider opacity-95 leading-tight mb-[2px]">
+                    Rider
+                  </p>
+                  <p className="text-white text-base md:text-[17px] font-black leading-tight drop-shadow-sm">
+                    Arrived!
                   </p>
                 </div>
               );

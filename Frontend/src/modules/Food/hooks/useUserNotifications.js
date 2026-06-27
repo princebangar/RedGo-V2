@@ -112,7 +112,10 @@ export const useUserNotifications = () => {
         window.dispatchEvent(new CustomEvent('show-user-notification-toast', {
           detail: { title, message }
         }));
-        dispatchNotificationInboxRefresh();
+        // Only refresh inbox (bell count) for delivered orders
+        if (data.orderStatus === 'delivered') {
+          dispatchNotificationInboxRefresh();
+        }
       }
 
       // Dispatch custom event for OrderTrackingCard and other listeners

@@ -988,7 +988,7 @@ export default function DeliveryHomeV2({ tab = 'feed' }) {
                     onClose={() => setShowVerification(false)}
                   />
                 )}
-                {tripStatus === 'COMPLETED' && <OrderSummaryModal order={activeOrder} onDone={resetTrip} />}
+                {tripStatus === 'COMPLETED' && <OrderSummaryModal order={activeOrder} onDone={() => { resetTrip(activeOrder); navigate('/food/delivery', { replace: true }); }} />}
               </div>
             </motion.div>
           )}

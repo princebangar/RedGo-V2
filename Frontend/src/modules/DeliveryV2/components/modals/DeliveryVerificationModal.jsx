@@ -1,8 +1,8 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { 
-  ShieldCheck, DollarSign, CheckCircle2, 
-  QrCode, Loader2, Info, X, RefreshCw, Package
+  ShieldCheck, DollarSign, CheckCircle2,
+  QrCode, Loader2, X, RefreshCw, Package
 } from 'lucide-react';
 import { deliveryAPI } from '@food/api';
 import { toast } from 'sonner';
@@ -283,11 +283,11 @@ const PaymentModal = ({ order, otpString, onComplete, onClose }) => {
                     {paymentStatus === 'pending' && !isCashPayment ? 'QR Active - Waiting...' : 'Show Payment QR'}
                   </button>
 
-                  <button 
+                  <button
                     onClick={handleCashSelection}
                     className={`w-full py-3.5 sm:py-4 border-2 rounded-2xl font-bold text-[11px] sm:text-xs uppercase tracking-widest flex items-center justify-center gap-2 transition-all ${
                       isCashPayment
-                        ? 'bg-amber-600 border-amber-600 text-white shadow-lg'
+                        ? 'bg-[#15498b] border-[#15498b] text-white shadow-lg shadow-[#15498b]/30'
                         : 'bg-white border-amber-200 text-amber-800'
                     }`}
                   >
@@ -339,19 +339,19 @@ const PaymentModal = ({ order, otpString, onComplete, onClose }) => {
                    alt="Razorpay QR"
                    className="w-44 h-44 sm:w-56 sm:h-56 mix-blend-multiply"
                  />
-                 <button 
+                 <button
                     onClick={handleManualCheck}
                     disabled={isSyncing}
-                    className="flex gap-2 items-center bg-green-500 hover:bg-green-600 text-white px-6 py-2.5 rounded-2xl text-[10px] font-black uppercase tracking-widest shadow-xl shadow-green-500/20 active:scale-95 transition-all"
+                    className="flex gap-2 items-center bg-[#15498b] hover:bg-[#0f3568] text-white px-6 py-3 rounded-2xl text-xs font-black uppercase tracking-widest shadow-lg shadow-[#15498b]/30 active:scale-95 transition-all disabled:opacity-60"
                  >
-                    {isSyncing ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <RefreshCw className="w-3.5 h-3.5" />} 
+                    {isSyncing ? <Loader2 className="w-4 h-4 animate-spin" /> : <RefreshCw className="w-4 h-4" />}
                     Check Payment Status
                  </button>
               </div>
 
-              <button 
+              <button
                 onClick={() => setShowQrModal(false)}
-                className="w-full py-4 bg-gray-100 text-gray-500 rounded-2xl font-bold text-xs uppercase tracking-widest"
+                className="w-full py-3.5 bg-gray-900 hover:bg-black text-white rounded-2xl font-bold text-xs uppercase tracking-widest shadow-lg active:scale-95 transition-all"
               >
                 Close QR
               </button>
