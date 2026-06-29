@@ -1,5 +1,5 @@
-import React, { useState, useEffect } from "react"
-import { motion, AnimatePresence } from "framer-motion"
+import React, { useState, useEffect, useRef } from "react"
+import { motion, AnimatePresence, useScroll, useTransform, useSpring } from "framer-motion"
 import { useNavigate } from "react-router-dom"
 import {
   Clock,
@@ -109,6 +109,26 @@ export default function MasterLandingPage() {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
   const [activeTestimonial, setActiveTestimonial] = useState(0)
 
+  const mobileSectionRef = useRef(null)
+
+  // Tracks scroll progress over the mobile section
+  const { scrollYProgress: mobileScrollYProgress } = useScroll({
+    target: mobileSectionRef,
+    offset: ["start center", "end start"]
+  });
+
+  // Maps scroll progress to 3D rotation and position values
+  const phoneRotateX = useTransform(mobileScrollYProgress, [0, 0.5, 1], [40, 5, -20]);
+  const phoneRotateY = useTransform(mobileScrollYProgress, [0, 0.5, 1], [-30, 15, 30]);
+  const phoneY = useTransform(mobileScrollYProgress, [0, 0.5, 1], [150, 0, -150]);
+  const phoneScale = useTransform(mobileScrollYProgress, [0, 0.5, 1], [0.8, 1.05, 0.9]);
+
+  // Applies spring physics for a smooth, natural feel
+  const smoothRotateX = useSpring(phoneRotateX, { damping: 20, stiffness: 100 });
+  const smoothRotateY = useSpring(phoneRotateY, { damping: 20, stiffness: 100 });
+  const smoothY = useSpring(phoneY, { damping: 20, stiffness: 100 });
+  const smoothScale = useSpring(phoneScale, { damping: 20, stiffness: 100 });
+
   useEffect(() => {
     const handleScroll = () => {
       setIsScrolled(window.scrollY > 50)
@@ -183,7 +203,7 @@ export default function MasterLandingPage() {
             className="flex flex-col sm:flex-row items-center gap-4 justify-center"
           >
             <button className="flex items-center gap-3 bg-black border border-gray-600 text-white px-5 py-2 rounded-xl hover:-translate-y-2 hover:scale-[1.03] hover:border-gray-400 hover:shadow-2xl transition-all duration-200 w-48 justify-center">
-              <img src="/playstore-icon.png" alt="Google Play" className="w-6 h-6 object-contain" />
+              <img src="/playstore_img-removebg-preview.webp" alt="Google Play" className="w-6 h-6 object-contain" />
               <div className="text-left leading-tight">
                 <div className="text-[10px] uppercase tracking-wide text-gray-300">GET IT ON</div>
                 <div className="text-sm font-semibold">Google Play</div>
@@ -307,8 +327,6 @@ export default function MasterLandingPage() {
       </section>
       {/* 3rd Page / App Features */}
       <section className="relative pt-20 pb-16 md:pb-24 bg-[#F35E6B] overflow-hidden text-center">
-        {/* Subtle texture for the red background */}
-        <div className="absolute inset-0 z-0 pointer-events-none opacity-[0.15]" style={{ backgroundImage: 'radial-gradient(#ffffff 2px, transparent 2px)', backgroundSize: '32px 32px' }}></div>
         <div className="max-w-5xl mx-auto px-6 relative z-10">
           <h2 className="text-3xl md:text-[40px] font-black text-white mb-4 tracking-tight leading-tight">
             What's waiting for you <br className="hidden md:block" /> on the app?
@@ -479,14 +497,13 @@ export default function MasterLandingPage() {
               initial={{ opacity: 0, y: 30 }}
               whileInView={{ opacity: 1, y: 0 }}
               viewport={{ once: true }}
-              transition={{ duration: 0.8, delay: 0.3 }}
+              transition={{ duration: 0.2, delay: 0 }}
               className="absolute bottom-0 left-0 w-[75%] h-[55%] bg-white p-3 rounded-[24px] shadow-[0_20px_50px_rgba(0,0,0,0.2)] z-20"
             >
               <img
                 src="/restaurant-food.jpg"
                 alt="Delicious Food"
                 className="w-full h-full object-cover rounded-[16px]"
-                loading="lazy"
               />
             </motion.div>
 
@@ -544,113 +561,94 @@ export default function MasterLandingPage() {
 
 
       {/* 8. Download App */}
-      <section className="py-24 px-6 bg-gradient-to-b from-[#111] to-[#0B0B0B]">
+      <section ref={mobileSectionRef} className="py-24 px-6 bg-gradient-to-b from-[#111] to-[#0B0B0B]">
         <div className="max-w-6xl mx-auto bg-gradient-to-br from-[#1A1A1A] to-[#0A0A0A] rounded-[32px] md:rounded-[48px] border border-white/10 p-8 md:p-20 overflow-hidden relative shadow-2xl">
           <div className="absolute inset-0 bg-[#D32F2F]/5 blur-3xl" />
 
           <div className="relative z-10 flex flex-col md:flex-row items-center justify-between gap-12">
             <div className="w-full md:w-1/2 text-center md:text-left">
               <h2 className="text-4xl md:text-5xl lg:text-6xl font-black mb-6 leading-tight text-white">
-                Get the <span className="text-[#D32F2F]">RedGo</span> App
+                Get the <span className="text-white">Red</span><span className="text-[#D32F2F]">Go</span> App
               </h2>
               <p className="text-gray-400 text-lg mb-10 max-w-md mx-auto md:mx-0">
                 Download our app for the fastest booking experience, exclusive offers, and live order tracking.
               </p>
 
               <div className="flex flex-col sm:flex-row items-center gap-4 justify-center md:justify-start">
-                <button className="flex items-center gap-3 bg-transparent border border-white/20 text-white px-6 py-3 rounded-2xl hover:-translate-y-2 hover:scale-[1.03] hover:border-gray-400 hover:shadow-2xl transition-all duration-200 w-full sm:w-auto">
-                  <div className="flex items-center justify-center text-white w-8 h-8">
-                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 384 512" fill="currentColor" className="w-6 h-6">
+                <button className="flex items-center gap-3 bg-transparent border border-white/20 text-white px-6 py-3 rounded-2xl hover:-translate-y-2 hover:scale-[1.03] hover:border-gray-400 hover:shadow-2xl transition-all duration-200 w-full sm:w-[230px] justify-center md:justify-start">
+                  <div className="w-8 h-8 flex items-center justify-center shrink-0">
+                    <img src="/playstore_img-removebg-preview.webp" alt="Google Play" className="w-7 h-7 object-contain scale-110" />
+                  </div>
+                  <div className="text-left flex-1">
+                    <div className="text-[10px] font-bold uppercase tracking-wide text-gray-400">Get it on</div>
+                    <div className="text-lg font-bold leading-none text-white tracking-tight">Google Play</div>
+                  </div>
+                </button>
+                <button className="flex items-center gap-3 bg-transparent border border-white/20 text-white px-6 py-3 rounded-2xl hover:-translate-y-2 hover:scale-[1.03] hover:border-gray-400 hover:shadow-2xl transition-all duration-200 w-full sm:w-[230px] justify-center md:justify-start">
+                  <div className="flex items-center justify-center text-white w-8 h-8 shrink-0">
+                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 384 512" fill="currentColor" className="w-6 h-6 ml-1">
                       <path d="M318.7 268.7c-.2-36.7 16.4-64.4 50-84.8-18.8-26.9-47.2-41.7-84.7-44.6-35.5-2.8-74.3 20.7-88.5 20.7-15 0-49.4-19.7-76.4-19.7C63.3 141.2 4 184.8 4 273.5q0 39.3 14.4 81.2c12.8 36.7 59 126.7 107.2 125.2 25.2-.6 43-17.9 75.8-17.9 31.8 0 48.3 17.9 76.4 17.9 48.6-.7 90.4-82.5 102.6-119.3-65.2-30.7-61.7-90-61.7-91.9zm-56.6-164.2c27.3-32.4 24.8-61.9 24-72.5-24.1 1.4-52 16.4-67.9 34.9-17.5 19.8-27.8 44.3-25.6 71.9 26.1 2 49.9-11.4 69.5-34.3z" />
                     </svg>
                   </div>
-                  <div className="text-left">
+                  <div className="text-left flex-1">
                     <div className="text-[10px] font-bold uppercase tracking-wide text-gray-400">Download on the</div>
-                    <div className="text-lg font-black leading-none text-white">App Store</div>
-                  </div>
-                </button>
-                <button className="flex items-center gap-3 bg-transparent border border-white/20 text-white px-6 py-3 rounded-2xl hover:-translate-y-2 hover:scale-[1.03] hover:border-gray-400 hover:shadow-2xl transition-all duration-200 w-full sm:w-auto">
-                  <div className="w-8 h-8 rounded-full flex items-center justify-center">
-                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" fill="white" className="w-6 h-6">
-                      <path fill="white" d="M325.3 234.3L104.6 13l280.8 161.2-60.1 60.1zM47 0C34 6.8 25.3 19.2 25.3 35.3v441.3c0 16.1 8.7 28.5 21.7 35.3l256.6-256L47 0zm425.2 225.6l-58.9-34.1-65.7 64.5 65.7 64.5 60.1-34.1c18-14.3 18-46.5-1.2-60.8zM104.6 499l280.8-161.2-60.1-60.1L104.6 499z" />
-                    </svg>
-                  </div>
-                  <div className="text-left">
-                    <div className="text-[10px] font-bold uppercase tracking-wide text-gray-400">Get it on</div>
-                    <div className="text-lg font-black leading-none text-white">Google Play</div>
+                    <div className="text-lg font-bold leading-none text-white tracking-tight">App Store</div>
                   </div>
                 </button>
               </div>
             </div>
 
-            <div className="w-full md:w-1/2 flex justify-center relative">
+            <div className="w-full md:w-1/2 flex justify-center relative" style={{ perspective: 1000 }}>
               {/* Abstract decorative elements behind phone */}
               <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-72 h-72 bg-[#D32F2F]/20 rounded-full blur-3xl" />
 
               {/* Phone Mockup Placeholder */}
               <motion.div
-                initial={{ y: 50, opacity: 0 }}
-                whileInView={{ y: 0, opacity: 1 }}
-                viewport={{ once: true }}
-                transition={{ duration: 0.8, delay: 0.2 }}
-                className="relative w-64 h-[500px] bg-black border-[8px] border-[#333] rounded-[40px] shadow-2xl overflow-hidden"
+                initial={{ opacity: 0, y: 150, scale: 0.5 }}
+                whileInView={{ opacity: 1, y: 0, scale: 1 }}
+                viewport={{ once: true, margin: "-50% 0px 0px 0px" }}
+                transition={{ duration: 0.8, type: "spring", bounce: 0.4 }}
               >
-                {/* Screen content */}
-                <div className="absolute inset-0 bg-[#0B0B0B] p-4 flex flex-col">
-                  {/* Status Bar */}
-                  <div className="w-full h-6 flex justify-between items-center mb-6 px-2">
-                    <span className="text-[10px] font-bold text-white">9:41</span>
-                    <div className="flex gap-1">
-                      <div className="w-3 h-3 bg-white rounded-full" />
-                      <div className="w-3 h-3 bg-white rounded-full" />
+                <motion.div 
+                  style={{ 
+                    rotateX: smoothRotateX, 
+                    rotateY: smoothRotateY, 
+                    y: smoothY, 
+                    scale: smoothScale 
+                  }}
+                  className="relative w-[260px] h-[554px] bg-black border-[8px] border-[#333] rounded-[36px] shadow-2xl overflow-hidden"
+                >
+                  {/* Screen content */}
+                  <div className="absolute inset-0 bg-black flex flex-col overflow-hidden rounded-[28px]">
+                  
+                  {/* Phone Status Bar */}
+                  <div className="w-full h-7 bg-black flex justify-between items-center px-5 z-10 shrink-0">
+                    {/* Time */}
+                    <span className="text-[12px] font-semibold text-white tracking-wide">9:41</span>
+                    {/* Icons (Signal, Wifi, Battery) */}
+                    <div className="flex items-center gap-1.5 opacity-90 mt-0.5">
+                      <svg className="w-3.5 h-3.5 text-white" viewBox="0 0 24 24" fill="currentColor">
+                        <path d="M2,22L22,2L22,22H2Z" />
+                      </svg>
+                      <svg className="w-3.5 h-3.5 text-white" viewBox="0 0 24 24" fill="currentColor">
+                        <path d="M12,3C7.95,3 4.21,4.34 1.2,6.6L12,21.5L22.8,6.6C19.79,4.34 16.05,3 12,3M12,5.5C15.06,5.5 17.86,6.34 20.15,7.74L12,18.97L3.85,7.74C6.14,6.34 8.94,5.5 12,5.5Z" />
+                      </svg>
+                      <svg className="w-4 h-4 text-white" viewBox="0 0 24 24" fill="currentColor">
+                        <path d="M16.67,4H15V2H9V4H7.33C6.6,4 6,4.6 6,5.33V20.67C6,21.4 6.6,22 7.33,22H16.67C17.4,22 18,21.4 18,20.67V5.33C18,4.6 17.4,4 16.67,4Z" />
+                      </svg>
                     </div>
                   </div>
 
-                  {/* App Mockup UI - Interactive Animation */}
-                  <div className="w-full h-32 bg-[#1A1A1A] rounded-2xl mb-4 p-4 border border-white/5 overflow-hidden relative">
-                    <motion.div
-                      animate={{ x: [-150, 300] }}
-                      transition={{ duration: 2.5, repeat: Infinity, ease: "linear" }}
-                      className="absolute inset-0 bg-gradient-to-r from-transparent via-white/10 to-transparent w-1/2 skew-x-12"
+                  <div className="flex-1 w-full relative">
+                    <img 
+                      src="/phone screen 1.webp" 
+                      alt="App Screen" 
+                      className="absolute inset-0 w-full h-full object-cover object-top"
+                      style={{ imageRendering: 'high-quality', WebkitFontSmoothing: 'antialiased' }} 
                     />
-                    <div className="w-20 h-4 bg-white/20 rounded mb-2" />
-                    <div className="w-32 h-6 bg-white rounded mb-4" />
-                    <div className="flex gap-3">
-                      <motion.div
-                        animate={{ scale: [1, 1.05, 1] }}
-                        transition={{ duration: 2, repeat: Infinity, ease: "easeInOut" }}
-                        className="w-12 h-12 bg-[#D32F2F] rounded-xl flex items-center justify-center shadow-lg shadow-[#D32F2F]/20"
-                      >
-                        <div className="w-5 h-5 bg-white/40 rounded-full" />
-                      </motion.div>
-                      <motion.div
-                        animate={{ scale: [1, 1.05, 1] }}
-                        transition={{ duration: 2, delay: 0.5, repeat: Infinity, ease: "easeInOut" }}
-                        className="w-12 h-12 bg-white/10 rounded-xl flex items-center justify-center"
-                      >
-                        <div className="w-5 h-5 bg-white/20 rounded-full" />
-                      </motion.div>
-                    </div>
-                  </div>
-
-                  <div className="flex-1 bg-[#1A1A1A] rounded-2xl border border-white/5 p-4 flex flex-col gap-4 overflow-hidden relative">
-                    {/* Animated List Items */}
-                    {[1, 2, 3].map((i) => (
-                      <motion.div
-                        key={i}
-                        animate={{ opacity: [0.4, 1, 0.4] }}
-                        transition={{ duration: 2, delay: i * 0.4, repeat: Infinity, ease: "easeInOut" }}
-                        className="w-full bg-white/5 rounded-xl flex items-center p-3 gap-3"
-                      >
-                        <div className="w-10 h-10 bg-white/10 rounded-lg shrink-0" />
-                        <div className="flex flex-col gap-2 w-full">
-                          <div className="w-full h-2.5 bg-white/20 rounded" />
-                          <div className="w-1/2 h-2 bg-white/10 rounded" />
-                        </div>
-                      </motion.div>
-                    ))}
                   </div>
                 </div>
+                </motion.div>
               </motion.div>
             </div>
           </div>
@@ -671,14 +669,12 @@ export default function MasterLandingPage() {
                 India's smartest dining and takeaway platform. Skip the lines, discover new tastes, and dine better.
               </p>
               <div className="flex gap-4">
-                <a href="#" className="w-10 h-10 rounded-full bg-white/5 flex items-center justify-center text-gray-400 hover:bg-[#D32F2F] hover:text-white transition-all">
-                  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 384 512" fill="currentColor" className="w-4 h-4">
-                    <path d="M318.7 268.7c-.2-36.7 16.4-64.4 50-84.8-18.8-26.9-47.2-41.7-84.7-44.6-35.5-2.8-74.3 20.7-88.5 20.7-15 0-49.4-19.7-76.4-19.7C63.3 141.2 4 184.8 4 273.5q0 39.3 14.4 81.2c12.8 36.7 59 126.7 107.2 125.2 25.2-.6 43-17.9 75.8-17.9 31.8 0 48.3 17.9 76.4 17.9 48.6-.7 90.4-82.5 102.6-119.3-65.2-30.7-61.7-90-61.7-91.9zm-56.6-164.2c27.3-32.4 24.8-61.9 24-72.5-24.1 1.4-52 16.4-67.9 34.9-17.5 19.8-27.8 44.3-25.6 71.9 26.1 2 49.9-11.4 69.5-34.3z" />
-                  </svg>
+                <a href="#" className="w-10 h-10 rounded-full bg-white/5 flex items-center justify-center text-gray-400 hover:bg-[#D32F2F] hover:text-white transition-all group">
+                  <img src="/playstore_img-removebg-preview.webp" alt="Google Play" className="w-5 h-5 object-contain opacity-70 group-hover:opacity-100 transition-all" />
                 </a>
                 <a href="#" className="w-10 h-10 rounded-full bg-white/5 flex items-center justify-center text-gray-400 hover:bg-[#D32F2F] hover:text-white transition-all">
-                  <svg viewBox="0 0 24 24" fill="currentColor" className="w-4 h-4">
-                    <path d="M22.1 11.2l-18.7-10.9c-.9-1-2-.1-2 1v21.8c0 1.1 1.1 2 2 1l18.7-10.9c1.2-.6 1.2-2.3 0-2z" />
+                  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 384 512" fill="currentColor" className="w-5 h-5 pb-[1px]">
+                    <path d="M318.7 268.7c-.2-36.7 16.4-64.4 50-84.8-18.8-26.9-47.2-41.7-84.7-44.6-35.5-2.8-74.3 20.7-88.5 20.7-15 0-49.4-19.7-76.4-19.7C63.3 141.2 4 184.8 4 273.5q0 39.3 14.4 81.2c12.8 36.7 59 126.7 107.2 125.2 25.2-.6 43-17.9 75.8-17.9 31.8 0 48.3 17.9 76.4 17.9 48.6-.7 90.4-82.5 102.6-119.3-65.2-30.7-61.7-90-61.7-91.9zm-56.6-164.2c27.3-32.4 24.8-61.9 24-72.5-24.1 1.4-52 16.4-67.9 34.9-17.5 19.8-27.8 44.3-25.6 71.9 26.1 2 49.9-11.4 69.5-34.3z" />
                   </svg>
                 </a>
               </div>
