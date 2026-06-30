@@ -405,3 +405,26 @@ export async function completeTakeawayOrderRestaurantController(req, res, next) 
         next(err);
     }
 }
+
+export async function acceptOrderAdminController(req, res, next) {
+    try {
+        const adminId = req.user?.userId;
+        const orderId = req.params.orderId;
+        const order = await orderService.acceptOrderAdmin(orderId, adminId);
+        return sendResponse(res, 200, 'Order accepted by admin', { order });
+    } catch (err) {
+        next(err);
+    }
+}
+
+export async function rejectOrderAdminController(req, res, next) {
+    try {
+        const adminId = req.user?.userId;
+        const orderId = req.params.orderId;
+        const { reason } = req.body;
+        const order = await orderService.rejectOrderAdmin(orderId, reason || 'Order rejected by admin', adminId);
+        return sendResponse(res, 200, 'Order rejected by admin', { order });
+    } catch (err) {
+        next(err);
+    }
+}

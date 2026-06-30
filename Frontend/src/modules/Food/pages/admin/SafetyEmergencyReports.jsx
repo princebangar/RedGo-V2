@@ -188,8 +188,12 @@ export default function SafetyEmergencyReports() {
           <div className="flex items-center gap-2">
             <AlertTriangle className="h-6 w-6 text-red-600" />
             <h1 className="text-2xl font-bold text-slate-900">Safety Emergency Reports</h1>
-            <span className="px-3 py-1 rounded-full text-sm font-semibold bg-slate-100 text-slate-700">
-              {reports.length}
+            <span className="px-3 py-1 rounded-full text-sm font-semibold bg-slate-100 text-slate-700 flex items-center justify-center min-w-[2.5rem] h-7">
+              {loading ? (
+                <span className="w-5 h-3 rounded bg-slate-300/80 animate-pulse" />
+              ) : (
+                reports.length
+              )}
             </span>
           </div>
 

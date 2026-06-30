@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, useMemo, Fragment } from "react"
 import { createPortal } from "react-dom"
 import { Link, useNavigate, useLocation } from "react-router-dom"
-import { Plus, Minus, ArrowLeft, ChevronRight, Clock, MapPin, Phone, FileText, Utensils, Tag, Percent, Share2, ChevronUp, ChevronDown, X, Check, Settings, CreditCard, Wallet, Building2, Sparkles, Banknote, Zap, CheckCircle2, MessageCircle, Send, Mail, Copy, ShoppingBag } from "lucide-react"
+import { Plus, Minus, ArrowLeft, ChevronRight, Clock, MapPin, Phone, FileText, Utensils, Tag, Percent, Share2, Share, ChevronUp, ChevronDown, X, Check, Settings, CreditCard, Wallet, Building2, Sparkles, Banknote, Zap, CheckCircle2, MessageCircle, Send, Mail, Copy, ShoppingBag } from "lucide-react"
 import { motion, AnimatePresence } from "framer-motion"
 import confetti from "canvas-confetti"
 
@@ -1351,6 +1351,13 @@ export default function Cart() {
   // Restaurant name from data or cart
   const restaurantName = restaurantData?.name || cart[0]?.restaurant || "Restaurant"
 
+  const availability = useMemo(() => {
+    if (!restaurantData) return { isOpen: true }
+    return getRestaurantAvailabilityStatus(restaurantData)
+  }, [restaurantData])
+
+  const isRestaurantClosed = !availability.isOpen
+
   const handleShare = async () => {
     const restaurantNameStr = restaurantName || companyName || "this restaurant"
     const shareUrl = window.location.href
@@ -2310,43 +2317,33 @@ export default function Cart() {
   return (
     <div className="relative min-h-screen bg-slate-50 dark:bg-[#0a0a0a]">
       {/* Header - Sticky at top */}
-      <div className="bg-white dark:bg-[#1a1a1a] border-b dark:border-gray-800 sticky top-0 z-20 flex-shrink-0">
+      <div className="bg-white dark:bg-[#1a1a1a] border-b border-gray-100/80 dark:border-gray-800/80 sticky top-0 z-20 flex-shrink-0">
         <div className="max-w-7xl mx-auto">
-          <div className="flex items-center justify-between px-3 md:px-6 py-2 md:py-3">
+          <div className="flex items-center justify-between px-4 md:px-6 py-2.5">
             <div className="flex items-center gap-2 flex-1 min-w-0">
-              <Button 
-                variant="ghost" 
-                size="icon" 
-                className="h-7 w-7 md:h-8 md:w-8 flex-shrink-0 text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800"
+              <button 
+                className="w-8 h-8 md:w-9 md:h-9 rounded-full bg-white/90 dark:bg-gray-800/90 border border-gray-100/50 dark:border-gray-700/50 shadow-sm flex items-center justify-center flex-shrink-0 text-gray-800 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-700 transition-all duration-200 active:scale-95"
                 onClick={handleBack}
               >
-                <ArrowLeft className="h-4 w-4 md:h-5 md:w-5" />
-              </Button>
-              <div className="min-w-0">
-                <p className="text-[11px] md:text-xs text-gray-500 dark:text-gray-400 leading-none">{restaurantName}</p>
-                {orderType === "takeaway" ? (
-                  <div className="flex flex-col mt-0.5">
-                    <div className="flex items-center gap-1.5">
-                      <div className="w-1.5 h-1.5 rounded-full bg-green-500 shadow-[0_0_8px_rgba(34,197,94,0.6)]" />
-                      <span className="text-[10px] md:text-xs font-bold text-gray-700 dark:text-gray-300 uppercase tracking-wider">Takeaway Mode</span>
-                    </div>
-                  </div>
-                ) : (
-                  <p className="text-sm md:text-base font-medium text-gray-800 dark:text-white truncate">
-                    {restaurantData?.estimatedDeliveryTime || "10-15 mins"} to <span className="font-semibold">Location</span>
-                    <span className="text-gray-400 dark:text-gray-500 ml-1 text-xs md:text-sm">{defaultAddress ? (formatFullAddress(defaultAddress) || defaultAddress?.formattedAddress || defaultAddress?.address || defaultAddress?.city || "Select address") : "Select address"}</span>
+                <ArrowLeft className="h-[18px] w-[18px] md:h-5 md:w-5 stroke-[2.5]" />
+              </button>
+              <div className="min-w-0 flex-1 ml-2 md:ml-3">
+                <h1 className="text-base md:text-lg font-bold text-[#1C2534] dark:text-white tracking-tight truncate antialiased transform-gpu">
+                  {restaurantName}
+                </h1>
+                {isRestaurantClosed && (
+                  <p className="text-xs font-semibold text-red-600 dark:text-red-400 mt-0.5">
+                    Restaurant is closed. Please order when they are online.
                   </p>
                 )}
               </div>
             </div>
-            <Button
-              variant="ghost"
-              size="icon"
-              className="h-7 w-7 md:h-8 md:w-8 flex-shrink-0"
+            <button
+              className="w-8 h-8 md:w-9 md:h-9 rounded-full bg-white/90 dark:bg-gray-800/90 border border-gray-100/50 dark:border-gray-700/50 shadow-sm flex items-center justify-center flex-shrink-0 text-gray-800 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-750 transition-all duration-200 active:scale-95"
               onClick={handleShare}
             >
-              <Share2 className="h-4 w-4 md:h-5 md:w-5" />
-            </Button>
+              <Share className="h-[18px] w-[18px] md:h-5 md:w-5 stroke-[2.5]" />
+            </button>
           </div>
         </div>
       </div>
@@ -2376,7 +2373,7 @@ export default function Cart() {
                 <div className="space-y-3 md:space-y-4">
                   <div className="space-y-6">
                     {cart.map((item, index) => (
-                      <div key={item.id}>
+                      <div key={item.id} className={isRestaurantClosed ? "opacity-60 grayscale transition-all duration-300" : ""}>
                         <div className="flex items-center gap-4">
                           {/* Veg/Non-veg indicator */}
                           <div className={`w-4 h-4 border-2 ${item.isVeg === true || item.foodType === 'Veg' ? 'border-green-600' : 'border-red-600'} flex items-center justify-center flex-shrink-0 rounded-[2px]`}>
@@ -2403,6 +2400,11 @@ export default function Cart() {
                                   {item.variantName}
                                 </p>
                               ) : null}
+                              {isRestaurantClosed && (
+                                <p className="text-[11px] text-red-500 dark:text-red-400 font-semibold mt-1">
+                                  Remove this dish to order available dishes
+                                </p>
+                              )}
                             </div>
                           </div>
 
@@ -2756,6 +2758,7 @@ export default function Cart() {
                       <p className="text-base text-gray-800 dark:text-gray-200">
                         Delivery in <span className="text-green-600 font-bold">{restaurantData?.estimatedDeliveryTime || "15-20 mins"}</span>
                       </p>
+                      {/* Commented out Scheduled Delivery option
                       <p className="text-sm text-gray-600 dark:text-gray-400 mt-1 flex items-center gap-1">
                         Want this later?
                         <button onClick={() => {
@@ -2771,9 +2774,11 @@ export default function Cart() {
                           {isScheduled ? "Cancel schedule" : "Schedule it"}
                         </button>
                       </p>
+                      */}
                     </div>
                   </div>
 
+                  {/* Commented out Scheduled inputs container
                   {isScheduled && (
                     <div className="mt-5 flex flex-col sm:flex-row gap-3 pt-3 border-t border-gray-100 dark:border-gray-800">
                       <div className="flex-1">
@@ -2810,6 +2815,7 @@ export default function Cart() {
                       </div>
                     </div>
                   )}
+                  */}
                 </div>
               )}
 
@@ -3194,7 +3200,7 @@ export default function Cart() {
             {/* Place Order Button */}
             <button
               onClick={handlePlaceOrder}
-              disabled={isPlacingOrder || (selectedPaymentMethod === "wallet" && walletBalance < total)}
+              disabled={isPlacingOrder || (selectedPaymentMethod === "wallet" && walletBalance < total) || isRestaurantClosed}
               className="w-full bg-gradient-to-r from-[#DC2626] to-[#991B1B] hover:from-[#991B1B] hover:to-[#7F1D1D] text-white px-6 h-12 md:h-14 rounded-2xl font-black shadow-lg shadow-[#DC2626]/30 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-between transition-all active:scale-[0.98] border-b-4 border-red-900/30"
             >
               {(selectedPaymentMethod === "razorpay" || selectedPaymentMethod === "wallet" || selectedPaymentMethod === "cash") && (
@@ -3204,11 +3210,13 @@ export default function Cart() {
                 </div>
               )}
               <div className="flex items-center gap-1 mx-auto text-sm md:text-lg tracking-wide">
-                {isPlacingOrder
-                  ? "Processing..."
-                  : (orderType !== "takeaway" && !hasSavedAddress)
-                    ? "Select Address"
-                    : "Place Order"}
+                {isRestaurantClosed
+                  ? "Restaurant Closed"
+                  : isPlacingOrder
+                    ? "Processing..."
+                    : (orderType !== "takeaway" && !hasSavedAddress)
+                      ? "Select Address"
+                      : "Place Order"}
                 <div className="flex align-center h-full">
                   <ChevronRight className="h-4 w-4 md:h-5 md:w-5" />
                 </div>

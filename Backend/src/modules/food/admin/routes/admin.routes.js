@@ -109,6 +109,7 @@ router.patch('/foods/:id/reject', foodApprovalController.rejectFoodItemControlle
 // ----- Offers & Coupons -----
 router.get('/offers', adminController.getAllOffers);
 router.post('/offers', adminController.createAdminOffer);
+router.put('/offers/:id', adminController.updateAdminOffer);
 router.patch('/offers/:id/cart-visibility', adminController.updateAdminOfferCartVisibility);
 router.delete('/offers/:id', adminController.deleteAdminOffer);
 
@@ -202,6 +203,8 @@ router.patch('/dining/requests/:id/reject', diningAdminController.rejectDiningRe
 router.get('/orders', orderController.listOrdersAdminController);
 router.get('/orders/:orderId', orderController.getOrderByIdAdminController);
 router.delete('/orders/:orderId', orderController.deleteOrderAdminController);
+router.patch('/orders/:orderId/accept', orderController.acceptOrderAdminController);
+router.patch('/orders/:orderId/reject', orderController.rejectOrderAdminController);
 
 // ----- CMS Pages (About + legal) -----
 router.get('/pages-social-media/:key', getAdminPageController);

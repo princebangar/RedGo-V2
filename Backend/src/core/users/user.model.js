@@ -132,7 +132,8 @@ const userSchema = new mongoose.Schema(
         },
         role: {
             type: String,
-            default: 'USER'
+            default: 'USER',
+            index: true
         },
         addresses: {
             type: [userAddressSchema],

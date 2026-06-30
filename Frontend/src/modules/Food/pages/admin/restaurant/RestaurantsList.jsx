@@ -1104,7 +1104,13 @@ export default function RestaurantsList() {
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-sm font-medium text-slate-600 mb-1">Total restaurants</p>
-                <p className="text-2xl font-bold text-slate-900">{totalRestaurants}</p>
+                <p className="text-2xl font-bold text-slate-900">
+                  {loading ? (
+                    <span className="inline-block w-12 h-6 rounded bg-slate-200 animate-pulse" />
+                  ) : (
+                    totalRestaurants
+                  )}
+                </p>
               </div>
               <div className="w-12 h-12 rounded-lg bg-blue-100 flex items-center justify-center">
                 <Building2 className="w-6 h-6 text-blue-600" />
@@ -1117,7 +1123,13 @@ export default function RestaurantsList() {
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-sm font-medium text-slate-600 mb-1">Active restaurants</p>
-                <p className="text-2xl font-bold text-slate-900">{activeRestaurants}</p>
+                <p className="text-2xl font-bold text-slate-900">
+                  {loading ? (
+                    <span className="inline-block w-12 h-6 rounded bg-slate-200 animate-pulse" />
+                  ) : (
+                    activeRestaurants
+                  )}
+                </p>
               </div>
               <div className="w-12 h-12 rounded-lg bg-green-100 flex items-center justify-center">
                 <Utensils className="w-6 h-6 text-green-600" />
@@ -1130,7 +1142,13 @@ export default function RestaurantsList() {
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-sm font-medium text-slate-600 mb-1">Inactive restaurants</p>
-                <p className="text-2xl font-bold text-slate-900">{inactiveRestaurants}</p>
+                <p className="text-2xl font-bold text-slate-900">
+                  {loading ? (
+                    <span className="inline-block w-12 h-6 rounded bg-slate-200 animate-pulse" />
+                  ) : (
+                    inactiveRestaurants
+                  )}
+                </p>
               </div>
               <div className="w-12 h-12 rounded-lg bg-slate-100 flex items-center justify-center">
                 <UtensilsCrossed className="w-6 h-6 text-slate-600" />
@@ -1143,7 +1161,13 @@ export default function RestaurantsList() {
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-sm font-medium text-slate-600 mb-1">Rejected restaurants</p>
-                <p className="text-2xl font-bold text-slate-900">{rejectedCount}</p>
+                <p className="text-2xl font-bold text-slate-900">
+                  {loading ? (
+                    <span className="inline-block w-12 h-6 rounded bg-slate-200 animate-pulse" />
+                  ) : (
+                    rejectedCount
+                  )}
+                </p>
               </div>
               <div className="w-12 h-12 rounded-lg bg-red-100 flex items-center justify-center">
                 <AlertTriangle className="w-6 h-6 text-red-600" />
@@ -1156,7 +1180,13 @@ export default function RestaurantsList() {
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-sm font-medium text-slate-600 mb-1">Banned restaurants</p>
-                <p className="text-2xl font-bold text-slate-900">{bannedCount}</p>
+                <p className="text-2xl font-bold text-slate-900">
+                  {loading ? (
+                    <span className="inline-block w-12 h-6 rounded bg-slate-200 animate-pulse" />
+                  ) : (
+                    bannedCount
+                  )}
+                </p>
               </div>
               <div className="w-12 h-12 rounded-lg bg-orange-100 flex items-center justify-center">
                 <ShieldX className="w-6 h-6 text-orange-600" />

@@ -632,14 +632,54 @@ export const useRestaurantNotifications = () => {
           }),
         );
       }
-      const status = String(data?.orderStatus || '').toLowerCase();
-      if (status === 'delivered') {
-        const orderId = data?.orderId ? `#${data.orderId}` : '';
-        toast.success(`Order ${orderId} delivered successfully!`, {
-          description: 'The order has been delivered to the customer.',
+      const status = String(data?.orderStatus || data?.status || '').toLowerCase();
+
+      // A Mongo ObjectId is a 24-char hex string — not a human order id, so don't show it.
+      const isMongoId = (val) => /^[0-9a-fA-F]{24}$/.test(String(val || '').trim());
+      const friendlyOrderId = (() => {
+        const candidate = data?.orderId || data?.order_id || '';
+        return candidate && !isMongoId(candidate) ? `#${candidate}` : '';
+      })();
+
+      // Order confirmed — stop popup & sound immediately
+      if (status === 'confirmed' || status === 'accepted') {
+        const orderId = data?.orderMongoId || data?._id || data?.orderId || data?.order_id;
+        if (orderId) {
+          const cleanId = String(orderId).trim();
+          processedOrderIds.add(cleanId);
+          globalMutedOrderIds.delete(cleanId);
+        }
+        stopGlobalAlertLoop();
+        updateGlobalState({ newOrder: null, activeOrder: null, mutedOrderIds: new Set(globalMutedOrderIds) });
+        // Toast only if admin accepted (not restaurant itself)
+        if (data?.acceptedBy === 'admin') {
+          toast.success(`Order ${friendlyOrderId} Accepted By Admin`, {
+            duration: 6000,
+            id: `admin-accepted-${data?.orderId || Date.now()}`
+          });
+        }
+        dispatchNotificationInboxRefresh();
+      }
+
+      if (status === 'cancelled_by_admin') {
+        toast.error(`Order ${friendlyOrderId} Rejected By Admin`, {
           duration: 6000,
-          id: `delivered-${data?.orderId || Date.now()}`
+          id: `admin-rejected-${data?.orderId || Date.now()}`
         });
+        dispatchNotificationInboxRefresh();
+      }
+
+      if (status === 'delivered') {
+        // Only announce a delivery for an order this restaurant actually tracked as
+        // a real order (a valid display id). Guards against stray/stale events that
+        // carry only a Mongo id firing a bogus "delivered" toast on new orders.
+        if (friendlyOrderId) {
+          toast.success(`Order ${friendlyOrderId} delivered successfully!`, {
+            description: 'The order has been delivered to the customer.',
+            duration: 6000,
+            id: `delivered-${data?.orderId || Date.now()}`
+          });
+        }
         dispatchNotificationInboxRefresh();
       }
     });
@@ -668,7 +708,8 @@ export const useRestaurantNotifications = () => {
         const confirmed = (rows || [])
           .filter((o) => {
             const status = String(o?.status || "").toLowerCase();
-            if (status !== "confirmed") return false;
+            // Only show alert for orders that are still pending/created (not yet accepted by admin)
+            if (status !== "created" && status !== "pending") return false;
             if (isProcessedOrder(o)) return false;
 
             if (o.scheduledAt) {

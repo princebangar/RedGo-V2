@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect } from "react"
+import React, { useState, useMemo, useEffect } from "react"
 import { useSearchParams } from "react-router-dom"
 import { Search, Download, ChevronDown, Eye, FileDown, FileSpreadsheet, FileText, X, Mail, Phone, MapPin, Package, IndianRupee, Calendar as CalendarIcon, User, CheckCircle, XCircle } from "lucide-react"
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from "@food/components/ui/dropdown-menu"
@@ -16,6 +16,8 @@ export default function Customers() {
   const [customers, setCustomers] = useState([])
   const [loading, setLoading] = useState(true)
   const [totalCustomers, setTotalCustomers] = useState(0)
+  const [currentPage, setCurrentPage] = useState(1)
+  const [pageSize, setPageSize] = useState(() => Number(localStorage.getItem('admin_customers_pageSize')) || 20)
   const [selectedCustomer, setSelectedCustomer] = useState(null)
   const [userDetails, setUserDetails] = useState(null)
   const [loadingDetails, setLoadingDetails] = useState(false)
@@ -85,6 +87,7 @@ export default function Customers() {
 
   const handleFilterChange = (field, value) => {
     setFilters(prev => ({ ...prev, [field]: value }))
+    setCurrentPage(1)
   }
 
   const formatDateTime = (value) => {
@@ -113,8 +116,8 @@ export default function Customers() {
       try {
         setLoading(true)
         const params = {
-          limit: 1000,
-          page: 1,
+          limit: pageSize,
+          page: currentPage,
           ...(searchQuery && { search: searchQuery }),
           ...(filters.status && { status: filters.status }),
           ...(filters.joiningDate && { joiningDate: filters.joiningDate }),
@@ -147,12 +150,13 @@ export default function Customers() {
       }
     }
 
-    const t = setTimeout(fetchCustomers, 250)
+    const delay = searchQuery ? 250 : 0
+    const t = setTimeout(fetchCustomers, delay)
     return () => {
       cancelled = true
       clearTimeout(t)
     }
-  }, [searchQuery, filters.status, filters.joiningDate, filters.sortBy, filters.chooseFirst])
+  }, [currentPage, pageSize, searchQuery, filters.status, filters.joiningDate, filters.sortBy, filters.chooseFirst])
 
   const [searchParams] = useSearchParams()
   const userIdFromUrl = searchParams.get("userId")
@@ -374,8 +378,12 @@ export default function Customers() {
           <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-4">
             <div className="flex items-center gap-2">
               <h2 className="text-xl font-bold text-slate-900">Customer list</h2>
-              <span className="px-3 py-1 rounded-full text-sm font-semibold bg-slate-100 text-slate-700">
-                {filteredCustomers.length}
+              <span className="px-3 py-1 rounded-full text-sm font-semibold bg-slate-100 text-slate-700 flex items-center justify-center min-w-[2.5rem] h-7">
+                {loading ? (
+                  <span className="w-5 h-3 rounded bg-slate-300/80 animate-pulse" />
+                ) : (
+                  totalCustomers
+                )}
               </span>
             </div>
 
@@ -385,7 +393,10 @@ export default function Customers() {
                   type="text"
                   placeholder="Ex: Search by name"
                   value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
+                  onChange={(e) => {
+                    setSearchQuery(e.target.value)
+                    setCurrentPage(1)
+                  }}
                   className="pl-10 pr-4 py-2.5 w-full text-sm rounded-lg border border-slate-300 bg-white focus:outline-none focus:ring-2 focus:ring-slate-400 focus:border-slate-400"
                 />
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
@@ -451,26 +462,24 @@ export default function Customers() {
                   filteredCustomers.map((customer, index) => (
                     <tr key={customer.id || customer.sl} className="hover:bg-slate-50 transition-colors">
                       <td className="px-6 py-4 whitespace-nowrap">
-                        <span className="text-sm font-medium text-slate-700">{index + 1}</span>
+                        <span className="text-sm font-medium text-slate-700">{(currentPage - 1) * pageSize + index + 1}</span>
                       </td>
                       <td className="px-6 py-4">
                         <div className="flex items-center gap-3">
                           <div 
-                            className="w-10 h-10 rounded-full bg-slate-200 text-slate-700 flex items-center justify-center shrink-0 overflow-hidden cursor-pointer hover:opacity-80 transition-all border border-slate-100"
+                            className="w-10 h-10 rounded-full flex items-center justify-center shrink-0 overflow-hidden cursor-pointer hover:opacity-80 transition-all border border-slate-200"
+                            style={{ background: 'linear-gradient(135deg, #E8EEF7 0%, #C5D3E5 100%)' }}
                             onClick={() => handleViewDetails(customer._id || customer.id || customer.sl)}
                           >
-                            {customer.profileImage ? (
-                              <img
-                                src={customer.profileImage}
-                                alt={customer.name}
-                                className="w-full h-full object-cover"
-                                onError={(e) => {
-                                  e.currentTarget.style.display = "none"
-                                }}
-                              />
-                            ) : (
-                              <span className="text-xs font-semibold">{getInitials(customer.name)}</span>
-                            )}
+                            <img
+                              src={customer.profileImage || "/profile_avatar.webp"}
+                              alt={customer.name}
+                              className="w-full h-full object-cover"
+                              style={{ mixBlendMode: 'multiply' }}
+                              onError={(e) => {
+                                e.currentTarget.src = "/profile_avatar.webp"
+                              }}
+                            />
                           </div>
                           <span 
                             className="text-sm font-medium text-slate-900 cursor-pointer hover:text-blue-600 transition-colors"
@@ -521,6 +530,97 @@ export default function Customers() {
               </tbody>
             </table>
           </div>
+
+          {/* Pagination Controls */}
+          {totalCustomers > 0 && (
+            <div className="flex flex-col sm:flex-row items-center justify-between gap-4 border-t border-slate-100 bg-white px-4 py-4 sm:px-6 mt-4">
+              <div className="flex items-center gap-3">
+                <span className="text-sm text-slate-500 font-medium">Rows per page:</span>
+                <select
+                  value={pageSize}
+                  onChange={(e) => {
+                    const size = Number(e.target.value)
+                    setPageSize(size)
+                    localStorage.setItem('admin_customers_pageSize', size)
+                    setCurrentPage(1)
+                  }}
+                  className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-sm font-semibold text-slate-700 focus:outline-none focus:ring-2 focus:ring-slate-400 focus:border-slate-400 cursor-pointer shadow-sm"
+                >
+                  <option value={10}>10</option>
+                  <option value={20}>20</option>
+                  <option value={50}>50</option>
+                  <option value={100}>100</option>
+                </select>
+              </div>
+
+              <div className="flex flex-1 justify-between sm:hidden w-full">
+                <button
+                  onClick={() => setCurrentPage((prev) => Math.max(prev - 1, 1))}
+                  disabled={currentPage === 1}
+                  className="relative inline-flex items-center rounded-md border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-50 transition-colors"
+                >
+                  Previous
+                </button>
+                <button
+                  onClick={() => setCurrentPage((prev) => Math.min(prev + 1, Math.ceil(totalCustomers / pageSize)))}
+                  disabled={currentPage >= Math.ceil(totalCustomers / pageSize)}
+                  className="relative ml-3 inline-flex items-center rounded-md border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-50 transition-colors"
+                >
+                  Next
+                </button>
+              </div>
+
+              <div className="hidden sm:flex sm:flex-1 sm:items-center sm:justify-between w-full">
+                <div className="pl-4">
+                  <p className="text-sm text-slate-600">
+                    Showing <span className="font-semibold text-slate-900">{Math.min(totalCustomers, (currentPage - 1) * pageSize + 1)}</span> to{" "}
+                    <span className="font-semibold text-slate-900">{Math.min(totalCustomers, currentPage * pageSize)}</span> of{" "}
+                    <span className="font-semibold text-slate-900">{totalCustomers}</span> customers
+                  </p>
+                </div>
+                <div>
+                  <nav className="isolate inline-flex -space-x-px rounded-md shadow-sm gap-1" aria-label="Pagination">
+                    <button
+                      onClick={() => setCurrentPage((prev) => Math.max(prev - 1, 1))}
+                      disabled={currentPage === 1}
+                      className="relative inline-flex items-center rounded-md px-2.5 py-1.5 text-slate-500 border border-slate-200 hover:bg-slate-50 disabled:opacity-50 transition-colors"
+                    >
+                      &lt;
+                    </button>
+                    {Array.from({ length: Math.ceil(totalCustomers / pageSize) }, (_, i) => i + 1)
+                      .filter(page => page === 1 || page === Math.ceil(totalCustomers / pageSize) || (page >= currentPage - 2 && page <= currentPage + 2))
+                      .map((page, index, arr) => {
+                        const showEllipsisBefore = index > 0 && page - arr[index - 1] > 1;
+                        return (
+                          <React.Fragment key={page}>
+                            {showEllipsisBefore && (
+                              <span className="px-3 py-1.5 text-slate-400 text-sm">...</span>
+                            )}
+                            <button
+                              onClick={() => setCurrentPage(page)}
+                              className={`relative inline-flex items-center px-3.5 py-1.5 text-sm font-semibold rounded-md transition-colors ${
+                                currentPage === page
+                                  ? "bg-slate-900 text-white"
+                                  : "text-slate-700 border border-slate-200 hover:bg-slate-50"
+                              }`}
+                            >
+                              {page}
+                            </button>
+                          </React.Fragment>
+                        );
+                      })}
+                    <button
+                      onClick={() => setCurrentPage((prev) => Math.min(prev + 1, Math.ceil(totalCustomers / pageSize)))}
+                      disabled={currentPage >= Math.ceil(totalCustomers / pageSize)}
+                      className="relative inline-flex items-center rounded-md px-2.5 py-1.5 text-slate-500 border border-slate-200 hover:bg-slate-50 disabled:opacity-50 transition-colors"
+                    >
+                      &gt;
+                    </button>
+                  </nav>
+                </div>
+              </div>
+            </div>
+          )}
         </div>
       </div>
 
@@ -540,12 +640,17 @@ export default function Customers() {
               {/* Profile Section */}
               <div className="bg-slate-50 rounded-xl p-4 sm:p-5">
                 <div className="flex flex-col sm:flex-row sm:items-start gap-4">
-                  <div className="w-16 h-16 rounded-full bg-slate-200 flex items-center justify-center flex-shrink-0">
-                    {userDetails.profileImage ? (
-                      <img src={userDetails.profileImage} alt={userDetails.name} className="w-full h-full rounded-full object-cover" />
-                    ) : (
-                      <User className="w-8 h-8 text-slate-400" />
-                    )}
+                  <div 
+                    className="w-16 h-16 rounded-full flex items-center justify-center flex-shrink-0 overflow-hidden border border-slate-200"
+                    style={{ background: 'linear-gradient(135deg, #E8EEF7 0%, #C5D3E5 100%)' }}
+                  >
+                    <img
+                      src={userDetails.profileImage || "/profile_avatar.webp"}
+                      alt={userDetails.name}
+                      className="w-full h-full rounded-full object-cover"
+                      style={{ mixBlendMode: 'multiply' }}
+                      onError={(e) => { e.currentTarget.src = "/profile_avatar.webp" }}
+                    />
                   </div>
                   <div className="flex-1 min-w-0">
                     <div className="flex flex-wrap items-center gap-2 mb-2">

@@ -397,8 +397,12 @@ export default function DeliveryBoyCommission() {
               <IndianRupee className="w-5 h-5 text-slate-600" />
               <div className="flex items-center gap-2">
                 <h1 className="text-2xl font-bold text-slate-900">Delivery Boy Commission</h1>
-                <span className="px-3 py-1 rounded-full text-sm font-semibold bg-slate-100 text-slate-700">
-                  {filteredCommissions.length}
+                <span className="px-3 py-1 rounded-full text-sm font-semibold bg-slate-100 text-slate-700 flex items-center justify-center min-w-[2.5rem] h-7">
+                  {loading ? (
+                    <span className="w-5 h-3 rounded bg-slate-300/80 animate-pulse" />
+                  ) : (
+                    filteredCommissions.length
+                  )}
                 </span>
               </div>
             </div>

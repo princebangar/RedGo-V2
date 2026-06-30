@@ -1,6 +1,6 @@
 import { Link, useNavigate } from "react-router-dom"
 import { useState, useMemo, useCallback, useEffect, useRef } from "react"
-import { Star, Clock, MapPin, ArrowDownUp, Timer, ArrowRight, ChevronDown, Bookmark, Share2, Plus, Minus, X, UtensilsCrossed, Wallet } from "lucide-react"
+import { Star, Clock, MapPin, ArrowDownUp, Timer, ArrowRight, ChevronDown, Bookmark, Share2, Plus, Minus, X, Check, UtensilsCrossed, Wallet } from "lucide-react"
 import { motion, AnimatePresence } from "framer-motion"
 import { toast } from "sonner"
 import AnimatedPage from "@food/components/user/AnimatedPage"
@@ -23,6 +23,7 @@ import { restaurantAPI, adminAPI } from "@food/api"
 import { isModuleAuthenticated } from "@food/utils/auth"
 import { flattenMenuItems, getMenuFromResponse } from "@food/utils/menuItems"
 import { calculateDistance, formatDistance } from "@food/utils/common"
+import { hasFoodVariants, getDefaultFoodVariant } from "@food/utils/foodVariants"
 const debugLog = (...args) => {}
 const debugWarn = (...args) => {}
 const debugError = (...args) => {}
@@ -724,6 +725,12 @@ export default function Under250() {
     setShowShareOptions(false)
   }, [])
 
+  const goToRestaurantForVariants = (item, restaurant) => {
+    const restaurantSlug = restaurant.slug || restaurant.restaurantId || ""
+    const itemId = item.id || item._id
+    navigate(`/user/restaurants/${restaurantSlug}${itemId ? `?dish=${encodeURIComponent(itemId)}` : ""}`)
+  }
+
   const handleItemClick = (item, restaurant) => {
     const availabilityStatus = getRestaurantAvailabilityStatus(restaurant)
     const isRestaurantOffline = !availabilityStatus.isOpen
@@ -1246,73 +1253,82 @@ export default function Under250() {
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
-              transition={{ duration: 0.2 }}
+              transition={{ duration: 0.1 }}
               onClick={() => setShowSortPopup(false)}
               className="fixed inset-0 bg-black/50 z-100"
             />
 
-            {/* Bottom Sheet */}
+            {/* Center Modal */}
             <motion.div
-              initial={{ y: "100%" }}
-              animate={{ y: 0 }}
-              exit={{ y: "100%" }}
-              transition={{
-                type: "spring",
-                stiffness: 300,
-                damping: 30
-              }}
-              className="fixed bottom-0 left-0 right-0 md:left-1/2 md:right-auto md:-translate-x-1/2 md:max-w-lg lg:max-w-2xl bg-white dark:bg-[#1a1a1a] rounded-t-3xl shadow-2xl z-[110] max-h-[60vh] md:max-h-[80vh] overflow-hidden flex flex-col"
+              initial={{ opacity: 0, scale: 0.92 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.92 }}
+              transition={{ duration: 0.1, ease: "easeOut" }}
+              className="fixed inset-0 flex items-center justify-center z-[110] px-4"
+              onClick={(e) => e.stopPropagation()}
             >
-              {/* Drag Handle */}
-              <div className="flex justify-center pt-3 pb-2">
-                <div className="w-12 h-1 bg-gray-300 rounded-full" />
-              </div>
+              <div className="w-full max-w-sm bg-white dark:bg-[#1a1a1a] rounded-2xl shadow-2xl overflow-hidden flex flex-col">
+                {/* Header */}
+                <div className="flex items-center justify-between px-5 py-4 border-b dark:border-gray-800">
+                  <h2 className="text-lg font-bold text-gray-900 dark:text-white">Sort By</h2>
+                  <div className="flex items-center gap-3">
+                    <button
+                      onClick={handleClearAll}
+                      className="text-[#DC2626] dark:text-[#FEE2E2] font-medium text-sm hover:opacity-85 transition-opacity"
+                    >
+                      Clear all
+                    </button>
+                    <button
+                      onClick={() => setShowSortPopup(false)}
+                      className="p-1.5 rounded-full bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-300 transition-colors"
+                    >
+                      <X className="w-5 h-5" />
+                    </button>
+                  </div>
+                </div>
 
-              {/* Header */}
-              <div className="flex items-center justify-between px-4 md:px-6 py-4 md:py-5 border-b dark:border-gray-800">
-                <h2 className="text-lg md:text-xl lg:text-2xl font-bold text-gray-900 dark:text-white">Sort By</h2>
-                <button
-                  onClick={handleClearAll}
-                  className="text-[#DC2626] dark:text-[#FEE2E2] font-medium text-sm md:text-base"
-                >
-                  Clear all
-                </button>
-              </div>
-
-              {/* Content */}
-              <div className="flex-1 overflow-y-auto px-4 md:px-6 py-4 md:py-6">
-                <div className="flex flex-col gap-3 md:gap-4">
+                {/* Content */}
+                <div className="px-5 py-4 flex flex-col gap-3">
                   {sortOptions.map((option) => (
                     <button
                       key={option.id || 'relevance'}
-                      onClick={() => setDraftSelectedSort(option.id)}
-                      className={`px-4 md:px-5 lg:px-6 py-3 md:py-4 rounded-xl border text-left transition-colors ${draftSelectedSort === option.id
+                      onClick={() => {
+                        setDraftSelectedSort(option.id);
+                        setSelectedSort(option.id);
+                        setShowSortPopup(false);
+                      }}
+                      className={`px-4 py-3.5 rounded-xl border text-left transition-colors flex items-center justify-between ${selectedSort === option.id
                         ? 'border-[#DC2626] bg-[#fdfafc] dark:bg-[#DC2626]/20'
                         : 'border-gray-200 dark:border-gray-800 hover:border-[#DC2626]'
                         }`}
                     >
-                      <span className={`text-sm md:text-base lg:text-lg font-medium ${draftSelectedSort === option.id ? 'text-[#DC2626] dark:text-[#FEE2E2]' : 'text-gray-700 dark:text-gray-300'}`}>
+                      <span className={`text-sm font-medium ${selectedSort === option.id ? 'text-[#DC2626] dark:text-[#FEE2E2]' : 'text-gray-700 dark:text-gray-300'}`}>
                         {option.label}
                       </span>
+                      {selectedSort === option.id && (
+                        <div className="w-5 h-5 rounded-full bg-[#DC2626] flex items-center justify-center flex-shrink-0">
+                          <Check className="w-3 h-3 text-white" />
+                        </div>
+                      )}
                     </button>
                   ))}
                 </div>
-              </div>
 
-              {/* Footer */}
-              <div className="flex items-center gap-4 md:gap-6 px-4 md:px-6 py-4 md:py-5 border-t dark:border-gray-800 bg-white dark:bg-[#1a1a1a]">
-                <button
-                  onClick={() => setShowSortPopup(false)}
-                  className="flex-1 py-3 md:py-4 text-center font-semibold text-gray-700 dark:text-gray-300 text-sm md:text-base"
-                >
-                  Close
-                </button>
-                <button
-                  onClick={handleApply}
-                  className="flex-1 py-3 md:py-4 font-semibold rounded-xl transition-colors text-sm md:text-base bg-[#DC2626] text-white hover:bg-[#991B1B]"
-                >
-                  Apply
-                </button>
+                {/* Footer */}
+                <div className="flex items-center gap-3 px-5 pb-5">
+                  <button
+                    onClick={() => setShowSortPopup(false)}
+                    className="flex-1 py-3 text-center font-bold text-white bg-gray-800 dark:bg-gray-700 hover:bg-gray-900 dark:hover:bg-gray-600 rounded-xl transition-colors text-sm"
+                  >
+                    Close
+                  </button>
+                  <button
+                    onClick={handleApply}
+                    className="flex-1 py-3 font-semibold rounded-xl transition-colors text-sm bg-[#DC2626] text-white hover:bg-[#991B1B]"
+                  >
+                    Apply
+                  </button>
+                </div>
               </div>
             </motion.div>
           </>
@@ -1534,23 +1550,44 @@ export default function Under250() {
                         }`}
                     onClick={(e) => {
                       if (!shouldShowGrayscale && !selectedItem.isRestaurantOffline) {
+                        if (hasFoodVariants(selectedItem)) {
+                          closeItemDetail()
+                          goToRestaurantForVariants(selectedItem, { slug: selectedItem.restaurantSlug })
+                          return
+                        }
                         updateItemQuantity(selectedItem, itemDetailQuantity, e)
                         closeItemDetail()
                       }
                     }}
                     disabled={shouldShowGrayscale || selectedItem.isRestaurantOffline}
                   >
-                    <span>Add item</span>
-                    <div className="flex items-center gap-1 md:gap-2">
-                      {selectedItem.originalPrice && selectedItem.originalPrice > selectedItem.price && (
-                        <span className="text-sm md:text-base lg:text-lg line-through text-red-200">
-                          {RUPEE_SYMBOL}{Math.round(selectedItem.originalPrice)}
-                        </span>
-                      )}
-                      <span className="text-base md:text-lg lg:text-xl font-bold">
-                        {RUPEE_SYMBOL}{Math.round(selectedItem.price)}
-                      </span>
-                    </div>
+                    {hasFoodVariants(selectedItem) ? (
+                      (() => {
+                        const defaultVariant = getDefaultFoodVariant(selectedItem)
+                        return (
+                          <>
+                            <span>Add {defaultVariant?.name || ""}</span>
+                            <span className="text-base md:text-lg lg:text-xl font-bold">
+                              {RUPEE_SYMBOL}{Math.round(defaultVariant?.price ?? selectedItem.price)}
+                            </span>
+                          </>
+                        )
+                      })()
+                    ) : (
+                      <>
+                        <span>Add item</span>
+                        <div className="flex items-center gap-1 md:gap-2">
+                          {selectedItem.originalPrice && selectedItem.originalPrice > selectedItem.price && (
+                            <span className="text-sm md:text-base lg:text-lg line-through text-red-200">
+                              {RUPEE_SYMBOL}{Math.round(selectedItem.originalPrice)}
+                            </span>
+                          )}
+                          <span className="text-base md:text-lg lg:text-xl font-bold">
+                            {RUPEE_SYMBOL}{Math.round(selectedItem.price)}
+                          </span>
+                        </div>
+                      </>
+                    )}
                   </Button>
                 </div>
               </div>

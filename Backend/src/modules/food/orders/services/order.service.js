@@ -305,15 +305,15 @@ export async function createOrder(userId, dto) {
     customerPhone: dto.customerPhone || deliveryAddress.phone || "",
     pricing: normalizedPricing,
     payment,
-    orderStatus: (isCash || isWallet) ? "confirmed" : "created",
+    orderStatus: "created",
     dispatch: { modeAtCreation: dispatchMode, status: "unassigned" },
     statusHistory: [
       {
         at: new Date(),
         byRole: "SYSTEM",
         from: "",
-        to: (isCash || isWallet) ? "confirmed" : "created",
-        note: (isCash || isWallet) ? "Order placed and confirmed" : "Order placed",
+        to: "created",
+        note: "Order placed",
       },
     ],
     note: dto.note || "",
@@ -463,15 +463,16 @@ export async function verifyPayment(userId, dto) {
   );
   if (!valid) throw new ValidationError("Payment verification failed");
 
-  order.orderStatus = "confirmed";
+  // Payment is verified, but the order stays "created" (Pending) so the
+  // restaurant/admin still has to accept it — same flow as COD orders.
   order.payment.status = "paid";
   order.payment.razorpay.paymentId = dto.razorpayPaymentId;
   order.payment.razorpay.signature = dto.razorpaySignature;
   pushStatusHistory(order, {
     byRole: "USER",
     byId: userId,
-    from: "created",
-    to: "confirmed",
+    from: order.orderStatus,
+    to: order.orderStatus,
     note: "Payment verified",
   });
   await order.save();
@@ -1259,11 +1260,11 @@ export async function updateOrderStatusRestaurant(
     if (io) {
       // Restaurant accept moves the order into preparing. Delivery dispatch must
       // not start from the initial user-placed "confirmed" state.
-      // TAKEAWAY GUARD: Skip auto-assign entirely for takeaway orders.
+      // Only delivery orders get a rider — takeaway & dining are excluded.
       if (
         String(orderStatus) === "preparing" &&
         String(from) !== "preparing" &&
-        order.orderType !== "takeaway"
+        order.orderType === "delivery"
       ) {
         console.log(
           `[DEBUG] Order ${order._id.toString()} status changed to '${orderStatus}'. Triggering central delivery dispatch.`,
@@ -1489,8 +1490,14 @@ export async function getPaymentStatus(orderId, deliveryPartnerId) {
 // ----- Admin -----
 export async function listOrdersAdmin(query) {
   const { page, limit, skip } = buildPaginationOptions(query);
-  // Admin sees ALL orders — no payment method/status restriction
-  const filter = {};
+  // Exclude active online orders that have incomplete payments (keeps COD, paid online, and cancelled orders visible)
+  const filter = {
+    $or: [
+      { "payment.method": { $in: ["cash", "wallet"] } },
+      { "payment.status": { $in: ["paid", "authorized", "captured", "settled", "refunded"] } },
+      { "orderStatus": { $in: ["cancelled_by_user", "cancelled_by_restaurant", "cancelled_by_admin"] } }
+    ]
+  };
 
   const rawStatus =
     typeof query.status === "string" ? query.status.trim().toLowerCase() : "";
@@ -1512,8 +1519,7 @@ export async function listOrdersAdmin(query) {
   if (rawStatus && rawStatus !== "all") {
     switch (rawStatus) {
       case "pending":
-        // All active/in-progress orders — matches dashboard "pending" count
-        filter.orderStatus = { $in: ["created", "confirmed", "preparing", "ready_for_pickup", "picked_up"] };
+        filter.orderStatus = "created";
         break;
       case "accepted":
         filter.orderStatus = "confirmed";
@@ -1816,5 +1822,147 @@ export async function completeTakeawayOrderRestaurant(orderId, restaurantId, otp
   });
 
   return normalizeOrderForClient(updatedOrder || order);
+}
+
+export async function acceptOrderAdmin(orderId, adminId) {
+  const identity = buildOrderIdentityFilter(orderId);
+  const order = await FoodOrder.findOne(identity);
+  if (!order) throw new NotFoundError("Order not found");
+
+  const from = order.orderStatus;
+
+  // Already cancelled — cannot accept
+  if (from && from.includes("cancelled")) {
+    throw new ValidationError(`Order already cancelled (${from}). Cannot accept.`);
+  }
+  // Already accepted/further — idempotent return
+  if (from === "confirmed" || from === "preparing" || (STATUS_PRIORITY[from] > STATUS_PRIORITY["preparing"])) {
+    return normalizeOrderForClient(order);
+  }
+
+  // Admin accept moves the order straight into "preparing" (same as a restaurant
+  // accept) so that delivery dispatch starts automatically and the order does not
+  // get stuck in "confirmed".
+  order.orderStatus = "preparing";
+  order.acceptedAt = new Date();
+
+  pushStatusHistory(order, {
+    byRole: "ADMIN",
+    byId: adminId,
+    from,
+    to: "preparing",
+    note: "Order accepted by admin"
+  });
+
+  await order.save();
+
+  // Real-time notification
+  try {
+    const io = getIO();
+    if (io) {
+      const restaurantPayload = {
+        orderMongoId: order._id?.toString?.(),
+        orderId: order.orderId || order._id.toString(),
+        _id: order._id.toString(),
+        orderStatus: order.orderStatus,
+        status: order.orderStatus,
+        acceptedBy: "admin",
+        title: "Order Accepted! 🧑‍🍳",
+        message: `Order accepted by admin`,
+      };
+      const userPayload = {
+        orderMongoId: order._id?.toString?.(),
+        orderId: order.orderId || order._id.toString(),
+        _id: order._id.toString(),
+        orderStatus: order.orderStatus,
+        status: order.orderStatus,
+        title: "Order Confirmed! 🍔",
+        message: `Your order has been confirmed and is being prepared.`,
+      };
+      io.to(rooms.restaurant(order.restaurantId)).emit("order_status_update", restaurantPayload);
+      io.to(rooms.user(order.userId)).emit("order_status_update", userPayload);
+    }
+  } catch (_) {}
+
+  // Auto-assign a delivery rider now that the order is in "preparing".
+  // Only delivery orders get dispatched — takeaway & dining have no rider.
+  try {
+    if (order.orderType === "delivery") {
+      await dispatchService.tryAutoAssign(order._id);
+    }
+  } catch (err) {
+    logger.warn(`Admin accept order auto-assign rider failed: ${err.message}`);
+  }
+
+  return normalizeOrderForClient(order);
+}
+
+export async function rejectOrderAdmin(orderId, reason, adminId) {
+  const identity = buildOrderIdentityFilter(orderId);
+  const order = await FoodOrder.findOne(identity);
+  if (!order) throw new NotFoundError("Order not found");
+
+  const from = order.orderStatus;
+
+  // Already cancelled — idempotent
+  if (from && from.includes("cancelled")) {
+    return normalizeOrderForClient(order);
+  }
+  // Already beyond pending (confirmed/preparing etc.) — cannot reject
+  if (from && STATUS_PRIORITY[from] > STATUS_PRIORITY["confirmed"]) {
+    throw new ValidationError(`Order is already in '${from}' state. Cannot reject now.`);
+  }
+
+  order.orderStatus = "cancelled_by_admin";
+
+  pushStatusHistory(order, {
+    byRole: "ADMIN",
+    byId: adminId,
+    from,
+    to: "cancelled_by_admin",
+    note: reason || "Order rejected by admin"
+  });
+
+  await order.save();
+
+  // Sync transaction status
+  try {
+    const isOnlinePaid = order.payment.method === "razorpay" && (order.payment.status === "paid" || order.payment.status === "refunded");
+    await foodTransactionService.updateTransactionStatus(order._id, 'cancelled_by_admin', {
+        status: isOnlinePaid ? 'refunded' : 'failed',
+        note: reason || `Order rejected by admin`,
+        recordedByRole: 'ADMIN',
+        recordedById: adminId
+    });
+  } catch (_) {}
+
+  // Real-time notification
+  try {
+    const io = getIO();
+    if (io) {
+      const restaurantPayload = {
+        orderMongoId: order._id?.toString?.(),
+        orderId: order.orderId || order._id.toString(),
+        _id: order._id.toString(),
+        orderStatus: order.orderStatus,
+        status: order.orderStatus,
+        title: "Order Cancelled ❌",
+        message: reason || "Order rejected by admin",
+      };
+      const userPayload = {
+        orderMongoId: order._id?.toString?.(),
+        orderId: order.orderId || order._id.toString(),
+        _id: order._id.toString(),
+        orderStatus: order.orderStatus,
+        status: order.orderStatus,
+        title: "Order Cancelled ❌",
+        message: reason || "Your order has been cancelled.",
+      };
+      io.to(rooms.restaurant(order.restaurantId)).emit("order_status_update", restaurantPayload);
+      io.to(rooms.user(order.userId)).emit("order_status_update", userPayload);
+    }
+  } catch (_) {}
+
+  return normalizeOrderForClient(order);
 }
 

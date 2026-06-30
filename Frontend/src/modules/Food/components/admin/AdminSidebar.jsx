@@ -1,5 +1,5 @@
-import { useState, useEffect, useMemo } from "react"
-import { Link, useLocation } from "react-router-dom"
+import { useState, useEffect, useMemo, useRef, useLayoutEffect } from "react"
+import { Link, useLocation, useNavigationType } from "react-router-dom"
 import {
   Search,
   FileText,
@@ -48,6 +48,7 @@ import {
   Lock,
   UserX,
   Headset,
+  FileX,
 } from "lucide-react"
 import { cn } from "@food/utils/utils"
 import { Input } from "@food/components/ui/input"
@@ -103,14 +104,57 @@ const iconMap = {
   PiggyBank,
   Lock,
   X,
+  FileX,
   UserX,
   Headset,
 }
 
+// Sidebar Skeleton Loader Component
+const SidebarSkeleton = ({ isCollapsed }) => {
+  return (
+    <div className="space-y-6 px-3 py-4 animate-pulse">
+      {[1, 2, 3].map((sectionIndex) => (
+        <div key={sectionIndex} className="space-y-3">
+          {/* Section Header Skeleton */}
+          {!isCollapsed && (
+            <div className="h-4 w-24 bg-neutral-800/60 rounded mb-2 ml-3" />
+          )}
+          {/* Section Items Skeletons */}
+          {[1, 2, 3, 4].map((itemIndex) => (
+            <div
+              key={itemIndex}
+              className={cn(
+                "flex items-center gap-3 px-3 py-2 rounded-lg bg-neutral-900/40",
+                isCollapsed ? "justify-center" : ""
+              )}
+            >
+              {/* Icon Placeholder */}
+              <div className="w-4 h-4 bg-neutral-800/80 rounded-full shrink-0" />
+              {/* Text Placeholder */}
+              {!isCollapsed && (
+                <div 
+                  className="h-3 bg-neutral-800/70 rounded flex-1" 
+                  style={{ width: `${Math.floor(Math.random() * 40) + 40}%` }} 
+                />
+              )}
+            </div>
+          ))}
+        </div>
+      ))}
+    </div>
+  )
+}
+
 export default function AdminSidebar({ isOpen = false, onClose, onCollapseChange }) {
   const location = useLocation()
+  const navigationType = useNavigationType()
   const [searchQuery, setSearchQuery] = useState("")
   const [badges, setBadges] = useState({})
+  const isInitialRender = useRef(true)
+  const sidebarNavRef = useRef(null)
+  const lastScrolledPathname = useRef(null)
+  const hasScrolledOnMount = useRef(false)
+  const [isLoading, setIsLoading] = useState(true)
 
   useEffect(() => {
     const fetchBadges = async () => {
@@ -121,6 +165,8 @@ export default function AdminSidebar({ isOpen = false, onClose, onCollapseChange
         }
       } catch (error) {
         debugError("Error fetching sidebar badges:", error)
+      } finally {
+        setIsLoading(false)
       }
     }
     fetchBadges()
@@ -128,8 +174,14 @@ export default function AdminSidebar({ isOpen = false, onClose, onCollapseChange
 
     window.addEventListener('refresh-sidebar-badges', fetchBadges)
 
+    // Fallback timer to turn off loading in case network hangs or is slow
+    const fallbackTimer = setTimeout(() => {
+      setIsLoading(false)
+    }, 700)
+
     return () => {
       clearInterval(timer)
+      clearTimeout(fallbackTimer)
       window.removeEventListener('refresh-sidebar-badges', fetchBadges)
     }
   }, [])
@@ -245,20 +297,42 @@ export default function AdminSidebar({ isOpen = false, onClose, onCollapseChange
 
   const [isCollapsed, setIsCollapsed] = useState(() => getInitialStates().isCollapsed)
   const [expandedSections, setExpandedSections] = useState(() => {
-    const initialState = getInitialStates().expandedSections
-    if (Object.keys(initialState || {}).length > 0) return initialState
-
-    // Generate defaults if empty
-    const state = {}
+    const initialState = getInitialStates().expandedSections || {}
+    
+    // Generate defaults if empty, but also pre-expand matching path synchronously
+    const state = { ...initialState }
     adminSidebarMenu.forEach((item) => {
       if (item.type === "section") {
         item.items.forEach((subItem) => {
           if (subItem.type === "expandable") {
-            state[subItem.label.toLowerCase().replace(/\s+/g, "")] = false
+            const key = subItem.label.toLowerCase().replace(/\s+/g, "")
+            if (typeof state[key] === "undefined") {
+              state[key] = false
+            }
           }
         })
       }
     })
+
+    // Pre-expand section for current path synchronously on reload
+    const currentPath = window.location.pathname.replace(/\/+$/, "") || "/"
+    adminSidebarMenu.forEach((item) => {
+      if (item.type === "section") {
+        item.items.forEach((menuItem) => {
+          if (menuItem.type === "expandable" && menuItem.subItems) {
+            const hasMatchingSubItem = menuItem.subItems.some((subItem) => {
+              const subPath = String(subItem.path || "").replace(/\/+$/, "")
+              return currentPath === subPath || currentPath.startsWith(`${subPath}/`)
+            })
+            if (hasMatchingSubItem) {
+              const key = menuItem.label.toLowerCase().replace(/\s+/g, "")
+              state[key] = true
+            }
+          }
+        })
+      }
+    })
+
     return state
   })
 
@@ -396,6 +470,113 @@ export default function AdminSidebar({ isOpen = false, onClose, onCollapseChange
   }
 
   useEffect(() => {
+    const currentPath = location.pathname.replace(/\/+$/, "") || "/"
+    let foundSectionKey = null
+    
+    adminSidebarMenu.forEach((item) => {
+      if (item.type === "section") {
+        item.items.forEach((menuItem) => {
+          if (menuItem.type === "expandable" && menuItem.subItems) {
+            const hasMatchingSubItem = menuItem.subItems.some((subItem) => {
+              const subPath = String(subItem.path || "").replace(/\/+$/, "")
+              return currentPath === subPath || currentPath.startsWith(`${subPath}/`)
+            })
+            if (hasMatchingSubItem) {
+              foundSectionKey = menuItem.label.toLowerCase().replace(/\s+/g, "")
+            }
+          }
+        })
+      }
+    })
+
+    if (foundSectionKey) {
+      setExpandedSections((prev) => {
+        if (prev[foundSectionKey]) return prev
+        return {
+          ...prev,
+          [foundSectionKey]: true
+        }
+      })
+    }
+  }, [location.pathname])
+
+  // Helper to scroll active item to the center of the sidebar scrollable container
+  const scrollToActiveItem = (behavior = "auto") => {
+    if (typeof document === "undefined" || !sidebarNavRef.current) return
+    const container = sidebarNavRef.current
+    const activeElement = container.querySelector('[data-active="true"]')
+    if (activeElement) {
+      const containerRect = container.getBoundingClientRect()
+      const activeRect = activeElement.getBoundingClientRect()
+      
+      const relativeTop = activeRect.top - containerRect.top + container.scrollTop
+      const targetScrollTop = relativeTop - (containerRect.height / 2) + (activeRect.height / 2)
+      
+      container.scrollTo({
+        top: targetScrollTop,
+        behavior: behavior
+      })
+      lastScrolledPathname.current = location.pathname
+    }
+  }
+
+  // Helper to scroll toggled sections safely without scrolling the parent window
+  const scrollToElement = (element, behavior = "smooth") => {
+    if (typeof document === "undefined" || !sidebarNavRef.current || !element) return
+    const container = sidebarNavRef.current
+    const containerRect = container.getBoundingClientRect()
+    const elementRect = element.getBoundingClientRect()
+    
+    const relativeTop = elementRect.top - containerRect.top
+    const relativeBottom = elementRect.bottom - containerRect.top
+    
+    if (relativeTop < 0) {
+      container.scrollTo({
+        top: container.scrollTop + relativeTop,
+        behavior: behavior
+      })
+    } else if (relativeBottom > containerRect.height) {
+      container.scrollTo({
+        top: container.scrollTop + (relativeBottom - containerRect.height),
+        behavior: behavior
+      })
+    }
+  }
+
+  // 1. Initial mount/refresh scroll: Position the active tab centered INSTANTLY on load/refresh
+  // Runs after skeleton loading is finished and menu items are rendered in the DOM.
+  useLayoutEffect(() => {
+    if (!isLoading && !hasScrolledOnMount.current) {
+      hasScrolledOnMount.current = true
+      lastScrolledPathname.current = location.pathname
+      
+      scrollToActiveItem("auto")
+      const timer = setTimeout(() => {
+        scrollToActiveItem("auto")
+      }, 100)
+      return () => clearTimeout(timer)
+    }
+  }, [isLoading])
+
+  // 2. Smoothly scroll active sidebar item into the center of the sidebar on user route navigation clicks.
+  useEffect(() => {
+    // Skip if it hasn't finished initial mount scroll
+    if (!hasScrolledOnMount.current) {
+      return
+    }
+
+    if (location.pathname === lastScrolledPathname.current) {
+      return
+    }
+
+    const timer = setTimeout(() => {
+      scrollToActiveItem("smooth")
+    }, 200)
+
+    return () => clearTimeout(timer)
+  }, [location.pathname])
+
+  useEffect(() => {
     try {
       const currentState = JSON.parse(localStorage.getItem('admin_sidebar_state') || '{}')
       localStorage.setItem('admin_sidebar_state', JSON.stringify({
@@ -436,24 +617,25 @@ export default function AdminSidebar({ isOpen = false, onClose, onCollapseChange
         <Link
           key={index}
           to={item.path}
-          onClick={() => {
+          data-active={isActive(item.path) ? "true" : undefined}
+          onClick={(e) => {
             if (window.innerWidth < 1024 && onClose) {
               onClose()
             }
           }}
           className={cn(
-            "flex items-center gap-2.5 px-3 py-2 rounded-lg transition-all duration-300 ease-out menu-item-animate text-left",
+            "flex items-center gap-2.5 px-3 py-2 rounded-lg menu-item-animate text-left outline-none focus:outline-none",
             isInSection ? "text-sm font-semibold" : "text-sm",
             isActive(item.path)
               ? "bg-white/10 text-white border border-white/15 font-semibold"
-              : "text-neutral-300 hover:bg-white/5 hover:text-white",
+              : "text-neutral-300 hover:bg-white/5 hover:text-white transition-colors duration-200",
             isCollapsed && "justify-center px-2"
           )}
-          style={{ animationDelay: `${index * 0.05}s` }}
+          style={{ animationDelay: `${index * 0.01}s` }}
           title={isCollapsed ? item.label : undefined}
         >
           <Icon className={cn(
-            "shrink-0 transition-all duration-300 text-left",
+            "shrink-0 text-left",
             isInSection ? "w-4 h-4" : "w-4 h-4",
             isActive(item.path) ? "text-white scale-110" : "text-neutral-300"
           )} />
@@ -483,11 +665,14 @@ export default function AdminSidebar({ isOpen = false, onClose, onCollapseChange
 
       if (isCollapsed) {
         return (
-          <div key={index} className="menu-item-animate" style={{ animationDelay: `${index * 0.05}s` }}>
+          <div key={index} className="menu-item-animate" style={{ animationDelay: `${index * 0.01}s` }}>
             <button
-              onClick={() => toggleSection(sectionKey)}
+              onClick={(e) => {
+                toggleSection(sectionKey)
+                scrollToElement(e.currentTarget, "smooth")
+              }}
               className={cn(
-                "w-full flex items-center justify-center px-2 py-2 rounded-lg transition-all duration-300 ease-out text-sm font-medium",
+                "w-full flex items-center justify-center px-2 py-2 rounded-lg transition-all duration-300 ease-out text-sm font-medium outline-none focus:outline-none",
                 "text-white hover:bg-white/5"
               )}
               title={item.label}
@@ -504,11 +689,14 @@ export default function AdminSidebar({ isOpen = false, onClose, onCollapseChange
       }
 
       return (
-        <div key={index} className="menu-item-animate" style={{ animationDelay: `${index * 0.05}s` }}>
+        <div key={index} className="menu-item-animate" style={{ animationDelay: `${index * 0.01}s` }}>
           <button
-            onClick={() => toggleSection(sectionKey)}
+            onClick={(e) => {
+              toggleSection(sectionKey)
+              scrollToElement(e.currentTarget, "smooth")
+            }}
             className={cn(
-              "w-full flex items-center justify-between gap-2 px-3 py-2 rounded-lg transition-all duration-300 ease-out text-sm font-medium text-left",
+              "w-full flex items-center justify-between gap-2 px-3 py-2 rounded-lg transition-all duration-300 ease-out text-sm font-medium text-left outline-none focus:outline-none",
               "text-white hover:bg-white/5"
             )}
           >
@@ -533,21 +721,22 @@ export default function AdminSidebar({ isOpen = false, onClose, onCollapseChange
                   <Link
                     key={subIndex}
                     to={subItem.path}
-                    onClick={() => {
+                    data-active={isActive(subItem.path, allSubPaths) ? "true" : undefined}
+                    onClick={(e) => {
                       if (window.innerWidth < 1024 && onClose) {
                         onClose()
                       }
                     }}
                     className={cn(
-                      "flex items-center gap-2 px-3 py-1.5 rounded-md transition-all duration-300 ease-out text-sm font-normal text-left",
+                      "flex items-center gap-2 px-3 py-1.5 rounded-md text-sm font-normal text-left outline-none focus:outline-none",
                       isActive(subItem.path, allSubPaths)
                         ? "bg-white/10 text-white font-semibold"
-                        : "text-neutral-300 hover:bg-white/5 hover:text-white"
+                        : "text-neutral-300 hover:bg-white/5 hover:text-white transition-colors duration-200"
                     )}
-                    style={{ animationDelay: `${subIndex * 0.03}s` }}
+                    style={{ animationDelay: `${subIndex * 0.01}s` }}
                   >
                     <span className={cn(
-                      "w-1.5 h-1.5 rounded-full shrink-0 transition-all duration-300",
+                      "w-1.5 h-1.5 rounded-full shrink-0",
                       isActive(subItem.path, allSubPaths) ? "bg-white scale-125" : "bg-neutral-400"
                     )}></span>
                     <span className="text-left flex-1 truncate">{subItem.label}</span>
@@ -754,8 +943,10 @@ export default function AdminSidebar({ isOpen = false, onClose, onCollapseChange
         </div>
 
         {/* Navigation Menu */}
-        <nav className="admin-sidebar-scroll flex-1 min-h-0 overflow-y-auto overscroll-y-contain px-3 py-3 space-y-2">
-          {filteredMenuData.length === 0 && searchQuery.trim() ? (
+        <nav ref={sidebarNavRef} className="admin-sidebar-scroll flex-1 min-h-0 overflow-y-auto overscroll-y-contain px-3 py-3 space-y-2">
+          {isLoading ? (
+            <SidebarSkeleton isCollapsed={isCollapsed} />
+          ) : filteredMenuData.length === 0 && searchQuery.trim() ? (
             <div className="px-3 py-12 text-left animate-[fadeIn_0.4s_ease-out]">
               <p className="text-neutral-300 text-sm font-medium text-left">No menu items found</p>
               <p className="text-neutral-500 text-sm mt-2 text-left">Try a different search term</p>
@@ -774,7 +965,7 @@ export default function AdminSidebar({ isOpen = false, onClose, onCollapseChange
                       index > 0 ? "mt-4 pt-4 border-t border-neutral-800/60" : "",
                       "animate-[fadeIn_0.4s_ease-out]"
                     )}
-                    style={{ animationDelay: `${index * 0.1}s` }}
+                    style={{ animationDelay: `${index * 0.02}s` }}
                   >
                       <div className="px-3 py-2 mb-2 flex items-center justify-between">
                         <span className="text-neutral-400 font-bold text-sm uppercase tracking-wider text-left">

@@ -163,8 +163,12 @@ export default function DeliveryBoyWallet() {
           <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-4">
             <div className="flex items-center gap-2">
               <h2 className="text-xl font-bold text-slate-900">Wallets</h2>
-              <span className="px-3 py-1 rounded-full text-sm font-semibold bg-slate-100 text-slate-700">
-                {total}
+              <span className="px-3 py-1 rounded-full text-sm font-semibold bg-slate-100 text-slate-700 flex items-center justify-center min-w-[2.5rem] h-7">
+                {loading ? (
+                  <span className="w-5 h-3 rounded bg-slate-300/80 animate-pulse" />
+                ) : (
+                  total
+                )}
               </span>
             </div>
             <div className="relative flex-1 sm:flex-initial min-w-[200px] max-w-xs">

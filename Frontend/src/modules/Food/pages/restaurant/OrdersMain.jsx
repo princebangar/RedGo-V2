@@ -1768,7 +1768,12 @@ function OrdersMainInner() {
     const onRestaurantOrderStatusUpdate = (event) => {
       const payload = event?.detail || {};
       const payloadStatus = payload?.orderStatus || payload?.status;
-      if (!isAnyCancelledStatus(payloadStatus)) return;
+      const normalizedPayloadStatus = normalizeOrderStatusValue(payloadStatus);
+      const isAdminAccepted =
+        (normalizedPayloadStatus === "confirmed" || normalizedPayloadStatus === "accepted") &&
+        payload?.acceptedBy === "admin";
+
+      if (!isAnyCancelledStatus(payloadStatus) && !isAdminAccepted) return;
 
       const activePopupOrder = popupOrder || newOrder;
       if (!activePopupOrder) return;
@@ -1800,7 +1805,7 @@ function OrdersMainInner() {
         return;
       }
 
-      const cancelledStatus = normalizeOrderStatusValue(payloadStatus);
+      const cancelledStatus = normalizedPayloadStatus;
       const toastKey =
         `${payload?.orderMongoId || payload?.orderId || payload?._id || payload?.id || activePopupOrder?.orderMongoId || activePopupOrder?.orderId || activePopupOrder?._id || activePopupOrder?.id || "unknown"}:${cancelledStatus}`;
       const now = Date.now();
@@ -1813,18 +1818,26 @@ function OrdersMainInner() {
       lastOrderToastRef.current = { key: toastKey, at: now };
 
       setShowRejectPopup(false);
-      setPopupOrder((prev) => {
-        const base = prev || activePopupOrder || {};
-        return {
-          ...base,
-          status: cancelledStatus,
-          orderStatus: cancelledStatus,
-        };
-      });
 
-      const cancelledId = payload?.orderMongoId || payload?.orderId || payload?._id || payload?.id;
-      if (cancelledId) {
-        setOrderQueue((prev) => prev.filter((o) => resolveOrderActionId(o) !== cancelledId));
+      const targetId = payload?.orderMongoId || payload?.orderId || payload?._id || payload?.id;
+
+      if (isAdminAccepted) {
+        // Admin already accepted this order — close the popup entirely instead of showing it as cancelled.
+        setShowNewOrderPopup(false);
+        setPopupOrder(null);
+      } else {
+        setPopupOrder((prev) => {
+          const base = prev || activePopupOrder || {};
+          return {
+            ...base,
+            status: cancelledStatus,
+            orderStatus: cancelledStatus,
+          };
+        });
+      }
+
+      if (targetId) {
+        setOrderQueue((prev) => prev.filter((o) => resolveOrderActionId(o) !== targetId));
       }
       clearNewOrder();
     };
@@ -4100,7 +4113,8 @@ const OrderCard = memo(function OrderCard({
                       </span>
                     )}
 
-                    {normalizedType !== "takeaway" &&
+                    {(isPreparing || isReady) &&
+                      normalizedType !== "takeaway" &&
                       normalizedType !== "dining" &&
                       dispatchStatus !== "accepted" &&
                       !deliveryPartnerId &&

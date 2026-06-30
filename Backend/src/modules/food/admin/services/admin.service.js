@@ -367,7 +367,7 @@ export async function getRestaurants(query) {
             .sort({ createdAt: -1 })
             .skip(skip)
             .limit(limit)
-            .select('restaurantName location area city profileImage coverImages menuImages status ownerName ownerPhone zoneId')
+            .select('restaurantName location area city profileImage coverImages status ownerName ownerPhone zoneId rating totalRatings')
             .populate('zoneId', 'name zoneName')
             .lean(),
         FoodRestaurant.countDocuments(filter)
@@ -478,6 +478,7 @@ export async function getDashboardStats(query = {}) {
         $or: [
             { "payment.method": { $in: ["cash", "wallet"] } },
             { "payment.status": { $in: ["paid", "authorized", "captured", "settled", "refunded"] } },
+            { "orderStatus": { $in: CANCELLED_ORDER_STATUSES } }
         ],
     };
     if (periodRange) {
@@ -1020,7 +1021,8 @@ export async function getTransactionReport(query = {}) {
             customerName: tx.userId?.name || 'Guest',
             totalItemAmount: subtotal,
             itemDiscount: pricing.discount || 0,
-            couponDiscount: 0, // Placeholder if you add coupon logic
+            couponDiscount: Number(pricing.discount || 0) || 0,
+            couponCode: pricing.couponCode || null,
             referralDiscount: 0, // Placeholder
             discountedAmount: Math.max(0, (pricing.subtotal || 0) - (pricing.discount || 0)),
             vatTax: tx.amounts?.taxAmount || pricing.tax || 0,
@@ -3675,12 +3677,14 @@ export async function getAllOffers(_query = {}) {
             status: isExpired ? 'inactive' : (o.status || 'active'),
             showInCart: o.showInCart !== false,
             endDate: o.endDate || null,
+            startDate: o.startDate || null,
             // Additional info for admin UI (backward compatible)
             minOrderValue: o.minOrderValue ?? 0,
             maxDiscount: o.maxDiscount ?? null,
             usageLimit: o.usageLimit ?? null,
             usedCount: o.usedCount ?? 0,
             restaurantScope: o.restaurantScope,
+            restaurantId: o.restaurantScope === 'selected' ? String(o.restaurantId?._id || o.restaurantId || '') : null,
             couponType: o.couponType || 'all'
         };
     });
@@ -3735,6 +3739,46 @@ export async function createAdminOffer(body) {
     }
 
     return doc.toObject();
+}
+
+export async function updateAdminOffer(id, body) {
+    if (!id || !mongoose.Types.ObjectId.isValid(id)) {
+        throw new ValidationError('Invalid offer ID');
+    }
+
+    const existing = await FoodOffer.findOne({
+        couponCode: body.couponCode,
+        _id: { $ne: new mongoose.Types.ObjectId(id) }
+    }).lean();
+    if (existing) {
+        throw new ValidationError('Coupon code already exists');
+    }
+
+    const updated = await FoodOffer.findByIdAndUpdate(
+        id,
+        {
+            $set: {
+                couponCode: body.couponCode,
+                couponType: body.couponType || 'all',
+                discountType: body.discountType,
+                discountValue: body.discountValue,
+                customerScope: body.customerScope,
+                restaurantScope: body.restaurantScope,
+                restaurantId: body.restaurantScope === 'selected' ? body.restaurantId : undefined,
+                minOrderValue: body.minOrderValue ?? 0,
+                maxDiscount: body.maxDiscount ?? null,
+                usageLimit: body.usageLimit ?? null,
+                perUserLimit: body.perUserLimit ?? null,
+                startDate: body.startDate || undefined,
+                endDate: body.endDate || undefined,
+                isFirstOrderOnly: body.isFirstOrderOnly ?? false,
+                status: body.endDate && new Date(body.endDate).getTime() <= Date.now() ? 'inactive' : 'active',
+            }
+        },
+        { new: true }
+    ).lean();
+
+    return updated;
 }
 
 export async function updateAdminOfferCartVisibility(offerId, itemId, showInCart) {
@@ -3970,6 +4014,28 @@ export async function getDeliveryPartners(query) {
         (orderCounts || []).map((c) => [String(c._id), c.count])
     );
 
+    // Average rating computed from actual order ratings (kept consistent with the
+    // delivery app's My Reviews; avoids the drifting partner.rating aggregate field).
+    const ratingAgg = await FoodOrder.aggregate([
+        {
+            $match: {
+                'dispatch.deliveryPartnerId': { $in: partnerIds },
+                'ratings.deliveryPartner.rating': { $exists: true, $ne: null }
+            }
+        },
+        {
+            $group: {
+                _id: '$dispatch.deliveryPartnerId',
+                avg: { $avg: '$ratings.deliveryPartner.rating' },
+                count: { $sum: 1 }
+            }
+        }
+    ]);
+
+    const ratingMap = new Map(
+        (ratingAgg || []).map((r) => [String(r._id), { avg: Math.round((r.avg || 0) * 10) / 10, count: r.count }])
+    );
+
     const deliveryPartners = list.map((doc, index) => ({
         _id: doc._id,
         sl: skip + index + 1,
@@ -3981,6 +4047,8 @@ export async function getDeliveryPartners(query) {
         vehicleType: doc.vehicleType || '',
         status: doc.status,
         totalOrders: countsMap.get(String(doc._id)) || 0,
+        rating: ratingMap.get(String(doc._id))?.avg || 0,
+        totalRatings: ratingMap.get(String(doc._id))?.count || 0,
         profilePhoto: doc.profilePhoto || null,
         profileImage: doc.profilePhoto ? { url: doc.profilePhoto } : null
     }));
@@ -4568,8 +4636,25 @@ export async function getDeliveryPartnerById(id) {
     const partner = await FoodDeliveryPartner.findById(id).lean();
     if (!partner) return null;
     const deliveryId = partner._id ? `DP-${partner._id.toString().slice(-8).toUpperCase()}` : null;
+
+    // Average rating from actual order ratings (consistent with My Reviews; the
+    // stored partner.rating aggregate can drift from real data).
+    const ratingAgg = await FoodOrder.aggregate([
+        {
+            $match: {
+                'dispatch.deliveryPartnerId': partner._id,
+                'ratings.deliveryPartner.rating': { $exists: true, $ne: null }
+            }
+        },
+        { $group: { _id: null, avg: { $avg: '$ratings.deliveryPartner.rating' }, count: { $sum: 1 } } }
+    ]);
+    const computedRating = ratingAgg?.[0]?.avg ? Math.round(ratingAgg[0].avg * 10) / 10 : 0;
+    const computedTotalRatings = ratingAgg?.[0]?.count || 0;
+
     return {
         ...partner,
+        rating: computedRating,
+        totalRatings: computedTotalRatings,
         email: partner.email || null,
         deliveryId,
         status: partner.status === 'rejected' ? 'blocked' : partner.status,
@@ -5038,8 +5123,83 @@ export async function getDeliveryWallets(query = {}) {
     const cashLimitSettings = await FoodDeliveryCashLimit.findOne({ isActive: true }).lean();
     const globalLimit = Number(cashLimitSettings?.deliveryCashLimit || 0);
 
-    const wallets = await Promise.all(partners.map(async (p) => {
-        const wallet = await FoodDeliveryWallet.findOne({ deliveryPartnerId: p._id }).lean();
+    const partnerIds = partners.map(p => new mongoose.Types.ObjectId(p._id)).filter(Boolean);
+
+    let earningsList = [];
+    let cashCollectedList = [];
+    let cashDepositsList = [];
+    let bonusList = [];
+    let withdrawalList = [];
+    let allWallets = [];
+
+    if (partnerIds.length > 0) {
+        [
+            earningsList,
+            cashCollectedList,
+            cashDepositsList,
+            bonusList,
+            withdrawalList,
+            allWallets
+        ] = await Promise.all([
+            FoodOrder.aggregate([
+                { $match: { 'dispatch.deliveryPartnerId': { $in: partnerIds }, orderStatus: 'delivered' } },
+                { $group: { _id: '$dispatch.deliveryPartnerId', totalEarned: { $sum: { $ifNull: ['$riderEarning', 0] } } } }
+            ]),
+            FoodOrder.aggregate([
+                {
+                    $match: {
+                        'dispatch.deliveryPartnerId': { $in: partnerIds },
+                        orderStatus: 'delivered',
+                        'payment.method': 'cash'
+                    }
+                },
+                { $group: { _id: '$dispatch.deliveryPartnerId', cashCollected: { $sum: { $ifNull: ['$pricing.total', 0] } } } }
+            ]),
+            FoodDeliveryCashDeposit.aggregate([
+                {
+                    $match: {
+                        deliveryPartnerId: { $in: partnerIds },
+                        status: 'Completed'
+                    }
+                },
+                { $group: { _id: '$deliveryPartnerId', depositedCash: { $sum: { $ifNull: ['$amount', 0] } } } }
+            ]),
+            DeliveryBonusTransaction.aggregate([
+                { $match: { deliveryPartnerId: { $in: partnerIds } } },
+                { $group: { _id: '$deliveryPartnerId', total: { $sum: '$amount' } } }
+            ]),
+            FoodDeliveryWithdrawal.aggregate([
+                { $match: { deliveryPartnerId: { $in: partnerIds } } },
+                {
+                    $group: {
+                        _id: '$deliveryPartnerId',
+                        totalWithdrawn: {
+                            $sum: {
+                                $cond: [{ $eq: ['$status', 'approved'] }, { $ifNull: ['$amount', 0] }, 0]
+                            }
+                        },
+                        pendingWithdrawals: {
+                            $sum: {
+                                $cond: [{ $eq: ['$status', 'pending'] }, { $ifNull: ['$amount', 0] }, 0]
+                            }
+                        }
+                    }
+                }
+            ]),
+            FoodDeliveryWallet.find({ deliveryPartnerId: { $in: partnerIds } }).lean()
+        ]);
+    }
+
+    const earningsMap = new Map(earningsList.map(e => [String(e._id), e.totalEarned]));
+    const cashCollectedMap = new Map(cashCollectedList.map(c => [String(c._id), c.cashCollected]));
+    const cashDepositsMap = new Map(cashDepositsList.map(d => [String(d._id), d.depositedCash]));
+    const bonusMap = new Map(bonusList.map(b => [String(b._id), b.total]));
+    const withdrawalMap = new Map(withdrawalList.map(w => [String(w._id), w]));
+    const walletMap = new Map(allWallets.map(w => [String(w.deliveryPartnerId), w]));
+
+    const wallets = partners.map((p) => {
+        const partnerIdStr = String(p._id);
+        const wallet = walletMap.get(partnerIdStr);
         const partnerIdstr = p._id ? `DP-${p._id.toString().slice(-8).toUpperCase()}` : '—';
         
         if (!p._id) {
@@ -5059,63 +5219,15 @@ export async function getDeliveryWallets(query = {}) {
             };
         }
 
-        const partnerId = new mongoose.Types.ObjectId(p._id);
-
-        const [earningsAgg, cashCollectedAgg, cashDepositsAgg, bonusAgg, withdrawalAgg] = await Promise.all([
-            FoodOrder.aggregate([
-                { $match: { 'dispatch.deliveryPartnerId': partnerId, orderStatus: 'delivered' } },
-                { $group: { _id: null, totalEarned: { $sum: { $ifNull: ['$riderEarning', 0] } } } }
-            ]),
-            FoodOrder.aggregate([
-                {
-                    $match: {
-                        'dispatch.deliveryPartnerId': partnerId,
-                        orderStatus: 'delivered',
-                        'payment.method': 'cash'
-                    }
-                },
-                { $group: { _id: null, cashCollected: { $sum: { $ifNull: ['$pricing.total', 0] } } } }
-            ]),
-            FoodDeliveryCashDeposit.aggregate([
-                {
-                    $match: {
-                        deliveryPartnerId: partnerId,
-                        status: 'Completed'
-                    }
-                },
-                { $group: { _id: null, depositedCash: { $sum: { $ifNull: ['$amount', 0] } } } }
-            ]),
-            DeliveryBonusTransaction.aggregate([
-                { $match: { deliveryPartnerId: partnerId } },
-                { $group: { _id: null, total: { $sum: '$amount' } } }
-            ]),
-            FoodDeliveryWithdrawal.aggregate([
-                { $match: { deliveryPartnerId: partnerId } },
-                {
-                    $group: {
-                        _id: null,
-                        totalWithdrawn: {
-                            $sum: {
-                                $cond: [{ $eq: ['$status', 'approved'] }, { $ifNull: ['$amount', 0] }, 0]
-                            }
-                        },
-                        pendingWithdrawals: {
-                            $sum: {
-                                $cond: [{ $eq: ['$status', 'pending'] }, { $ifNull: ['$amount', 0] }, 0]
-                            }
-                        }
-                    }
-                }
-            ])
-        ]);
-
-        const totalEarned = Number(earningsAgg?.[0]?.totalEarned) || 0;
-        const grossCashCollected = Number(cashCollectedAgg?.[0]?.cashCollected) || 0;
-        const totalDepositedCash = Number(cashDepositsAgg?.[0]?.depositedCash) || 0;
+        const totalEarned = Number(earningsMap.get(partnerIdStr)) || 0;
+        const grossCashCollected = Number(cashCollectedMap.get(partnerIdStr)) || 0;
+        const totalDepositedCash = Number(cashDepositsMap.get(partnerIdStr)) || 0;
         const cashInHand = Math.max(0, grossCashCollected - totalDepositedCash);
-        const totalBonus = Number(bonusAgg?.[0]?.total) || 0;
-        const totalWithdrawn = Number(withdrawalAgg?.[0]?.totalWithdrawn) || 0;
-        const pendingWithdrawals = Number(withdrawalAgg?.[0]?.pendingWithdrawals) || 0;
+        const totalBonus = Number(bonusMap.get(partnerIdStr)) || 0;
+        
+        const wInfo = withdrawalMap.get(partnerIdStr);
+        const totalWithdrawn = Number(wInfo?.totalWithdrawn) || 0;
+        const pendingWithdrawals = Number(wInfo?.pendingWithdrawals) || 0;
         const pocketBalance = Math.max(0, (totalEarned + totalBonus) - (totalWithdrawn + pendingWithdrawals));
 
         return {
@@ -5132,7 +5244,7 @@ export async function getDeliveryWallets(query = {}) {
             totalWithdrawn,
             cashInHand,
         };
-    }));
+    });
 
     return { 
         wallets, 
@@ -5215,8 +5327,14 @@ export async function getSidebarBadges() {
             FoodDeliveryPartner.countDocuments({ status: 'pending' }),
             FoodItem.countDocuments({ approvalStatus: 'pending' }),
             FoodAddon.countDocuments({ approvalStatus: 'pending' }),
-            FoodOrder.countDocuments({ orderStatus: 'pending' }),
-            FoodOrder.countDocuments({ paymentMethod: 'offline_payment', orderStatus: 'pending' }),
+            FoodOrder.countDocuments({
+                orderStatus: 'created',
+                $or: [
+                    { "payment.method": { $in: ["cash", "wallet"] } },
+                    { "payment.status": { $in: ["paid", "authorized", "captured", "settled", "refunded"] } }
+                ]
+            }),
+            FoodOrder.countDocuments({ paymentMethod: 'offline_payment', orderStatus: { $in: ['created', 'confirmed', 'preparing', 'ready_for_pickup', 'picked_up', 'pending'] } }),
             FoodRestaurantWithdrawal.countDocuments({ status: 'pending' }),
             FoodDeliveryWithdrawal.countDocuments({ status: 'pending' }),
             FoodSupportTicket.countDocuments({ status: 'open', userId: { $exists: true }, restaurantId: { $exists: false } }),

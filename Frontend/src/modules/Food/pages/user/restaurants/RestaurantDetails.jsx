@@ -3036,11 +3036,6 @@ function RestaurantDetailsContent() {
                                     >
                                       ADD <Plus size={14} className="stroke-[3px]" />
                                     </button>
-                                    {hasFoodVariants(item) && (
-                                      <span className="absolute -bottom-6 left-1/2 -translate-x-1/2 text-[9px] text-gray-400 dark:text-gray-500 font-bold tracking-wider uppercase whitespace-nowrap">
-                                        Customisable
-                                      </span>
-                                    )}
                                   </>
                                 )}
                               </div>
@@ -3276,11 +3271,6 @@ function RestaurantDetailsContent() {
                                                 }`}
                                             >
                                               ADD <Plus size={14} className="stroke-[3px]" />
-                                              {hasFoodVariants(item) && (
-                                                <span className="absolute -bottom-6 left-1/2 -translate-x-1/2 text-[9px] text-gray-400 dark:text-gray-500 font-bold tracking-wider uppercase whitespace-nowrap">
-                                                  Customisable
-                                                </span>
-                                              )}
                                             </motion.button>
                                           )}
                                         </div>

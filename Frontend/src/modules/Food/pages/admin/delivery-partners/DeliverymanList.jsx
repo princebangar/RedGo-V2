@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect } from "react"
+import React, { useState, useMemo, useEffect } from "react"
 import { Search, Download, ChevronDown, Eye, User, Star, ArrowUpDown, Settings, FileText, FileSpreadsheet, Loader2, Check, Columns, ExternalLink, Calendar, MapPin, CreditCard, Mail, Phone, Bike, FileCheck, Pencil, Save, Trash2, X } from "lucide-react"
 import { adminAPI } from "@food/api"
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from "@food/components/ui/dropdown-menu"
@@ -19,6 +19,9 @@ export default function DeliverymanList() {
   const [deliverymen, setDeliverymen] = useState([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
+  const [currentPage, setCurrentPage] = useState(1)
+  const [pageSize, setPageSize] = useState(() => Number(localStorage.getItem('admin_deliverymen_pageSize')) || 20)
+  const [totalDeliverymen, setTotalDeliverymen] = useState(0)
   const [isSettingsOpen, setIsSettingsOpen] = useState(false)
   const [isViewOpen, setIsViewOpen] = useState(false)
   const [viewDetails, setViewDetails] = useState(null)
@@ -26,9 +29,11 @@ export default function DeliverymanList() {
   const [editValues, setEditValues] = useState({ pocketBalance: "", cashInHand: "" })
   const [savingDeliveryId, setSavingDeliveryId] = useState(null)
   const [deletingDeliveryId, setDeletingDeliveryId] = useState(null)
+  const [sortConfig, setSortConfig] = useState({ key: null, direction: "asc" })
   const [visibleColumns, setVisibleColumns] = useState({
     si: true,
     name: true,
+    rating: true,
     contact: true,
     zone: true,
     totalOrders: true,
@@ -39,31 +44,21 @@ export default function DeliverymanList() {
     actions: true,
   })
 
-  const fetchAllWalletRows = async (search = "") => {
-    const walletLimit = 100
-    let currentPage = 1
-    let totalPages = 1
-    const allRows = []
-
-    do {
+  const fetchAllWalletRows = async (search = "", page = 1, limit = 20) => {
+    try {
       const response = await adminAPI.getDeliveryBoyWallets({
         search: search || undefined,
-        page: currentPage,
-        limit: walletLimit,
+        page,
+        limit,
       })
 
-      if (!response?.data?.success) {
-        break
+      if (response?.data?.success) {
+        return response.data.data?.wallets || []
       }
-
-      const data = response.data.data || {}
-      const rows = data.wallets || []
-      allRows.push(...rows)
-      totalPages = Number(data.pagination?.pages) || 1
-      currentPage += 1
-    } while (currentPage <= totalPages)
-
-    return allRows
+    } catch (err) {
+      debugError("Error fetching wallet rows:", err)
+    }
+    return []
   }
 
   // Fetch delivery partners from API
@@ -73,8 +68,8 @@ export default function DeliverymanList() {
       setError(null)
       
       const params = {
-        page: 1,
-        limit: 1000, // Get all for now
+        page: currentPage,
+        limit: pageSize,
       }
 
       // Add search to params if provided
@@ -84,11 +79,14 @@ export default function DeliverymanList() {
 
       const [partnersResponse, walletRowsResult] = await Promise.allSettled([
         adminAPI.getDeliveryPartners(params),
-        fetchAllWalletRows(searchQuery.trim()),
+        fetchAllWalletRows(searchQuery.trim(), currentPage, pageSize),
       ])
 
       if (partnersResponse.status === "fulfilled" && partnersResponse.value?.data?.success) {
         const partners = partnersResponse.value.data.data.deliveryPartners || []
+        const pagination = partnersResponse.value.data.data.pagination || {}
+        setTotalDeliverymen(pagination.total || partners.length)
+        
         const walletRows = walletRowsResult.status === "fulfilled" ? walletRowsResult.value || [] : []
 
         const walletMap = new Map(
@@ -140,30 +138,16 @@ export default function DeliverymanList() {
     }
   }
 
-  // Fetch on mount and setup polling for real-time updates
-  useEffect(() => {
-    fetchDeliverymen()
-    
-    // Polling interval: every 8 seconds refresh data (real-time request)
-    const interval = setInterval(() => {
-      // Pass a flag or just call fetchDeliverymen
-      // To avoid showing loading spinner on every poll, we could add a quietFetch
-      fetchDeliverymenQuietly()
-    }, 8000)
-
-    return () => clearInterval(interval)
-  }, [])
-
   const fetchDeliverymenQuietly = async () => {
     try {
-      const params = { page: 1, limit: 1000 }
+      const params = { page: currentPage, limit: pageSize }
       if (searchQuery.trim()) {
         params.search = searchQuery.trim()
       }
 
       const [partnersResponse, walletRowsResult] = await Promise.allSettled([
         adminAPI.getDeliveryPartners(params),
-        fetchAllWalletRows(searchQuery.trim()),
+        fetchAllWalletRows(searchQuery.trim(), currentPage, pageSize),
       ])
 
       if (partnersResponse.status === "fulfilled" && partnersResponse.value?.data?.success) {
@@ -193,20 +177,83 @@ export default function DeliverymanList() {
     }
   }
 
-  // Debounced search effect
+  // Fetch data on page or search change, and setup polling for updates
   useEffect(() => {
-    const timer = setTimeout(() => {
+    const delay = searchQuery ? 250 : 0
+    const t = setTimeout(() => {
       fetchDeliverymen()
-    }, 500) // Wait 500ms after user stops typing
+    }, delay)
 
-    return () => clearTimeout(timer)
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [searchQuery])
+    const interval = setInterval(() => {
+      fetchDeliverymenQuietly()
+    }, 8000)
+
+    return () => {
+      clearTimeout(t)
+      clearInterval(interval)
+    }
+  }, [currentPage, pageSize, searchQuery])
 
   const filteredDeliverymen = useMemo(() => {
-    // Backend already handles search, but we can do client-side filtering if needed
-    return deliverymen
-  }, [deliverymen])
+    // Backend already handles search; apply client-side sorting on top.
+    const result = [...deliverymen]
+
+    if (sortConfig.key) {
+      const dir = sortConfig.direction === "asc" ? 1 : -1
+      result.sort((a, b) => {
+        let aValue
+        let bValue
+        switch (sortConfig.key) {
+          case "name":
+            aValue = String(a.name || "").toLowerCase()
+            bValue = String(b.name || "").toLowerCase()
+            break
+          case "rating":
+            aValue = Number(a.rating || 0)
+            bValue = Number(b.rating || 0)
+            break
+          case "contact":
+            aValue = String(a.email || "").toLowerCase()
+            bValue = String(b.email || "").toLowerCase()
+            break
+          case "zone":
+            aValue = String(a.zone || "").toLowerCase()
+            bValue = String(b.zone || "").toLowerCase()
+            break
+          case "totalOrders":
+            aValue = Number(a.totalOrders || 0)
+            bValue = Number(b.totalOrders || 0)
+            break
+          case "pocketBalance":
+            aValue = Number(a.pocketBalance || 0)
+            bValue = Number(b.pocketBalance || 0)
+            break
+          case "cashInHand":
+            aValue = Number(a.cashInHand || 0)
+            bValue = Number(b.cashInHand || 0)
+            break
+          case "remainingCashLimit":
+            aValue = Number(a.remainingCashLimit || 0)
+            bValue = Number(b.remainingCashLimit || 0)
+            break
+          default:
+            return 0
+        }
+        if (aValue < bValue) return -1 * dir
+        if (aValue > bValue) return 1 * dir
+        return 0
+      })
+    }
+
+    return result
+  }, [deliverymen, sortConfig])
+
+  const handleSort = (key) => {
+    setSortConfig((prev) => ({
+      key,
+      direction: prev.key === key && prev.direction === "asc" ? "desc" : "asc",
+    }))
+  }
 
   const handleView = async (deliveryman) => {
     try {
@@ -261,6 +308,7 @@ availableCashLimit: deliveryman.availableCashLimit || 0,
     setVisibleColumns({
       si: true,
       name: true,
+      rating: true,
       contact: true,
       zone: true,
       totalOrders: true,
@@ -275,6 +323,7 @@ availableCashLimit: deliveryman.availableCashLimit || 0,
   const columnsConfig = {
     si: "Serial Number",
     name: "Name",
+    rating: "Rating",
     contact: "Contact",
     zone: "Zone",
     totalOrders: "Total Orders",
@@ -442,7 +491,10 @@ availableCashLimit: deliveryman.availableCashLimit || 0,
                   type="text"
                   placeholder="Search by name or restaur..."
                   value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
+                  onChange={(e) => {
+                    setSearchQuery(e.target.value)
+                    setCurrentPage(1)
+                  }}
                   className="pl-10 pr-4 py-2.5 w-full text-sm rounded-lg border border-slate-300 bg-white focus:outline-none focus:ring-2 focus:ring-slate-400 focus:border-slate-400"
                 />
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
@@ -476,8 +528,12 @@ availableCashLimit: deliveryman.availableCashLimit || 0,
           <div className="mb-4">
             <div className="flex items-center gap-2">
               <span className="text-sm font-semibold text-slate-700">Deliveryman</span>
-              <span className="px-3 py-1 rounded-full text-sm font-semibold bg-slate-100 text-slate-700">
-                {filteredDeliverymen.length}
+              <span className="px-3 py-1 rounded-full text-sm font-semibold bg-slate-100 text-slate-700 flex items-center justify-center min-w-[2.5rem] h-7">
+                {loading ? (
+                  <span className="w-5 h-3 rounded bg-slate-300/80 animate-pulse" />
+                ) : (
+                  totalDeliverymen
+                )}
               </span>
             </div>
           </div>
@@ -507,74 +563,104 @@ availableCashLimit: deliveryman.availableCashLimit || 0,
                 <thead className="bg-slate-50 border-b border-slate-200">
                   <tr>
                     {visibleColumns.si && (
-                      <th className="px-6 py-4 text-left text-[10px] font-bold text-slate-700 uppercase tracking-wider">
+                      <th className="px-6 py-4 text-left text-[10px] font-bold text-slate-700 uppercase tracking-wider whitespace-nowrap">
                         <div className="flex items-center gap-2">
                           <span>SI</span>
-                          <ArrowUpDown className="w-3 h-3 text-slate-400 cursor-pointer hover:text-slate-600" />
                         </div>
                       </th>
                     )}
                     {visibleColumns.name && (
-                      <th className="px-6 py-4 text-left text-[10px] font-bold text-slate-700 uppercase tracking-wider">
+                      <th
+                        className="px-6 py-4 text-left text-[10px] font-bold text-slate-700 uppercase tracking-wider whitespace-nowrap cursor-pointer hover:bg-slate-100 transition-colors"
+                        onClick={() => handleSort('name')}
+                      >
                         <div className="flex items-center gap-2">
                           <span>Name</span>
-                          <ArrowUpDown className="w-3 h-3 text-slate-400 cursor-pointer hover:text-slate-600" />
+                          <ArrowUpDown className={`w-3 h-3 ${sortConfig.key === 'name' ? 'text-blue-600' : 'text-slate-400'}`} />
+                        </div>
+                      </th>
+                    )}
+                    {visibleColumns.rating && (
+                      <th
+                        className="px-6 py-4 text-left text-[10px] font-bold text-slate-700 uppercase tracking-wider whitespace-nowrap cursor-pointer hover:bg-slate-100 transition-colors"
+                        onClick={() => handleSort('rating')}
+                      >
+                        <div className="flex items-center gap-2">
+                          <span>Rating</span>
+                          <ArrowUpDown className={`w-3 h-3 ${sortConfig.key === 'rating' ? 'text-blue-600' : 'text-slate-400'}`} />
                         </div>
                       </th>
                     )}
                     {visibleColumns.contact && (
-                      <th className="px-6 py-4 text-left text-[10px] font-bold text-slate-700 uppercase tracking-wider">
+                      <th
+                        className="px-6 py-4 text-left text-[10px] font-bold text-slate-700 uppercase tracking-wider whitespace-nowrap cursor-pointer hover:bg-slate-100 transition-colors"
+                        onClick={() => handleSort('contact')}
+                      >
                         <div className="flex items-center gap-2">
                           <span>Contact</span>
-                          <ArrowUpDown className="w-3 h-3 text-slate-400 cursor-pointer hover:text-slate-600" />
+                          <ArrowUpDown className={`w-3 h-3 ${sortConfig.key === 'contact' ? 'text-blue-600' : 'text-slate-400'}`} />
                         </div>
                       </th>
                     )}
                     {visibleColumns.zone && (
-                      <th className="px-6 py-4 text-left text-[10px] font-bold text-slate-700 uppercase tracking-wider">
+                      <th
+                        className="px-6 py-4 text-left text-[10px] font-bold text-slate-700 uppercase tracking-wider whitespace-nowrap cursor-pointer hover:bg-slate-100 transition-colors"
+                        onClick={() => handleSort('zone')}
+                      >
                         <div className="flex items-center gap-2">
                           <span>Zone</span>
-                          <ArrowUpDown className="w-3 h-3 text-slate-400 cursor-pointer hover:text-slate-600" />
+                          <ArrowUpDown className={`w-3 h-3 ${sortConfig.key === 'zone' ? 'text-blue-600' : 'text-slate-400'}`} />
                         </div>
                       </th>
                     )}
                     {visibleColumns.totalOrders && (
-                      <th className="px-6 py-4 text-left text-[10px] font-bold text-slate-700 uppercase tracking-wider">
+                      <th
+                        className="px-6 py-4 text-left text-[10px] font-bold text-slate-700 uppercase tracking-wider whitespace-nowrap cursor-pointer hover:bg-slate-100 transition-colors"
+                        onClick={() => handleSort('totalOrders')}
+                      >
                         <div className="flex items-center gap-2">
                           <span>Total Orders</span>
-                          <ArrowUpDown className="w-3 h-3 text-slate-400 cursor-pointer hover:text-slate-600" />
+                          <ArrowUpDown className={`w-3 h-3 ${sortConfig.key === 'totalOrders' ? 'text-blue-600' : 'text-slate-400'}`} />
                         </div>
                       </th>
                     )}
                     {visibleColumns.pocketBalance && (
-                      <th className="px-6 py-4 text-left text-[10px] font-bold text-slate-700 uppercase tracking-wider">
+                      <th
+                        className="px-6 py-4 text-left text-[10px] font-bold text-slate-700 uppercase tracking-wider whitespace-nowrap cursor-pointer hover:bg-slate-100 transition-colors"
+                        onClick={() => handleSort('pocketBalance')}
+                      >
                         <div className="flex items-center gap-2">
                           <span>Pocket Balance</span>
-                          <ArrowUpDown className="w-3 h-3 text-slate-400 cursor-pointer hover:text-slate-600" />
+                          <ArrowUpDown className={`w-3 h-3 ${sortConfig.key === 'pocketBalance' ? 'text-blue-600' : 'text-slate-400'}`} />
                         </div>
                       </th>
                     )}
                     {visibleColumns.cashInHand && (
-                      <th className="px-6 py-4 text-left text-[10px] font-bold text-slate-700 uppercase tracking-wider">
+                      <th
+                        className="px-6 py-4 text-left text-[10px] font-bold text-slate-700 uppercase tracking-wider whitespace-nowrap cursor-pointer hover:bg-slate-100 transition-colors"
+                        onClick={() => handleSort('cashInHand')}
+                      >
                         <div className="flex items-center gap-2">
                           <span>Cash In Hand</span>
-                          <ArrowUpDown className="w-3 h-3 text-slate-400 cursor-pointer hover:text-slate-600" />
+                          <ArrowUpDown className={`w-3 h-3 ${sortConfig.key === 'cashInHand' ? 'text-blue-600' : 'text-slate-400'}`} />
                         </div>
                       </th>
                     )}
                     {visibleColumns.remainingCashLimit && (
-                      <th className="px-6 py-4 text-left text-[10px] font-bold text-slate-700 uppercase tracking-wider">
+                      <th
+                        className="px-6 py-4 text-left text-[10px] font-bold text-slate-700 uppercase tracking-wider whitespace-nowrap cursor-pointer hover:bg-slate-100 transition-colors"
+                        onClick={() => handleSort('remainingCashLimit')}
+                      >
                         <div className="flex items-center gap-2">
                           <span>Remaining Cash Limit</span>
-                          <ArrowUpDown className="w-3 h-3 text-slate-400 cursor-pointer hover:text-slate-600" />
+                          <ArrowUpDown className={`w-3 h-3 ${sortConfig.key === 'remainingCashLimit' ? 'text-blue-600' : 'text-slate-400'}`} />
                         </div>
                       </th>
                     )}
                     {visibleColumns.availabilityStatus && (
-                      <th className="px-6 py-4 text-left text-[10px] font-bold text-slate-700 uppercase tracking-wider">
+                      <th className="px-6 py-4 text-left text-[10px] font-bold text-slate-700 uppercase tracking-wider whitespace-nowrap">
                         <div className="flex items-center gap-2">
                           <span>Availability Status</span>
-                          <ArrowUpDown className="w-3 h-3 text-slate-400 cursor-pointer hover:text-slate-600" />
                         </div>
                       </th>
                     )}
@@ -591,46 +677,54 @@ availableCashLimit: deliveryman.availableCashLimit || 0,
                       </td>
                     </tr>
                   ) : (
-                    filteredDeliverymen.map((dm) => (
+                    filteredDeliverymen.map((dm, index) => (
                       <tr key={dm._id} className="hover:bg-slate-50 transition-colors">
                         {visibleColumns.si && (
                           <td className="px-6 py-4 whitespace-nowrap">
-                            <span className="text-sm font-medium text-slate-700">{dm.sl}</span>
+                            <span className="text-sm font-medium text-slate-700">{(currentPage - 1) * pageSize + index + 1}</span>
                           </td>
                         )}
                         {visibleColumns.name && (
-                          <td className="px-6 py-4">
+                          <td className="px-6 py-4 whitespace-nowrap align-middle">
                             <div className="flex items-center gap-3">
                               <div 
-                                className="w-10 h-10 rounded-full bg-slate-200 flex items-center justify-center shrink-0 overflow-hidden cursor-pointer hover:opacity-80 transition-all border border-slate-100"
+                                className="w-10 h-10 rounded-full flex items-center justify-center shrink-0 overflow-hidden cursor-pointer hover:opacity-80 transition-all border border-slate-200"
+                                style={{ background: 'linear-gradient(135deg, #E8EEF7 0%, #C5D3E5 100%)' }}
                                 onClick={() => handleView(dm)}
                               >
-                                {(dm.profileImage?.url ?? dm.profilePhoto) ? (
-                                  <img
-                                    src={dm.profileImage?.url ?? dm.profilePhoto}
-                                    alt={dm.name}
-                                    className="w-full h-full object-cover"
-                                  />
-                                ) : (
-                                  <span className="text-sm font-medium text-slate-500">
-                                    {dm.name?.trim() ? dm.name.slice(0, 2).toUpperCase() : "?"}
-                                  </span>
-                                )}
+                                <img
+                                  src={dm.profileImage?.url ?? dm.profilePhoto ?? "/profile_avatar.webp"}
+                                  alt={dm.name}
+                                  className="w-full h-full object-cover"
+                                  style={{ mixBlendMode: 'multiply' }}
+                                  onError={(e) => { e.currentTarget.src = "/profile_avatar.webp" }}
+                                />
                               </div>
-                              <div className="flex items-center gap-2">
-                                <span 
-                                  className="text-sm font-medium text-slate-900 cursor-pointer hover:text-blue-600 transition-colors"
-                                  onClick={() => handleView(dm)}
-                                >
-                                  {dm.name}
-                                </span>
-                                {dm.rating > 0 && (
-                                  <div className="flex items-center gap-1">
-                                    <Star className="w-3 h-3 fill-yellow-400 text-yellow-400" />
-                                    <span className="text-xs text-slate-600">{dm.rating.toFixed(1)}</span>
-                                  </div>
-                                )}
-                              </div>
+                              <span
+                                className="text-sm font-medium text-slate-900 cursor-pointer hover:text-blue-600 transition-colors"
+                                onClick={() => handleView(dm)}
+                              >
+                                {dm.name}
+                              </span>
+                            </div>
+                          </td>
+                        )}
+                        {visibleColumns.rating && (
+                          <td className="px-6 py-4 whitespace-nowrap align-middle">
+                            <div
+                              className="inline-flex items-center justify-center gap-1.5 min-w-[60px] px-2.5 py-1 rounded-lg border"
+                              style={dm.rating > 0
+                                ? { backgroundColor: '#fffbeb', borderColor: '#fde68a' }
+                                : { backgroundColor: 'transparent', borderColor: 'transparent' }}
+                            >
+                              {dm.rating > 0 ? (
+                                <>
+                                  <span className="text-sm font-bold text-amber-700 leading-none">{Number(dm.rating).toFixed(1)}</span>
+                                  <Star className="w-3.5 h-3.5 fill-amber-500 text-amber-500" />
+                                </>
+                              ) : (
+                                <span className="text-sm text-slate-400 leading-none">N/A</span>
+                              )}
                             </div>
                           </td>
                         )}
@@ -758,6 +852,97 @@ availableCashLimit: deliveryman.availableCashLimit || 0,
               </table>
             )}
           </div>
+
+          {/* Pagination Controls */}
+          {totalDeliverymen > 0 && (
+            <div className="flex flex-col sm:flex-row items-center justify-between gap-4 border-t border-slate-100 bg-white px-4 py-4 sm:px-6 mt-4">
+              <div className="flex items-center gap-3">
+                <span className="text-sm text-slate-500 font-medium">Rows per page:</span>
+                <select
+                  value={pageSize}
+                  onChange={(e) => {
+                    const size = Number(e.target.value)
+                    setPageSize(size)
+                    localStorage.setItem('admin_deliverymen_pageSize', size)
+                    setCurrentPage(1)
+                  }}
+                  className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-sm font-semibold text-slate-700 focus:outline-none focus:ring-2 focus:ring-slate-400 focus:border-slate-400 cursor-pointer shadow-sm"
+                >
+                  <option value={10}>10</option>
+                  <option value={20}>20</option>
+                  <option value={50}>50</option>
+                  <option value={100}>100</option>
+                </select>
+              </div>
+
+              <div className="flex flex-1 justify-between sm:hidden w-full">
+                <button
+                  onClick={() => setCurrentPage((prev) => Math.max(prev - 1, 1))}
+                  disabled={currentPage === 1}
+                  className="relative inline-flex items-center rounded-md border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-50 transition-colors"
+                >
+                  Previous
+                </button>
+                <button
+                  onClick={() => setCurrentPage((prev) => Math.min(prev + 1, Math.ceil(totalDeliverymen / pageSize)))}
+                  disabled={currentPage >= Math.ceil(totalDeliverymen / pageSize)}
+                  className="relative ml-3 inline-flex items-center rounded-md border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-50 transition-colors"
+                >
+                  Next
+                </button>
+              </div>
+
+              <div className="hidden sm:flex sm:flex-1 sm:items-center sm:justify-between w-full">
+                <div className="pl-4">
+                  <p className="text-sm text-slate-600">
+                    Showing <span className="font-semibold text-slate-900">{Math.min(totalDeliverymen, (currentPage - 1) * pageSize + 1)}</span> to{" "}
+                    <span className="font-semibold text-slate-900">{Math.min(totalDeliverymen, currentPage * pageSize)}</span> of{" "}
+                    <span className="font-semibold text-slate-900">{totalDeliverymen}</span> delivery partners
+                  </p>
+                </div>
+                <div>
+                  <nav className="isolate inline-flex -space-x-px rounded-md shadow-sm gap-1" aria-label="Pagination">
+                    <button
+                      onClick={() => setCurrentPage((prev) => Math.max(prev - 1, 1))}
+                      disabled={currentPage === 1}
+                      className="relative inline-flex items-center rounded-md px-2.5 py-1.5 text-slate-500 border border-slate-200 hover:bg-slate-50 disabled:opacity-50 transition-colors"
+                    >
+                      &lt;
+                    </button>
+                    {Array.from({ length: Math.ceil(totalDeliverymen / pageSize) }, (_, i) => i + 1)
+                      .filter(page => page === 1 || page === Math.ceil(totalDeliverymen / pageSize) || (page >= currentPage - 2 && page <= currentPage + 2))
+                      .map((page, index, arr) => {
+                        const showEllipsisBefore = index > 0 && page - arr[index - 1] > 1;
+                        return (
+                          <React.Fragment key={page}>
+                            {showEllipsisBefore && (
+                              <span className="px-3 py-1.5 text-slate-400 text-sm">...</span>
+                            )}
+                            <button
+                              onClick={() => setCurrentPage(page)}
+                              className={`relative inline-flex items-center px-3.5 py-1.5 text-sm font-semibold rounded-md transition-colors ${
+                                currentPage === page
+                                  ? "bg-slate-900 text-white"
+                                  : "text-slate-700 border border-slate-200 hover:bg-slate-50"
+                              }`}
+                            >
+                              {page}
+                            </button>
+                          </React.Fragment>
+                        );
+                      })}
+                    <button
+                      onClick={() => setCurrentPage((prev) => Math.min(prev + 1, Math.ceil(totalDeliverymen / pageSize)))}
+                      disabled={currentPage >= Math.ceil(totalDeliverymen / pageSize)}
+                      className="relative inline-flex items-center rounded-md px-2.5 py-1.5 text-slate-500 border border-slate-200 hover:bg-slate-50 disabled:opacity-50 transition-colors"
+                    >
+                      &gt;
+                    </button>
+                  </nav>
+                </div>
+              </div>
+            </div>
+          )}
         </div>
       </div>
 
@@ -778,11 +963,14 @@ availableCashLimit: deliveryman.availableCashLimit || 0,
                         src={viewDetails.profileImage.url} 
                         alt={viewDetails.name}
                         className="w-24 h-24 rounded-full object-cover border-2 border-slate-200"
+                        onError={(e) => { e.currentTarget.src = "/profile_avatar.webp" }}
                       />
                     ) : (
-                      <div className="w-24 h-24 rounded-full bg-slate-200 flex items-center justify-center">
-                        <User className="w-12 h-12 text-slate-400" />
-                      </div>
+                      <img
+                        src="/profile_avatar.webp"
+                        alt={viewDetails.name}
+                        className="w-24 h-24 rounded-full object-cover border-2 border-slate-200"
+                      />
                     )}
                   </div>
                   <div className="flex-1 grid grid-cols-2 gap-4">

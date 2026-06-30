@@ -1,4 +1,4 @@
-import { Search, Filter, Download, ChevronDown, Settings } from "lucide-react"
+import { Search, Filter, Download, ChevronDown, Settings, ArrowLeft } from "lucide-react"
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -18,15 +18,27 @@ export default function OrdersTopbar({
   activeFiltersCount,
   onExport,
   onSettingsClick,
+  isLoading,
 }) {
   return (
     <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-6 mb-6">
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div className="flex items-center gap-3">
+          <button 
+            onClick={() => window.history.back()} 
+            className="p-2.5 rounded-lg border border-slate-300 bg-white hover:bg-slate-50 text-slate-700 transition-all flex items-center justify-center shrink-0"
+            title="Back"
+          >
+            <ArrowLeft className="w-5 h-5" />
+          </button>
           <h1 className="text-2xl font-bold text-slate-900 flex items-center gap-2">
             {title}
-            <span className="px-3 py-1 rounded-full text-sm font-semibold bg-slate-100 text-slate-700">
-              {count}
+            <span className="px-3 py-1 rounded-full text-sm font-semibold bg-slate-100 text-slate-700 flex items-center justify-center min-w-[2.5rem] h-7">
+              {isLoading ? (
+                <span className="w-5 h-3 rounded bg-slate-300/80 animate-pulse" />
+              ) : (
+                count
+              )}
             </span>
           </h1>
         </div>

@@ -47,8 +47,8 @@ export const OrderSummaryModal = ({ order, onDone }) => {
             Go Back Home <ArrowRight className="w-6 h-6" />
           </button>
 
-          <p className="text-white/80 text-xs font-semibold tracking-wider mt-8 sm:mt-12 bg-white/10 rounded-xl px-4 py-2 border border-white/20">
-            Order Ref: <span className="font-black text-white">{order?.orderId || order?.displayOrderId || 'FOD-1234'}</span>
+          <p className="text-white/60 text-[10px] font-medium tracking-wide mt-6 sm:mt-8 bg-white/10 rounded-lg px-3 py-1.5 border border-white/20 inline-block">
+            Order Ref: <span className="font-bold text-white/80 text-xs">{order?.orderId || order?.displayOrderId || 'FOD-1234'}</span>
           </p>
         </motion.div>
       </div>

@@ -91,14 +91,6 @@ import { useLocation } from "@food/hooks/useLocation";
 import { useZone } from "@food/hooks/useZone";
 import quickSpicyLogo from "@food/assets/quicky-spicy-logo.png";
 import homeBannerRed from "@food/assets/home-banner-red-clean.png";
-if (typeof window !== 'undefined') {
-  const link = document.createElement('link');
-  link.rel = 'preload';
-  link.as = 'image';
-  link.href = homeBannerRed;
-  link.fetchPriority = 'high';
-  document.head.appendChild(link);
-}
 import offerImage from "@food/assets/offerimage.png";
 import api, { publicGetOnce, restaurantAPI, adminAPI } from "@food/api";
 import { API_BASE_URL } from "@food/api/config";
@@ -565,6 +557,21 @@ const RestaurantCardOfferCarousel = React.memo(({ coupons }) => {
 });
 
 export default function Home() {
+  // Preload the hero banner only while the Home page is actually mounted, so other
+  // pages (e.g. admin) don't trigger an "preloaded but not used" console warning.
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const link = document.createElement('link');
+    link.rel = 'preload';
+    link.as = 'image';
+    link.href = homeBannerRed;
+    link.fetchPriority = 'high';
+    document.head.appendChild(link);
+    return () => {
+      try { document.head.removeChild(link); } catch { /* already removed */ }
+    };
+  }, []);
+
   const HERO_BANNER_AUTO_SLIDE_MS = 3500;
   const BACKEND_ORIGIN = API_BASE_URL.replace(/\/api\/?$/, "");
   const navigate = useNavigate();

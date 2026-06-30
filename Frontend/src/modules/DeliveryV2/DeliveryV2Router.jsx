@@ -29,6 +29,7 @@ import { ViewSupportTicketV2 } from './pages/help/ViewSupportTicketV2';
 import ShowIdCardV2 from './pages/help/ShowIdCardV2';
 import { PocketDetailsV2 } from './pages/pocket/PocketDetailsV2';
 import { ProfileDetailsV2 } from './pages/profile/ProfileDetailsV2';
+import { MyReviewsV2 } from './pages/profile/MyReviewsV2';
 import TermsAndConditionsV2 from './pages/TermsAndConditionsV2';
 import PrivacyPolicyV2 from './pages/PrivacyPolicyV2';
 import DeliveryCMSHelpSupportPage from './pages/CMSHelpSupportPage';
@@ -92,6 +93,7 @@ const DeliveryV2Router = () => {
           <Route path="profile" element={<DeliveryHomeV2 tab="profile" />} />
           <Route path="notifications" element={<NotificationsV2 />} />
           <Route path="profile/details" element={<ProfileDetailsV2 />} />
+          <Route path="profile/reviews" element={<MyReviewsV2 />} />
           <Route path="profile/bank" element={<ProfileBankV2 />} />
           <Route path="profile/documents" element={<ProfileDocsV2 />} />
           

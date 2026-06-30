@@ -95,7 +95,7 @@ export default function WeekSelector({ weekStartsOn = 0, onChange, className }) 
               mode="single"
               selected={anchorDate}
               onSelect={onSelectDate}
-              className="rounded-md"
+              className="rounded-md [--primary:#15498b] [--primary-foreground:#ffffff]"
               captionLayout="dropdown-buttons"
               fromYear={2020}
               toYear={2030}
@@ -106,11 +106,11 @@ export default function WeekSelector({ weekStartsOn = 0, onChange, className }) 
 
       {/* Divider + Date Range */}
       <div className="mt-6 flex items-center gap-4">
-        <div className="h-px flex-1 bg-muted" />
-        <div className="text-lg sm:text-xl font-semibold text-muted-foreground">
+        <div className="h-px flex-1 bg-gray-200" />
+        <div className="text-lg sm:text-xl font-semibold text-[#15498b]">
           {fmt(range.start)} - {fmt(range.end)}
         </div>
-        <div className="h-px flex-1 bg-muted" />
+        <div className="h-px flex-1 bg-gray-200" />
       </div>
     </div>
   );

@@ -1537,11 +1537,14 @@ export const getApprovedRestaurantByIdOrSlug = async (idOrSlug, userId = null) =
         hasOrderedBefore = !!previousOrder;
     }
 
+    const timingsDoc = await FoodRestaurantOutletTimings.findOne({ restaurantId: doc._id }).lean();
+
     return {
         ...doc,
         rating: normalizeRatingValue(doc.rating),
         totalRatings: normalizeTotalRatingsValue(doc.totalRatings),
         hasOrderedBefore,
+        outletTimings: timingsDoc || undefined,
         image: doc.coverImages?.[0] || doc.profileImage || (doc.menuImages?.length > 0 ? doc.menuImages[0] : null) || null,
         images: Array.isArray(doc.coverImages) && doc.coverImages.length > 0
             ? doc.coverImages
@@ -1642,7 +1645,7 @@ export const listRestaurantsUnderPriceLimit = async (query = {}, priceLimit = 25
         price: { $lte: priceLimit },
         isAvailable: true,
         approvalStatus: 'approved'
-    }).select('restaurantId name price image foodType description isVeg isRecommended').lean();
+    }).select('restaurantId name price image foodType description isVeg isRecommended variants variations').lean();
 
     if (eligibleItems.length === 0) {
         return { restaurants: [], total: 0 };

@@ -46,7 +46,7 @@ export default function FilterPanel({ isOpen, onClose, filters, setFilters, onAp
                   onClick={() => setFilters(prev => ({ ...prev, paymentStatus: status === "All" ? "" : status }))}
                   className={`px-4 py-2 rounded-lg text-sm font-medium transition-all ${
                     filters.paymentStatus === status || (status === "All" && !filters.paymentStatus)
-                      ? "bg-emerald-500 text-white shadow-md"
+                      ? "bg-blue-600 text-white shadow-md"
                       : "bg-slate-100 text-slate-700 hover:bg-slate-200"
                   }`}
                 >
@@ -68,7 +68,7 @@ export default function FilterPanel({ isOpen, onClose, filters, setFilters, onAp
                   onClick={() => setFilters(prev => ({ ...prev, deliveryType: type === "All" ? "" : type }))}
                   className={`px-4 py-2 rounded-lg text-sm font-medium transition-all ${
                     filters.deliveryType === type || (type === "All" && !filters.deliveryType)
-                      ? "bg-emerald-500 text-white shadow-md"
+                      ? "bg-blue-600 text-white shadow-md"
                       : "bg-slate-100 text-slate-700 hover:bg-slate-200"
                   }`}
                 >
@@ -90,7 +90,7 @@ export default function FilterPanel({ isOpen, onClose, filters, setFilters, onAp
                 min="0"
                 onChange={(e) => setFilters(prev => ({ ...prev, minAmount: sanitizeAmountInput(e.target.value) }))}
                 placeholder="0"
-                className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
               />
             </div>
             <div>
@@ -103,7 +103,7 @@ export default function FilterPanel({ isOpen, onClose, filters, setFilters, onAp
                 min="0"
                 onChange={(e) => setFilters(prev => ({ ...prev, maxAmount: sanitizeAmountInput(e.target.value) }))}
                 placeholder="10000"
-                className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
               />
             </div>
           </div>
@@ -131,7 +131,7 @@ export default function FilterPanel({ isOpen, onClose, filters, setFilters, onAp
                     }
                   })
                 }
-                className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
               />
             </div>
             <div>
@@ -149,7 +149,7 @@ export default function FilterPanel({ isOpen, onClose, filters, setFilters, onAp
                     toDate: clampDateValue(e.target.value),
                   }))
                 }
-                className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
               />
             </div>
           </div>
@@ -163,7 +163,7 @@ export default function FilterPanel({ isOpen, onClose, filters, setFilters, onAp
               <select
                 value={filters.restaurant || ""}
                 onChange={(e) => setFilters(prev => ({ ...prev, restaurant: e.target.value }))}
-                className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
               >
                 <option value="">All Restaurants</option>
                 {restaurants.map((rest) => (
@@ -183,7 +183,7 @@ export default function FilterPanel({ isOpen, onClose, filters, setFilters, onAp
           </button>
           <button
             onClick={onApply}
-            className="px-4 py-2 text-sm font-medium rounded-lg bg-emerald-500 text-white hover:bg-emerald-600 transition-all shadow-md"
+            className="px-4 py-2 text-sm font-medium rounded-lg bg-blue-600 text-white hover:bg-blue-700 transition-all shadow-md"
           >
             Apply Filters
           </button>

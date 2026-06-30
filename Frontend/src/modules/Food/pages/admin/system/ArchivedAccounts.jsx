@@ -100,13 +100,15 @@ export default function ArchivedAccounts() {
         {/* Header Section */}
         <div className="flex flex-col md:flex-row md:items-center justify-between mb-8 gap-4">
           <div>
-            <h1 className="text-2xl font-extrabold text-slate-900 flex items-center gap-3">
-              <div className="p-2 bg-red-50 rounded-xl">
-                <UserX className="w-6 h-6 text-red-600" />
-              </div>
-              Archived Accounts
-            </h1>
-            <p className="text-slate-500 mt-1 text-sm font-medium">
+            <div className="flex items-center gap-3">
+              <h1 className="text-2xl font-extrabold text-slate-900 flex items-center gap-3">
+                <div className="p-2 bg-red-50 rounded-xl">
+                  <UserX className="w-6 h-6 text-red-600" />
+                </div>
+                Archived Accounts
+              </h1>
+            </div>
+            <p className="text-slate-500 mt-2 text-sm font-medium">
               View and track deleted users, restaurants, and delivery partners.
             </p>
           </div>

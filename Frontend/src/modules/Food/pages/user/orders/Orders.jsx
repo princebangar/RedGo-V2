@@ -101,97 +101,11 @@ export default function Orders() {
     return status || 'confirmed'
   }
 
-  // Auto-show rating popup when order is delivered (only once per order)
-  useEffect(() => {
-    if (orders.length === 0 || ratingModal.open) {
-      return
-    }
-
-    debugLog('?? Checking for delivered orders to show rating popup...', {
-      totalOrders: orders.length,
-      shownRatingForOrders: Array.from(shownRatingForOrders)
-    })
-
-    // Find delivered orders that haven't been rated and haven't shown popup yet
-    const deliveredOrders = orders.filter(order => {
-      // Check originalStatus first (from backend), then fallback to transformed status
-      const originalStatus = order.originalStatus || order.status || ''
-      const transformedStatus = order.status || ''
-
-      // Check if order is delivered - check both original and transformed status
-      const isDelivered =
-        originalStatus === 'delivered' ||
-        originalStatus === 'completed' ||
-        originalStatus.toLowerCase() === 'delivered' ||
-        originalStatus.toLowerCase() === 'completed' ||
-        transformedStatus === 'delivered' ||
-        transformedStatus === 'completed' ||
-        transformedStatus.toLowerCase() === 'delivered' ||
-        transformedStatus.toLowerCase() === 'completed'
-
-      const resRating = Number(order.restaurantRating || 0)
-      const delRating = Number(order.deliveryPartnerRating || 0)
-      const hasRestaurantRating = resRating > 0
-      const hasDeliveryPartner = !!(order.deliveryPartnerId || order.deliveryPartnerName)
-      const hasDeliveryRating = delRating > 0
-      const hasRating = hasRestaurantRating && (!hasDeliveryPartner || hasDeliveryRating)
-
-      const orderId = order.id || order._id || order.mongoId
-      const hasShownPopup = shownRatingForOrders.has(orderId)
-
-      // Also check if order has deliveredAt timestamp (indicates it was delivered)
-      const hasDeliveredAt = order.deliveredAt !== null && order.deliveredAt !== undefined
-
-      const shouldShow = (isDelivered || hasDeliveredAt) && !hasRating && !hasShownPopup
-
-      debugLog(`?? Order ${orderId}:`, {
-        originalStatus,
-        transformedStatus,
-        isDelivered,
-        hasDeliveredAt,
-        hasRating,
-        restaurantRating: order.restaurantRating,
-        deliveryPartnerRating: order.deliveryPartnerRating,
-        hasShownPopup,
-        shouldShow
-      })
-
-      return shouldShow
-    })
-
-    debugLog('? Found delivered orders needing rating:', deliveredOrders.length)
-
-    // Show popup for the first delivered order that needs rating
-    if (deliveredOrders.length > 0) {
-      const orderToRate = deliveredOrders[0]
-      const orderId = orderToRate.id || orderToRate._id || orderToRate.mongoId
-
-      debugLog('?? Showing rating popup for order:', {
-        orderId,
-        restaurant: orderToRate.restaurant,
-        status: orderToRate.status
-      })
-
-      // Mark as shown to prevent multiple popups (before showing to prevent race conditions)
-      setShownRatingForOrders(prev => new Set([...prev, orderId]))
-
-      // Small delay to ensure smooth UX
-      setTimeout(() => {
-        debugLog('? Opening rating modal for order:', {
-          orderId: orderId,
-          restaurant: orderToRate.restaurant,
-          status: orderToRate.status,
-          originalStatus: orderToRate.originalStatus
-        })
-        setRatingModal({ open: true, order: orderToRate })
-        setSelectedRestaurantRating(null)
-        setSelectedDeliveryRating(null)
-        setRestaurantFeedbackText("")
-        setDeliveryFeedbackText("")
-      }, 800) // Show after 0.8 seconds
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [orders, shownRatingForOrders, ratingModal.open])
+  // NOTE: The rating popup is intentionally NOT auto-triggered here.
+  // The post-delivery rating flow lives in OrderTracking.jsx (shown when the user
+  // taps back after a delivered order). On the Orders list, ratings are only opened
+  // via the explicit "Rate Restaurant" button so the popup never pops up on its own
+  // when the user simply visits Profile → Orders.
 
   // Fetch orders from backend API
   useEffect(() => {
@@ -674,9 +588,7 @@ Order again from this restaurant in the ${companyName} app.`
     return (
       <div className="min-h-screen bg-gray-50 dark:bg-[#0a0a0a] pb-10">
         <div className="bg-white dark:bg-[#121212] p-4 flex items-center shadow-sm sticky top-0 z-10 border-b dark:border-gray-800">
-          <Link to="/user">
-            <ArrowLeft className="w-6 h-6 text-gray-700 dark:text-gray-300 cursor-pointer" />
-          </Link>
+          <ArrowLeft className="w-6 h-6 text-gray-700 dark:text-gray-300 cursor-pointer" onClick={() => navigate(-1)} />
           <h1 className="ml-4 text-xl font-semibold text-gray-800 dark:text-gray-100">Your Orders</h1>
         </div>
         <div className="flex items-center justify-center py-20">
@@ -690,9 +602,7 @@ Order again from this restaurant in the ${companyName} app.`
     return (
       <div className="min-h-screen bg-gray-50 dark:bg-[#0a0a0a] pb-10">
         <div className="bg-white dark:bg-[#121212] p-4 flex items-center shadow-sm sticky top-0 z-10 border-b dark:border-gray-800">
-          <Link to="/user">
-            <ArrowLeft className="w-6 h-6 text-gray-700 dark:text-gray-300 cursor-pointer" />
-          </Link>
+          <ArrowLeft className="w-6 h-6 text-gray-700 dark:text-gray-300 cursor-pointer" onClick={() => navigate(-1)} />
           <h1 className="ml-4 text-xl font-semibold text-gray-800 dark:text-gray-100">Your Orders</h1>
         </div>
         <div className="px-4 py-8 text-center text-gray-600 dark:text-gray-400">
@@ -709,9 +619,7 @@ Order again from this restaurant in the ${companyName} app.`
     <div className="min-h-screen bg-gray-50 dark:bg-[#0a0a0a] pb-10 font-sans">
       {/* Header */}
       <div className="bg-white dark:bg-[#121212] p-4 flex items-center shadow-sm sticky top-0 z-10 border-b dark:border-gray-800">
-        <Link to="/user">
-          <ArrowLeft className="w-6 h-6 text-gray-700 dark:text-gray-300 cursor-pointer" />
-        </Link>
+        <ArrowLeft className="w-6 h-6 text-gray-700 dark:text-gray-300 cursor-pointer" onClick={() => navigate(-1)} />
         <h1 className="ml-4 text-xl font-semibold text-gray-800 dark:text-gray-100">Your Orders</h1>
       </div>
 
@@ -1028,10 +936,12 @@ Order again from this restaurant in the ${companyName} app.`
                         <div className="flex items-center gap-1.5 text-xs text-gray-500 dark:text-gray-400">
                           <span>Your rating:</span>
                           <div className="flex bg-green-600 text-white px-1.5 py-0.5 rounded text-[10px] font-bold items-center gap-0.5 h-4.5">
+                            <span className="opacity-90">Food</span>
                             {order.restaurantRating}<Star className="w-2.5 h-2.5 fill-current text-white" />
                           </div>
                           {order.deliveryPartnerId && order.deliveryPartnerRating && (
                             <div className="flex bg-green-600 text-white px-1.5 py-0.5 rounded text-[10px] font-bold items-center gap-0.5 h-4.5">
+                              <span className="opacity-90">Delivery</span>
                               {order.deliveryPartnerRating}<Star className="w-2.5 h-2.5 fill-current text-white" />
                             </div>
                           )}
@@ -1040,9 +950,9 @@ Order again from this restaurant in the ${companyName} app.`
                         <button
                           type="button"
                           onClick={() => handleOpenRating(order)}
-                          className="text-xs text-[#DC2626] hover:text-[#991B1B] font-bold flex items-center gap-1 transition-colors"
+                          className="text-xs text-slate-500 hover:text-[#DC2626] dark:text-slate-400 font-bold flex items-center gap-1 transition-colors"
                         >
-                          <Star className="w-3.5 h-3.5 fill-[#DC2626] text-[#DC2626]" />
+                          <Star className="w-3.5 h-3.5 text-slate-400 fill-none" />
                           {order.orderType === "takeaway" ? "Rate Restaurant" : "Rate Restaurant & Delivery"}
                         </button>
                       ) : (

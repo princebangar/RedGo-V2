@@ -482,7 +482,7 @@ export default function FeedNavbar({ className = "" }) {
             />
           ) : (
             <img
-              src="/profile_avatar.png"
+              src="/profile_avatar.webp"
               alt="Profile"
               className="w-full h-full object-cover"
             />

@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from "react";
-import { Link, useNavigate } from "react-router-dom";
+import { Link, useNavigate, useNavigationType } from "react-router-dom";
 import { motion } from "framer-motion";
 import {
   ArrowLeft,
@@ -108,6 +108,29 @@ export default function Profile() {
   const [isCheckingBalance, setIsCheckingBalance] = useState(false);
 
 
+
+  const navType = useNavigationType();
+
+  // Scroll Restoration
+  useEffect(() => {
+    if (navType === "POP") {
+      const savedScroll = sessionStorage.getItem("profileScrollPos");
+      if (savedScroll) {
+        setTimeout(() => window.scrollTo(0, parseInt(savedScroll, 10)), 50);
+      }
+    } else {
+      window.scrollTo(0, 0);
+    }
+
+    const handleScroll = () => {
+      sessionStorage.setItem("profileScrollPos", window.scrollY.toString());
+    };
+    window.addEventListener("scroll", handleScroll, { passive: true });
+
+    return () => {
+      window.removeEventListener("scroll", handleScroll);
+    };
+  }, [navType]);
 
   // Lock scroll when any popup is open
   useEffect(() => {
@@ -478,7 +501,7 @@ export default function Profile() {
         {/* Header: Back Arrow */}
         <div className="flex items-center mb-5">
           <button
-            onClick={() => navigate(-1)}
+            onClick={() => navigate("/user/home")}
             className="h-11 w-11 flex items-center justify-center bg-white/70 dark:bg-[#1a1a1a]/70 backdrop-blur-md rounded-full shadow-[0_2px_12px_rgba(0,0,0,0.08)] hover:bg-white/90 dark:hover:bg-[#222]/90 active:scale-95 transition-all outline-none border border-black/10 dark:border-white/10"
           >
             <ArrowLeft className="h-6 w-6 text-black dark:text-white" />
@@ -1132,16 +1155,16 @@ export default function Profile() {
           <div className="space-y-2 px-5 pb-5">
             <button
               onClick={() => {
-                setAppearance("light");
                 setAppearanceOpen(false);
+                setTimeout(() => setAppearance("light"), 250);
               }}
               className={`w-full p-3 rounded-xl border-2 transition-all flex items-center gap-3 ${appearance === "light"
-                ? "border-[#DC2626] bg-[#fdfafc] dark:border-[#FEE2E2] dark:bg-[#7F1D1D]/20"
+                ? "border-[#DC2626] bg-[#fdfafc] dark:border-[#DC2626] dark:bg-[#7F1D1D]/20"
                 : "border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 hover:border-gray-300 dark:hover:border-gray-600"
                 }`}>
               <div
                 className={`w-5 h-5 rounded-full border-2 flex items-center justify-center flex-shrink-0 ${appearance === "light"
-                  ? "border-[#DC2626] bg-[#DC2626] dark:border-[#FEE2E2] dark:bg-[#FEE2E2]"
+                  ? "border-[#DC2626] bg-[#DC2626]"
                   : "border-gray-300 dark:border-gray-600"
                   }`}>
                 {appearance === "light" && (
@@ -1160,16 +1183,16 @@ export default function Profile() {
             </button>
             <button
               onClick={() => {
-                setAppearance("dark");
                 setAppearanceOpen(false);
+                setTimeout(() => setAppearance("dark"), 250);
               }}
               className={`w-full p-3 rounded-xl border-2 transition-all flex items-center gap-3 ${appearance === "dark"
-                ? "border-[#DC2626] dark:border-[#FEE2E2] bg-[#fdfafc] dark:bg-[#7F1D1D]/20"
+                ? "border-[#DC2626] dark:border-[#DC2626] bg-[#fdfafc] dark:bg-[#7F1D1D]/20"
                 : "border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 hover:border-gray-300 dark:hover:border-gray-600"
                 }`}>
               <div
                 className={`w-5 h-5 rounded-full border-2 flex items-center justify-center flex-shrink-0 ${appearance === "dark"
-                  ? "border-[#DC2626] bg-[#DC2626] dark:border-[#FEE2E2] dark:bg-[#FEE2E2]"
+                  ? "border-[#DC2626] bg-[#DC2626]"
                   : "border-gray-300 dark:border-gray-600"
                   }`}>
                 {appearance === "dark" && (

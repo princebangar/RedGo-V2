@@ -190,7 +190,9 @@ export default function AddonsList() {
       <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-6">
         <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
           <div>
-            <h1 className="text-2xl font-bold text-slate-900">Restaurant add-ons</h1>
+            <div className="flex items-center gap-3">
+              <h1 className="text-2xl font-bold text-slate-900">Restaurant add-ons</h1>
+            </div>
             <div className="text-sm text-slate-500 mt-1">Manage add-ons submitted by restaurants.</div>
           </div>
 
