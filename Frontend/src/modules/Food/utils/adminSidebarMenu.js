@@ -75,7 +75,6 @@ export const adminSidebarMenu = [
           { label: "All", path: "/admin/food/orders/all" },
           // { label: "Scheduled", path: "/admin/food/orders/scheduled" },
           { label: "Pending", path: "/admin/food/orders/pending" },
-          { label: "Accepted", path: "/admin/food/orders/accepted" },
           { label: "Processing", path: "/admin/food/orders/processing" },
           { label: "Food On The Way", path: "/admin/food/orders/food-on-the-way" },
           { label: "Delivered", path: "/admin/food/orders/delivered" },
@@ -106,13 +105,14 @@ export const adminSidebarMenu = [
       },
     ],
   },
-  {
-    type: "section",
-    label: "REFERRAL & REWARDS",
-    items: [
-      { type: "link", label: "Referral Settings", path: "/admin/food/referral-settings", icon: "Gift" },
-    ],
-  },
+  // TODO: Referral feature temporarily disabled. Uncomment to re-enable in future.
+  // {
+  //   type: "section",
+  //   label: "REFERRAL & REWARDS",
+  //   items: [
+  //     { type: "link", label: "Referral Settings", path: "/admin/food/referral-settings", icon: "Gift" },
+  //   ],
+  // },
   {
     type: "section",
     label: "CUSTOMER MANAGEMENT",
@@ -136,6 +136,7 @@ export const adminSidebarMenu = [
     label: "DELIVERYMAN MANAGEMENT",
     items: [
       { type: "link", label: "Delivery Cash Limit", path: "/admin/food/delivery-cash-limit", icon: "IndianRupee" },
+      { type: "link", label: "Multiorder Setting", path: "/admin/food/multiorder-setting", icon: "Package" },
       { type: "link", label: "Delivery & Platform Fee", path: "/admin/food/fee-settings", icon: "DollarSign" },
       { type: "link", label: "Cash limit settlement", path: "/admin/food/cash-limit-settlement", icon: "Receipt" },
       { type: "link", label: "Delivery Withdrawal", path: "/admin/food/delivery-withdrawal", icon: "Wallet" },

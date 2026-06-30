@@ -8,7 +8,7 @@ import { getGoogleMapsApiKey } from "@food/utils/googleMapsApiKey"
 import { Loader } from "@googlemaps/js-api-loader"
 const debugLog = (...args) => {}
 const debugWarn = (...args) => {}
-const debugError = (...args) => {}
+const debugError = (...args) => console.error("[ZoneSetup]", ...args)
 
 const parseCoordinate = (value) => {
   const parsed = Number(value)
@@ -56,56 +56,94 @@ export default function ZoneSetup() {
   const mapRef = useRef(null)
   const mapInstanceRef = useRef(null)
   const markerRef = useRef(null)
-  const autocompleteInputRef = useRef(null)
-  const autocompleteRef = useRef(null)
-  
+  const sessionTokenRef = useRef(null)
+  const debounceRef = useRef(null)
+
   const [googleMapsApiKey, setGoogleMapsApiKey] = useState("")
   const [mapLoading, setMapLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [restaurantData, setRestaurantData] = useState(null)
-  const [locationSearch, setLocationSearch] = useState("")
   const [selectedLocation, setSelectedLocation] = useState(null)
   const [selectedAddress, setSelectedAddress] = useState("")
+  const [locationSearch, setLocationSearch] = useState("")
+  const [suggestions, setSuggestions] = useState([])
+  const [showSuggestions, setShowSuggestions] = useState(false)
 
   useEffect(() => {
     fetchRestaurantData()
     loadGoogleMaps()
   }, [])
 
-  // Initialize Places Autocomplete when map is loaded
-  useEffect(() => {
-    if (!mapLoading && mapInstanceRef.current && autocompleteInputRef.current && window.google?.maps?.places && !autocompleteRef.current) {
-      const autocomplete = new window.google.maps.places.Autocomplete(autocompleteInputRef.current, {
-        componentRestrictions: { country: 'in' } // Restrict to India
-      })
-      
-      autocomplete.addListener('place_changed', () => {
-        const place = autocomplete.getPlace()
-        if (place.geometry && place.geometry.location && mapInstanceRef.current) {
-          const location = place.geometry.location
-          const lat = location.lat()
-          const lng = location.lng()
-          
-          // Center map on selected location
-          mapInstanceRef.current.setCenter(location)
-          mapInstanceRef.current.setZoom(17) // Zoom in when location is selected
-          
-          // Set the search input value
-          const address = place.formatted_address || place.name || ""
-          setLocationSearch(address)
-          setSelectedAddress(address)
-          
-          // Update marker position
-          updateMarker(lat, lng, address)
-          
-          // Set selected location
-          setSelectedLocation({ lat, lng, address })
-        }
-      })
-      
-      autocompleteRef.current = autocomplete
+  // Fetch place suggestions from the new Places API (AutocompleteSuggestion).
+  // We keep our own styled input + dropdown; the legacy Autocomplete widget is
+  // blocked by Google for projects created after March 1st 2025.
+  const fetchSuggestions = async (input) => {
+    if (!input || input.trim().length < 2) {
+      setSuggestions([])
+      setShowSuggestions(false)
+      return
     }
-  }, [mapLoading])
+    if (!window.google?.maps?.importLibrary) return
+
+    try {
+      const { AutocompleteSuggestion, AutocompleteSessionToken } =
+        await window.google.maps.importLibrary("places")
+
+      if (!sessionTokenRef.current) {
+        sessionTokenRef.current = new AutocompleteSessionToken()
+      }
+
+      const { suggestions: results } =
+        await AutocompleteSuggestion.fetchAutocompleteSuggestions({
+          input,
+          sessionToken: sessionTokenRef.current,
+          includedRegionCodes: ["in"], // Restrict to India
+        })
+
+      const mapped = (results || [])
+        .map((s) => s.placePrediction)
+        .filter(Boolean)
+      setSuggestions(mapped)
+      setShowSuggestions(mapped.length > 0)
+    } catch (err) {
+      debugError("Error fetching suggestions:", err)
+      setSuggestions([])
+      setShowSuggestions(false)
+    }
+  }
+
+  const handleSearchChange = (value) => {
+    setLocationSearch(value)
+    if (debounceRef.current) clearTimeout(debounceRef.current)
+    debounceRef.current = setTimeout(() => fetchSuggestions(value), 300)
+  }
+
+  const handleSelectSuggestion = async (prediction) => {
+    try {
+      const place = prediction.toPlace()
+      await place.fetchFields({ fields: ["location", "formattedAddress", "displayName"] })
+      if (!mapInstanceRef.current) return
+
+      const loc = place.location
+      const lat = typeof loc.lat === "function" ? loc.lat() : loc.lat
+      const lng = typeof loc.lng === "function" ? loc.lng() : loc.lng
+      const address = place.formattedAddress || place.displayName || ""
+
+      mapInstanceRef.current.setCenter({ lat, lng })
+      mapInstanceRef.current.setZoom(17)
+
+      setLocationSearch(address)
+      setSelectedAddress(address)
+      updateMarker(lat, lng, address)
+      setSelectedLocation({ lat, lng, address })
+
+      setSuggestions([])
+      setShowSuggestions(false)
+      sessionTokenRef.current = null // token is consumed after a selection
+    } catch (err) {
+      debugError("Error resolving selected place:", err)
+    }
+  }
 
   // Load existing restaurant location when data is fetched
   useEffect(() => {
@@ -120,7 +158,6 @@ export default function ZoneSetup() {
         mapInstanceRef.current.setZoom(17)
         
         const address = location.formattedAddress || location.address || formatAddress(location) || ""
-        setLocationSearch(address)
         setSelectedAddress(address)
         setSelectedLocation({ lat, lng, address })
         
@@ -191,16 +228,29 @@ export default function ZoneSetup() {
         return
       }
 
-      // If Google Maps is already loaded, use it directly
-      if (window.google && window.google.maps) {
-        debugLog("? Google Maps already loaded from main.jsx, initializing map...")
+      // If Google Maps is already loaded WITH the Places library, use it directly.
+      // The Places library is required for the search/autocomplete to work.
+      if (window.google?.maps?.places?.Autocomplete) {
+        debugLog("? Google Maps (with Places) already loaded, initializing map...")
         initializeMap(window.google)
         return
       }
 
-      // If Google Maps is not loaded yet and we have an API key, use Loader as fallback
+      // If Maps was loaded by another page WITHOUT the Places library, that stale
+      // script must be removed so we can reload it with libraries=places. Otherwise
+      // the search bar autocomplete silently fails (window.google.maps.places is undefined).
+      const mapsScript = Array.from(document.getElementsByTagName("script"))
+        .find(s => s.src?.includes("maps.googleapis.com/maps/api/js"))
+      if (mapsScript && !mapsScript.src.includes("libraries=places")) {
+        debugWarn("Found Google Maps script without Places library, reloading with Places...")
+        mapsScript.remove()
+        // Best-effort clear so the Loader re-injects a fresh script
+        try { delete window.google } catch (e) { window.google = undefined }
+      }
+
+      // Load (or reload) Google Maps with the Places library via Loader.
       if (apiKey) {
-        debugLog("?? Google Maps not loaded from main.jsx, loading with Loader...")
+        debugLog("?? Loading Google Maps with Places library via Loader...")
         const loader = new Loader({
           apiKey: apiKey,
           version: "weekly",
@@ -261,7 +311,6 @@ export default function ZoneSetup() {
         const lng = event.latLng.lng()
         // Maps geocode API disabled - use coordinates as address (no external API call)
         const address = `${lat.toFixed(6)}, ${lng.toFixed(6)}`
-        setLocationSearch(address)
         setSelectedAddress(address)
         setSelectedLocation({ lat, lng, address })
         updateMarker(lat, lng, address)
@@ -313,7 +362,6 @@ export default function ZoneSetup() {
       const newLng = event.latLng.lng()
       // Maps geocode API disabled - use coordinates as address (no external API call)
       const newAddress = `${newLat.toFixed(6)}, ${newLng.toFixed(6)}`
-      setLocationSearch(newAddress)
       setSelectedAddress(newAddress)
       setSelectedLocation({ lat: newLat, lng: newLng, address: newAddress })
     })
@@ -411,15 +459,43 @@ export default function ZoneSetup() {
         <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-4 mb-6">
           <div className="flex items-center gap-3">
             <div className="flex-1 relative">
-              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-5 h-5 text-gray-400" />
+              <Search className="absolute left-4 top-1/2 transform -translate-y-1/2 w-5 h-5 text-gray-400 z-10" />
               <input
-                ref={autocompleteInputRef}
                 type="text"
                 value={locationSearch}
-                onChange={(e) => setLocationSearch(e.target.value)}
+                onChange={(e) => handleSearchChange(e.target.value)}
+                onFocus={() => suggestions.length > 0 && setShowSuggestions(true)}
+                onBlur={() => setTimeout(() => setShowSuggestions(false), 150)}
                 placeholder="Search for your restaurant location..."
-                className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#B80B3D] focus:border-transparent"
+                className="w-full pl-12 pr-4 py-3.5 text-base border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#B80B3D] focus:border-transparent"
               />
+              {/* Suggestions dropdown — appears right below the input */}
+              {showSuggestions && suggestions.length > 0 && (
+                <ul className="absolute z-50 left-0 right-0 mt-1 bg-white border border-gray-200 rounded-lg shadow-lg max-h-72 overflow-y-auto">
+                  {suggestions.map((prediction, idx) => {
+                    const main = prediction.mainText?.text || prediction.text?.text || ""
+                    const secondary = prediction.secondaryText?.text || ""
+                    return (
+                      <li
+                        key={prediction.placeId || idx}
+                        onMouseDown={(e) => {
+                          e.preventDefault() // keep input focus so onBlur doesn't fire first
+                          handleSelectSuggestion(prediction)
+                        }}
+                        className="flex items-start gap-2 px-4 py-2.5 cursor-pointer hover:bg-gray-50 border-b border-gray-100 last:border-b-0"
+                      >
+                        <MapPin className="w-4 h-4 text-[#B80B3D] mt-0.5 flex-shrink-0" />
+                        <div className="min-w-0">
+                          <p className="text-sm text-gray-900 truncate">{main}</p>
+                          {secondary && (
+                            <p className="text-xs text-gray-500 truncate">{secondary}</p>
+                          )}
+                        </div>
+                      </li>
+                    )
+                  })}
+                </ul>
+              )}
             </div>
             <button
               onClick={handleSaveLocation}
