@@ -15,7 +15,8 @@ const OrdersPage = lazy(() => import("@food/pages/admin/orders/OrdersPage"));
 const OrderDetectDelivery = lazy(() => import("@food/pages/admin/OrderDetectDelivery"));
 const Category = lazy(() => import("@food/pages/admin/categories/Category"));
 const FeeSettings = lazy(() => import("@food/pages/admin/fee-settings/FeeSettings"));
-const ReferralSettings = lazy(() => import("@food/pages/admin/referral-settings/ReferralSettings"));
+// TODO: Referral feature temporarily disabled. Uncomment to re-enable in future.
+// const ReferralSettings = lazy(() => import("@food/pages/admin/referral-settings/ReferralSettings"));
 // Restaurant Management
 const ZoneSetup = lazy(() => import("@food/pages/admin/restaurant/ZoneSetup"));
 const AddZone = lazy(() => import("@food/pages/admin/restaurant/AddZone"));
@@ -58,6 +59,7 @@ const SubscribedMailList = lazy(() => import("@food/pages/admin/SubscribedMailLi
 // Deliveryman Management
 const DeliveryBoyCommission = lazy(() => import("@food/pages/admin/DeliveryBoyCommission"));
 const DeliveryCashLimit = lazy(() => import("@food/pages/admin/DeliveryCashLimit"));
+const MultiorderSetting = lazy(() => import("@food/pages/admin/MultiorderSetting"));
 const CashLimitSettlement = lazy(() => import("@food/pages/admin/CashLimitSettlement"));
 const DeliveryWithdrawal = lazy(() => import("@food/pages/admin/DeliveryWithdrawal"));
 const DeliveryBoyWallet = lazy(() => import("@food/pages/admin/DeliveryBoyWallet"));
@@ -166,7 +168,6 @@ export default function AdminRouter() {
             <Route path="orders/scheduled" element={<OrdersPage statusKey="scheduled" />} />
             <Route path="orders/pending" element={<OrdersPage statusKey="pending" />} />
             {/* ... other order routes ... */}
-            <Route path="orders/accepted" element={<OrdersPage statusKey="accepted" />} />
             <Route path="orders/processing" element={<OrdersPage statusKey="processing" />} />
             <Route path="orders/food-on-the-way" element={<OrdersPage statusKey="food-on-the-way" />} />
             <Route path="orders/delivered" element={<OrdersPage statusKey="delivered" />} />
@@ -200,7 +201,8 @@ export default function AdminRouter() {
             {/* FOOD & CATEGORY MANAGEMENT */}
             <Route path="categories" element={<Category />} />
             <Route path="fee-settings" element={<FeeSettings />} />
-            <Route path="referral-settings" element={<ReferralSettings />} />
+            {/* TODO: Referral feature temporarily disabled. Uncomment to re-enable in future. */}
+            {/* <Route path="referral-settings" element={<ReferralSettings />} /> */}
             <Route path="foods" element={<FoodsList />} />
             <Route path="food/list" element={<FoodsList />} />
             <Route path="addons" element={<AddonsList />} />
@@ -229,6 +231,7 @@ export default function AdminRouter() {
 
             <Route path="delivery-boy-commission" element={<DeliveryBoyCommission />} />
             <Route path="delivery-cash-limit" element={<DeliveryCashLimit />} />
+            <Route path="multiorder-setting" element={<MultiorderSetting />} />
             <Route path="cash-limit-settlement" element={<CashLimitSettlement />} />
             <Route path="delivery-withdrawal" element={<DeliveryWithdrawal />} />
             <Route path="delivery-boy-wallet" element={<DeliveryBoyWallet />} />
