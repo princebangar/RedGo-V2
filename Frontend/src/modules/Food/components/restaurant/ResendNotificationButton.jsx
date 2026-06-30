@@ -25,11 +25,7 @@ export default function ResendNotificationButton({ orderId, mongoId, onSuccess }
         const notifiedCount = Number(response.data.data?.notifiedCount || 0);
         const shortlistedCount = Number(response.data.data?.shortlistedCount || 0);
         const connectedSocketCount = Number(response.data.data?.connectedSocketCount || 0);
-        toast.success(
-          notifiedCount > 0
-            ? `Notification sent to ${notifiedCount} delivery partners (live sockets: ${connectedSocketCount})`
-            : `Notification sent to 0 delivery partners${shortlistedCount > 0 ? ` (shortlisted: ${shortlistedCount}, live sockets: ${connectedSocketCount})` : ''}`,
-        );
+        toast.success("Resend successful");
         // Refresh orders if onSuccess callback is provided
         if (onSuccess) {
            onSuccess();

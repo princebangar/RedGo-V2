@@ -966,6 +966,8 @@ export default function OrderTracking() {
   const [resolvedLookupId, setResolvedLookupId] = useState("")
   const [timerNow, setTimerNow] = useState(Date.now())
   
+  const navigateToHomeAfterRating = useRef(false)
+
   // Rating states
   const [showRatingModal, setShowRatingModal] = useState(false)
   const [selectedRestaurantRating, setSelectedRestaurantRating] = useState(null)
@@ -999,6 +1001,23 @@ export default function OrderTracking() {
     setRestaurantFeedbackText(order?.ratings?.restaurant?.comment || "")
     setDeliveryFeedbackText(order?.ratings?.deliveryPartner?.comment || "")
     setShowRatingModal(true)
+  }
+
+  useEffect(() => {
+    if (!showRatingModal && navigateToHomeAfterRating.current) {
+      navigateToHomeAfterRating.current = false
+      navigate("/user/home")
+    }
+  }, [showRatingModal])
+
+  const handleBackClick = () => {
+    const isDelivered = orderStatus === "delivered" || order?.status === "delivered" || Boolean(order?.deliveredAt)
+    if (isDelivered && !isOrderRated) {
+      navigateToHomeAfterRating.current = true
+      handleOpenRating()
+    } else {
+      navigate(isDelivered ? "/user/home" : "/user/orders")
+    }
   }
 
   const handleSubmitRating = async () => {
@@ -2154,14 +2173,13 @@ export default function OrderTracking() {
       >
         {/* Navigation bar */}
         <div className="flex items-center justify-between px-4 py-3">
-          <Link to="/user/orders">
-            <motion.button
-              className="w-10 h-10 flex items-center justify-center"
-              whileTap={{ scale: 0.9 }}
-            >
-              <ArrowLeft className="w-6 h-6" />
-            </motion.button>
-          </Link>
+          <motion.button
+            className="w-10 h-10 flex items-center justify-center"
+            whileTap={{ scale: 0.9 }}
+            onClick={handleBackClick}
+          >
+            <ArrowLeft className="w-6 h-6" />
+          </motion.button>
           <h2 className="font-semibold text-lg">{order.restaurant}</h2>
           <motion.button
             className="w-10 h-10 flex items-center justify-center cursor-pointer"

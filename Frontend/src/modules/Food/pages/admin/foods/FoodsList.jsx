@@ -35,6 +35,7 @@ export default function FoodsList() {
   const [searchQuery, setSearchQuery] = useState("")
   const [selectedRestaurant, setSelectedRestaurant] = useState("all")
   const [foods, setFoods] = useState([])
+  const [totalFoods, setTotalFoods] = useState(0)
   const [restaurantsForFilter, setRestaurantsForFilter] = useState([])
   const [loading, setLoading] = useState(true)
   const [deleting, setDeleting] = useState(false)
@@ -51,8 +52,28 @@ export default function FoodsList() {
   const [selectedImageFile, setSelectedImageFile] = useState(null)
   const [imagePreviewUrl, setImagePreviewUrl] = useState("")
   const [currentPage, setCurrentPage] = useState(1)
-  const [pageSize, setPageSize] = useState(20)
+  const [pageSize, setPageSize] = useState(() => Number(localStorage.getItem('admin_foods_pageSize')) || 20)
   const [imageVersion, setImageVersion] = useState(Date.now())
+
+  const isFormDirty = useMemo(() => {
+    if (foodFormMode === "edit") return true;
+    const defaultForm = createFoodForm()
+    const isBasicDirty = 
+      foodForm.restaurantId !== defaultForm.restaurantId ||
+      foodForm.categoryId !== defaultForm.categoryId ||
+      foodForm.categoryName !== defaultForm.categoryName ||
+      foodForm.name !== defaultForm.name ||
+      foodForm.price !== defaultForm.price ||
+      foodForm.description !== defaultForm.description ||
+      foodForm.foodType !== defaultForm.foodType ||
+      foodForm.isAvailable !== defaultForm.isAvailable ||
+      foodForm.preparationTime !== defaultForm.preparationTime;
+    
+    const hasVariants = foodForm.variants && foodForm.variants.length > 0;
+    const hasImage = selectedImageFile !== null;
+    
+    return isBasicDirty || hasVariants || hasImage;
+  }, [foodForm, selectedImageFile, foodFormMode]);
 
   const getItemCreatedMs = (item = {}) => {
     const direct = [item.createdAt, item.addedAt, item.requestedAt, item.updatedAt]
@@ -75,10 +96,8 @@ export default function FoodsList() {
     return `${url}${url.includes("?") ? "&" : "?"}v=${imageVersion}`
   }
 
-  const fetchAllFoods = useCallback(async () => {
+  const fetchRestaurantsForFilter = useCallback(async () => {
     try {
-      setLoading(true)
-
       const [activeRestaurantsResponse, inactiveRestaurantsResponse] = await Promise.all([
         adminAPI.getRestaurants({ limit: 1000 }),
         adminAPI.getRestaurants({ limit: 1000, status: "inactive" }),
@@ -109,14 +128,43 @@ export default function FoodsList() {
           .filter((restaurant) => restaurant.id)
           .sort((a, b) => a.name.localeCompare(b.name))
       )
+    } catch (error) {
+      debugError("Error fetching restaurants for filter:", error)
+    }
+  }, [])
 
-      if (restaurants.length === 0) {
-        setFoods([])
-        return
+  useEffect(() => {
+    fetchRestaurantsForFilter()
+  }, [fetchRestaurantsForFilter])
+
+  // Warn user before refreshing if form is open and dirty
+  useEffect(() => {
+    const handleBeforeUnload = (e) => {
+      if (showFoodFormModal && isFormDirty) {
+        e.preventDefault()
+        e.returnValue = ""
+      }
+    }
+    window.addEventListener("beforeunload", handleBeforeUnload)
+    return () => window.removeEventListener("beforeunload", handleBeforeUnload)
+  }, [showFoodFormModal, isFormDirty])
+
+  const fetchAllFoods = useCallback(async () => {
+    try {
+      setLoading(true)
+
+      const params = {
+        page: currentPage,
+        limit: pageSize,
+        ...(searchQuery.trim() && { search: searchQuery.trim() }),
+        ...(selectedRestaurant !== "all" && { restaurantId: selectedRestaurant }),
       }
 
-      const foodsRes = await adminAPI.getFoods({ limit: 1000 })
-      const list = foodsRes?.data?.data?.foods || []
+      const foodsRes = await adminAPI.getFoods(params)
+      const data = foodsRes?.data?.data || foodsRes?.data || {}
+      const list = data.foods || []
+      const total = data.total || list.length
+
       const approvedOnly = Array.isArray(list)
         ? list.filter((f) => String(f?.approvalStatus || "").toLowerCase() === "approved")
         : []
@@ -144,20 +192,22 @@ export default function FoodsList() {
             }))
           : []
       )
+      setTotalFoods(total)
       setImageVersion(Date.now())
     } catch (error) {
       debugError("Error fetching foods:", error)
       toast.error("Failed to load foods")
       setFoods([])
-      setRestaurantsForFilter([])
     } finally {
       setLoading(false)
     }
-  }, [])
+  }, [currentPage, pageSize, searchQuery, selectedRestaurant])
 
   useEffect(() => {
-    fetchAllFoods()
-  }, [fetchAllFoods])
+    const delay = searchQuery ? 250 : 0
+    const t = setTimeout(fetchAllFoods, delay)
+    return () => clearTimeout(t)
+  }, [fetchAllFoods, searchQuery])
 
   const [searchParams] = useSearchParams()
   const productIdFromUrl = searchParams.get("productId")
@@ -205,35 +255,17 @@ export default function FoodsList() {
   }
 
   const filteredFoods = useMemo(() => {
-    let result = [...foods]
-    
-    if (searchQuery.trim()) {
-      const query = searchQuery.toLowerCase().trim()
-      result = result.filter(food =>
-        food.name.toLowerCase().includes(query) ||
-        food.id.toString().includes(query) ||
-        food.restaurantName?.toLowerCase().includes(query) ||
-        food.categoryName?.toLowerCase().includes(query)
-      )
-    }
-
-    if (selectedRestaurant !== "all") {
-      result = result.filter((food) => String(food.restaurantId) === selectedRestaurant)
-    }
-
-    result.sort((a, b) => getItemCreatedMs(b) - getItemCreatedMs(a))
-    return result
-  }, [foods, searchQuery, selectedRestaurant])
+    return foods
+  }, [foods])
 
   const totalPages = useMemo(() => {
-    if (filteredFoods.length === 0) return 1
-    return Math.ceil(filteredFoods.length / pageSize)
-  }, [filteredFoods.length, pageSize])
+    if (totalFoods === 0) return 1
+    return Math.ceil(totalFoods / pageSize)
+  }, [totalFoods, pageSize])
 
   const paginatedFoods = useMemo(() => {
-    const start = (currentPage - 1) * pageSize
-    return filteredFoods.slice(start, start + pageSize)
-  }, [filteredFoods, currentPage, pageSize])
+    return foods
+  }, [foods])
 
   useEffect(() => {
     setCurrentPage(1)
@@ -478,8 +510,12 @@ export default function FoodsList() {
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
           <div className="flex items-center gap-2">
             <h2 className="text-lg font-semibold text-slate-900">Food List</h2>
-            <span className="px-3 py-1 rounded-full text-sm font-semibold bg-slate-100 text-slate-700">
-              {filteredFoods.length}
+            <span className="px-3 py-1 rounded-full text-sm font-semibold bg-slate-100 text-slate-700 flex items-center justify-center min-w-[2.5rem] h-7">
+              {loading ? (
+                <span className="w-5 h-3 rounded bg-slate-300/80 animate-pulse" />
+              ) : (
+                totalFoods
+              )}
             </span>
           </div>
 
@@ -554,7 +590,7 @@ export default function FoodsList() {
                     </div>
                   </td>
                 </tr>
-              ) : filteredFoods.length === 0 ? (
+              ) : foods.length === 0 ? (
                 <tr>
                   <td colSpan={6} className="px-6 py-20 text-center">
                     <div className="flex flex-col items-center justify-center">
@@ -638,53 +674,97 @@ export default function FoodsList() {
           </table>
         </div>
 
-        {!loading && filteredFoods.length > 0 && (
-          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 px-6 py-4 border-t border-slate-200 bg-slate-50">
-            <div className="text-sm text-slate-600">
-              Showing{" "}
-              <span className="font-semibold text-slate-800">{(currentPage - 1) * pageSize + 1}</span>
-              {" "}to{" "}
-              <span className="font-semibold text-slate-800">
-                {Math.min(currentPage * pageSize, filteredFoods.length)}
-              </span>
-              {" "}of{" "}
-              <span className="font-semibold text-slate-800">{filteredFoods.length}</span>
-            </div>
-
-            <div className="flex items-center gap-2">
+        {!loading && totalFoods > 0 && (
+          <div className="flex flex-col sm:flex-row items-center justify-between gap-4 border-t border-slate-100 bg-white px-4 py-4 sm:px-6 mt-4">
+            <div className="flex items-center gap-3">
+              <span className="text-sm text-slate-500 font-medium">Rows per page:</span>
               <select
                 value={pageSize}
-                onChange={(e) => setPageSize(Number(e.target.value))}
-                className="px-2.5 py-1.5 text-sm rounded-md border border-slate-300 bg-white focus:outline-none focus:ring-2 focus:ring-slate-400"
+                onChange={(e) => {
+                  const size = Number(e.target.value)
+                  setPageSize(size)
+                  localStorage.setItem('admin_foods_pageSize', size)
+                  setCurrentPage(1)
+                }}
+                className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-sm font-semibold text-slate-700 focus:outline-none focus:ring-2 focus:ring-slate-400 focus:border-slate-400 cursor-pointer shadow-sm"
               >
-                <option value={10}>10 / page</option>
-                <option value={20}>20 / page</option>
-                <option value={50}>50 / page</option>
+                <option value={10}>10</option>
+                <option value={20}>20</option>
+                <option value={50}>50</option>
+                <option value={100}>100</option>
               </select>
+            </div>
 
+            <div className="flex flex-1 justify-between sm:hidden w-full">
               <button
                 type="button"
-                onClick={() => setCurrentPage((prev) => Math.max(1, prev - 1))}
+                onClick={() => setCurrentPage((prev) => Math.max(prev - 1, 1))}
                 disabled={currentPage === 1}
-                className="inline-flex items-center gap-1 px-3 py-1.5 text-sm rounded-md border border-slate-300 bg-white text-slate-700 hover:bg-slate-100 disabled:opacity-50 disabled:cursor-not-allowed"
+                className="relative inline-flex items-center rounded-md border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-50 transition-colors"
               >
-                <ChevronLeft className="w-4 h-4" />
-                Prev
+                Previous
               </button>
-
-              <span className="px-3 py-1.5 text-sm font-medium text-slate-700">
-                {currentPage} / {totalPages}
-              </span>
-
               <button
                 type="button"
-                onClick={() => setCurrentPage((prev) => Math.min(totalPages, prev + 1))}
-                disabled={currentPage >= totalPages}
-                className="inline-flex items-center gap-1 px-3 py-1.5 text-sm rounded-md border border-slate-300 bg-white text-slate-700 hover:bg-slate-100 disabled:opacity-50 disabled:cursor-not-allowed"
+                onClick={() => setCurrentPage((prev) => Math.min(prev + 1, Math.ceil(totalFoods / pageSize)))}
+                disabled={currentPage >= Math.ceil(totalFoods / pageSize)}
+                className="relative ml-3 inline-flex items-center rounded-md border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-50 transition-colors"
               >
                 Next
-                <ChevronRight className="w-4 h-4" />
               </button>
+            </div>
+
+            <div className="hidden sm:flex sm:flex-1 sm:items-center sm:justify-between w-full">
+              <div className="pl-4">
+                <p className="text-sm text-slate-600">
+                  Showing <span className="font-semibold text-slate-900">{Math.min(totalFoods, (currentPage - 1) * pageSize + 1)}</span> to{" "}
+                  <span className="font-semibold text-slate-900">{Math.min(totalFoods, currentPage * pageSize)}</span> of{" "}
+                  <span className="font-semibold text-slate-900">{totalFoods}</span> foods
+                </p>
+              </div>
+              <div>
+                <nav className="isolate inline-flex -space-x-px rounded-md shadow-sm gap-1" aria-label="Pagination">
+                  <button
+                    type="button"
+                    onClick={() => setCurrentPage((prev) => Math.max(prev - 1, 1))}
+                    disabled={currentPage === 1}
+                    className="relative inline-flex items-center rounded-md px-2.5 py-1.5 text-slate-500 border border-slate-200 hover:bg-slate-50 disabled:opacity-50 transition-colors"
+                  >
+                    &lt;
+                  </button>
+                  {Array.from({ length: Math.ceil(totalFoods / pageSize) }, (_, i) => i + 1)
+                    .filter(page => page === 1 || page === Math.ceil(totalFoods / pageSize) || (page >= currentPage - 2 && page <= currentPage + 2))
+                    .map((page, index, arr) => {
+                      const showEllipsisBefore = index > 0 && page - arr[index - 1] > 1;
+                      return (
+                        <span key={page} className="inline-flex items-center">
+                          {showEllipsisBefore && (
+                            <span className="px-3 py-1.5 text-slate-400 text-sm">...</span>
+                          )}
+                          <button
+                            type="button"
+                            onClick={() => setCurrentPage(page)}
+                            className={`relative inline-flex items-center px-3.5 py-1.5 text-sm font-semibold rounded-md transition-colors ${
+                              currentPage === page
+                                ? "bg-slate-900 text-white"
+                                : "text-slate-700 border border-slate-200 hover:bg-slate-50"
+                            }`}
+                          >
+                            {page}
+                          </button>
+                        </span>
+                      );
+                    })}
+                  <button
+                    type="button"
+                    onClick={() => setCurrentPage((prev) => Math.min(prev + 1, Math.ceil(totalFoods / pageSize)))}
+                    disabled={currentPage >= Math.ceil(totalFoods / pageSize)}
+                    className="relative inline-flex items-center rounded-md px-2.5 py-1.5 text-slate-500 border border-slate-200 hover:bg-slate-50 disabled:opacity-50 transition-colors"
+                  >
+                    &gt;
+                  </button>
+                </nav>
+              </div>
             </div>
           </div>
         )}
@@ -756,7 +836,15 @@ export default function FoodsList() {
           }
         }}
       >
-        <DialogContent className="max-w-2xl p-0 overflow-hidden">
+        <DialogContent 
+          className="max-w-2xl p-0 overflow-hidden"
+          onInteractOutside={(e) => {
+            if (isFormDirty) e.preventDefault()
+          }}
+          onEscapeKeyDown={(e) => {
+            if (isFormDirty) e.preventDefault()
+          }}
+        >
           <DialogHeader className="px-6 py-4 border-b border-slate-200 bg-slate-50">
             <DialogTitle className="text-lg font-semibold text-slate-900">
               {foodFormMode === "edit" ? "Edit Food" : "Add Food"}

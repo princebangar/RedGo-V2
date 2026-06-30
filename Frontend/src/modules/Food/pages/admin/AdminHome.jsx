@@ -169,10 +169,14 @@ export default function AdminHome() {
     `GST: ${formatCurrency(gstTotal)}`,
   ].join(" + ")
 
+  if (isLoading && !dashboardData) {
+    return <DashboardSkeleton />
+  }
+
   return (
     <div className="px-4 pb-10 lg:px-6 pt-4">
       <div className="relative overflow-hidden rounded-3xl border border-neutral-200 bg-white shadow-[0_30px_120px_-60px_rgba(0,0,0,0.28)]">
-        {isLoading && (
+        {isLoading && dashboardData && (
           <div className="absolute inset-0 z-20 flex items-center justify-center bg-white/70 backdrop-blur-sm">
             <div className="flex items-center gap-3 rounded-full bg-white px-4 py-2 text-sm text-neutral-700 ring-1 ring-neutral-200">
               <span className="h-3 w-3 animate-ping rounded-full bg-neutral-800/70" />
@@ -640,6 +644,58 @@ function MetricCard({ title, value, helper, icon, accent, path }) {
         </div>
       </CardContent>
     </Card>
+  )
+}
+
+function DashboardSkeleton() {
+  return (
+    <div className="px-4 pb-10 lg:px-6 pt-4 w-full">
+      <div className="relative overflow-hidden rounded-3xl border border-neutral-200 bg-white shadow-[0_30px_120px_-60px_rgba(0,0,0,0.28)]">
+        {/* Header Skeleton */}
+        <div className="flex flex-col gap-4 border-b border-neutral-200 bg-gradient-to-br from-white via-neutral-50 to-neutral-100 px-6 py-5 lg:flex-row lg:items-center lg:justify-between">
+          <div className="flex items-center gap-4">
+            <div>
+              <div className="h-3 w-32 rounded bg-neutral-200 animate-pulse mb-2" />
+              <div className="h-6 w-48 rounded bg-neutral-300 animate-pulse" />
+            </div>
+          </div>
+          <div className="flex flex-wrap gap-3">
+            <div className="h-10 w-[160px] rounded-lg bg-neutral-200 animate-pulse" />
+            <div className="h-10 w-[140px] rounded-lg bg-neutral-200 animate-pulse" />
+          </div>
+        </div>
+
+        {/* Cards Skeleton */}
+        <div className="space-y-6 px-6 py-6">
+          <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+            {Array.from({ length: 16 }).map((_, i) => (
+              <div key={i} className="border border-neutral-200 rounded-xl bg-white p-4 h-[100px] flex items-center justify-between">
+                <div className="flex flex-col gap-2 w-2/3">
+                  <div className="h-2 w-16 bg-neutral-200 rounded animate-pulse" />
+                  <div className="h-6 w-24 bg-neutral-300 rounded animate-pulse" />
+                  <div className="h-2 w-32 bg-neutral-100 rounded animate-pulse" />
+                </div>
+                <div className="h-10 w-10 bg-neutral-200 rounded-xl animate-pulse shrink-0" />
+              </div>
+            ))}
+          </div>
+          
+          {/* Charts Skeleton */}
+          <div className="grid gap-4 lg:grid-cols-3">
+            <div className="lg:col-span-2 border border-neutral-200 rounded-xl bg-white p-4 h-[400px]">
+              <div className="h-5 w-40 bg-neutral-200 rounded animate-pulse mb-2" />
+              <div className="h-3 w-64 bg-neutral-100 rounded animate-pulse mb-6" />
+              <div className="h-[300px] w-full bg-neutral-50 rounded animate-pulse" />
+            </div>
+            <div className="border border-neutral-200 rounded-xl bg-white p-4 h-[400px]">
+              <div className="h-5 w-32 bg-neutral-200 rounded animate-pulse mb-2" />
+              <div className="h-3 w-48 bg-neutral-100 rounded animate-pulse mb-6" />
+              <div className="h-[250px] w-[250px] bg-neutral-50 rounded-full animate-pulse mx-auto" />
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
   )
 }
 

@@ -73,7 +73,7 @@ export const adminSidebarMenu = [
         icon: "FileText",
         subItems: [
           { label: "All", path: "/admin/food/orders/all" },
-          { label: "Scheduled", path: "/admin/food/orders/scheduled" },
+          // { label: "Scheduled", path: "/admin/food/orders/scheduled" },
           { label: "Pending", path: "/admin/food/orders/pending" },
           { label: "Accepted", path: "/admin/food/orders/accepted" },
           { label: "Processing", path: "/admin/food/orders/processing" },
@@ -231,7 +231,7 @@ export const adminSidebarMenu = [
       { type: "link", label: "Support", path: "/admin/food/pages-social-media/support", icon: "Headset" },
       { type: "link", label: "Refund Policy", path: "/admin/food/pages-social-media/refund", icon: "Receipt" },
       { type: "link", label: "Shipping Policy", path: "/admin/food/pages-social-media/shipping", icon: "Truck" },
-      { type: "link", label: "Cancellation Policy", path: "/admin/food/pages-social-media/cancellation", icon: "X" },
+      { type: "link", label: "Cancellation Policy", path: "/admin/food/pages-social-media/cancellation", icon: "FileX" },
     ],
   },
 ];

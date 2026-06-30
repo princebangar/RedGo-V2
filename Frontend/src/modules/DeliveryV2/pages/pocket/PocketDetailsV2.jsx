@@ -125,24 +125,24 @@ export const PocketDetailsV2 = () => {
         </div>
 
         {/* ─── SUMMARY CARD ─── */}
-        <div className="bg-black rounded-3xl p-6 shadow-2xl relative overflow-hidden group">
-           <div className="absolute top-0 right-0 w-32 h-32 bg-white/5 rounded-full -mr-16 -mt-16 blur-2xl group-hover:bg-white/10 transition-colors" />
+        <div className="bg-white dark:bg-black border border-gray-100 dark:border-transparent rounded-3xl p-6 shadow-sm dark:shadow-2xl relative overflow-hidden group">
+           <div className="absolute top-0 right-0 w-32 h-32 bg-gray-100/60 dark:bg-white/5 rounded-full -mr-16 -mt-16 blur-2xl group-hover:bg-gray-200/60 dark:group-hover:bg-white/10 transition-colors" />
            <div className="relative z-10">
               <div className="flex justify-between items-center mb-6">
                  <div>
-                    <p className="text-[10px] font-bold text-gray-400 uppercase tracking-[0.2em] mb-1">Total Payout</p>
-                    <h2 className="text-4xl font-black text-white tracking-tighter">{formatCurrency(summary.grandTotal)}</h2>
+                    <p className="text-[10px] font-bold text-gray-400 dark:text-gray-400 uppercase tracking-[0.2em] mb-1">Total Payout</p>
+                    <h2 className="text-4xl font-black text-gray-950 dark:text-white tracking-tighter">{formatCurrency(summary.grandTotal)}</h2>
                  </div>
-                 <div className="w-12 h-12 bg-white/10 rounded-2xl flex items-center justify-center border border-white/5 backdrop-blur-md">
+                 <div className="w-12 h-12 bg-gray-100 dark:bg-white/10 rounded-2xl flex items-center justify-center border border-gray-200 dark:border-white/5 backdrop-blur-md">
                     <TrendingUp className="w-6 h-6 text-[#ff8100]" />
                  </div>
               </div>
               <div className="grid grid-cols-2 gap-4">
-                 <div className="bg-white/5 p-4 rounded-2xl border border-white/5">
+                 <div className="bg-gray-50 dark:bg-white/5 p-4 rounded-2xl border border-gray-100 dark:border-white/5">
                     <p className="text-[9px] font-bold text-gray-400 uppercase tracking-widest mb-1">Trip Earnings</p>
-                    <p className="text-lg font-black text-white">{formatCurrency(summary.totalEarning)}</p>
+                    <p className="text-lg font-black text-gray-950 dark:text-white">{formatCurrency(summary.totalEarning)}</p>
                  </div>
-                 <div className="bg-white/5 p-4 rounded-2xl border border-white/5">
+                 <div className="bg-gray-50 dark:bg-white/5 p-4 rounded-2xl border border-gray-100 dark:border-white/5">
                     <p className="text-[9px] font-bold text-gray-400 uppercase tracking-widest mb-1">Weekly Bonus</p>
                     <p className="text-lg font-black text-green-500">+{formatCurrency(summary.totalBonus)}</p>
                  </div>

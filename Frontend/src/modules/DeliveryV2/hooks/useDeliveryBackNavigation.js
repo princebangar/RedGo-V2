@@ -34,6 +34,7 @@ const resolveDeliveryBackPath = ({ pathname, state }) => {
     normalizedPath === "/profile/details" ||
     normalizedPath === "/profile/bank" ||
     normalizedPath === "/profile/documents" ||
+    normalizedPath === "/profile/reviews" ||
     normalizedPath === "/profile/terms" ||
     normalizedPath === "/profile/privacy" ||
     normalizedPath === "/help/id-card" ||

@@ -177,11 +177,19 @@ export default function NotificationBroadcast() {
               }))
             : [],
       });
-      setForm({ title: "", message: "", targetType: "ALL" });
+      setForm((prev) => ({ title: "", message: "", targetType: prev.targetType }));
       setSelectedRecipients([]);
       setSearch("");
       window.dispatchEvent(new Event("adminBroadcastUpdated"));
       await loadHistory({ silent: true });
+
+      // Scroll the main content wrapper back to the top
+      if (typeof document !== "undefined") {
+        const mainEl = document.querySelector("main");
+        if (mainEl) {
+          mainEl.scrollTo({ top: 0, behavior: "smooth" });
+        }
+      }
     } finally {
       setSubmitting(false);
     }
@@ -209,7 +217,9 @@ export default function NotificationBroadcast() {
             <BellRing className="w-6 h-6" />
           </div>
           <div>
-            <h1 className="text-2xl font-bold text-slate-900">Broadcast Notification</h1>
+            <div className="flex items-center gap-3">
+              <h1 className="text-2xl font-bold text-slate-900">Broadcast Notification</h1>
+            </div>
             <p className="text-sm text-slate-500 mt-1">
               Send one notification to all, role-based, or selected recipients without touching other admin flows.
             </p>

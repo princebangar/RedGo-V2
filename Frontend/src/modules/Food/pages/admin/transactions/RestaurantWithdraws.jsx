@@ -267,8 +267,12 @@ export default function RestaurantWithdraws() {
           <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-4">
             <div className="flex items-center gap-2">
               <h2 className="text-xl font-bold text-slate-900">Withdraw Request Table</h2>
-              <span className="px-3 py-1 rounded-full text-sm font-semibold bg-slate-100 text-slate-700">
-                {filteredWithdraws.length}
+              <span className="px-3 py-1 rounded-full text-sm font-semibold bg-slate-100 text-slate-700 flex items-center justify-center min-w-[2.5rem] h-7">
+                {loading ? (
+                  <span className="w-5 h-3 rounded bg-slate-300/80 animate-pulse" />
+                ) : (
+                  filteredWithdraws.length
+                )}
               </span>
             </div>
 

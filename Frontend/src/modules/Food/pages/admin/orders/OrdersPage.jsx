@@ -13,8 +13,7 @@ import SettingsDialog from "@food/components/admin/orders/SettingsDialog"
 import RefundModal from "@food/components/admin/orders/RefundModal"
 import { useOrdersManagement } from "@food/components/admin/orders/useOrdersManagement"
 import { Loader2 } from "lucide-react"
-import { OrdersDashboardSkeleton } from "@food/components/ui/loading-skeletons"
-import { useDelayedLoading } from "@food/hooks/useDelayedLoading"
+import { OrdersDashboardSkeleton, TableSkeleton } from "@food/components/ui/loading-skeletons"
 const alertSound = "/alert.mp3"
 const originalSound = "/original.mp3"
 const debugLog = (...args) => {}
@@ -47,7 +46,6 @@ export default function OrdersPage({ statusKey = "all" }) {
   const [deletingOrderId, setDeletingOrderId] = useState(null)
   const [refundModalOpen, setRefundModalOpen] = useState(false)
   const [selectedOrderForRefund, setSelectedOrderForRefund] = useState(null)
-  const showLoadingSkeleton = useDelayedLoading(isLoading, { delay: 120, minDuration: 360 })
   const seenOrderIdsRef = useRef(new Set())
   const isFirstLoadRef = useRef(true)
   const fallbackAudioRef = useRef(null)
@@ -176,6 +174,13 @@ export default function OrdersPage({ statusKey = "all" }) {
     }
     alertLoopStartedAtRef.current = 0
   }, [])
+
+  // Fully stop the new-order alert (sound + loop). Called when an order is
+  // accepted/rejected by admin, or accepted by the restaurant.
+  const stopOrderAlert = useCallback(() => {
+    activeOrderAlertRef.current = null
+    stopAlertLoop()
+  }, [stopAlertLoop])
 
   const startAlertLoop = useCallback(() => {
     stopAlertLoop()
@@ -321,7 +326,7 @@ export default function OrdersPage({ statusKey = "all" }) {
       if (!silent) setIsLoading(true)
       const params = {
         page: 1,
-        limit: 1000,
+        limit: 100,
         status:
           statusKey === "all"
             ? undefined
@@ -347,6 +352,18 @@ export default function OrdersPage({ statusKey = "all" }) {
             .filter(Boolean),
         )
 
+        if (statusKey === "all") {
+          // If no order is still pending (created), there is nothing to alert about —
+          // stop any ongoing alert (e.g. after restaurant/admin accepted the order).
+          const hasPendingOrder = nextOrders.some((order) => {
+            const status = String(order.orderStatus || order.status || "").toLowerCase()
+            return !status || status === "created" || status === "pending"
+          })
+          if (!hasPendingOrder) {
+            stopOrderAlert()
+          }
+        }
+
         if (withRingCheck && !isFirstLoadRef.current && statusKey === "all") {
           const hasNewOrder = [...nextOrderIds].some(
             (id) => !seenOrderIdsRef.current.has(id),
@@ -369,6 +386,8 @@ export default function OrdersPage({ statusKey = "all" }) {
         seenOrderIdsRef.current = nextOrderIds
         isFirstLoadRef.current = false
         setOrders(nextOrders)
+        // Refresh sidebar badges count
+        window.dispatchEvent(new CustomEvent('refresh-sidebar-badges'))
       } else {
         debugError("Failed to fetch orders:", response.data)
         if (!silent) toast.error("Failed to fetch orders")
@@ -383,7 +402,7 @@ export default function OrdersPage({ statusKey = "all" }) {
     } finally {
       if (!silent) setIsLoading(false)
     }
-  }, [statusKey, playDefaultRing, showBrowserNotification, startAlertLoop])
+  }, [statusKey, playDefaultRing, showBrowserNotification, startAlertLoop, stopOrderAlert])
 
   const normalizedOrders = useMemo(() => {
     const safeOrders = Array.isArray(orders) ? orders : []
@@ -458,8 +477,10 @@ export default function OrdersPage({ statusKey = "all" }) {
 
 
       let displayStatus = order.orderStatus
-      if (!backendStatus || backendStatus === "created" || backendStatus === "confirmed") {
+      if (!backendStatus || backendStatus === "created") {
         displayStatus = "Pending"
+      } else if (backendStatus === "confirmed") {
+        displayStatus = "Accepted"
       } else if (backendStatus === "preparing" || backendStatus === "ready_for_pickup") {
         displayStatus = "Processing"
       } else if (backendStatus === "picked_up") {
@@ -559,6 +580,20 @@ export default function OrdersPage({ statusKey = "all" }) {
   } = useOrdersManagement(normalizedOrders, statusKey, config.title)
 
   useEffect(() => {
+    const handleScroll = () => {
+      if (typeof document !== "undefined") {
+        const mainElement = document.querySelector("main")
+        if (mainElement) {
+          mainElement.scrollTop = 0
+        }
+      }
+    }
+    handleScroll()
+    const timer = setTimeout(handleScroll, 100)
+    return () => clearTimeout(timer)
+  }, [statusKey])
+
+  useEffect(() => {
     isFirstLoadRef.current = true
     seenOrderIdsRef.current = new Set()
     fetchOrders({ silent: false, withRingCheck: false })
@@ -627,19 +662,30 @@ export default function OrdersPage({ statusKey = "all" }) {
       fetchOrders({ silent: true, withRingCheck: false })
     }
 
+    // When an order leaves the pending state (restaurant/admin accepted, or it
+    // was cancelled), stop the admin-side new-order alert so it doesn't keep ringing.
+    const handleOrderStatusUpdate = (payload = {}) => {
+      const status = String(payload?.orderStatus || payload?.status || "").toLowerCase()
+      if (!status || status === "created" || status === "pending") return
+      stopOrderAlert()
+      fetchOrders({ silent: true, withRingCheck: false })
+    }
+
     socket.on("connect", () => {
       socket.emit("join-admin-orders")
     })
     socket.on("admin_new_order", handleIncomingRealtimeOrder)
     socket.on("play_notification_sound", handleIncomingRealtimeOrder)
+    socket.on("order_status_update", handleOrderStatusUpdate)
 
     return () => {
       socket.off("admin_new_order", handleIncomingRealtimeOrder)
       socket.off("play_notification_sound", handleIncomingRealtimeOrder)
+      socket.off("order_status_update", handleOrderStatusUpdate)
       socket.disconnect()
       socketRef.current = null
     }
-  }, [statusKey, fetchOrders, playDefaultRing, showBrowserNotification, startAlertLoop])
+  }, [statusKey, fetchOrders, playDefaultRing, showBrowserNotification, startAlertLoop, stopOrderAlert])
 
   useEffect(() => {
     const onVisibilityChange = () => {
@@ -682,6 +728,8 @@ export default function OrdersPage({ statusKey = "all" }) {
 
     try {
       setProcessingActionOrderId(order.id || order.orderId)
+      // Admin acted on the order — stop the new-order alert immediately.
+      stopOrderAlert()
       const response = await adminAPI.acceptOrder(orderIdToUse)
       if (response.data?.success) {
         toast.success(response.data?.message || `Order ${order.orderId} accepted`)
@@ -713,6 +761,8 @@ export default function OrdersPage({ statusKey = "all" }) {
 
     try {
       setProcessingActionOrderId(order.id || order.orderId)
+      // Admin acted on the order — stop the new-order alert immediately.
+      stopOrderAlert()
       const response = await adminAPI.rejectOrder(orderIdToUse, reason)
       if (response.data?.success) {
         toast.success(response.data?.message || `Order ${order.orderId} rejected`)
@@ -897,14 +947,6 @@ export default function OrdersPage({ statusKey = "all" }) {
     }
   }
 
-  if (showLoadingSkeleton) {
-    return (
-      <div className="min-h-screen w-full max-w-full overflow-x-hidden bg-slate-50 p-4 lg:p-6">
-        <OrdersDashboardSkeleton />
-      </div>
-    )
-  }
-
   return (
     <div className="p-4 lg:p-6 bg-slate-50 min-h-screen w-full max-w-full overflow-x-hidden">
       <OrdersTopbar 
@@ -916,47 +958,54 @@ export default function OrdersPage({ statusKey = "all" }) {
         activeFiltersCount={activeFiltersCount}
         onExport={handleExport}
         onSettingsClick={() => setIsSettingsOpen(true)}
+        isLoading={isLoading}
       />
-      <FilterPanel
-        isOpen={isFilterOpen}
-        onClose={() => setIsFilterOpen(false)}
-        filters={filters}
-        setFilters={setFilters}
-        onApply={handleApplyFilters}
-        onReset={handleResetFilters}
-        restaurants={restaurants}
-      />
-      <SettingsDialog
-        isOpen={isSettingsOpen}
-        onOpenChange={setIsSettingsOpen}
-        visibleColumns={visibleColumns}
-        toggleColumn={toggleColumn}
-        resetColumns={resetColumns}
-      />
-      <ViewOrderDialog
-        isOpen={isViewOrderOpen}
-        onOpenChange={setIsViewOrderOpen}
-        order={selectedOrder}
-      />
-      <RefundModal
-        isOpen={refundModalOpen}
-        onOpenChange={setRefundModalOpen}
-        order={selectedOrderForRefund}
-        onConfirm={handleRefundConfirm}
-        isProcessing={processingRefund !== null}
-      />
-      <OrdersTable 
-        orders={filteredOrders} 
-        visibleColumns={visibleColumns}
-        onViewOrder={handleViewOrder}
-        onPrintOrder={handlePrintOrder}
-        onRefund={handleRefund}
-        onDeleteOrder={statusKey === "all" ? handleDeleteOrder : undefined}
-        onAcceptOrder={statusKey === "all" ? handleAcceptOrder : undefined}
-        onRejectOrder={statusKey === "all" ? handleRejectOrder : undefined}
-        actionLoadingOrderId={processingActionOrderId}
-        deletingOrderId={deletingOrderId}
-      />
+      {isLoading ? (
+        <TableSkeleton rows={8} columns={7} />
+      ) : (
+        <>
+          <FilterPanel
+            isOpen={isFilterOpen}
+            onClose={() => setIsFilterOpen(false)}
+            filters={filters}
+            setFilters={setFilters}
+            onApply={handleApplyFilters}
+            onReset={handleResetFilters}
+            restaurants={restaurants}
+          />
+          <SettingsDialog
+            isOpen={isSettingsOpen}
+            onOpenChange={setIsSettingsOpen}
+            visibleColumns={visibleColumns}
+            toggleColumn={toggleColumn}
+            resetColumns={resetColumns}
+          />
+          <ViewOrderDialog
+            isOpen={isViewOrderOpen}
+            onOpenChange={setIsViewOrderOpen}
+            order={selectedOrder}
+          />
+          <RefundModal
+            isOpen={refundModalOpen}
+            onOpenChange={setRefundModalOpen}
+            order={selectedOrderForRefund}
+            onConfirm={handleRefundConfirm}
+            isProcessing={processingRefund !== null}
+          />
+          <OrdersTable 
+            orders={filteredOrders} 
+            visibleColumns={visibleColumns}
+            onViewOrder={handleViewOrder}
+            onPrintOrder={handlePrintOrder}
+            onRefund={handleRefund}
+            onDeleteOrder={statusKey === "all" ? handleDeleteOrder : undefined}
+            onAcceptOrder={(statusKey === "all" || statusKey === "pending") ? handleAcceptOrder : undefined}
+            onRejectOrder={(statusKey === "all" || statusKey === "pending") ? handleRejectOrder : undefined}
+            actionLoadingOrderId={processingActionOrderId}
+            deletingOrderId={deletingOrderId}
+          />
+        </>
+      )}
     </div>
   )
 }

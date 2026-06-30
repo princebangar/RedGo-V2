@@ -119,6 +119,7 @@ export default function DeliveryHomeV2({ tab = 'feed' }) {
   const simInitializedRef = useRef(false);
 
   const isLoggingOut = useRef(false);
+  const gpsBlockedToastShown = useRef(false);
   const handleLogout = useCallback(() => {
     if (isLoggingOut.current) return;
     isLoggingOut.current = true;
@@ -471,7 +472,10 @@ export default function DeliveryHomeV2({ tab = 'feed' }) {
       if (!riderLocation) {
         setRiderLocation(fallbackPos);
       }
-      toast.error('GPS Blocked!', { description: 'Showing test location in Indore.' });
+      if (!gpsBlockedToastShown.current) {
+        gpsBlockedToastShown.current = true;
+        toast.error('GPS Blocked!', { description: 'Showing test location in Indore.' });
+      }
     }, { 
       enableHighAccuracy: true,
       maximumAge: 3000,
@@ -897,7 +901,8 @@ export default function DeliveryHomeV2({ tab = 'feed' }) {
       </div>
 
       {/* OVERLAYS (Persistent if active) - Outside flex container to avoid clipping and z-index issues */}
-      {(currentTab === 'feed' || activeOrder) && (
+      {/* Only show on the feed tab — must not appear over History/Profile/Pocket. */}
+      {currentTab === 'feed' && (
         <AnimatePresence>
           {!isModalMinimized && (
             <motion.div
@@ -1100,8 +1105,8 @@ export default function DeliveryHomeV2({ tab = 'feed' }) {
          </div>
       </BottomPopup>
 
-      {/* Floating Minimize/Restore Toggle - Above navbar */}
-      {isModalMinimized && (activeOrder || showVerification) && (
+      {/* Floating Minimize/Restore Toggle - Above navbar (feed tab only) */}
+      {currentTab === 'feed' && isModalMinimized && (activeOrder || showVerification) && (
         <motion.div 
            initial={{ y: 100, opacity: 0 }}
            animate={{ y: 0, opacity: 1 }}

@@ -192,7 +192,9 @@ export default function BusinessSetup() {
       {/* Page header */}
       <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-3 mb-4">
         <div>
-          <h1 className="text-xl lg:text-2xl font-bold text-slate-900">Business setup</h1>
+          <div className="flex items-center gap-3">
+            <h1 className="text-xl lg:text-2xl font-bold text-slate-900">Business setup</h1>
+          </div>
           <p className="text-xs lg:text-sm text-slate-500 mt-1">
             Manage your company information, general configuration and business rules.
           </p>

@@ -2,6 +2,7 @@ import { useState, useEffect, useMemo } from "react"
 import { Search, ArrowUpDown, Settings, Folder, ChevronDown, Eye, Loader2, Star } from "lucide-react"
 import { toast } from "sonner"
 import { adminAPI } from "@food/api"
+import { TableSkeleton } from "@food/components/ui/loading-skeletons"
 import {
   Dialog,
   DialogContent,
@@ -102,17 +103,6 @@ export default function ContactMessages() {
     )
   }
 
-  if (loading && feedbacks.length === 0) {
-    return (
-      <div className="p-4 lg:p-6 bg-slate-50 min-h-screen flex items-center justify-center">
-        <div className="text-center">
-          <Loader2 className="h-12 w-12 animate-spin text-blue-600 mx-auto mb-4" />
-          <p className="text-slate-600">Loading feedbacks...</p>
-        </div>
-      </div>
-    )
-  }
-
   return (
     <div className="p-4 lg:p-6 bg-slate-50 min-h-screen">
       {/* Header */}
@@ -120,8 +110,12 @@ export default function ContactMessages() {
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
           <div className="flex items-center gap-2">
             <h1 className="text-2xl font-bold text-slate-900">User Feedback</h1>
-            <span className="px-3 py-1 rounded-full text-sm font-semibold bg-slate-100 text-slate-700">
-              {feedbacks.length}
+            <span className="px-3 py-1 rounded-full text-sm font-semibold bg-slate-100 text-slate-700 flex items-center justify-center min-w-[2.5rem] h-7">
+              {loading ? (
+                <span className="w-5 h-3 rounded bg-slate-300/80 animate-pulse" />
+              ) : (
+                feedbacks.length
+              )}
             </span>
           </div>
 
@@ -162,7 +156,10 @@ export default function ContactMessages() {
       </div>
 
       {/* Table */}
-      <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
+      {loading ? (
+        <TableSkeleton rows={8} columns={6} />
+      ) : (
+        <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
         <div className="overflow-x-auto">
           <table className="w-full">
             <thead className="bg-slate-50 border-b border-slate-200">
@@ -299,6 +296,7 @@ export default function ContactMessages() {
           </div>
         )}
       </div>
+      )}
 
       {/* View Feedback Dialog */}
       <Dialog open={isViewDialogOpen} onOpenChange={setIsViewDialogOpen}>

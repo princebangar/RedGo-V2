@@ -83,7 +83,6 @@ export default function EarningAddonHistory() {
         setHistory(historyData)
         if (historyData.length === 0) {
           debugLog('?? No history records found in database')
-          toast.info("No earning addon history found. History will appear when delivery boys complete offers.")
         } else {
           debugLog(`? Successfully loaded ${historyData.length} history records`)
         }
@@ -397,7 +396,7 @@ export default function EarningAddonHistory() {
                     <tr>
                       <td colSpan={Object.values(visibleColumns).filter(v => v).length} className="px-6 py-12 text-center">
                         <div className="flex flex-col items-center gap-2">
-                          <div className="text-slate-400 text-4xl mb-2">??</div>
+                          <FileText className="w-10 h-10 text-slate-300 mb-1" />
                           <p className="text-slate-500 font-medium">No earning addon history found</p>
                           <p className="text-sm text-slate-400 mt-1">
                             {searchQuery ? 'Try adjusting your search query' : 'History will appear when delivery boys complete earning addon offers'}

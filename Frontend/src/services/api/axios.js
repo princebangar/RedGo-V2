@@ -203,8 +203,16 @@ apiClient.interceptors.response.use(
         original.headers.Authorization = `Bearer ${newAccessToken}`;
         return apiClient(original);
       }
-    } catch (_) {
-      onRefreshFailed(module);
+    } catch (refreshErr) {
+      const status = refreshErr?.response?.status;
+      // Only log out if the server explicitly rejected the refresh token
+      if (status === 401 || status === 403 || status === 400) {
+        onRefreshFailed(module);
+      } else {
+        // Network error or server error - don't clear auth, just fail the queue
+        refreshSubscribers.forEach((cb) => cb(null, module));
+        refreshSubscribers = [];
+      }
       return Promise.reject(err);
     } finally {
       isRefreshing = false;

@@ -571,6 +571,14 @@ export const adminAPI = {
     apiClient.delete(`/food/admin/orders/${String(orderId)}`, {
       contextModule: "admin",
     }),
+  acceptOrder: (orderId) =>
+    apiClient.patch(`/food/admin/orders/${String(orderId)}/accept`, {}, {
+      contextModule: "admin",
+    }),
+  rejectOrder: (orderId, reason = "") =>
+    apiClient.patch(`/food/admin/orders/${String(orderId)}/reject`, { reason }, {
+      contextModule: "admin",
+    }),
   /** Dispatch settings – auto vs manual assign (global) */
   /** Create restaurant (admin). Single API: POST /food/admin/restaurants. Body: JSON with image URLs. */
   createRestaurant: (body) =>
@@ -645,6 +653,10 @@ export const adminAPI = {
     apiClient.get("/food/admin/offers", { params, contextModule: "admin" }),
   createAdminOffer: (body) =>
     apiClient.post("/food/admin/offers", body ?? {}, {
+      contextModule: "admin",
+    }),
+  updateAdminOffer: (offerId, body) =>
+    apiClient.put(`/food/admin/offers/${String(offerId)}`, body ?? {}, {
       contextModule: "admin",
     }),
   updateAdminOfferCartVisibility: (offerId, itemId, showInCart) =>
@@ -2065,6 +2077,12 @@ export const deliveryAPI = {
   /** GET /food/delivery/pocket-details - single-call week details (trips + transactions) */
   getPocketDetails: (params) =>
     apiClient.get("/food/delivery/pocket-details", {
+      params: params ?? {},
+      contextModule: "delivery",
+    }),
+  /** GET /food/delivery/my-reviews - reviews given by customers to the logged-in partner */
+  getMyReviews: (params) =>
+    apiClient.get("/food/delivery/my-reviews", {
       params: params ?? {},
       contextModule: "delivery",
     }),

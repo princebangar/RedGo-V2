@@ -5,6 +5,7 @@ import {
   ChevronRight,
   Bike,
   Ticket,
+  Star,
   Share2,
   LogOut,
   X,
@@ -156,7 +157,7 @@ export const ProfileV2 = () => {
 
       <div className="px-4 py-6">
         {/* Navigation Buttons */}
-        <div className="grid grid-cols-1 gap-3 mb-6">
+        <div className="grid grid-cols-2 gap-3 mb-6">
           <button
             onClick={() => navigate("/food/delivery/history")}
             className="bg-white rounded-xl p-4 flex flex-col items-center gap-2 border border-transparent active:bg-gray-50 transition-colors"
@@ -165,6 +166,15 @@ export const ProfileV2 = () => {
               <Bike className="w-6 h-6 text-gray-700" />
             </div>
             <span className="text-sm font-bold text-gray-900">Trips history</span>
+          </button>
+          <button
+            onClick={() => navigate("/food/delivery/profile/reviews")}
+            className="bg-white rounded-xl p-4 flex flex-col items-center gap-2 border border-transparent active:bg-gray-50 transition-colors"
+          >
+            <div className="rounded-full bg-gray-50 p-3">
+              <Star className="w-6 h-6 text-orange-500" />
+            </div>
+            <span className="text-sm font-bold text-gray-900">My reviews</span>
           </button>
         </div>
 

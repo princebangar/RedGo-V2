@@ -752,16 +752,70 @@ export const getDeliveryPartnerTripHistory = async (deliveryPartnerId, query = {
 
     const orders = await FoodOrder.find(match)
         .populate({ path: 'restaurantId', select: 'restaurantName' })
-        .sort({ 'deliveryState.deliveredAt': -1, createdAt: -1 })
+        .sort({ createdAt: -1 })
         .limit(limit)
         .lean();
+
+    // Sort by each trip's effective time (delivered time for completed, else placed
+    // time) descending — latest order on top regardless of status (pending/completed).
+    const trips = (orders || [])
+        .map(toTripDto)
+        .sort((a, b) => new Date(b.date || 0).getTime() - new Date(a.date || 0).getTime());
 
     return {
         period,
         date: (date || new Date()).toISOString(),
         range: { start: start.toISOString(), end: end.toISOString() },
-        trips: (orders || []).map(toTripDto)
+        trips
     };
+};
+
+// Reviews given by customers to the logged-in delivery partner.
+export const getDeliveryPartnerReviews = async (deliveryPartnerId, query = {}) => {
+    if (!deliveryPartnerId || !mongoose.Types.ObjectId.isValid(deliveryPartnerId)) {
+        throw new ValidationError('Delivery partner not found');
+    }
+    const limit = Math.min(Math.max(parseInt(query.limit, 10) || 50, 1), 500);
+    const page = Math.max(parseInt(query.page, 10) || 1, 1);
+    const skip = (page - 1) * limit;
+
+    const partnerId = new mongoose.Types.ObjectId(deliveryPartnerId);
+    const filter = {
+        'dispatch.deliveryPartnerId': partnerId,
+        'ratings.deliveryPartner.rating': { $exists: true, $ne: null },
+    };
+
+    const [docs, total, agg] = await Promise.all([
+        FoodOrder.find(filter)
+            .sort({ createdAt: -1 })
+            .skip(skip)
+            .limit(limit)
+            .populate('userId', 'name')
+            .select('orderId userId ratings.deliveryPartner createdAt deliveryState.deliveredAt')
+            .lean(),
+        FoodOrder.countDocuments(filter),
+        // Compute the average from the actual delivery ratings on orders so the number
+        // always matches the reviews shown here (the partner.rating aggregate field can
+        // drift from real data, e.g. due to old/test ratings).
+        FoodOrder.aggregate([
+            { $match: filter },
+            { $group: { _id: null, avg: { $avg: '$ratings.deliveryPartner.rating' }, count: { $sum: 1 } } },
+        ]),
+    ]);
+
+    const reviews = docs.map((doc) => ({
+        orderId: doc.orderId,
+        customer: doc.userId?.name || 'Customer',
+        review: doc.ratings?.deliveryPartner?.comment || '',
+        rating: doc.ratings?.deliveryPartner?.rating || 0,
+        submittedAt: doc.createdAt,
+        deliveredAt: doc.deliveryState?.deliveredAt || null,
+    }));
+
+    const averageRating = agg?.[0]?.avg ? Math.round(agg[0].avg * 10) / 10 : 0;
+    const totalRatings = agg?.[0]?.count || total;
+
+    return { reviews, total, page, limit, averageRating, totalRatings };
 };
 
 export const getDeliveryPocketDetails = async (deliveryPartnerId, query = {}) => {

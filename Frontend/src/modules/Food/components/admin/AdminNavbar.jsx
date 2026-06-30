@@ -464,26 +464,26 @@ export default function AdminNavbar({ onMenuClick }) {
                 </div>
                 <DropdownMenuGroup>
                   <DropdownMenuItem
-                    className="cursor-pointer hover:bg-neutral-100 focus:bg-neutral-100"
+                    className="group cursor-pointer hover:bg-neutral-100 focus:bg-neutral-100 text-neutral-700 hover:text-neutral-900 focus:text-neutral-900"
                     onClick={() => navigate("/admin/food/profile")}
                   >
-                    <User className="mr-2 w-4 h-4" />
+                    <User className="mr-2 w-4 h-4 text-neutral-500 group-hover:text-neutral-700 group-focus:text-neutral-700" />
                     <span>Profile</span>
                   </DropdownMenuItem>
                   <DropdownMenuItem
-                    className="cursor-pointer hover:bg-neutral-100 focus:bg-neutral-100"
+                    className="group cursor-pointer hover:bg-neutral-100 focus:bg-neutral-100 text-neutral-700 hover:text-neutral-900 focus:text-neutral-900"
                     onClick={() => navigate("/admin/food/settings")}
                   >
-                    <Settings className="mr-2 w-4 h-4" />
+                    <Settings className="mr-2 w-4 h-4 text-neutral-500 group-hover:text-neutral-700 group-focus:text-neutral-700" />
                     <span>Settings</span>
                   </DropdownMenuItem>
                 </DropdownMenuGroup>
                 <DropdownMenuSeparator />
                 <DropdownMenuItem
-                  className="cursor-pointer text-red-600 hover:bg-red-50 focus:bg-red-50"
+                  className="group cursor-pointer text-red-600 hover:bg-red-50 focus:bg-red-50 hover:text-red-700 focus:text-red-700"
                   onClick={handleLogout}
                 >
-                  <LogOut className="mr-2 w-4 h-4" />
+                  <LogOut className="mr-2 w-4 h-4 text-red-500 group-hover:text-red-600 group-focus:text-red-600" />
                   <span>Logout</span>
                 </DropdownMenuItem>
               </DropdownMenuContent>

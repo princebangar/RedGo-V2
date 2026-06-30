@@ -36,9 +36,6 @@ import useAppBackNavigation from "@food/hooks/useAppBackNavigation"
 import { ImageSourcePicker } from "@food/components/ImageSourcePicker"
 import { isFlutterBridgeAvailable } from "@food/utils/imageUploadUtils"
 import { EMAIL_REGEX } from "@/shared/utils/emailValidation"
-import { LocalizationProvider } from '@mui/x-date-pickers/LocalizationProvider'
-import { AdapterDayjs } from '@mui/x-date-pickers/AdapterDayjs'
-import { DatePicker } from '@mui/x-date-pickers/DatePicker'
 import dayjs from 'dayjs'
 const debugLog = (...args) => { }
 const debugWarn = (...args) => { }
@@ -464,6 +461,101 @@ export default function EditProfile() {
 
   return (
     <div className="min-h-screen bg-[#f5f5f5] dark:bg-[#0a0a0a] pb-12">
+      <style>{`
+        /* MUI DatePicker overrides */
+        .dark .MuiOutlinedInput-root fieldset {
+          border-color: #4b5563 !important;
+        }
+        .dark .MuiOutlinedInput-root:hover fieldset {
+          border-color: #9ca3af !important;
+        }
+        .dark .MuiOutlinedInput-root.Mui-focused fieldset {
+          border-color: #DC2626 !important;
+        }
+        .dark input,
+        .dark .MuiInputBase-root,
+        .dark .MuiInputBase-root *,
+        .dark .MuiOutlinedInput-root,
+        .dark .MuiOutlinedInput-root * {
+          color: #ffffff !important;
+          -webkit-text-fill-color: #ffffff !important;
+          opacity: 1 !important;
+        }
+        .dark input::placeholder,
+        .dark input::-webkit-input-placeholder,
+        .dark input::-moz-placeholder,
+        .dark input:-ms-input-placeholder {
+          color: #ffffff !important;
+          -webkit-text-fill-color: #ffffff !important;
+          opacity: 0.9 !important;
+        }
+        .dark .MuiInputLabel-root {
+          color: #9ca3af !important;
+        }
+        .dark .MuiIconButton-root {
+          color: #9ca3af !important;
+        }
+
+        /* Date Selector Calendar Popper Overrides in Dark Mode */
+        .dark .MuiPickersPopper-paper,
+        .dark .MuiPaper-root,
+        .dark .MuiPickersLayout-root {
+          background-color: #1e1e1e !important;
+          color: #ffffff !important;
+          border: 1px solid #374151 !important;
+        }
+        .dark .MuiPickersCalendarHeader-label {
+          color: #ffffff !important;
+        }
+        .dark .MuiPickersCalendarHeader-iconButton {
+          color: #ffffff !important;
+        }
+        .dark .MuiDayCalendar-weekDayLabel {
+          color: #9ca3af !important;
+        }
+        .dark .MuiPickersDay-root {
+          color: #ffffff !important;
+        }
+        .dark .MuiPickersDay-root:hover {
+          background-color: rgba(255, 255, 255, 0.08) !important;
+        }
+        .dark .MuiPickersDay-root.Mui-selected {
+          background-color: #DC2626 !important;
+          color: #ffffff !important;
+        }
+        .dark .MuiPickersDay-root.MuiPickersDay-today {
+          border-color: #DC2626 !important;
+        }
+        .dark .MuiPickersYear-yearButton {
+          color: #ffffff !important;
+        }
+        .dark .MuiPickersYear-yearButton.Mui-selected {
+          background-color: #DC2626 !important;
+        }
+        .dark .MuiPickersMonth-monthButton {
+          color: #ffffff !important;
+        }
+        .dark .MuiPickersMonth-monthButton.Mui-selected {
+          background-color: #DC2626 !important;
+        }
+
+        /* Radix Select Trigger / Gender overrides */
+        .dark [data-slot="select-trigger"] span,
+        .dark [data-slot="select-value"] {
+          color: #ffffff !important;
+          -webkit-text-fill-color: #ffffff !important;
+        }
+        .dark [data-slot="select-trigger"][data-placeholder] span,
+        .dark [data-slot="select-trigger"][data-placeholder] [data-slot="select-value"] {
+          color: #ffffff !important;
+          -webkit-text-fill-color: #ffffff !important;
+          opacity: 0.9 !important;
+        }
+        .dark [data-slot="select-trigger"] svg {
+          color: #9ca3af !important;
+          opacity: 1 !important;
+        }
+      `}</style>
       {/* Header */}
       <div className="bg-white dark:bg-[#1a1a1a] border-b border-gray-100 dark:border-gray-800">
         <div className="max-w-7xl mx-auto flex items-center gap-3 px-4 sm:px-6 md:px-8 lg:px-10 xl:px-12 py-4 md:py-5 lg:py-6">
@@ -634,97 +726,44 @@ export default function EditProfile() {
 
             {/* Date of Birth Field */}
             <div>
-              <LocalizationProvider dateAdapter={AdapterDayjs}>
-                <DatePicker
-                  label="Date of birth"
-                  value={formData.dateOfBirth}
-                  onChange={(newValue) => handleChange('dateOfBirth', newValue)}
-                  maxDate={dayjs()}
-                  slotProps={{
-                    textField: {
-                      className: "w-full",
-                      InputLabelProps: { shrink: true },
-                      sx: {
-                        '& .MuiOutlinedInput-root': {
-                          height: '56px',
-                          borderRadius: '14px',
-                          '& fieldset': { borderColor: '#d1d5db' },
-                          '&:hover fieldset': { borderColor: '#9ca3af' },
-                          '&.Mui-focused fieldset': { borderColor: '#DC2626', borderWidth: '1.5px' },
-                        },
-                        '& .MuiInputBase-input': {
-                          padding: '10px 14px 14px',
-                          fontSize: '16px',
-                          fontWeight: 500,
-                          color: '#1f2937'
-                        },
-                        '& .MuiInputLabel-root': {
-                          color: '#9ca3af',
-                          fontSize: '15px',
-                          transform: 'translate(14px, -9px) scale(0.85)',
-                          backgroundColor: 'transparent'
-                        },
-                        '& .MuiInputLabel-root.Mui-focused': {
-                          color: '#9ca3af'
-                        }
-                      },
-                    },
-                  }}
+              <fieldset className="border border-gray-300 dark:border-gray-600 rounded-[14px] px-3 pb-2 pt-0 transition-colors focus-within:border-[#DC2626] focus-within:border-[1.5px]">
+                <legend className="text-[13px] text-gray-400 dark:text-gray-400 px-1 font-normal tracking-wide">Date of birth</legend>
+                <input
+                  id="dateOfBirth"
+                  type="date"
+                  value={formData.dateOfBirth ? formData.dateOfBirth.format('YYYY-MM-DD') : ''}
+                  onChange={(e) => handleChange('dateOfBirth', e.target.value ? dayjs(e.target.value) : null)}
+                  max={dayjs().format('YYYY-MM-DD')}
+                  className="w-full bg-transparent border-none outline-none text-gray-800 dark:text-white text-[16px] font-medium pb-1 [color-scheme:light] dark:[color-scheme:dark]"
                 />
-              </LocalizationProvider>
+              </fieldset>
               {fieldErrors.dateOfBirth && <p className="text-xs text-red-600 mt-1">{fieldErrors.dateOfBirth}</p>}
             </div>
 
             {/* Anniversary Field */}
             <div>
-              <LocalizationProvider dateAdapter={AdapterDayjs}>
-                <DatePicker
-                  label="Anniversary"
-                  value={formData.anniversary}
-                  onChange={(newValue) => handleChange('anniversary', newValue)}
-                  slotProps={{
-                    textField: {
-                      className: "w-full",
-                      InputLabelProps: { shrink: true },
-                      sx: {
-                        '& .MuiOutlinedInput-root': {
-                          height: '56px',
-                          borderRadius: '14px',
-                          '& fieldset': { borderColor: '#d1d5db' },
-                          '&:hover fieldset': { borderColor: '#9ca3af' },
-                          '&.Mui-focused fieldset': { borderColor: '#DC2626', borderWidth: '1.5px' },
-                        },
-                        '& .MuiInputBase-input': {
-                          padding: '10px 14px 14px',
-                          fontSize: '16px',
-                          fontWeight: 500,
-                          color: '#1f2937'
-                        },
-                        '& .MuiInputLabel-root': {
-                          color: '#9ca3af',
-                          fontSize: '15px',
-                          transform: 'translate(14px, -9px) scale(0.85)',
-                        },
-                        '& .MuiInputLabel-root.Mui-focused': {
-                          color: '#9ca3af'
-                        }
-                      },
-                    },
-                  }}
+              <fieldset className="border border-gray-300 dark:border-gray-600 rounded-[14px] px-3 pb-2 pt-0 transition-colors focus-within:border-[#DC2626] focus-within:border-[1.5px]">
+                <legend className="text-[13px] text-gray-400 dark:text-gray-400 px-1 font-normal tracking-wide">Anniversary</legend>
+                <input
+                  id="anniversary"
+                  type="date"
+                  value={formData.anniversary ? formData.anniversary.format('YYYY-MM-DD') : ''}
+                  onChange={(e) => handleChange('anniversary', e.target.value ? dayjs(e.target.value) : null)}
+                  className="w-full bg-transparent border-none outline-none text-gray-800 dark:text-white text-[16px] font-medium pb-1 [color-scheme:light] dark:[color-scheme:dark]"
                 />
-              </LocalizationProvider>
+              </fieldset>
             </div>
 
             {/* Gender Field */}
             <div>
-              <fieldset className="border border-gray-300 dark:border-gray-700 rounded-[14px] px-3 pb-1 pt-0 transition-colors focus-within:border-[#DC2626] focus-within:border-[1.5px]">
+              <fieldset className="border border-gray-300 dark:border-gray-600 rounded-[14px] px-3 pb-1 pt-0 transition-colors focus-within:border-[#DC2626] focus-within:border-[1.5px]">
                 <legend className="text-[13px] text-gray-400 dark:text-gray-500 px-1 font-normal tracking-wide">Gender</legend>
                 <Select
                   value={formData.gender || ""}
                   onValueChange={(value) => handleChange('gender', value)}
                 >
-                  <SelectTrigger className="w-full border-none shadow-none focus:ring-0 px-0 h-8 text-[16px] font-medium text-gray-800 bg-transparent mb-1 -mt-1">
-                    <SelectValue placeholder="" />
+                  <SelectTrigger className="w-full border-none shadow-none focus:ring-0 px-0 h-8 text-[16px] font-medium text-gray-800 dark:text-white bg-transparent mb-1 -mt-1">
+                    <SelectValue placeholder="Select gender" />
                   </SelectTrigger>
                   <SelectContent className="rounded-xl">
                     {genderOptions.map((option) => (
