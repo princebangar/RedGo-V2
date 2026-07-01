@@ -3,6 +3,7 @@ import { uploadImageBuffer } from '../../../../services/cloudinary.service.js';
 import { ValidationError } from '../../../../core/auth/errors.js';
 import mongoose from 'mongoose';
 import { FoodZone } from '../../admin/models/zone.model.js';
+import { FoodTopRestaurant } from '../../admin/models/topRestaurant.model.js';
 import { FoodOffer } from '../../admin/models/offer.model.js';
 import { FoodDiningRestaurant } from '../../dining/models/diningRestaurant.model.js';
 import { FoodItem } from '../../admin/models/food.model.js';
@@ -1338,6 +1339,26 @@ export const listApprovedRestaurants = async (query = {}) => {
     const radiusKm = toFiniteNumber(query.radiusKm) ?? toFiniteNumber(query.maxDistance);
     const sortBy = parseSortBy(query.sortBy);
 
+    // Admin-curated "Top Restaurants" promotion. Only applied for the DEFAULT sort
+    // (no explicit sortBy), a known zone, and delivery/takeaway lists (not dining).
+    // The curated restaurants are surfaced first in their saved order; users never
+    // see any ranking label. When nothing is curated, behaviour is unchanged.
+    let topObjectIds = [];
+    if (
+        sortBy === null &&
+        zoneIdRaw &&
+        mongoose.Types.ObjectId.isValid(zoneIdRaw) &&
+        query.orderType !== 'dining'
+    ) {
+        const topType = query.orderType === 'takeaway' ? 'takeaway' : 'delivery';
+        const topDoc = await FoodTopRestaurant.findOne({
+            zoneId: new mongoose.Types.ObjectId(zoneIdRaw),
+            type: topType,
+        }).select('restaurants').lean();
+        const ids = Array.isArray(topDoc?.restaurants) ? topDoc.restaurants : [];
+        topObjectIds = ids.map((id) => new mongoose.Types.ObjectId(String(id)));
+    }
+
     const projection = {
         restaurantName: 1,
         area: 1,
@@ -1417,7 +1438,26 @@ export const listApprovedRestaurants = async (query = {}) => {
         if (sortBy === 'newest') return { $sort: { createdAt: -1 } };
         return { $sort: { distanceMeters: 1, createdAt: -1 } };
     })();
-    pipeline.push(sortStage);
+
+    if (topObjectIds.length > 0) {
+        // Compute a promotion order: curated restaurants get their saved index
+        // (0-based), everything else gets a large number so it sorts after them.
+        // Curated ids that are not in the result set (banned/deleted) simply never
+        // match and are auto-skipped for users.
+        pipeline.push({
+            $addFields: {
+                __topOrder: {
+                    $let: {
+                        vars: { idx: { $indexOfArray: [topObjectIds, '$_id'] } },
+                        in: { $cond: [{ $gte: ['$$idx', 0] }, '$$idx', 1000000] },
+                    },
+                },
+            },
+        });
+        pipeline.push({ $sort: { __topOrder: 1, ...sortStage.$sort } });
+    } else {
+        pipeline.push(sortStage);
+    }
 
     // Final Facet for Pagination
     pipeline.push({

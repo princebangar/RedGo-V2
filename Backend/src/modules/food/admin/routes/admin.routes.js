@@ -137,6 +137,10 @@ router.patch('/business-settings', upload.fields([
 router.get('/delivery-cash-limit', adminController.getDeliveryCashLimit);
 router.patch('/delivery-cash-limit', adminController.updateDeliveryCashLimit);
 
+// ----- Top Restaurants (per zone + type) -----
+router.get('/top-restaurants', adminController.getTopRestaurants);
+router.put('/top-restaurants', adminController.saveTopRestaurants);
+
 // ----- Archived / Deleted Accounts -----
 router.get('/archived-accounts', adminController.getArchivedAccounts);
 

@@ -1031,6 +1031,26 @@ export async function updateDeliveryCashLimit(req, res, next) {
     }
 }
 
+// ----- Top Restaurants (admin) -----
+export async function getTopRestaurants(req, res, next) {
+    try {
+        const data = await adminService.getTopRestaurantsForAdmin(req.query || {});
+        res.status(200).json({ success: true, message: 'Top restaurants fetched successfully', data });
+    } catch (error) {
+        next(error);
+    }
+}
+
+export async function saveTopRestaurants(req, res, next) {
+    try {
+        const adminId = req.user?.userId || null;
+        const data = await adminService.saveTopRestaurantsForAdmin(req.body || {}, adminId);
+        res.status(200).json({ success: true, message: 'Top restaurants updated successfully', data });
+    } catch (error) {
+        next(error);
+    }
+}
+
 // ----- Delivery Emergency Help (admin) -----
 export async function getEmergencyHelp(req, res, next) {
     try {

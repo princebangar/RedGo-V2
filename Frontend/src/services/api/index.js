@@ -591,6 +591,17 @@ export const adminAPI = {
       params: { limit: 1000, ...params },
       contextModule: "admin",
     }),
+  /** Top Restaurants (per zone + type). Query: zoneId, type (delivery|takeaway) */
+  getTopRestaurants: (params = {}) =>
+    apiClient.get("/food/admin/top-restaurants", {
+      params,
+      contextModule: "admin",
+    }),
+  /** Save ordered top restaurants. Body: { zoneId, type, restaurantIds: [] } */
+  saveTopRestaurants: (body = {}) =>
+    apiClient.put("/food/admin/top-restaurants", body ?? {}, {
+      contextModule: "admin",
+    }),
   /** Restaurant report (admin). */
   getRestaurantReport: (params = {}) =>
     apiClient.get("/food/admin/reports/restaurants", {

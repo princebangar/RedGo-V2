@@ -18,6 +18,7 @@ import { FeedbackExperience } from '../models/feedbackExperience.model.js';
 import { FoodUser } from '../../../../core/users/user.model.js';
 import { FoodRefreshToken } from '../../../../core/refreshTokens/refreshToken.model.js';
 import { FoodDeliveryCashLimit } from '../models/deliveryCashLimit.model.js';
+import { FoodTopRestaurant } from '../models/topRestaurant.model.js';
 import { FoodDeliveryEmergencyHelp } from '../models/deliveryEmergencyHelp.model.js';
 import { FoodReferralSettings } from '../models/referralSettings.model.js';
 import { FoodReferralLog } from '../models/referralLog.model.js';
@@ -2252,6 +2253,138 @@ export async function upsertDeliveryCashLimitSettings(body = {}) {
         deliveryWithdrawalLimit: created.deliveryWithdrawalLimit,
         maxConcurrentOrders: created.maxConcurrentOrders,
     };
+}
+
+// ----- Top Restaurants (admin curated, per zone + type) -----
+const TOP_RESTAURANT_TYPES = ['delivery', 'takeaway'];
+const MAX_TOP_RESTAURANTS = 10;
+
+const normalizeTopType = (value) => {
+    const t = String(value || 'delivery').trim().toLowerCase();
+    return TOP_RESTAURANT_TYPES.includes(t) ? t : 'delivery';
+};
+
+/**
+ * Returns the candidate restaurants for a zone (+ type) along with each one's
+ * current top rank (1-based) if it has been curated. Search is handled on the
+ * client so the full candidate set is returned here.
+ */
+export async function getTopRestaurantsForAdmin(query = {}) {
+    const zoneIdRaw = String(query.zoneId || '').trim();
+    if (!zoneIdRaw || !mongoose.Types.ObjectId.isValid(zoneIdRaw)) {
+        throw new ValidationError('A valid zoneId is required');
+    }
+    const type = normalizeTopType(query.type);
+    const zoneObjectId = new mongoose.Types.ObjectId(zoneIdRaw);
+
+    const filter = { status: 'approved', zoneId: zoneObjectId };
+    if (type === 'takeaway') {
+        filter['takeawaySettings.isEnabled'] = true;
+    }
+
+    const [restaurants, topDoc] = await Promise.all([
+        FoodRestaurant.find(filter)
+            .select('restaurantName location area city profileImage status ownerName ownerPhone zoneId rating totalRatings takeawaySettings')
+            .populate('zoneId', 'name zoneName')
+            .lean(),
+        FoodTopRestaurant.findOne({ zoneId: zoneObjectId, type }).lean(),
+    ]);
+
+    const orderedIds = Array.isArray(topDoc?.restaurants) ? topDoc.restaurants.map((id) => String(id)) : [];
+    const rankMap = new Map();
+    orderedIds.forEach((id, index) => rankMap.set(id, index + 1));
+
+    const withRank = restaurants.map((r) => ({
+        ...r,
+        rank: rankMap.get(String(r._id)) || null,
+    }));
+
+    return {
+        type,
+        zoneId: zoneIdRaw,
+        maxTop: MAX_TOP_RESTAURANTS,
+        restaurants: withRank,
+    };
+}
+
+/**
+ * Saves the ordered top-restaurant list for a zone + type. Receives an ordered
+ * array of restaurantIds (index 0 = #Top1). Validates that the ids are unique,
+ * within the limit, and are approved restaurants in that zone (takeaway-enabled
+ * for the takeaway list). The ordering itself encodes the ranks.
+ */
+export async function saveTopRestaurantsForAdmin(body = {}, adminId = null) {
+    const zoneIdRaw = String(body.zoneId || '').trim();
+    if (!zoneIdRaw || !mongoose.Types.ObjectId.isValid(zoneIdRaw)) {
+        throw new ValidationError('A valid zoneId is required');
+    }
+    const type = normalizeTopType(body.type);
+    const zoneObjectId = new mongoose.Types.ObjectId(zoneIdRaw);
+
+    const rawIds = Array.isArray(body.restaurantIds) ? body.restaurantIds : [];
+    if (rawIds.length > MAX_TOP_RESTAURANTS) {
+        throw new ValidationError(`You can select a maximum of ${MAX_TOP_RESTAURANTS} top restaurants`);
+    }
+
+    // Validate ids: valid ObjectIds, no duplicates.
+    const ids = [];
+    const seen = new Set();
+    for (const raw of rawIds) {
+        const idStr = String(raw || '').trim();
+        if (!mongoose.Types.ObjectId.isValid(idStr)) {
+            throw new ValidationError('Invalid restaurant id in top list');
+        }
+        if (seen.has(idStr)) {
+            throw new ValidationError('A restaurant cannot appear twice in the top list');
+        }
+        seen.add(idStr);
+        ids.push(idStr);
+    }
+
+    if (ids.length > 0) {
+        // Ensure every id is an approved restaurant in this zone (and takeaway-enabled when needed).
+        const validFilter = {
+            _id: { $in: ids.map((id) => new mongoose.Types.ObjectId(id)) },
+            status: 'approved',
+            zoneId: zoneObjectId,
+        };
+        if (type === 'takeaway') {
+            validFilter['takeawaySettings.isEnabled'] = true;
+        }
+        const validCount = await FoodRestaurant.countDocuments(validFilter);
+        if (validCount !== ids.length) {
+            throw new ValidationError('One or more selected restaurants are not valid for this zone/type');
+        }
+    }
+
+    const orderedObjectIds = ids.map((id) => new mongoose.Types.ObjectId(id));
+
+    const updated = await FoodTopRestaurant.findOneAndUpdate(
+        { zoneId: zoneObjectId, type },
+        { $set: { restaurants: orderedObjectIds, updatedBy: adminId || null } },
+        { new: true, upsert: true, setDefaultsOnInsert: true }
+    ).lean();
+
+    return {
+        zoneId: zoneIdRaw,
+        type,
+        restaurantIds: (updated?.restaurants || []).map((id) => String(id)),
+    };
+}
+
+/**
+ * Used by the public restaurant list to fetch the curated, ordered ids for a
+ * zone + type. Returns [] when nothing is curated so the normal list is shown.
+ */
+export async function getTopRestaurantIds(zoneId, type) {
+    const zoneIdRaw = String(zoneId || '').trim();
+    if (!zoneIdRaw || !mongoose.Types.ObjectId.isValid(zoneIdRaw)) return [];
+    const normalizedType = normalizeTopType(type);
+    const doc = await FoodTopRestaurant.findOne({
+        zoneId: new mongoose.Types.ObjectId(zoneIdRaw),
+        type: normalizedType,
+    }).select('restaurants').lean();
+    return Array.isArray(doc?.restaurants) ? doc.restaurants.map((id) => String(id)) : [];
 }
 
 // ----- Delivery Emergency Help (admin) -----

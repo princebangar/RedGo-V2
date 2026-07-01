@@ -168,7 +168,19 @@ export function clearModuleAuth(module) {
   if (module === "delivery") {
     sessionStorage.removeItem("deliveryAuthData");
   }
-  
+
+  if (module === "admin") {
+    // Reset admin-only UI state so a fresh login starts clean (e.g. the Top
+    // Restaurants selected-zone preference and any unsaved drafts).
+    try {
+      Object.keys(localStorage)
+        .filter((k) => k.startsWith("top_restaurants_"))
+        .forEach((k) => localStorage.removeItem(k));
+    } catch (e) {
+      /* ignore */
+    }
+  }
+
   // Also clear any standard naming conventions
   sessionStorage.removeItem(`${module}AuthData`);
 }

@@ -285,6 +285,19 @@ function RestaurantDetailsContent() {
     return quantities[lineItemId] || 0
   }
 
+  // For a variant dish, returns the single variant currently in the cart (if
+  // exactly one is present) so the +/- stepper can adjust it directly like a
+  // normal item. Returns null when 0 or 2+ variants are in the cart, in which
+  // case the +/- opens the variant picker instead (avoids ambiguous updates).
+  const getSoleActiveVariant = (item) => {
+    if (!hasFoodVariants(item)) return null
+    const variants = getFoodVariants(item)
+    const active = variants.filter(
+      (v) => (quantities[getLineItemIdForDish(item, v)] || 0) > 0
+    )
+    return active.length === 1 ? active[0] : null
+  }
+
   // Initialize filters from localStorage if available
   const [filters, setFilters] = useState(() => {
     if (typeof window === "undefined" || !slug) {
@@ -2973,25 +2986,17 @@ function RestaurantDetailsContent() {
                                       : 'hover:bg-[#FFF5F5]'
                                       }`}
                                   >
-                                    {hasFoodVariants(item) ? (
-                                      <button
-                                        onClick={(e) => {
-                                          e.stopPropagation()
-                                          if (!shouldShowGrayscale) {
-                                            handleItemClick(item)
-                                          }
-                                        }}
-                                        className="text-xs uppercase font-extrabold px-1 text-[#DC2626] whitespace-nowrap"
-                                      >
-                                        Customised ({quantity})
-                                      </button>
-                                    ) : (
+                                    {(
                                       <>
                                         <button
                                           onClick={(e) => {
                                             e.stopPropagation()
-                                            if (!shouldShowGrayscale) {
-                                              updateItemQuantity(item, Math.max(0, quantity - 1), e)
+                                            if (shouldShowGrayscale) return
+                                            const sole = getSoleActiveVariant(item)
+                                            if (hasFoodVariants(item) && !sole) {
+                                              handleItemClick(item)
+                                            } else {
+                                              updateItemQuantity(item, Math.max(0, quantity - 1), e, sole)
                                             }
                                           }}
                                           disabled={shouldShowGrayscale}
@@ -3003,8 +3008,12 @@ function RestaurantDetailsContent() {
                                         <button
                                           onClick={(e) => {
                                             e.stopPropagation()
-                                            if (!shouldShowGrayscale) {
-                                              updateItemQuantity(item, quantity + 1, e)
+                                            if (shouldShowGrayscale) return
+                                            const sole = getSoleActiveVariant(item)
+                                            if (hasFoodVariants(item) && !sole) {
+                                              handleItemClick(item)
+                                            } else {
+                                              updateItemQuantity(item, quantity + 1, e, sole)
                                             }
                                           }}
                                           disabled={shouldShowGrayscale}
@@ -3206,25 +3215,17 @@ function RestaurantDetailsContent() {
                                                 : 'border-[#DC2626] text-[#DC2626] hover:bg-[#DC262605]'
                                                 }`}
                                             >
-                                              {hasFoodVariants(item) ? (
-                                                <button
-                                                  onClick={(e) => {
-                                                    e.stopPropagation()
-                                                    if (!shouldShowGrayscale) {
-                                                      handleItemClick(item)
-                                                    }
-                                                  }}
-                                                  className="text-xs uppercase font-extrabold px-1 text-[#DC2626] whitespace-nowrap"
-                                                >
-                                                  Customised ({quantity})
-                                                </button>
-                                              ) : (
+                                              {(
                                                 <>
                                                   <button
                                                     onClick={(e) => {
                                                       e.stopPropagation()
-                                                      if (!shouldShowGrayscale) {
-                                                        updateItemQuantity(item, Math.max(0, quantity - 1), e)
+                                                      if (shouldShowGrayscale) return
+                                                      const sole = getSoleActiveVariant(item)
+                                                      if (hasFoodVariants(item) && !sole) {
+                                                        handleItemClick(item)
+                                                      } else {
+                                                        updateItemQuantity(item, Math.max(0, quantity - 1), e, sole)
                                                       }
                                                     }}
                                                     disabled={shouldShowGrayscale}
@@ -3236,8 +3237,12 @@ function RestaurantDetailsContent() {
                                                   <button
                                                     onClick={(e) => {
                                                       e.stopPropagation()
-                                                      if (!shouldShowGrayscale) {
-                                                        updateItemQuantity(item, quantity + 1, e)
+                                                      if (shouldShowGrayscale) return
+                                                      const sole = getSoleActiveVariant(item)
+                                                      if (hasFoodVariants(item) && !sole) {
+                                                        handleItemClick(item)
+                                                      } else {
+                                                        updateItemQuantity(item, quantity + 1, e, sole)
                                                       }
                                                     }}
                                                     disabled={shouldShowGrayscale}
@@ -4026,7 +4031,9 @@ function RestaurantDetailsContent() {
                         disabled={shouldShowGrayscale}
                       >
                         <span className="truncate">
-                          {getDishQuantity(selectedItem, selectedVariantId) > 0 ? "Update cart" : "Add item"}
+                          {getDishQuantity(selectedItem, selectedVariantId) > 0
+                            ? "Update cart"
+                            : (hasFoodVariants(selectedItem) ? "Add" : "Add item")}
                         </span>
                         <div className="flex flex-wrap items-center justify-center gap-1 overflow-hidden">
                           {selectedItem.originalPrice && selectedItem.originalPrice > selectedItem.price && (
