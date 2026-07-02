@@ -949,8 +949,10 @@ export default function Under250() {
         </div>
       </div>
 
-      {/* Content Section */}
-      <div className="relative max-w-7xl mx-auto px-3 sm:px-4 md:px-6 lg:px-8 xl:px-12 space-y-0 pt-2 sm:pt-3 md:pt-4 lg:pt-6 pb-6 md:pb-8 lg:pb-10">
+      {/* Content Section — large bottom padding on mobile so the last dishes are
+          not hidden behind the fixed bottom navigation (which would otherwise
+          steal taps meant for the nav buttons). */}
+      <div className="relative max-w-7xl mx-auto px-3 sm:px-4 md:px-6 lg:px-8 xl:px-12 space-y-0 pt-2 sm:pt-3 md:pt-4 lg:pt-6 pb-32 md:pb-8 lg:pb-10">
 
         <section className="space-y-1 sm:space-y-1.5">
           <div
