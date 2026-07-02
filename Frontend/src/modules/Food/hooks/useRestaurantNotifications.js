@@ -296,7 +296,7 @@ const startGlobalAlertLoop = (orderData) => {
     return;
   }
 
-  if (!globalIsMuted) {
+  if (!globalIsMuted && !isOrderMuted(orderData)) {
     playGlobalNotificationSound(orderData);
   }
 
@@ -305,15 +305,17 @@ const startGlobalAlertLoop = (orderData) => {
       stopGlobalAlertLoop();
       return;
     }
-    
+
     const currentElapsed = Date.now() - globalAlertLoopStartedAt;
-    
+
     if (currentElapsed >= ALERT_LOOP_MAX_MS) {
       stopGlobalAlertLoop();
       return;
     }
 
-    if (!globalIsMuted) {
+    // Respect BOTH the global mute and the per-order mute — muting an order must
+    // silence its alert even if the loop wasn't torn down for any reason.
+    if (!globalIsMuted && !isOrderMuted(globalActiveOrder)) {
       playGlobalNotificationSound(globalActiveOrder);
     }
   }, ALERT_LOOP_INTERVAL_MS);
@@ -344,6 +346,23 @@ const getOrderAlertKey = (orderData = {}) => (
     ''
   ).trim()
 );
+
+// True if ANY of the order's id variants is muted. Different call sites resolve
+// the "order id" with slightly different priorities, so checking all variants
+// avoids a mute being missed just because a different id field was stored.
+const isOrderMuted = (orderData = {}) => {
+  const ids = [
+    orderData?.orderMongoId,
+    orderData?.order_mongo_id,
+    orderData?.orderId,
+    orderData?.order_id,
+    orderData?._id,
+    orderData?.id,
+  ]
+    .map((v) => (v == null ? '' : String(v).trim()))
+    .filter(Boolean);
+  return ids.some((id) => globalMutedOrderIds.has(id));
+};
 
 const shouldProcessOrderAlert = (orderData = {}) => {
   const key = getOrderAlertKey(orderData);
@@ -475,11 +494,9 @@ export const useRestaurantNotifications = () => {
 
     updateGlobalState({ newOrder: orderData });
 
-    const orderId = getOrderAlertKey(orderData);
-    if (!globalMutedOrderIds.has(orderId)) {
-      if (!globalIsMuted) {
-        playGlobalNotificationSound(orderData);
-      }
+    if (!isOrderMuted(orderData)) {
+      // startGlobalAlertLoop already plays the sound immediately (and then loops),
+      // so we must NOT play here as well — that caused the double sound.
       startGlobalAlertLoop(orderData);
     }
 
@@ -641,8 +658,10 @@ export const useRestaurantNotifications = () => {
         return candidate && !isMongoId(candidate) ? `#${candidate}` : '';
       })();
 
-      // Order confirmed — stop popup & sound immediately
-      if (status === 'confirmed' || status === 'accepted') {
+      // Order accepted — stop popup & sound immediately. Admin accept moves the
+      // order straight to "preparing", so treat that (and the acceptedBy flag) as
+      // accepted too, otherwise the restaurant popup would not dismiss.
+      if (status === 'confirmed' || status === 'accepted' || status === 'preparing' || data?.acceptedBy === 'admin') {
         const orderId = data?.orderMongoId || data?._id || data?.orderId || data?.order_id;
         if (orderId) {
           const cleanId = String(orderId).trim();
@@ -900,11 +919,8 @@ export const useRestaurantNotifications = () => {
     saveMutedOrderIds();
     
     // Stop alarm loop if active order is among the muted ones
-    if (globalActiveOrder) {
-      const activeId = getOrderAlertKey(globalActiveOrder);
-      if (globalMutedOrderIds.has(activeId)) {
-        stopGlobalAlertLoop();
-      }
+    if (globalActiveOrder && isOrderMuted(globalActiveOrder)) {
+      stopGlobalAlertLoop();
     }
     
     updateGlobalState({ mutedOrderIds: new Set(globalMutedOrderIds) });
@@ -915,11 +931,12 @@ export const useRestaurantNotifications = () => {
     const cleanId = String(orderId).trim();
     globalMutedOrderIds.delete(cleanId);
     saveMutedOrderIds();
-    
-    if (globalActiveOrder && getOrderAlertKey(globalActiveOrder) === cleanId) {
+
+    // Restart the alert for the active order once it is no longer muted.
+    if (globalActiveOrder && !isOrderMuted(globalActiveOrder)) {
       startGlobalAlertLoop(globalActiveOrder);
     }
-    
+
     updateGlobalState({ mutedOrderIds: new Set(globalMutedOrderIds) });
   }, []);
 

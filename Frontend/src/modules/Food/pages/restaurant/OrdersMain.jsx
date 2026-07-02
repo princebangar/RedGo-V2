@@ -1769,9 +1769,9 @@ function OrdersMainInner() {
       const payload = event?.detail || {};
       const payloadStatus = payload?.orderStatus || payload?.status;
       const normalizedPayloadStatus = normalizeOrderStatusValue(payloadStatus);
-      const isAdminAccepted =
-        (normalizedPayloadStatus === "confirmed" || normalizedPayloadStatus === "accepted") &&
-        payload?.acceptedBy === "admin";
+      // Admin accept moves the order straight to "preparing", so rely on the
+      // acceptedBy flag (any status) rather than a specific status value.
+      const isAdminAccepted = payload?.acceptedBy === "admin";
 
       if (!isAnyCancelledStatus(payloadStatus) && !isAdminAccepted) return;
 
