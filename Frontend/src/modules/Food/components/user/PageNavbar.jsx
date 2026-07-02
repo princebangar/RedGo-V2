@@ -1040,8 +1040,8 @@ export default function PageNavbar({
                 alt={companyName || "Company Logo"}
                 className="h-9 w-auto sm:h-12 md:h-14 object-contain scale-[1.6] sm:scale-[1.8] origin-left"
                 crossOrigin="anonymous"
-                onError={(e) => {
-                  e.target.style.display = 'none'
+                onError={() => {
+                  setLogoUrl(null)
                 }}
               />
             ) : companyName ? (

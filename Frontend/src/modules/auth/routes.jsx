@@ -11,7 +11,7 @@ export default function AuthRoutes() {
     <Suspense fallback={null}>
       <Routes>
         <Route path="login" element={<AuthRedirect module="user"><Login animate={false} /></AuthRedirect>} />
-        <Route path="portal" element={<Navigate to="/" replace />} />
+        <Route path="portal" element={<Navigate to="/food/user" replace />} />
         <Route path="*" element={<Navigate to="/user/auth/login" replace />} />
       </Routes>
     </Suspense>

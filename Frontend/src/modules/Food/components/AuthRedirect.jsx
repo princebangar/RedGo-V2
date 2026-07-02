@@ -9,7 +9,7 @@ export default function AuthRedirect({ children, module, redirectTo = null }) {
   const isAuthenticated = isModuleAuthenticated(module)
 
   const moduleHomePages = {
-    user: "/food",
+    user: "/food/user",
     restaurant: "/food/restaurant",
     delivery: "/food/delivery",
     admin: "/food/admin",

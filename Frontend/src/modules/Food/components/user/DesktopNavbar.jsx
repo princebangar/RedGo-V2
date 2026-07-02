@@ -196,7 +196,7 @@ export default function DesktopNavbar({ showLogo = true }) {
                         <div className="flex items-center gap-4 lg:gap-6 flex-shrink-0">
                             {/* Logo */}
                             {showLogo && (
-                                <Link to="/" className="flex items-center justify-center flex-shrink-0">
+                                <Link to="/food/user" className="flex items-center justify-center flex-shrink-0">
                                     {logoUrl || companyName ? (
                                         <img
                                             src={logoUrl || quickSpicyLogo}
