@@ -1,11 +1,10 @@
 import React, { useEffect, useState, useRef } from "react"
 import { motion, AnimatePresence } from "framer-motion"
 import { Link, useNavigate } from "react-router-dom"
-import { Phone, ArrowRight, ShieldCheck, Loader2, Utensils, Star, Heart, X, User, Pencil } from "lucide-react"
+import { Phone, Loader2, X, User, Pencil } from "lucide-react"
 import { toast } from "sonner"
 import { authAPI, userAPI } from "@food/api"
 import { setAuthData } from "@food/utils/auth"
-import logoNew from "@/assets/logo.png"
 import {
   Dialog,
   DialogContent,
@@ -310,7 +309,7 @@ export default function UnifiedOTPFastLogin() {
         setShowNameModal(true)
       } else {
         clearSessionData()
-        navigate("/user/auth/portal", { replace: true })
+        navigate("/food/user", { replace: true })
       }
     } catch (err) {
       const status = err?.response?.status
@@ -396,7 +395,7 @@ export default function UnifiedOTPFastLogin() {
         setPendingVerify(null)
         clearSessionData()
         setShowNameModal(false)
-        navigate("/user/auth/portal", { replace: true })
+        navigate("/food/user", { replace: true })
         return
       }
 
@@ -409,7 +408,7 @@ export default function UnifiedOTPFastLogin() {
 
       clearSessionData()
       setShowNameModal(false)
-      navigate("/user/auth/portal", { replace: true })
+      navigate("/food/user", { replace: true })
     } catch (err) {
       toast.error("Failed to update name. You can skip this for now or try again.")
       console.error(err)
@@ -857,7 +856,7 @@ export default function UnifiedOTPFastLogin() {
                   type="button"
                   onClick={() => {
                     setShowNameModal(false)
-                    navigate("/user/auth/portal", { replace: true })
+                    navigate("/food/user", { replace: true })
                   }}
                   className="text-sm text-gray-400 hover:text-gray-600 transition-colors py-2"
                 >
