@@ -43,6 +43,7 @@ export default function OrdersPage({ statusKey = "all" }) {
   const [isLoading, setIsLoading] = useState(true)
   const [processingRefund, setProcessingRefund] = useState(null)
   const [processingActionOrderId, setProcessingActionOrderId] = useState(null)
+  const [actionLoadingType, setActionLoadingType] = useState(null) // 'accept' | 'reject'
   const [deletingOrderId, setDeletingOrderId] = useState(null)
   const [refundModalOpen, setRefundModalOpen] = useState(false)
   const [selectedOrderForRefund, setSelectedOrderForRefund] = useState(null)
@@ -728,6 +729,7 @@ export default function OrdersPage({ statusKey = "all" }) {
 
     try {
       setProcessingActionOrderId(order.id || order.orderId)
+      setActionLoadingType('accept')
       // Admin acted on the order — stop the new-order alert immediately.
       stopOrderAlert()
       const response = await adminAPI.acceptOrder(orderIdToUse)
@@ -742,6 +744,7 @@ export default function OrdersPage({ statusKey = "all" }) {
       toast.error(error.response?.data?.message || "Failed to accept order")
     } finally {
       setProcessingActionOrderId(null)
+      setActionLoadingType(null)
     }
   }
 
@@ -761,6 +764,7 @@ export default function OrdersPage({ statusKey = "all" }) {
 
     try {
       setProcessingActionOrderId(order.id || order.orderId)
+      setActionLoadingType('reject')
       // Admin acted on the order — stop the new-order alert immediately.
       stopOrderAlert()
       const response = await adminAPI.rejectOrder(orderIdToUse, reason)
@@ -775,6 +779,7 @@ export default function OrdersPage({ statusKey = "all" }) {
       toast.error(error.response?.data?.message || "Failed to reject order")
     } finally {
       setProcessingActionOrderId(null)
+      setActionLoadingType(null)
     }
   }
 
@@ -1002,6 +1007,7 @@ export default function OrdersPage({ statusKey = "all" }) {
             onAcceptOrder={(statusKey === "all" || statusKey === "pending") ? handleAcceptOrder : undefined}
             onRejectOrder={(statusKey === "all" || statusKey === "pending") ? handleRejectOrder : undefined}
             actionLoadingOrderId={processingActionOrderId}
+            actionLoadingType={actionLoadingType}
             deletingOrderId={deletingOrderId}
           />
         </>

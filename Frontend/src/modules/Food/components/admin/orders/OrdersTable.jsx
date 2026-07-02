@@ -37,10 +37,12 @@ export default function OrdersTable({
   onAcceptOrder,
   onRejectOrder,
   actionLoadingOrderId,
+  actionLoadingType,
   deletingOrderId,
 }) {
   const [currentPage, setCurrentPage] = useState(1)
   const [expandedOrders, setExpandedOrders] = useState({})
+  const [openReasonId, setOpenReasonId] = useState(null)
   const itemsPerPage = 10
   const totalPages = Math.ceil(orders.length / itemsPerPage)
 
@@ -517,16 +519,32 @@ export default function OrdersTable({
                         </span>
                         <span className="text-xs text-slate-500">{order.deliveryType}</span>
                       </div>
-                      {order.cancellationReason && (
-                        <div className="text-xs text-red-600 mt-1">
-                          <span className="font-medium">
-                            {order.cancelledBy === 'user' ? 'Cancelled by User - ' : 
-                             order.cancelledBy === 'restaurant' ? 'Cancelled by Restaurant - ' : 
-                             'Reason: '}
-                          </span>
-                          {order.cancellationReason}
-                        </div>
-                      )}
+                      {order.cancellationReason && (() => {
+                        const rowKey = order.id || order.orderId
+                        const isOpen = openReasonId === rowKey
+                        return (
+                          <div className="mt-1">
+                            <button
+                              type="button"
+                              onClick={() => setOpenReasonId(isOpen ? null : rowKey)}
+                              className="inline-flex items-center gap-1 rounded-md border border-red-200 bg-red-50 px-2 py-0.5 text-xs font-medium text-red-600 hover:bg-red-100 transition-colors"
+                            >
+                              Reason
+                              {isOpen ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
+                            </button>
+                            {isOpen && (
+                              <div className="mt-1 max-w-[240px] rounded-md border border-red-200 bg-red-50 px-2 py-1.5 text-xs text-red-600 whitespace-normal break-words">
+                                <span className="font-medium">
+                                  {order.cancelledBy === 'user' ? 'Cancelled by User: ' :
+                                   order.cancelledBy === 'restaurant' ? 'Cancelled by Restaurant: ' :
+                                   'Reason: '}
+                                </span>
+                                {order.cancellationReason}
+                              </div>
+                            )}
+                          </div>
+                        )
+                      })()}
                     </div>
                   </td>
                 )}
@@ -591,36 +609,44 @@ export default function OrdersTable({
 
                       {/* Primary Actions (Text/Status buttons) */}
                       <div className="flex items-center gap-2">
-                        {order.orderStatus === "Pending" && onAcceptOrder && (
+                        {order.orderStatus === "Pending" && onAcceptOrder && (() => {
+                          const isRowLoading = actionLoadingOrderId === (order.id || order.orderId)
+                          const isAccepting = isRowLoading && actionLoadingType === 'accept'
+                          return (
                           <button
                             onClick={() => onAcceptOrder(order)}
-                            disabled={actionLoadingOrderId === (order.id || order.orderId)}
+                            disabled={isRowLoading}
                             className="px-2.5 py-1.5 rounded text-xs font-semibold text-white bg-gradient-to-r from-green-600 to-emerald-600 hover:from-green-700 hover:to-emerald-700 disabled:opacity-60 disabled:cursor-not-allowed transition-all shadow-sm active:scale-95 flex items-center gap-1"
                             title="Accept Order"
                           >
-                            {actionLoadingOrderId === (order.id || order.orderId) ? (
+                            {isAccepting ? (
                               <Loader2 className="w-3.5 h-3.5 animate-spin" />
                             ) : (
                               <Check className="w-3.5 h-3.5" />
                             )}
-                            <span>Accept</span>
+                            <span>{isAccepting ? 'Accepting...' : 'Accept'}</span>
                           </button>
-                        )}
-                        {order.orderStatus === "Pending" && onRejectOrder && (
+                          )
+                        })()}
+                        {order.orderStatus === "Pending" && onRejectOrder && (() => {
+                          const isRowLoading = actionLoadingOrderId === (order.id || order.orderId)
+                          const isRejecting = isRowLoading && actionLoadingType === 'reject'
+                          return (
                           <button
                             onClick={() => onRejectOrder(order)}
-                            disabled={actionLoadingOrderId === (order.id || order.orderId)}
+                            disabled={isRowLoading}
                             className="px-2.5 py-1.5 rounded text-xs font-semibold text-white bg-rose-600 hover:bg-rose-700 disabled:opacity-60 disabled:cursor-not-allowed transition-colors flex items-center gap-1"
                             title="Reject Order"
                           >
-                            {actionLoadingOrderId === (order.id || order.orderId) ? (
+                            {isRejecting ? (
                               <Loader2 className="w-3.5 h-3.5 animate-spin" />
                             ) : (
                               <X className="w-3.5 h-3.5" />
                             )}
-                            <span>Reject</span>
+                            <span>{isRejecting ? 'Rejecting...' : 'Reject'}</span>
                           </button>
-                        )}
+                          )
+                        })()}
 
                         {/* Refund Block */}
                         {(() => {
