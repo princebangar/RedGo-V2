@@ -82,6 +82,11 @@ const deliveryPartnerSchema = new mongoose.Schema(
         rejectionReason: { type: String },
         rejectedAt: { type: Date },
         approvedAt: { type: Date },
+        pendingApprovalType: {
+            type: String,
+            enum: ['registration', 'changes'],
+            default: 'registration'
+        },
         bankAccountHolderName: { type: String },
         bankAccountNumber: { type: String },
         bankIfscCode: { type: String },

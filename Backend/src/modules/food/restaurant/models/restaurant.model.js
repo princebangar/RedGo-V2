@@ -256,6 +256,11 @@ const restaurantSchema = new mongoose.Schema(
       type: String,
       trim: true,
     },
+    pendingApprovalType: {
+      type: String,
+      enum: ["registration", "changes"],
+      default: "registration",
+    },
     deletedAt: {
       type: Date,
     },

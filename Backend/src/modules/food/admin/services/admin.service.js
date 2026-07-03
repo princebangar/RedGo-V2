@@ -3672,6 +3672,12 @@ export async function createRestaurantByAdmin(body) {
 
 export async function approveRestaurant(id) {
     if (!id || !mongoose.Types.ObjectId.isValid(id)) return null;
+
+    const existing = await FoodRestaurant.findById(id).select('status ownerEmail pendingApprovalType').lean();
+    if (!existing) return null;
+    const statusChanged = existing.status !== 'approved';
+    const isChangesApproval = existing.pendingApprovalType === 'changes';
+
     const updated = await FoodRestaurant.findByIdAndUpdate(
         id,
         {
@@ -3679,7 +3685,8 @@ export async function approveRestaurant(id) {
                 status: 'approved',
                 approvedAt: new Date(),
                 rejectedAt: undefined,
-                rejectionReason: undefined
+                rejectionReason: undefined,
+                pendingApprovalType: 'registration'
             }
         },
         { new: true, runValidators: false }
@@ -3703,20 +3710,42 @@ export async function approveRestaurant(id) {
         } catch (e) {
             console.error('Failed to send restaurant approval notification:', e);
         }
+
+        if (statusChanged && updated.ownerEmail?.trim()) {
+            try {
+                const { sendRestaurantApprovalEmail } = await import('../../../../utils/email.js');
+                await sendRestaurantApprovalEmail({
+                    to: updated.ownerEmail,
+                    restaurantName: updated.restaurantName,
+                    restaurantId: String(updated._id),
+                    isChangesApproval
+                });
+            } catch (e) {
+                console.error('Failed to send restaurant approval email:', e);
+            }
+        }
     }
     return updated;
 }
 
 export async function rejectRestaurant(id, reason) {
     if (!id || !mongoose.Types.ObjectId.isValid(id)) return null;
+
+    const existing = await FoodRestaurant.findById(id).select('status ownerEmail pendingApprovalType').lean();
+    if (!existing) return null;
+    const statusChanged = existing.status !== 'rejected';
+    const isChangesRejection = existing.pendingApprovalType === 'changes';
+    const trimmedReason = typeof reason === 'string' ? reason.trim() : undefined;
+
     const updated = await FoodRestaurant.findByIdAndUpdate(
         id,
         {
             $set: {
                 status: 'rejected',
                 rejectedAt: new Date(),
-                rejectionReason: typeof reason === 'string' ? reason.trim() : undefined,
-                approvedAt: null
+                rejectionReason: trimmedReason,
+                approvedAt: null,
+                pendingApprovalType: 'registration'
             }
         },
         { new: true, runValidators: false }
@@ -3740,6 +3769,21 @@ export async function rejectRestaurant(id, reason) {
             );
         } catch (e) {
             console.error('Failed to send restaurant rejection notification:', e);
+        }
+
+        if (statusChanged && updated.ownerEmail?.trim()) {
+            try {
+                const { sendRestaurantRejectionEmail } = await import('../../../../utils/email.js');
+                await sendRestaurantRejectionEmail({
+                    to: updated.ownerEmail,
+                    restaurantName: updated.restaurantName,
+                    restaurantId: String(updated._id),
+                    reason: updated.rejectionReason || trimmedReason,
+                    isChangesRejection
+                });
+            } catch (e) {
+                console.error('Failed to send restaurant rejection email:', e);
+            }
         }
     }
     return updated;
@@ -4895,10 +4939,13 @@ export async function getDeliverymanReviews(query = {}) {
 export async function approveDeliveryPartner(id) {
     const partner = await FoodDeliveryPartner.findById(id);
     if (!partner) return null;
+    const statusChanged = partner.status !== 'approved';
+    const isChangesApproval = partner.pendingApprovalType === 'changes';
     partner.status = 'approved';
     partner.approvedAt = new Date();
     partner.rejectedAt = undefined;
     partner.rejectionReason = undefined;
+    partner.pendingApprovalType = 'registration';
     await partner.save();
 
     try {
@@ -4917,6 +4964,20 @@ export async function approveDeliveryPartner(id) {
         );
     } catch (e) {
         console.error('Failed to send delivery partner approval notification:', e);
+    }
+
+    if (statusChanged && partner.email?.trim()) {
+        try {
+            const { sendDeliveryApprovalEmail } = await import('../../../../utils/email.js');
+            await sendDeliveryApprovalEmail({
+                to: partner.email,
+                partnerName: partner.name,
+                partnerId: String(partner._id),
+                isChangesApproval
+            });
+        } catch (e) {
+            console.error('Failed to send delivery partner approval email:', e);
+        }
     }
 
     // Referral crediting: on approval, credit the referrer partner's pocket balance via DeliveryBonusTransaction.
@@ -4968,14 +5029,22 @@ export async function approveDeliveryPartner(id) {
 
 export async function rejectDeliveryPartner(id, reason) {
     if (!id || !mongoose.Types.ObjectId.isValid(id)) return null;
+
+    const existing = await FoodDeliveryPartner.findById(id).select('status email pendingApprovalType').lean();
+    if (!existing) return null;
+    const statusChanged = existing.status !== 'rejected';
+    const isChangesRejection = existing.pendingApprovalType === 'changes';
+    const trimmedReason = typeof reason === 'string' ? reason.trim() : undefined;
+
     const updated = await FoodDeliveryPartner.findByIdAndUpdate(
         id,
         {
             $set: {
                 status: 'rejected',
                 rejectedAt: new Date(),
-                rejectionReason: typeof reason === 'string' ? reason.trim() : undefined,
-                approvedAt: null
+                rejectionReason: trimmedReason,
+                approvedAt: null,
+                pendingApprovalType: 'registration'
             }
         },
         { new: true }
@@ -4999,6 +5068,21 @@ export async function rejectDeliveryPartner(id, reason) {
             );
         } catch (e) {
             console.error('Failed to send delivery partner rejection notification:', e);
+        }
+
+        if (statusChanged && updated.email?.trim()) {
+            try {
+                const { sendDeliveryRejectionEmail } = await import('../../../../utils/email.js');
+                await sendDeliveryRejectionEmail({
+                    to: updated.email,
+                    partnerName: updated.name,
+                    partnerId: String(updated._id),
+                    reason: updated.rejectionReason || trimmedReason,
+                    isChangesRejection
+                });
+            } catch (e) {
+                console.error('Failed to send delivery partner rejection email:', e);
+            }
         }
     }
     return updated;
