@@ -23,7 +23,10 @@ import { restaurantAPI, adminAPI } from "@food/api"
 import { isModuleAuthenticated } from "@food/utils/auth"
 import { flattenMenuItems, getMenuFromResponse } from "@food/utils/menuItems"
 import { calculateDistance, formatDistance } from "@food/utils/common"
-import { hasFoodVariants, getDefaultFoodVariant } from "@food/utils/foodVariants"
+import { hasFoodVariants, getDefaultFoodVariant, buildCartLineId } from "@food/utils/foodVariants"
+const getLineItemIdForDish = (item, variant = null) =>
+  buildCartLineId(item?.id || item?._id || "", variant?.id || variant?._id || "")
+
 const debugLog = (...args) => {}
 const debugWarn = (...args) => {}
 const debugError = (...args) => {}
@@ -528,7 +531,9 @@ export default function Under250() {
   useEffect(() => {
     if (!selectedItem || !showItemDetail) return
 
-    const existingQuantity = quantities[selectedItem.id] || 0
+    const defaultVariant = getDefaultFoodVariant(selectedItem)
+    const lineItemId = getLineItemIdForDish(selectedItem, defaultVariant)
+    const existingQuantity = quantities[lineItemId] || 0
     if (existingQuantity > 0) {
       setItemDetailQuantity(existingQuantity)
     }
@@ -617,8 +622,8 @@ export default function Under250() {
     return () => window.removeEventListener("scroll", handleScroll)
   }, [])
 
-  // Helper function to update item quantity in bothlocal state and cart
-  const updateItemQuantity = (item, newQuantity, event = null, restaurantName = null) => {
+  // Helper function to update item quantity in both local state and cart
+  const updateItemQuantity = (item, newQuantity, event = null, restaurantName = null, preferredVariant = null) => {
     // Check authentication
     if (!isModuleAuthenticated('user')) {
       window.dispatchEvent(new CustomEvent('show-login-required'))
@@ -631,10 +636,13 @@ export default function Under250() {
       return
     }
 
+    const resolvedVariant = preferredVariant || getDefaultFoodVariant(item)
+    const lineItemId = getLineItemIdForDish(item, resolvedVariant)
+
     // Update local state
     setQuantities((prev) => ({
       ...prev,
-      [item.id]: newQuantity,
+      [lineItemId]: newQuantity,
     }))
 
     // Find restaurant name from the item or use provided parameter
@@ -642,13 +650,19 @@ export default function Under250() {
 
     // Prepare cart item with all required properties
     const cartItem = {
-      id: item.id,
+      id: lineItemId,
+      lineItemId,
+      itemId: item.id,
       name: item.name,
-      price: item.price,
+      price: resolvedVariant?.price ?? item.price,
+      variantId: resolvedVariant?.id || "",
+      variantName: resolvedVariant?.name || "",
+      variantPrice: resolvedVariant?.price ?? item.price,
       image: item.image,
       restaurant: restaurant,
       description: item.description || "",
       originalPrice: item.originalPrice || item.price,
+      isVeg: item.isVeg === true,
       priceOnOtherPlatforms: item.priceOnOtherPlatforms || null, // Include platform pricing for savings display
       otherPlatformGst: item.otherPlatformGst ?? null,
     }
@@ -671,7 +685,7 @@ export default function Under250() {
           viewportY: rect.top + rect.height / 2,
           scrollX: scrollX,
           scrollY: scrollY,
-          itemId: item.id,
+          itemId: lineItemId,
         }
       }
     }
@@ -679,16 +693,16 @@ export default function Under250() {
     // Update cart context
     if (newQuantity <= 0) {
       const productInfo = {
-        id: item.id,
+        id: lineItemId,
         name: item.name,
         imageUrl: item.image,
       }
-      removeFromCart(item.id, sourcePosition, productInfo)
+      removeFromCart(lineItemId, sourcePosition, productInfo)
     } else {
-      const existingCartItem = getCartItem(item.id)
+      const existingCartItem = getCartItem(lineItemId)
       if (existingCartItem) {
         const productInfo = {
-          id: item.id,
+          id: lineItemId,
           name: item.name,
           imageUrl: item.image,
         }
@@ -700,12 +714,12 @@ export default function Under250() {
             return
           }
           if (newQuantity > existingCartItem.quantity + 1) {
-            updateQuantity(item.id, newQuantity)
+            updateQuantity(lineItemId, newQuantity)
           }
         } else if (newQuantity < existingCartItem.quantity && sourcePosition) {
-          updateQuantity(item.id, newQuantity, sourcePosition, productInfo)
+          updateQuantity(lineItemId, newQuantity, sourcePosition, productInfo)
         } else {
-          updateQuantity(item.id, newQuantity)
+          updateQuantity(lineItemId, newQuantity)
         }
       } else {
         const result = addToCart(cartItem, sourcePosition)
@@ -714,7 +728,7 @@ export default function Under250() {
           return
         }
         if (newQuantity > 1) {
-          updateQuantity(item.id, newQuantity)
+          updateQuantity(lineItemId, newQuantity)
         }
       }
     }
@@ -744,7 +758,9 @@ export default function Under250() {
       notEligibleForCoupons: item.notEligibleForCoupons || false,
       isRestaurantOffline,
     }
-    const existingQuantity = quantities[item.id] || 0
+    const defaultVariant = getDefaultFoodVariant(item)
+    const lineItemId = getLineItemIdForDish(item, defaultVariant)
+    const existingQuantity = quantities[lineItemId] || 0
     setItemDetailQuantity(existingQuantity > 0 ? existingQuantity : 1)
     setSelectedItem(itemWithRestaurant)
     setShowShareOptions(false)
@@ -1118,7 +1134,9 @@ export default function Under250() {
                       }}
                     >
                        {restaurant.menuItems.map((item, itemIndex) => {
-                        const quantity = quantities[item.id] || 0
+                        const defaultVariant = getDefaultFoodVariant(item)
+                        const lineItemId = getLineItemIdForDish(item, defaultVariant)
+                        const quantity = quantities[lineItemId] || 0
                         const isOffline = shouldShowGrayscale || isRestaurantOffline
                         return (
                           <motion.div
@@ -1216,7 +1234,8 @@ export default function Under250() {
                                     onClick={(e) => {
                                       e.stopPropagation()
                                       if (!isOffline) {
-                                        handleItemClick(item, restaurant)
+                                        const defaultVariant = getDefaultFoodVariant(item)
+                                        updateItemQuantity(item, 1, e, restaurant.name, defaultVariant)
                                       }
                                     }}
                                   >
@@ -1552,12 +1571,8 @@ export default function Under250() {
                         }`}
                     onClick={(e) => {
                       if (!shouldShowGrayscale && !selectedItem.isRestaurantOffline) {
-                        if (hasFoodVariants(selectedItem)) {
-                          closeItemDetail()
-                          goToRestaurantForVariants(selectedItem, { slug: selectedItem.restaurantSlug })
-                          return
-                        }
-                        updateItemQuantity(selectedItem, itemDetailQuantity, e)
+                        const defaultVariant = getDefaultFoodVariant(selectedItem)
+                        updateItemQuantity(selectedItem, itemDetailQuantity, e, selectedItem.restaurant, defaultVariant)
                         closeItemDetail()
                       }
                     }}

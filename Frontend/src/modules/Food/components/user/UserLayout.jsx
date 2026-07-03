@@ -163,7 +163,9 @@ function UserLayoutContent() {
   const location = useLocation()
   const { location: activeLocation, loading: isGeoLoading } = useGeoLocation()
   const { loading: isProfileLoading } = useProfile()
-  const { isOutOfService: isOutOfZone, loading: isZoneLoading, zoneStatus } = useZone(activeLocation)
+  const { isOutOfService, loading: isZoneLoading, zoneStatus } = useZone(activeLocation)
+  const hasValidCoordinates = activeLocation && Number.isFinite(activeLocation.latitude) && Number.isFinite(activeLocation.longitude);
+  const isOutOfZone = isOutOfService && hasValidCoordinates;
   const { openLocationSelector } = useLocationSelector()
   const navigationType = useNavigationType()
   const [isLoginModalOpen, setIsLoginModalOpen] = useState(false)
@@ -256,6 +258,7 @@ function UserLayoutContent() {
                        normalizedPath.includes('support');
 
   const shouldBlockOutOfZone = 
+    hasValidCoordinates &&
     !isAuthPage && 
     !isPolicyPage &&
     !normalizedPath.includes('profile') &&

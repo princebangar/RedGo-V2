@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { notificationAPI } from "@food/api";
+import { isModuleAuthenticated } from "@food/utils/auth";
 
 const normalizeInboxItems = (rows = []) =>
   (Array.isArray(rows) ? rows : []).map((item, index) => ({
@@ -27,6 +28,13 @@ export default function useNotificationInbox(module, options = {}) {
 
   const fetchInbox = useCallback(async () => {
     if (!module) return;
+
+    if (!isModuleAuthenticated(module)) {
+      setItems([]);
+      setUnreadCount(0);
+      setLoading(false);
+      return;
+    }
 
     try {
       setLoading(true);

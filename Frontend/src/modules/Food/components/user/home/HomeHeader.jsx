@@ -156,7 +156,13 @@ export default function HomeHeader({
             <div className="flex items-center gap-3">
               {/* Notification Bell */}
               <button
-                onClick={() => navigate('/food/user/notifications')}
+                onClick={() => {
+                  if (!isModuleAuthenticated('user')) {
+                    window.dispatchEvent(new CustomEvent('show-login-required'))
+                  } else {
+                    navigate('/food/user/notifications')
+                  }
+                }}
                 className="relative flex items-center justify-center p-1.5 active:scale-90 transition-all transform-gpu translate-z-0 overflow-visible"
               >
                 <Bell className="h-[24px] w-[24px] text-white antialiased" strokeWidth={2} />

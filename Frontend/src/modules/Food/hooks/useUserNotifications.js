@@ -4,6 +4,7 @@ import { toast } from 'sonner';
 import { API_BASE_URL } from '@food/api/config';
 import { userAPI } from '@food/api';
 import { dispatchNotificationInboxRefresh } from '@food/hooks/useNotificationInbox';
+import { isModuleAuthenticated } from '@food/utils/auth';
 
 const debugLog = (...args) => {
   if (import.meta.env.DEV) {
@@ -29,6 +30,9 @@ export const useUserNotifications = () => {
 
   // Fetch current user ID
   useEffect(() => {
+    if (!isModuleAuthenticated('user')) {
+      return;
+    }
     const fetchUserId = async () => {
       try {
         const response = await userAPI.getProfile();

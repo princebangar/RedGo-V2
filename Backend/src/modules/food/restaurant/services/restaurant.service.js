@@ -1026,6 +1026,9 @@ export const updateRestaurantProfile = async (restaurantId, body = {}) => {
     }
 
     update.status = 'pending';
+    if (currentRestaurant.status !== 'pending') {
+        update.pendingApprovalType = 'changes';
+    }
 
     try {
         const doc = await FoodRestaurant.findByIdAndUpdate(
@@ -1115,13 +1118,17 @@ export const uploadRestaurantProfileImage = async (restaurantId, file) => {
     if (!currentRestaurant) throw new ValidationError('Restaurant not found');
 
     const url = await uploadImageBuffer(file.buffer, 'food/restaurants/profile');
+    const profileUpdate = {
+        profileImage: url,
+        status: 'pending'
+    };
+    if (currentRestaurant.status !== 'pending') {
+        profileUpdate.pendingApprovalType = 'changes';
+    }
     const doc = await FoodRestaurant.findByIdAndUpdate(
         restaurantId,
         {
-            $set: {
-                profileImage: url,
-                status: 'pending'
-            },
+            $set: profileUpdate,
             $unset: {
                 approvedAt: 1,
                 rejectedAt: 1,
@@ -1178,6 +1185,9 @@ export const uploadRestaurantCoverImages = async (restaurantId, files = []) => {
         coverImages: nextCoverImages.slice(0, 20),
         status: 'pending'
     };
+    if (currentRestaurant.status !== 'pending') {
+        update.pendingApprovalType = 'changes';
+    }
 
     if (!toUrl(currentRestaurant.profileImage) && uploadedUrls[0]) {
         update.profileImage = uploadedUrls[0];
@@ -1234,13 +1244,18 @@ export const uploadRestaurantMenuImages = async (restaurantId, files = []) => {
         if (!nextMenuImages.includes(url)) nextMenuImages.push(url);
     });
 
+    const menuUpdate = {
+        menuImages: nextMenuImages.slice(0, 20),
+        status: 'pending'
+    };
+    if (currentRestaurant.status !== 'pending') {
+        menuUpdate.pendingApprovalType = 'changes';
+    }
+
     await FoodRestaurant.findByIdAndUpdate(
         restaurantId,
         {
-            $set: {
-                menuImages: nextMenuImages.slice(0, 20),
-                status: 'pending'
-            },
+            $set: menuUpdate,
             $unset: {
                 approvedAt: 1,
                 rejectedAt: 1,
