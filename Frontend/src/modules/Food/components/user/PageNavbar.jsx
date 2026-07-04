@@ -43,22 +43,9 @@ export default function PageNavbar({
     requestLocationRef.current = requestLocation
   }, [requestLocation])
 
-  // Auto-trigger location fetch once when location is missing/placeholder and permission is already granted.
+  // Fallback: if permission is granted but location is still missing, fetch once.
   useEffect(() => {
     if (autoLocationAttemptedRef.current || loading || !requestLocationRef.current) return
-
-    // If we already have stored coordinates, do not auto-geocode again.
-    // We only update location when the user changes it manually.
-    try {
-      const storedRaw = localStorage.getItem("userLocation")
-      const stored = storedRaw ? JSON.parse(storedRaw) : null
-      const lat = Number(stored?.latitude)
-      const lng = Number(stored?.longitude)
-      const hasStoredCoords = Number.isFinite(lat) && Number.isFinite(lng)
-      if (hasStoredCoords) return
-    } catch {
-      // ignore parsing errors and continue to auto-fetch as fallback for first open
-    }
 
     const hasMissingOrPlaceholderLocation =
       !location ||
@@ -66,7 +53,7 @@ export default function PageNavbar({
       location.city === "Current Location"
 
     if (!hasMissingOrPlaceholderLocation) return
-    // Reserve a single background attempt to avoid repeated checks on re-renders.
+
     autoLocationAttemptedRef.current = true
 
     let cancelled = false
@@ -74,30 +61,24 @@ export default function PageNavbar({
       try {
         let isGranted = false
         if (navigator.permissions?.query) {
-          const result = await navigator.permissions.query({ name: 'geolocation' })
-          isGranted = result.state === 'granted'
+          const result = await navigator.permissions.query({ name: "geolocation" })
+          isGranted = result.state === "granted"
         }
+        if (!isGranted) return
 
-        if (!isGranted) {
-          debugLog("?? Geolocation permission not granted; waiting for user action")
-          return
-        }
         const fetchedLocation = await requestLocationRef.current()
         if (cancelled) return
-
-        if (fetchedLocation &&
+        if (
+          fetchedLocation &&
           fetchedLocation.formattedAddress !== "Select location" &&
-          fetchedLocation.city !== "Current Location") {
-          debugLog("? Location fetched successfully:", fetchedLocation)
-        } else {
-          debugLog("Location fetch returned placeholder, user may need to select manually")
+          fetchedLocation.city !== "Current Location"
+        ) {
+          debugLog("Location fetched successfully:", fetchedLocation)
         }
       } catch (err) {
-        if (!cancelled) {
-          debugLog("Location fetch failed:", err)
-        }
+        if (!cancelled) debugLog("Location fetch failed:", err)
       }
-    }, 1200)
+    }, 600)
 
     return () => {
       cancelled = true
