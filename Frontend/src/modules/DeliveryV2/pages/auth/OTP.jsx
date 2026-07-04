@@ -5,6 +5,7 @@ import { ArrowLeft, Loader2, Pencil, X, ShieldCheck } from "lucide-react"
 import { toast } from "sonner"
 import { deliveryAPI } from "@food/api"
 import { setAuthData as storeAuthData } from "@food/utils/auth"
+import { collectNativeFcmToken, persistModuleFcmToken, persistPendingModuleFcmToken } from "@food/utils/firebaseMessaging"
 
 const debugLog = (...args) => {}
 const debugWarn = (...args) => {}
@@ -256,29 +257,10 @@ export default function DeliveryOTP() {
       }
 
       // Try to get FCM token before verifying OTP
-      let fcmToken = null;
-      let platform = "web";
-      try {
-        if (typeof window !== "undefined") {
-          if (window.flutter_inappwebview) {
-            platform = "mobile";
-            const handlerNames = ["getFcmToken", "getFCMToken", "getPushToken", "getFirebaseToken"];
-            for (const handlerName of handlerNames) {
-              try {
-                const t = await window.flutter_inappwebview.callHandler(handlerName, { module: "delivery" });
-                if (t && typeof t === "string" && t.length > 20) {
-                  fcmToken = t.trim();
-                  break;
-                }
-              } catch (e) {}
-            }
-          } else {
-            fcmToken = localStorage.getItem("fcm_web_registered_token_delivery") || null;
-          }
-        }
-      } catch (e) {
-        debugWarn("Failed to get FCM token during login", e);
-      }
+      const { fcmToken, platform } = await collectNativeFcmToken("delivery", {
+        maxAttempts: 8,
+        delayMs: 400,
+      })
 
       setDeviceToken(fcmToken);
       setActivePlatform(platform);
@@ -314,6 +296,9 @@ export default function DeliveryOTP() {
           sessionStorage.removeItem("delivery_pendingRejectionReason")
         }
         setIsLoading(false)
+        try {
+          await persistPendingModuleFcmToken("delivery", digits, { maxAttempts: 6, delayMs: 350 })
+        } catch {}
         navigate("/food/delivery/pending-verification", {
           replace: true,
           state: {
@@ -365,6 +350,9 @@ export default function DeliveryOTP() {
       }
 
       window.dispatchEvent(new Event("deliveryAuthChanged"))
+      try {
+        await persistModuleFcmToken("delivery", { maxAttempts: 8, delayMs: 400 })
+      } catch {}
       setSuccess(true)
 
       let retryCount = 0

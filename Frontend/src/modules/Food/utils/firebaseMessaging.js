@@ -86,6 +86,191 @@ function isFlutterWebView() {
   );
 }
 
+const FCM_BRIDGE_HANDLER_NAMES = [
+  "getFcmToken",
+  "getFCMToken",
+  "getPushToken",
+  "getFirebaseToken",
+];
+
+const FCM_PERMISSION_HANDLER_NAMES = [
+  "requestNotificationPermission",
+  "requestPushPermission",
+  "enableNotifications",
+];
+
+export function normalizeFcmBridgeToken(raw) {
+  if (raw == null) return "";
+
+  if (typeof raw === "string") {
+    const trimmed = raw.trim();
+    return trimmed.length >= 20 ? trimmed : "";
+  }
+
+  if (typeof raw === "object") {
+    const candidates = [
+      raw.token,
+      raw.fcmToken,
+      raw.fcm_token,
+      raw.deviceToken,
+      raw.pushToken,
+      raw.value,
+      raw.data,
+    ];
+    for (const candidate of candidates) {
+      const normalized = normalizeFcmBridgeToken(candidate);
+      if (normalized) return normalized;
+    }
+  }
+
+  return "";
+}
+
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+async function requestNativeNotificationPermission(moduleName) {
+  if (!isFlutterWebView()) return;
+
+  for (const handlerName of FCM_PERMISSION_HANDLER_NAMES) {
+    try {
+      await window.flutter_inappwebview.callHandler(handlerName, { module: moduleName });
+      return;
+    } catch {
+      // Try next handler.
+    }
+  }
+}
+
+/**
+ * Collect FCM token from Flutter WebView (iPhone app) or web cache.
+ * Retries because the native bridge is often not ready on first call.
+ */
+export async function collectNativeFcmToken(moduleName, options = {}) {
+  const maxAttempts = options.maxAttempts ?? 8;
+  const delayMs = options.delayMs ?? 400;
+  let platform = "web";
+
+  if (isFlutterWebView()) {
+    platform = "mobile";
+    await requestNativeNotificationPermission(moduleName);
+
+    for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
+      for (const handlerName of FCM_BRIDGE_HANDLER_NAMES) {
+        try {
+          const raw = await window.flutter_inappwebview.callHandler(handlerName, {
+            module: moduleName,
+          });
+          const token = normalizeFcmBridgeToken(raw);
+          if (token) {
+            setSavedToken(moduleName, token);
+            return { fcmToken: token, platform };
+          }
+        } catch {
+          // Try next handler.
+        }
+      }
+
+      if (attempt < maxAttempts - 1) {
+        await sleep(delayMs);
+      }
+    }
+
+    const cached = getSavedToken(moduleName);
+    if (cached && cached.length >= 20) {
+      return { fcmToken: cached, platform: "mobile" };
+    }
+
+    return { fcmToken: null, platform: "mobile" };
+  }
+
+  const webCached = localStorage.getItem(`${tokenCachePrefix}${moduleName}`) || "";
+  if (webCached.length >= 20) {
+    return { fcmToken: webCached, platform };
+  }
+
+  const resolved = await resolveWebFcmToken(moduleName);
+  return {
+    fcmToken: resolved,
+    platform,
+  };
+}
+
+/** @deprecated Use collectNativeFcmToken("restaurant") — kept for older bundles */
+export function collectRestaurantFcmToken(options = {}) {
+  return collectNativeFcmToken("restaurant", options);
+}
+
+/** @deprecated Use collectNativeFcmToken("delivery") — kept for older bundles */
+export function collectDeliveryFcmToken(options = {}) {
+  return collectNativeFcmToken("delivery", options);
+}
+
+/**
+ * Save FCM token to backend when the user is logged in.
+ */
+export async function persistModuleFcmToken(moduleName, options = {}) {
+  const { fcmToken, platform } = await collectNativeFcmToken(moduleName, options);
+  if (!fcmToken) return false;
+
+  setSavedToken(moduleName, fcmToken);
+
+  const accessToken = localStorage.getItem(`${moduleName}_accessToken`);
+  if (!accessToken) {
+    pushDebugLog(PUSH_DEBUG_PREFIX, "FCM token cached locally; no auth session to sync yet", {
+      moduleName,
+    });
+    return false;
+  }
+
+  try {
+    await saveTokenByModule(moduleName, fcmToken, platform);
+    pushDebugLog(PUSH_DEBUG_PREFIX, "FCM token synced to backend", { moduleName, platform });
+    return true;
+  } catch (error) {
+    pushDebugWarn(PUSH_DEBUG_PREFIX, "Failed to sync FCM token to backend", {
+      moduleName,
+      error: error?.message || error,
+    });
+    return false;
+  }
+}
+
+/**
+ * Save FCM for pending partners using phone (no login required).
+ */
+export async function persistPendingModuleFcmToken(moduleName, phone, options = {}) {
+  const { fcmToken, platform } = await collectNativeFcmToken(moduleName, options);
+  if (!fcmToken || !phone) return false;
+
+  setSavedToken(moduleName, fcmToken);
+
+  const normalizedPhone = String(phone || "").replace(/\D/g, "").slice(-10);
+  if (!normalizedPhone) return false;
+
+  try {
+    const apiClient = (await import("@food/api")).default;
+    await apiClient.post("/fcm-tokens/pending-save", {
+      phone: normalizedPhone,
+      token: fcmToken,
+      platform,
+      role: moduleName,
+    });
+    pushDebugLog(PUSH_DEBUG_PREFIX, "Pending FCM token saved by phone", {
+      moduleName,
+      phone: normalizedPhone,
+    });
+    return true;
+  } catch (error) {
+    pushDebugWarn(PUSH_DEBUG_PREFIX, "Failed to save pending FCM token", {
+      moduleName,
+      error: error?.message || error,
+    });
+    return false;
+  }
+}
+
 function isSecureContextForPush() {
   return window.isSecureContext || window.location.hostname === "localhost";
 }
@@ -460,6 +645,54 @@ function setSavedToken(moduleName, token) {
   localStorage.setItem(`${tokenCachePrefix}${moduleName}`, token);
 }
 
+async function resolveWebFcmToken(moduleName) {
+  const cached = getSavedToken(moduleName);
+  if (cached.length >= 20) return cached;
+
+  if (!isSupportedBrowser() || !isSecureContextForPush()) {
+    return null;
+  }
+
+  try {
+    const firebasePublicEnv = await getFirebasePublicEnv();
+    if (!firebasePublicEnv?.vapidKey) return null;
+
+    const app = getMessagingFirebaseApp(firebasePublicEnv);
+    if (!app) return null;
+
+    const permission =
+      Notification.permission === "default"
+        ? await Notification.requestPermission()
+        : Notification.permission;
+
+    if (permission !== "granted") return null;
+
+    const { getMessaging, getToken, isSupported } = await import("firebase/messaging");
+    const supported = await isSupported().catch(() => false);
+    if (!supported) return null;
+
+    const registration = await navigator.serviceWorker.register("/firebase-messaging-sw.js");
+    const messaging = getMessaging(app);
+    const token = await getToken(messaging, {
+      vapidKey: firebasePublicEnv.vapidKey,
+      serviceWorkerRegistration: registration,
+    });
+
+    const normalized = normalizeFcmBridgeToken(token);
+    if (normalized) {
+      setSavedToken(moduleName, normalized);
+      return normalized;
+    }
+  } catch (error) {
+    pushDebugWarn(PUSH_DEBUG_PREFIX, "resolveWebFcmToken failed", {
+      moduleName,
+      error: error?.message || error,
+    });
+  }
+
+  return null;
+}
+
 async function saveTokenByModule(moduleName, token, platform = "web") {
   pushDebugLog(PUSH_DEBUG_PREFIX, "saveTokenByModule starting", { moduleName, platform, tokenPreview: `${token?.slice(0, 10)}...` });
   if (moduleName === "restaurant") {
@@ -476,31 +709,7 @@ async function saveTokenByModule(moduleName, token, platform = "web") {
 }
 
 async function registerNativeWebViewFcmToken(moduleName) {
-  if (!isFlutterWebView()) return;
-
-  const handlerNames = ["getFcmToken", "getFCMToken", "getPushToken", "getFirebaseToken"];
-  for (const handlerName of handlerNames) {
-    try {
-      const token = await window.flutter_inappwebview.callHandler(handlerName, { module: moduleName });
-      const normalizedToken = String(token || "").trim();
-      if (normalizedToken.length < 20) continue;
-
-      const lastSavedToken = getSavedToken(moduleName);
-      if (lastSavedToken !== normalizedToken) {
-        await saveTokenByModule(moduleName, normalizedToken, "mobile");
-        setSavedToken(moduleName, normalizedToken);
-      }
-
-      pushDebugLog(PUSH_DEBUG_PREFIX, "Registered native WebView FCM token", {
-        moduleName,
-        handlerName,
-        tokenPreview: `${normalizedToken.slice(0, 12)}...`,
-      });
-      return;
-    } catch {
-      // Try next handler.
-    }
-  }
+  return persistModuleFcmToken(moduleName, { maxAttempts: 6, delayMs: 350 });
 }
 
 function showForegroundNotification(payload = {}) {
@@ -702,6 +911,11 @@ export async function registerWebPushForCurrentModule(pathname = window.location
   if (moduleName === "admin") return;
 
   initPushNotificationClient();
+
+  if (isFlutterWebView()) {
+    await persistModuleFcmToken(moduleName, { maxAttempts: 6, delayMs: 350 });
+    return;
+  }
 
   const accessToken = localStorage.getItem(`${moduleName}_accessToken`);
   if (!accessToken) return;

@@ -9,6 +9,7 @@ import {
   setRestaurantPendingPhone,
 } from "@food/utils/auth"
 import { clearOnboardingFromLocalStorage, clearAllFilesFromDB, checkOnboardingStatus, isRestaurantOnboardingComplete } from "@/modules/Food/utils/onboardingUtils"
+import { collectNativeFcmToken, persistModuleFcmToken } from "@food/utils/firebaseMessaging"
 
 const DEFAULT_COUNTRY_CODE = "+91"
 
@@ -260,29 +261,10 @@ export default function RestaurantLogin() {
       const phoneVal = authData.phone
       const purpose = authData.isSignUp ? "register" : "login"
 
-      let fcmToken = null
-      let platform = "web"
-      try {
-        if (typeof window !== "undefined") {
-          if (window.flutter_inappwebview) {
-            platform = "mobile"
-            const handlerNames = ["getFcmToken", "getFCMToken", "getPushToken", "getFirebaseToken"]
-            for (const handlerName of handlerNames) {
-              try {
-                const t = await window.flutter_inappwebview.callHandler(handlerName, { module: "restaurant" })
-                if (t && typeof t === "string" && t.length > 20) {
-                  fcmToken = t.trim()
-                  break
-                }
-              } catch (e) {}
-            }
-          } else {
-            fcmToken = localStorage.getItem("fcm_web_registered_token_restaurant") || null
-          }
-        }
-      } catch (e) {
-        console.warn("Failed to get FCM token during restaurant login", e)
-      }
+      const { fcmToken, platform } = await collectNativeFcmToken("restaurant", {
+        maxAttempts: 8,
+        delayMs: 400,
+      })
 
       const response = await restaurantAPI.verifyOTP(
         phoneVal,
@@ -367,6 +349,9 @@ export default function RestaurantLogin() {
 
         setRestaurantAuthData("restaurant", accessToken, restaurant, data?.refreshToken)
         window.dispatchEvent(new Event("restaurantAuthChanged"))
+        try {
+          await persistModuleFcmToken("restaurant", { maxAttempts: 8, delayMs: 400 })
+        } catch {}
         sessionStorage.removeItem("restaurantAuthData")
         sessionStorage.removeItem(getBlockKey(phoneVal))
         sessionStorage.removeItem(getResendKey(phoneVal))
