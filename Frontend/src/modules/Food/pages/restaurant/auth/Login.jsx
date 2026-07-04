@@ -259,13 +259,68 @@ export default function RestaurantLogin() {
 
       const phoneVal = authData.phone
       const purpose = authData.isSignUp ? "register" : "login"
-      const response = await restaurantAPI.verifyOTP(phoneVal, code, purpose, authData.email, confirmAction)
+
+      let fcmToken = null
+      let platform = "web"
+      try {
+        if (typeof window !== "undefined") {
+          if (window.flutter_inappwebview) {
+            platform = "mobile"
+            const handlerNames = ["getFcmToken", "getFCMToken", "getPushToken", "getFirebaseToken"]
+            for (const handlerName of handlerNames) {
+              try {
+                const t = await window.flutter_inappwebview.callHandler(handlerName, { module: "restaurant" })
+                if (t && typeof t === "string" && t.length > 20) {
+                  fcmToken = t.trim()
+                  break
+                }
+              } catch (e) {}
+            }
+          } else {
+            fcmToken = localStorage.getItem("fcm_web_registered_token_restaurant") || null
+          }
+        }
+      } catch (e) {
+        console.warn("Failed to get FCM token during restaurant login", e)
+      }
+
+      const response = await restaurantAPI.verifyOTP(
+        phoneVal,
+        code,
+        purpose,
+        null,
+        authData.email,
+        fcmToken,
+        platform,
+        confirmAction,
+      )
       const data = response?.data?.data || response?.data
 
       if (data.deletedAccountFound) {
         setDeletedAccountData(data)
         setShowRestorePopup(true)
         setLoading(false)
+      } else if (data.pendingApproval === true) {
+        isSuccessRef.current = true
+        sessionStorage.removeItem("restaurantAuthData")
+        sessionStorage.removeItem(getBlockKey(phoneVal))
+        sessionStorage.removeItem(getResendKey(phoneVal))
+        setRestaurantPendingPhone(phoneVal)
+        const isRejected = Boolean(data.isRejected)
+        const statusVal = isRejected ? "rejected" : "pending"
+        localStorage.setItem("restaurant_pendingStatus", statusVal)
+        localStorage.setItem("restaurant_pendingMessage", data.message || "")
+        setShowRestorePopup(false)
+        setLoading(false)
+        navigate("/food/restaurant/pending-verification", {
+          replace: true,
+          state: {
+            phone: phoneVal || "",
+            isRejected,
+            isDisabled: false,
+            message: data.message,
+          },
+        })
       } else if (data.needsRegistration === true) {
         isSuccessRef.current = true
         setRestaurantPendingPhone(phoneVal)
@@ -278,6 +333,37 @@ export default function RestaurantLogin() {
         isSuccessRef.current = true
         const accessToken = data.accessToken
         const restaurant = data.restaurant || data.user
+        const status = String(restaurant?.status || "").toLowerCase()
+
+        if (status && status !== "approved") {
+          sessionStorage.removeItem("restaurantAuthData")
+          sessionStorage.removeItem(getBlockKey(phoneVal))
+          sessionStorage.removeItem(getResendKey(phoneVal))
+          setRestaurantPendingPhone(phoneVal)
+          const isRejected = status === "rejected"
+          const isDisabled = status === "banned" || status === "deleted"
+          const statusVal = isDisabled ? "banned" : (isRejected ? "rejected" : "pending")
+          localStorage.setItem("restaurant_pendingStatus", statusVal)
+          localStorage.setItem(
+            "restaurant_pendingMessage",
+            isRejected
+              ? (restaurant?.rejectionReason
+                  ? `Your restaurant registration has been rejected. Reason: ${restaurant.rejectionReason}`
+                  : "Your restaurant registration has been rejected. Please contact support.")
+              : "Your restaurant registration is pending approval.",
+          )
+          setShowRestorePopup(false)
+          setLoading(false)
+          navigate("/food/restaurant/pending-verification", {
+            replace: true,
+            state: {
+              phone: phoneVal || "",
+              isRejected,
+              isDisabled,
+            },
+          })
+          return
+        }
 
         setRestaurantAuthData("restaurant", accessToken, restaurant, data?.refreshToken)
         window.dispatchEvent(new Event("restaurantAuthChanged"))

@@ -26,6 +26,29 @@ const normalizePhone = (value) => {
     };
 };
 
+async function upsertRestaurantFcmToken(restaurantId, fcmToken, platform = 'web') {
+    const token = String(fcmToken || '').trim();
+    if (!token || !restaurantId) return;
+
+    const doc = await FoodRestaurant.findById(restaurantId);
+    if (!doc) return;
+
+    const isMobile = platform === 'mobile';
+    if (isMobile) {
+        if (!doc.fcmTokenMobile) doc.fcmTokenMobile = [];
+        if (!doc.fcmTokenMobile.includes(token)) {
+            doc.fcmTokenMobile.push(token);
+            await doc.save();
+        }
+    } else {
+        if (!doc.fcmTokens) doc.fcmTokens = [];
+        if (!doc.fcmTokens.includes(token)) {
+            doc.fcmTokens.push(token);
+            await doc.save();
+        }
+    }
+}
+
 const normalizeRatingValue = (value) => {
     const numeric = Number(value);
     if (!Number.isFinite(numeric)) return 0;
@@ -280,7 +303,9 @@ export const registerRestaurant = async (payload, files) => {
         ifscCode,
         accountHolderName,
         accountType,
-        isTakeawayEnabled
+        isTakeawayEnabled,
+        fcmToken,
+        platform
     } = payload;
 
     if (!ownerPhone) {
@@ -390,6 +415,11 @@ export const registerRestaurant = async (payload, files) => {
             takeawaySettings: {
                 isEnabled: isTakeawayEnabled === 'true' || isTakeawayEnabled === true
             },
+            ...(fcmToken
+                ? (platform === 'mobile'
+                    ? { fcmTokenMobile: [String(fcmToken).trim()] }
+                    : { fcmTokens: [String(fcmToken).trim()] })
+                : {}),
             ...images
         });
 
@@ -728,6 +758,10 @@ export const updateRestaurantProfile = async (restaurantId, body = {}) => {
 
     if (!currentRestaurant) {
         throw new ValidationError('Restaurant not found');
+    }
+
+    if (body.fcmToken) {
+        await upsertRestaurantFcmToken(restaurantId, body.fcmToken, body.platform);
     }
 
     const update = {};

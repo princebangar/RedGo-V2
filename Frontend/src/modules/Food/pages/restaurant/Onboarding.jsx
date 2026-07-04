@@ -32,6 +32,47 @@ const debugLog = (...args) => {}
 const debugWarn = (...args) => {}
 const debugError = (...args) => {}
 
+async function collectRestaurantFcmToken() {
+  let fcmToken = null
+  let platform = "web"
+  try {
+    if (typeof window !== "undefined") {
+      if (window.flutter_inappwebview) {
+        platform = "mobile"
+        const handlerNames = ["getFcmToken", "getFCMToken", "getPushToken", "getFirebaseToken"]
+        for (const handlerName of handlerNames) {
+          try {
+            const token = await window.flutter_inappwebview.callHandler(handlerName, { module: "restaurant" })
+            if (token && typeof token === "string" && token.length > 20) {
+              fcmToken = token.trim()
+              break
+            }
+          } catch (error) {}
+        }
+      } else {
+        fcmToken = localStorage.getItem("fcm_web_registered_token_restaurant") || null
+      }
+    }
+  } catch (error) {
+    debugWarn("Failed to get FCM token during onboarding", error)
+  }
+  return { fcmToken, platform }
+}
+
+function redirectToRestaurantPendingVerification(navigate, phone) {
+  clearModuleAuth("restaurant")
+  const normalizedPhone = normalizePhoneDigits(phone || "")
+  if (normalizedPhone) {
+    localStorage.setItem("restaurant_pendingPhone", normalizedPhone)
+  }
+  localStorage.setItem("restaurant_pendingStatus", "pending")
+  localStorage.removeItem("restaurant_pendingMessage")
+  navigate("/food/restaurant/pending-verification", {
+    replace: true,
+    state: { phone: normalizedPhone },
+  })
+}
+
 
 const daysOfWeek = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
 
@@ -1452,6 +1493,11 @@ export default function RestaurantOnboarding() {
             isTakeawayCodEnabled: step2.isTakeawayCodEnabled === true,
           }
 
+          const { fcmToken, platform } = await collectRestaurantFcmToken()
+          if (fcmToken) {
+            updatePayload.fcmToken = fcmToken
+            updatePayload.platform = platform
+          }
 
           await restaurantAPI.updateProfile(updatePayload)
 
@@ -1460,11 +1506,12 @@ export default function RestaurantOnboarding() {
           await clearAllFilesFromDB()
 
           toast.success("Registration submitted. Awaiting admin approval.", { duration: 4000 })
-          navigate("/food/restaurant/pending-verification", { replace: true })
+          redirectToRestaurantPendingVerification(navigate, step1.ownerPhone)
           return
         }
 
         // Final submit: create restaurant in DB using backend multipart endpoint.
+        const { fcmToken, platform } = await collectRestaurantFcmToken()
         const formData = new FormData()
 
         // Step 1
@@ -1541,22 +1588,22 @@ export default function RestaurantOnboarding() {
         formData.append("accountHolderName", step3.accountHolderName || "")
         formData.append("accountType", step3.accountType || "")
 
+        if (fcmToken) {
+          formData.append("fcmToken", fcmToken)
+          formData.append("platform", platform)
+        }
+
         await restaurantAPI.register(formData)
 
         // Clear localStorage when onboarding is complete
         clearOnboardingFromLocalStorage()
         clearOnboardingFileCache()
         try {
-          localStorage.setItem("restaurant_pendingPhone", normalizePhoneDigits(step1.ownerPhone))
+          await clearAllFilesFromDB()
         } catch {}
 
         toast.success("Registration submitted. Awaiting admin approval.", { duration: 4000 })
-        navigate("/food/restaurant/pending-verification", {
-          replace: true,
-          state: {
-            phone: normalizePhoneDigits(step1.ownerPhone),
-          },
-        })
+        redirectToRestaurantPendingVerification(navigate, step1.ownerPhone)
       }
     } catch (err) {
       const msg =

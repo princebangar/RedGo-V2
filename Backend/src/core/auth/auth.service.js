@@ -508,6 +508,22 @@ export const verifyRestaurantOtpAndLogin = async (phone, otp, fcmToken, platform
     throw new AuthError(message);
   }
 
+  const restaurantStatus = restaurant.status || "pending";
+  if (restaurantStatus !== "approved") {
+    const isRejected = restaurantStatus === "rejected";
+    return {
+      pendingApproval: true,
+      isRejected,
+      rejectionReason: isRejected ? restaurant.rejectionReason : null,
+      message:
+        isRejected
+          ? (restaurant.rejectionReason
+              ? `Your restaurant registration has been rejected. Reason: ${restaurant.rejectionReason}`
+              : "Your restaurant registration has been rejected. Please contact support.")
+          : "Your restaurant registration is pending approval.",
+    };
+  }
+
   const payload = { userId: restaurant._id.toString(), role: ROLES.RESTAURANT };
   const accessToken = signAccessToken(payload);
   const refreshToken = signRefreshToken(payload);

@@ -18,9 +18,13 @@ function getTransporter() {
         host: emailHost,
         port: emailPort || 587,
         secure: emailPort === 465,
+        requireTLS: emailPort !== 465,
         auth: {
             user: emailUser,
             pass: emailPass
+        },
+        tls: {
+            minVersion: 'TLSv1.2'
         }
     });
     return transporter;
@@ -62,8 +66,14 @@ function isValidEmail(email) {
 }
 
 function resolveFromHeader(displayName = 'RedGo') {
-    const from = config.emailFrom || config.emailUser;
-    if (typeof from === 'string' && from.includes('<')) return from;
+    const emailUser = String(config.emailUser || '').trim();
+    if (emailUser) {
+        // Gmail SMTP requires the From address to match the authenticated account.
+        return `${displayName} <${emailUser}>`;
+    }
+
+    const from = String(config.emailFrom || 'noreply@example.com').trim();
+    if (from.includes('<')) return from;
     return `${displayName} <${from}>`;
 }
 
@@ -89,7 +99,8 @@ async function sendEmail({ to, subject, html, text, fromDisplay, logLabel = 'Ema
         logger.info(`${logLabel} sent to ${to}`);
         return true;
     } catch (err) {
-        logger.error(`Failed to send ${logLabel} to ${to}:`, err.message);
+        const detail = err?.response || err?.code || err?.message || err;
+        logger.error(`Failed to send ${logLabel} to ${to}:`, detail);
         return false;
     }
 }
@@ -226,7 +237,7 @@ export async function sendAdminResetOtpEmail(to, otp) {
         subject,
         html,
         text,
-        fromDisplay: typeof from === 'string' && from.includes('<') ? from : `Appzeto <${from}>`,
+        fromDisplay: `Appzeto <${config.emailUser || from}>`,
         logLabel: 'Admin reset OTP email'
     });
 }

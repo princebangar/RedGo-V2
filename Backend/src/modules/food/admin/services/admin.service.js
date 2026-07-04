@@ -3693,36 +3693,50 @@ export async function approveRestaurant(id) {
     ).lean();
 
     if (updated) {
+        let emailSent = false;
+        if (statusChanged && updated.ownerEmail?.trim()) {
+            try {
+                const { sendRestaurantApprovalEmail } = await import('../../../../utils/email.js');
+                emailSent = await sendRestaurantApprovalEmail({
+                    to: updated.ownerEmail,
+                    restaurantName: updated.restaurantName,
+                    restaurantId: String(updated._id),
+                    isChangesApproval
+                });
+                if (!emailSent) {
+                    console.warn(`Restaurant approval email was not sent for ${updated._id} (${updated.ownerEmail})`);
+                }
+            } catch (e) {
+                console.error('Failed to send restaurant approval email:', e);
+            }
+        } else if (statusChanged) {
+            console.warn(`Restaurant approval email skipped for ${updated._id}: ownerEmail not set`);
+        }
+
+        const baseBody = `Your restaurant "${updated.restaurantName}" has been approved. You can now start receiving orders!`;
+        const fcmBody = emailSent
+            ? `${baseBody} A confirmation email has been sent to your Gmail.`
+            : updated.ownerEmail?.trim()
+              ? `${baseBody} Please check your Gmail for confirmation.`
+              : baseBody;
+
         try {
             const { notifyOwnersSafely } = await import('../../../../core/notifications/firebase.service.js');
             await notifyOwnersSafely(
                 [{ ownerType: 'RESTAURANT', ownerId: updated._id }],
                 {
                     title: 'Congratulations! Ã°Å¸Å½â€°',
-                    body: `Your restaurant "${updated.restaurantName}" has been approved. You can now start receiving orders!`,
+                    body: fcmBody,
                     image: updated.profileImage || 'https://i.ibb.co/3m2Yh7r/Appzeto-Brand-Image.png',
                     data: {
                         type: 'restaurant_approved',
-                        restaurantId: String(updated._id)
+                        restaurantId: String(updated._id),
+                        emailSent: emailSent ? 'true' : 'false'
                     }
                 }
             );
         } catch (e) {
             console.error('Failed to send restaurant approval notification:', e);
-        }
-
-        if (statusChanged && updated.ownerEmail?.trim()) {
-            try {
-                const { sendRestaurantApprovalEmail } = await import('../../../../utils/email.js');
-                await sendRestaurantApprovalEmail({
-                    to: updated.ownerEmail,
-                    restaurantName: updated.restaurantName,
-                    restaurantId: String(updated._id),
-                    isChangesApproval
-                });
-            } catch (e) {
-                console.error('Failed to send restaurant approval email:', e);
-            }
         }
     }
     return updated;
@@ -3752,38 +3766,50 @@ export async function rejectRestaurant(id, reason) {
     ).lean();
 
     if (updated) {
-        try {
-            const { notifyOwnersSafely } = await import('../../../../core/notifications/firebase.service.js');
-            await notifyOwnersSafely(
-                [{ ownerType: 'RESTAURANT', ownerId: updated._id }],
-                {
-                    title: 'Update on Registration Ã°Å¸â€œâ€¹',
-                    body: `Your restaurant registration for "${updated.restaurantName}" has been rejected. Reason: ${reason || 'Incomplete documents'}.`,
-                    image: 'https://i.ibb.co/3m2Yh7r/Appzeto-Brand-Image.png',
-                    data: {
-                        type: 'restaurant_rejected',
-                        restaurantId: String(updated._id),
-                        reason: reason || ''
-                    }
-                }
-            );
-        } catch (e) {
-            console.error('Failed to send restaurant rejection notification:', e);
-        }
-
+        let emailSent = false;
         if (statusChanged && updated.ownerEmail?.trim()) {
             try {
                 const { sendRestaurantRejectionEmail } = await import('../../../../utils/email.js');
-                await sendRestaurantRejectionEmail({
+                emailSent = await sendRestaurantRejectionEmail({
                     to: updated.ownerEmail,
                     restaurantName: updated.restaurantName,
                     restaurantId: String(updated._id),
                     reason: updated.rejectionReason || trimmedReason,
                     isChangesRejection
                 });
+                if (!emailSent) {
+                    console.warn(`Restaurant rejection email was not sent for ${updated._id} (${updated.ownerEmail})`);
+                }
             } catch (e) {
                 console.error('Failed to send restaurant rejection email:', e);
             }
+        }
+
+        const baseBody = `Your restaurant registration for "${updated.restaurantName}" has been rejected. Reason: ${reason || 'Incomplete documents'}.`;
+        const fcmBody = emailSent
+            ? `${baseBody} Details have been sent to your Gmail.`
+            : updated.ownerEmail?.trim()
+              ? `${baseBody} Please check your Gmail for details.`
+              : baseBody;
+
+        try {
+            const { notifyOwnersSafely } = await import('../../../../core/notifications/firebase.service.js');
+            await notifyOwnersSafely(
+                [{ ownerType: 'RESTAURANT', ownerId: updated._id }],
+                {
+                    title: 'Update on Registration Ã°Å¸â€œâ€¹',
+                    body: fcmBody,
+                    image: 'https://i.ibb.co/3m2Yh7r/Appzeto-Brand-Image.png',
+                    data: {
+                        type: 'restaurant_rejected',
+                        restaurantId: String(updated._id),
+                        reason: reason || '',
+                        emailSent: emailSent ? 'true' : 'false'
+                    }
+                }
+            );
+        } catch (e) {
+            console.error('Failed to send restaurant rejection notification:', e);
         }
     }
     return updated;
@@ -4948,36 +4974,50 @@ export async function approveDeliveryPartner(id) {
     partner.pendingApprovalType = 'registration';
     await partner.save();
 
+    let emailSent = false;
+    if (statusChanged && partner.email?.trim()) {
+        try {
+            const { sendDeliveryApprovalEmail } = await import('../../../../utils/email.js');
+            emailSent = await sendDeliveryApprovalEmail({
+                to: partner.email,
+                partnerName: partner.name,
+                partnerId: String(partner._id),
+                isChangesApproval
+            });
+            if (!emailSent) {
+                console.warn(`Delivery approval email was not sent for ${partner._id} (${partner.email})`);
+            }
+        } catch (e) {
+            console.error('Failed to send delivery partner approval email:', e);
+        }
+    } else if (statusChanged) {
+        console.warn(`Delivery approval email skipped for ${partner._id}: email not set`);
+    }
+
+    const baseBody = 'Your delivery partner application has been approved. You can now go online and start earning!';
+    const fcmBody = emailSent
+        ? `${baseBody} A confirmation email has been sent to your Gmail.`
+        : partner.email?.trim()
+          ? `${baseBody} Please check your Gmail for confirmation.`
+          : baseBody;
+
     try {
         const { notifyOwnerSafely } = await import('../../../../core/notifications/firebase.service.js');
         await notifyOwnerSafely(
             { ownerType: 'DELIVERY_PARTNER', ownerId: partner._id },
             {
                 title: 'Welcome Aboard! Ã°Å¸Å¡Â²',
-                body: `Your delivery partner application has been approved. You can now go online and start earning!`,
+                body: fcmBody,
                 image: 'https://i.ibb.co/3m2Yh7r/Appzeto-Brand-Image.png',
                 data: {
                     type: 'onboarding_approved',
-                    partnerId: String(partner._id)
+                    partnerId: String(partner._id),
+                    emailSent: emailSent ? 'true' : 'false'
                 }
             }
         );
     } catch (e) {
         console.error('Failed to send delivery partner approval notification:', e);
-    }
-
-    if (statusChanged && partner.email?.trim()) {
-        try {
-            const { sendDeliveryApprovalEmail } = await import('../../../../utils/email.js');
-            await sendDeliveryApprovalEmail({
-                to: partner.email,
-                partnerName: partner.name,
-                partnerId: String(partner._id),
-                isChangesApproval
-            });
-        } catch (e) {
-            console.error('Failed to send delivery partner approval email:', e);
-        }
     }
 
     // Referral crediting: on approval, credit the referrer partner's pocket balance via DeliveryBonusTransaction.
@@ -5051,38 +5091,50 @@ export async function rejectDeliveryPartner(id, reason) {
     ).lean();
 
     if (updated) {
-        try {
-            const { notifyOwnerSafely } = await import('../../../../core/notifications/firebase.service.js');
-            await notifyOwnerSafely(
-                { ownerType: 'DELIVERY_PARTNER', ownerId: updated._id },
-                {
-                    title: 'Onboarding Update Ã°Å¸â€œâ€¹',
-                    body: `Your application to join as a delivery partner was rejected. Reason: ${reason || 'Incomplete documents'}.`,
-                    image: 'https://i.ibb.co/3m2Yh7r/Appzeto-Brand-Image.png',
-                    data: {
-                        type: 'onboarding_rejected',
-                        partnerId: String(updated._id),
-                        reason: reason || ''
-                    }
-                }
-            );
-        } catch (e) {
-            console.error('Failed to send delivery partner rejection notification:', e);
-        }
-
+        let emailSent = false;
         if (statusChanged && updated.email?.trim()) {
             try {
                 const { sendDeliveryRejectionEmail } = await import('../../../../utils/email.js');
-                await sendDeliveryRejectionEmail({
+                emailSent = await sendDeliveryRejectionEmail({
                     to: updated.email,
                     partnerName: updated.name,
                     partnerId: String(updated._id),
                     reason: updated.rejectionReason || trimmedReason,
                     isChangesRejection
                 });
+                if (!emailSent) {
+                    console.warn(`Delivery rejection email was not sent for ${updated._id} (${updated.email})`);
+                }
             } catch (e) {
                 console.error('Failed to send delivery partner rejection email:', e);
             }
+        }
+
+        const baseBody = `Your application to join as a delivery partner was rejected. Reason: ${reason || 'Incomplete documents'}.`;
+        const fcmBody = emailSent
+            ? `${baseBody} Details have been sent to your Gmail.`
+            : updated.email?.trim()
+              ? `${baseBody} Please check your Gmail for details.`
+              : baseBody;
+
+        try {
+            const { notifyOwnerSafely } = await import('../../../../core/notifications/firebase.service.js');
+            await notifyOwnerSafely(
+                { ownerType: 'DELIVERY_PARTNER', ownerId: updated._id },
+                {
+                    title: 'Onboarding Update Ã°Å¸â€œâ€¹',
+                    body: fcmBody,
+                    image: 'https://i.ibb.co/3m2Yh7r/Appzeto-Brand-Image.png',
+                    data: {
+                        type: 'onboarding_rejected',
+                        partnerId: String(updated._id),
+                        reason: reason || '',
+                        emailSent: emailSent ? 'true' : 'false'
+                    }
+                }
+            );
+        } catch (e) {
+            console.error('Failed to send delivery partner rejection notification:', e);
         }
     }
     return updated;

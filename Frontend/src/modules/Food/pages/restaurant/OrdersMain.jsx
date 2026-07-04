@@ -3060,22 +3060,22 @@ function OrdersMainInner() {
         {showNewOrderPopup && (
           <>
             <motion.div
-              className="fixed inset-0 z-[100] bg-black/60 flex items-center justify-center p-4"
+              className="fixed inset-0 z-[100] bg-black/60 flex items-start sm:items-center justify-center overflow-y-auto overscroll-contain p-3 sm:p-4 pt-[max(0.75rem,env(safe-area-inset-top))] pb-[max(0.75rem,env(safe-area-inset-bottom))]"
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}>
               <motion.div
-                className="w-[95%] max-w-md max-h-[calc(100vh-2rem)] bg-white rounded-[2rem] shadow-2xl overflow-hidden p-1 flex flex-col"
+                className="w-full max-w-md max-h-[min(92dvh,calc(100dvh-1.5rem))] my-auto bg-white rounded-2xl sm:rounded-[2rem] shadow-2xl overflow-hidden flex flex-col"
                 initial={{ scale: 0.9, opacity: 0 }}
                 animate={{ scale: 1, opacity: 1 }}
                 exit={{ scale: 0.9, opacity: 0 }}
                 transition={{ type: "spring", damping: 25, stiffness: 300 }}
                 onClick={(e) => e.stopPropagation()}>
                 {/* Header */}
-                <div className="px-4 py-3 bg-white border-b border-gray-200 flex items-center justify-between">
-                  <div className="flex-1">
-                    <div className="flex items-center gap-2">
-                      <h3 className="text-sm font-bold text-gray-900">
+                <div className="shrink-0 px-4 py-3 bg-white border-b border-gray-200 flex items-center justify-between">
+                  <div className="flex-1 min-w-0">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <h3 className="text-sm font-bold text-gray-900 truncate">
                         {(popupOrder || newOrder)?.orderId || "#Order"}
                       </h3>
                       {(() => {
@@ -3393,7 +3393,7 @@ function OrdersMainInner() {
                   </div>
                 </div>
 
-                <div className="px-4 pb-4 pt-3 border-t border-gray-200 bg-white">
+                <div className="shrink-0 px-4 pb-4 pt-3 border-t border-gray-200 bg-white">
                   {(() => {
                     const activePopupOrder = popupOrder || newOrder;
                     const popupStatus =
@@ -3432,8 +3432,8 @@ function OrdersMainInner() {
                             animate={{ width: `${popupTimeoutSeconds > 0 ? (countdown / popupTimeoutSeconds) * 100 : 0}%` }}
                             transition={{ duration: 1, ease: "linear" }}
                           />
-                          <div className="absolute inset-0 flex items-center justify-center px-16">
-                            <span className="relative z-10 text-sm font-semibold text-white text-center">
+                          <div className="absolute inset-0 flex items-center justify-center px-12 sm:px-16">
+                            <span className="relative z-10 text-xs sm:text-sm font-semibold text-white text-center leading-tight">
                               {isAcceptingOrder
                                 ? "Accepting order..."
                                 : `Slide to accept (${formatTime(countdown)})`}
@@ -3495,36 +3495,36 @@ function OrdersMainInner() {
         {showRejectPopup && (
           <>
             <motion.div
-              className="fixed inset-0 z-[110] bg-black/60 flex items-center justify-center p-4"
+              className="fixed inset-0 z-[110] bg-black/60 flex items-start sm:items-center justify-center overflow-y-auto overscroll-contain p-3 sm:p-4 pt-[max(0.75rem,env(safe-area-inset-top))] pb-[max(0.75rem,env(safe-area-inset-bottom))]"
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
               onClick={handleRejectCancel}>
               <motion.div
-                className="w-[95%] max-w-md bg-white rounded-2xl shadow-2xl overflow-hidden"
+                className="w-full max-w-md max-h-[min(92dvh,calc(100dvh-1.5rem))] my-auto bg-white rounded-2xl shadow-2xl overflow-hidden flex flex-col"
                 initial={{ scale: 0.9, opacity: 0 }}
                 animate={{ scale: 1, opacity: 1 }}
                 exit={{ scale: 0.9, opacity: 0 }}
                 transition={{ type: "spring", damping: 25, stiffness: 300 }}
                 onClick={(e) => e.stopPropagation()}>
                 {/* Header */}
-                <div className="px-4 py-4 border-b border-gray-200">
-                  <h3 className="text-lg font-bold text-gray-900">
+                <div className="shrink-0 px-4 py-3 sm:py-4 border-b border-gray-200">
+                  <h3 className="text-base sm:text-lg font-bold text-gray-900">
                     Reject Order {(popupOrder || newOrder)?.orderId || "#Order"}
                   </h3>
-                  <p className="text-sm text-gray-500 mt-1">
+                  <p className="text-xs sm:text-sm text-gray-500 mt-1">
                     Please select a reason for rejecting this order
                   </p>
                 </div>
 
                 {/* Content */}
-                <div className="px-4 py-4 max-h-[60vh] overflow-y-auto">
+                <div className="flex-1 min-h-0 overflow-y-auto px-4 py-3 sm:py-4">
                   <div className="space-y-2">
                     {rejectReasons.map((reason) => (
                       <button
                         key={reason}
                         onClick={() => setRejectReason(reason)}
-                        className={`w-full text-left p-4 rounded-lg border-2 transition-all ${rejectReason === reason
+                        className={`w-full text-left p-3 sm:p-4 rounded-lg border-2 transition-all ${rejectReason === reason
                             ? "border-[#B80B3D] bg-red-50"
                             : "border-gray-200 bg-white hover:border-gray-300"
                           }`}>
@@ -3559,16 +3559,16 @@ function OrdersMainInner() {
                 </div>
 
                 {/* Footer */}
-                <div className="px-4 py-4 bg-gray-50 border-t border-gray-200 flex gap-3">
+                <div className="shrink-0 px-4 py-3 sm:py-4 bg-gray-50 border-t border-gray-200 flex gap-2 sm:gap-3">
                   <button
                     onClick={handleRejectCancel}
-                    className="flex-1 bg-white border-2 border-gray-300 text-gray-700 py-3 rounded-lg font-semibold text-sm hover:bg-gray-50 transition-colors">
+                    className="flex-1 bg-white border-2 border-gray-300 text-gray-700 py-2.5 sm:py-3 rounded-lg font-semibold text-sm hover:bg-gray-50 transition-colors">
                     Cancel
                   </button>
                   <button
                     onClick={handleRejectConfirm}
                     disabled={!rejectReason}
-                    className={`flex-1 py-3 rounded-lg font-semibold text-sm transition-colors ${rejectReason
+                    className={`flex-1 py-2.5 sm:py-3 rounded-lg font-semibold text-sm transition-colors ${rejectReason
                         ? "!bg-gradient-to-br from-[#B80B3D] to-[#66001D] !text-white hover:!bg-gradient-to-br from-[#B80B3D] to-[#66001D]/90"
                         : "bg-gray-200 text-gray-400 cursor-not-allowed"
                       }`}>
@@ -3586,37 +3586,37 @@ function OrdersMainInner() {
         {showCancelPopup && orderToCancel && (
           <>
             <motion.div
-              className="fixed inset-0 z-[110] bg-black/60 flex items-center justify-center p-4"
+              className="fixed inset-0 z-[110] bg-black/60 flex items-start sm:items-center justify-center overflow-y-auto overscroll-contain p-3 sm:p-4 pt-[max(0.75rem,env(safe-area-inset-top))] pb-[max(0.75rem,env(safe-area-inset-bottom))]"
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
               onClick={handleCancelPopupClose}>
               <motion.div
-                className="w-[95%] max-w-md bg-white rounded-2xl shadow-2xl overflow-hidden"
+                className="w-full max-w-md max-h-[min(92dvh,calc(100dvh-1.5rem))] my-auto bg-white rounded-2xl shadow-2xl overflow-hidden flex flex-col"
                 initial={{ scale: 0.9, opacity: 0 }}
                 animate={{ scale: 1, opacity: 1 }}
                 exit={{ scale: 0.9, opacity: 0 }}
                 transition={{ type: "spring", damping: 25, stiffness: 300 }}
                 onClick={(e) => e.stopPropagation()}>
                 {/* Header */}
-                <div className="px-4 py-4 border-b border-gray-200">
-                  <h3 className="text-lg font-bold text-gray-900">
+                <div className="shrink-0 px-4 py-3 sm:py-4 border-b border-gray-200">
+                  <h3 className="text-base sm:text-lg font-bold text-gray-900">
                     Cancel Order {orderToCancel.orderId || "#Order"}
                   </h3>
-                  <p className="text-sm text-gray-500 mt-1">
+                  <p className="text-xs sm:text-sm text-gray-500 mt-1">
                     Please provide a reason for cancelling this order
                   </p>
                 </div>
 
                 {/* Content */}
-                <div className="px-4 py-4">
-                  <div className="space-y-3">
+                <div className="flex-1 min-h-0 overflow-y-auto px-4 py-3 sm:py-4">
+                  <div className="space-y-2 sm:space-y-3">
                     {rejectReasons.map((reason) => (
                       <button
                         key={reason}
                         type="button"
                         onClick={() => setCancelReason(reason)}
-                        className={`w-full text-left px-4 py-3 rounded-lg border-2 transition-colors ${cancelReason === reason
+                        className={`w-full text-left px-3 py-2.5 sm:px-4 sm:py-3 rounded-lg border-2 transition-colors ${cancelReason === reason
                             ? "border-red-500 bg-red-50"
                             : "border-gray-200 hover:border-gray-300"
                           }`}>
@@ -3655,16 +3655,16 @@ function OrdersMainInner() {
                 </div>
 
                 {/* Footer */}
-                <div className="px-4 py-4 bg-gray-50 border-t border-gray-200 flex gap-3">
+                <div className="shrink-0 px-4 py-3 sm:py-4 bg-gray-50 border-t border-gray-200 flex gap-2 sm:gap-3">
                   <button
                     onClick={handleCancelPopupClose}
-                    className="flex-1 bg-white border-2 border-gray-300 text-gray-700 py-3 rounded-lg font-semibold text-sm hover:bg-gray-50 transition-colors">
+                    className="flex-1 bg-white border-2 border-gray-300 text-gray-700 py-2.5 sm:py-3 rounded-lg font-semibold text-sm hover:bg-gray-50 transition-colors">
                     Cancel
                   </button>
                   <button
                     onClick={handleCancelConfirm}
                     disabled={!cancelReason}
-                    className={`flex-1 py-3 rounded-lg font-semibold text-sm transition-colors ${cancelReason
+                    className={`flex-1 py-2.5 sm:py-3 rounded-lg font-semibold text-sm transition-colors ${cancelReason
                         ? "!bg-gradient-to-br from-[#B80B3D] to-[#66001D] !text-white hover:bg-red-700"
                         : "bg-gray-200 text-gray-400 cursor-not-allowed"
                       }`}>

@@ -10,6 +10,7 @@ const SignIn = lazy(() => import("./pages/auth/SignIn"))
 const OTP = lazy(() => import("./pages/auth/OTP"))
 const SignupStep1 = lazy(() => import("./pages/auth/SignupStep1"))
 const SignupStep2 = lazy(() => import("./pages/auth/SignupStep2"))
+const VerificationPending = lazy(() => import("./pages/auth/VerificationPending"))
 
 // V2 Pages
 import DeliveryHomeV2 from './pages/DeliveryHomeV2';
@@ -73,6 +74,7 @@ const DeliveryV2Router = () => {
         <Route path="signup" element={<AuthRedirect module="delivery"><Navigate to="/food/delivery/login" replace /></AuthRedirect>} />
         <Route path="signup/details" element={<AuthRedirect module="delivery"><SignupStep1 /></AuthRedirect>} />
         <Route path="signup/documents" element={<AuthRedirect module="delivery"><SignupStep2 /></AuthRedirect>} />
+        <Route path="pending-verification" element={<VerificationPending />} />
         <Route path="terms" element={<TermsAndConditionsV2 />} />
         <Route path="privacy" element={<PrivacyPolicyV2 />} />
         <Route path="profile/terms" element={<TermsAndConditionsV2 />} />
