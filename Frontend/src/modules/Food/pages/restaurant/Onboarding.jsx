@@ -28,7 +28,7 @@ import { EMAIL_REGEX } from "@/shared/utils/emailValidation"
 import { OnboardingSkeleton } from "@food/components/ui/loading-skeletons"
 import OnboardingExitModal from "@/shared/components/OnboardingExitModal"
 import useOnboardingExitGuard from "@/shared/hooks/useOnboardingExitGuard"
-import { collectRestaurantFcmToken, persistModuleFcmToken, persistPendingModuleFcmToken } from "@food/utils/firebaseMessaging"
+import { collectFcmTokenFast, persistModuleFcmToken, persistPendingModuleFcmToken } from "@food/utils/firebaseMessaging"
 const debugLog = (...args) => {}
 const debugWarn = (...args) => {}
 const debugError = (...args) => {}
@@ -38,7 +38,8 @@ const normalizePhoneDigits = (value) => {
   return digits.slice(-10)
 }
 
-async function finalizeRestaurantPendingSubmission(navigate, phone) {
+async function finalizeRestaurantPendingSubmission(navigate, phone, fcmOptions = {}) {
+  const { fcmToken, platform } = fcmOptions
   const normalizedPhone = normalizePhoneDigits(phone || "")
 
   try {
@@ -57,15 +58,12 @@ async function finalizeRestaurantPendingSubmission(navigate, phone) {
   localStorage.removeItem("restaurant_pendingMessage")
 
   try {
-    await persistPendingModuleFcmToken("restaurant", normalizedPhone, {
-      maxAttempts: 8,
-      delayMs: 400,
-    })
+    persistPendingModuleFcmToken("restaurant", normalizedPhone, { fcmToken, platform }).catch(() => {})
   } catch {}
 
   if (localStorage.getItem("restaurant_accessToken")) {
     try {
-      await persistModuleFcmToken("restaurant", { maxAttempts: 6, delayMs: 350 })
+      persistModuleFcmToken("restaurant", { fcmToken, platform }).catch(() => {})
     } catch {}
   }
 
@@ -1488,10 +1486,7 @@ export default function RestaurantOnboarding() {
             isTakeawayCodEnabled: step2.isTakeawayCodEnabled === true,
           }
 
-          const { fcmToken, platform } = await collectRestaurantFcmToken({
-            maxAttempts: 8,
-            delayMs: 400,
-          })
+          const { fcmToken, platform } = await collectFcmTokenFast("restaurant")
           if (fcmToken) {
             updatePayload.fcmToken = fcmToken
             updatePayload.platform = platform
@@ -1504,15 +1499,12 @@ export default function RestaurantOnboarding() {
           await clearAllFilesFromDB()
 
           toast.success("Registration submitted. Awaiting admin approval.", { duration: 4000 })
-          await finalizeRestaurantPendingSubmission(navigate, step1.ownerPhone)
+          await finalizeRestaurantPendingSubmission(navigate, step1.ownerPhone, { fcmToken, platform })
           return
         }
 
         // Final submit: create restaurant in DB using backend multipart endpoint.
-        const { fcmToken, platform } = await collectRestaurantFcmToken({
-          maxAttempts: 8,
-          delayMs: 400,
-        })
+        const { fcmToken, platform } = await collectFcmTokenFast("restaurant")
         const formData = new FormData()
 
         // Step 1
@@ -1604,7 +1596,7 @@ export default function RestaurantOnboarding() {
         } catch {}
 
         toast.success("Registration submitted. Awaiting admin approval.", { duration: 4000 })
-        await finalizeRestaurantPendingSubmission(navigate, step1.ownerPhone)
+        await finalizeRestaurantPendingSubmission(navigate, step1.ownerPhone, { fcmToken, platform })
       }
     } catch (err) {
       const msg =

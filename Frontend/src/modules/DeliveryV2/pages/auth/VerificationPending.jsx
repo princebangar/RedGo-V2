@@ -64,10 +64,7 @@ export default function VerificationPending() {
     const syncPushToken = async () => {
       try {
         if (pendingPhone) {
-          await persistPendingModuleFcmToken("delivery", pendingPhone, {
-            maxAttempts: 8,
-            delayMs: 400,
-          })
+          await persistPendingModuleFcmToken("delivery", pendingPhone)
         }
       } catch {}
 
@@ -75,7 +72,7 @@ export default function VerificationPending() {
 
       if (typeof localStorage !== "undefined" && localStorage.getItem("delivery_accessToken")) {
         try {
-          await persistModuleFcmToken("delivery", { maxAttempts: 6, delayMs: 350 })
+          await persistModuleFcmToken("delivery")
         } catch {}
       }
     }

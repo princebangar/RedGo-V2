@@ -88,10 +88,7 @@ export default function VerificationPending() {
 
       try {
         if (phone) {
-          await persistPendingModuleFcmToken("restaurant", phone, {
-            maxAttempts: 8,
-            delayMs: 400,
-          })
+          await persistPendingModuleFcmToken("restaurant", phone)
         }
       } catch {}
 
@@ -99,7 +96,7 @@ export default function VerificationPending() {
 
       if (getModuleToken("restaurant")) {
         try {
-          await persistModuleFcmToken("restaurant", { maxAttempts: 6, delayMs: 350 })
+          await persistModuleFcmToken("restaurant")
         } catch {}
       }
     }

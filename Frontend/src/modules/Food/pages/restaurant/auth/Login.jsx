@@ -9,7 +9,7 @@ import {
   setRestaurantPendingPhone,
 } from "@food/utils/auth"
 import { clearOnboardingFromLocalStorage, clearAllFilesFromDB, checkOnboardingStatus, isRestaurantOnboardingComplete } from "@/modules/Food/utils/onboardingUtils"
-import { collectNativeFcmToken, persistModuleFcmToken } from "@food/utils/firebaseMessaging"
+import { collectFcmTokenFast, persistModuleFcmToken } from "@food/utils/firebaseMessaging"
 
 const DEFAULT_COUNTRY_CODE = "+91"
 
@@ -261,10 +261,7 @@ export default function RestaurantLogin() {
       const phoneVal = authData.phone
       const purpose = authData.isSignUp ? "register" : "login"
 
-      const { fcmToken, platform } = await collectNativeFcmToken("restaurant", {
-        maxAttempts: 8,
-        delayMs: 400,
-      })
+      const { fcmToken, platform } = await collectFcmTokenFast("restaurant")
 
       const response = await restaurantAPI.verifyOTP(
         phoneVal,
@@ -350,7 +347,7 @@ export default function RestaurantLogin() {
         setRestaurantAuthData("restaurant", accessToken, restaurant, data?.refreshToken)
         window.dispatchEvent(new Event("restaurantAuthChanged"))
         try {
-          await persistModuleFcmToken("restaurant", { maxAttempts: 8, delayMs: 400 })
+          await persistModuleFcmToken("restaurant", { fcmToken, platform })
         } catch {}
         sessionStorage.removeItem("restaurantAuthData")
         sessionStorage.removeItem(getBlockKey(phoneVal))

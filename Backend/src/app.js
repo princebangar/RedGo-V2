@@ -49,6 +49,9 @@ app.use(helmet({
 }));
 app.use(cors());
 // app.use(morgan('dev'));
+if (config.nodeEnv !== 'production') {
+    app.use(morgan('dev'));
+}
 app.use(express.json({
     verify: (req, res, buf) => {
         // ✅ Store rawBody for signature verification (Razorpay Webhooks)

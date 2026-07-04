@@ -15,7 +15,7 @@ import {
   saveSignupDocumentToDB,
 } from "../../utils/deliveryOnboardingStorage"
 import {
-  collectDeliveryFcmToken,
+  collectFcmTokenFast,
   persistModuleFcmToken,
   persistPendingModuleFcmToken,
 } from "@food/utils/firebaseMessaging"
@@ -214,10 +214,7 @@ export default function SignupStep2() {
     let fcmToken = null
     let platform = "web"
     try {
-      const collected = await collectDeliveryFcmToken({
-        maxAttempts: 8,
-        delayMs: 400,
-      })
+      const collected = await collectFcmTokenFast("delivery")
       fcmToken = collected.fcmToken
       platform = collected.platform
     } catch (error) {
@@ -255,12 +252,9 @@ export default function SignupStep2() {
           const phone = String(details.phone || "").replace(/\D/g, "").slice(-10)
           sessionStorage.setItem("delivery_pendingPhone", phone)
           sessionStorage.setItem("delivery_pendingStatus", "pending")
-          try {
-            await persistPendingModuleFcmToken("delivery", phone, {
-              maxAttempts: 8,
-              delayMs: 400,
-            })
-          } catch {}
+          if (phone) {
+            persistPendingModuleFcmToken("delivery", phone, { fcmToken, platform }).catch(() => {})
+          }
           navigate("/food/delivery/pending-verification", { replace: true, state: { phone } })
         } else {
           toast.success("Profile submitted. Waiting for admin approval.")
