@@ -1,6 +1,7 @@
 import { useMemo, useState, useEffect, useRef, useCallback } from "react"
+import { createPortal } from "react-dom"
 import { useNavigate } from "react-router-dom"
-import { ChevronLeft, ChevronRight, Plus, MapPin, MoreHorizontal, Navigation, Home, Building2, Briefcase, Phone, X, Crosshair, Search } from "lucide-react"
+import { ChevronLeft, ChevronRight, Plus, MapPin, Navigation, Home, Building2, Briefcase, X, Crosshair, Search, Pencil, Trash2 } from "lucide-react"
 import { Button } from "@food/components/ui/button"
 import { Input } from "@food/components/ui/input"
 import { Label } from "@food/components/ui/label"
@@ -49,12 +50,45 @@ const getAddressIcon = (address) => {
   return Home
 }
 
+const getAddressCoordinates = (address) => {
+  const coords = address?.location?.coordinates
+  if (Array.isArray(coords) && coords.length >= 2) {
+    const lng = Number(coords[0])
+    const lat = Number(coords[1])
+    if (Number.isFinite(lat) && Number.isFinite(lng)) return { lat, lng }
+  }
+  const lat = Number(address?.latitude ?? address?.lat)
+  const lng = Number(address?.longitude ?? address?.lng)
+  if (Number.isFinite(lat) && Number.isFinite(lng)) return { lat, lng }
+  return null
+}
+
+const normalizeLabelForForm = (label) => {
+  const value = String(label || "Home").toLowerCase()
+  if (value.includes("office") || value.includes("work")) return "Work"
+  if (value.includes("other")) return "Other"
+  return "Home"
+}
+
+const formatAddressPreview = (address) => {
+  if (!address) return ""
+  return [address.additionalDetails, address.street, address.city, address.state, address.zipCode]
+    .filter(Boolean)
+    .join(", ")
+}
+
+const DELETE_MODAL_ANIM_MS = 220
+
 export default function AddressSelectorPage() {
   const navigate = useNavigate()
   const goBack = useAppBackNavigation()
   const { location, loading, requestLocation } = useGeoLocation()
-  const { addresses = [], addAddress, updateAddress, setDefaultAddress, userProfile, isAuthenticated, loading: profileLoading } = useProfile()
+  const { addresses = [], addAddress, updateAddress, deleteAddress, setDefaultAddress, userProfile, isAuthenticated, loading: profileLoading } = useProfile()
   const [showAddressForm, setShowAddressForm] = useState(false)
+  const [editingAddressId, setEditingAddressId] = useState(null)
+  const [deleteDialog, setDeleteDialog] = useState(null)
+  const [isDeletingAddress, setIsDeletingAddress] = useState(false)
+  const deleteCloseTimerRef = useRef(null)
   const [mapPosition, setMapPosition] = useState(() => {
     try {
       const stored = localStorage.getItem("userLocation")
@@ -105,6 +139,41 @@ export default function AddressSelectorPage() {
   
   const ENABLE_LOCATION_REVERSE_GEOCODE = import.meta.env.VITE_ENABLE_LOCATION_REVERSE_GEOCODE !== "false"
   const getAddressId = (address) => address?.id || address?._id || null
+
+  const getDeleteModalMotion = useCallback((phase) => {
+    const isOpen = phase === "open"
+    return {
+      opacity: isOpen ? 1 : 0,
+      transform: isOpen ? "translateY(0) scale(1)" : "translateY(10px) scale(0.97)",
+      transition: `transform ${DELETE_MODAL_ANIM_MS}ms cubic-bezier(0.16, 1, 0.3, 1), opacity ${DELETE_MODAL_ANIM_MS - 40}ms ease`,
+      willChange: "transform, opacity",
+    }
+  }, [])
+
+  const closeDeleteDialog = useCallback(() => {
+    setDeleteDialog((prev) => (prev ? { ...prev, phase: "exit" } : null))
+    if (deleteCloseTimerRef.current) clearTimeout(deleteCloseTimerRef.current)
+    deleteCloseTimerRef.current = setTimeout(() => {
+      setDeleteDialog(null)
+      deleteCloseTimerRef.current = null
+    }, DELETE_MODAL_ANIM_MS)
+  }, [])
+
+  useEffect(() => {
+    if (deleteDialog?.phase !== "enter") return
+    const frame = requestAnimationFrame(() => {
+      requestAnimationFrame(() => {
+        setDeleteDialog((prev) => (prev?.phase === "enter" ? { ...prev, phase: "open" } : prev))
+      })
+    })
+    return () => cancelAnimationFrame(frame)
+  }, [deleteDialog?.phase])
+
+  useEffect(() => {
+    return () => {
+      if (deleteCloseTimerRef.current) clearTimeout(deleteCloseTimerRef.current)
+    }
+  }, [])
 
   const handleBack = () => {
     goBack()
@@ -476,34 +545,124 @@ export default function AddressSelectorPage() {
     }
   }
 
-  const handleAddAddressClick = async () => {
+  const resolveExistingLocation = useCallback(() => {
+    if (Number.isFinite(location?.latitude) && Number.isFinite(location?.longitude)) {
+      return location
+    }
+    try {
+      const stored = localStorage.getItem("userLocation")
+      if (stored) {
+        const parsed = JSON.parse(stored)
+        if (Number.isFinite(parsed?.latitude) && Number.isFinite(parsed?.longitude)) {
+          return parsed
+        }
+      }
+    } catch {}
+    if (Number.isFinite(mapPosition[0]) && Number.isFinite(mapPosition[1])) {
+      return {
+        latitude: mapPosition[0],
+        longitude: mapPosition[1],
+        formattedAddress: currentAddress,
+        address: currentAddress,
+      }
+    }
+    return null
+  }, [location, mapPosition, currentAddress])
+
+  const handleAddAddressClick = () => {
     if (!isAuthenticated) {
       toast.info("Please login to add an address")
       navigate("/user/auth/login")
       return
     }
-    setIsFetchingLocationState(true)
+
+    setEditingAddressId(null)
+    setAddressAutocompleteValue("")
+    setKeywordAddressSuggestions([])
+
+    const loc = resolveExistingLocation()
+    if (loc?.latitude && loc?.longitude) {
+      initialMapCenterRef.current = [loc.latitude, loc.longitude]
+      setMapPosition([loc.latitude, loc.longitude])
+      applyGeocodedAddressToForm(loc, loc.formattedAddress || loc.address || currentAddress)
+    }
+
+    setShowAddressForm(true)
+  }
+
+  const handleEditAddressClick = (event, addr) => {
+    event.stopPropagation()
+    if (!isAuthenticated) {
+      toast.info("Please login to edit an address")
+      navigate("/user/auth/login")
+      return
+    }
+
+    const id = getAddressId(addr)
+    if (!id) return
+
+    const coords = getAddressCoordinates(addr)
+    setEditingAddressId(id)
+    setAddressAutocompleteValue("")
+    setKeywordAddressSuggestions([])
+    setAddressFormData({
+      street: addr.street || "",
+      city: addr.city || "",
+      state: addr.state || "",
+      zipCode: addr.zipCode || "",
+      additionalDetails: addr.additionalDetails || "",
+      label: normalizeLabelForForm(addr.label),
+      phone: addr.phone || "",
+    })
+    setCurrentAddress(
+      [addr.additionalDetails, addr.street, addr.city, addr.state, addr.zipCode].filter(Boolean).join(", ")
+    )
+
+    if (coords) {
+      initialMapCenterRef.current = [coords.lat, coords.lng]
+      setMapPosition([coords.lat, coords.lng])
+    }
+
+    setShowAddressForm(true)
+  }
+
+  const handleDeleteAddressClick = (event, addr) => {
+    event.stopPropagation()
+    if (!isAuthenticated) {
+      toast.info("Please login to delete an address")
+      navigate("/user/auth/login")
+      return
+    }
+    if (deleteCloseTimerRef.current) clearTimeout(deleteCloseTimerRef.current)
+    setDeleteDialog({
+      address: addr,
+      phase: "enter",
+    })
+  }
+
+  const confirmDeleteAddress = async () => {
+    const id = getAddressId(deleteDialog?.address)
+    if (!id) {
+      closeDeleteDialog()
+      return
+    }
+
+    setIsDeletingAddress(true)
     try {
-      setAddressAutocompleteValue("")
-      setKeywordAddressSuggestions([])
-      const loc = await requestLocation()
-      if (loc?.latitude && loc?.longitude) {
-        initialMapCenterRef.current = [loc.latitude, loc.longitude]
-        setMapPosition([loc.latitude, loc.longitude])
-        applyGeocodedAddressToForm(loc, loc.formattedAddress || loc.address)
-      }
-      setShowAddressForm(true)
+      await deleteAddress(id)
+      toast.success("Address deleted")
+      closeDeleteDialog()
     } catch {
-      toast.error("Could not fetch your location. You can still pick on the map.")
-      setShowAddressForm(true)
+      toast.error("Failed to delete address")
     } finally {
-      setIsFetchingLocationState(false)
+      setIsDeletingAddress(false)
     }
   }
 
   const handleCancelAddressForm = () => {
     setAddressAutocompleteValue("")
     setKeywordAddressSuggestions([])
+    setEditingAddressId(null)
     setShowAddressForm(false)
   }
 
@@ -569,6 +728,17 @@ export default function AddressSelectorPage() {
         latitude: mapPosition[0],
         longitude: mapPosition[1]
       }
+
+      if (editingAddressId) {
+        const updated = await updateAddress(editingAddressId, payload)
+        if (updated) {
+          toast.success("Address updated")
+          setEditingAddressId(null)
+          setShowAddressForm(false)
+        }
+        return
+      }
+
       const created = await addAddress(payload)
       if (created) {
         const id = getAddressId(created)
@@ -631,7 +801,7 @@ export default function AddressSelectorPage() {
           <Button variant="ghost" size="icon" onClick={handleCancelAddressForm} className="rounded-full">
             <ChevronLeft className="h-6 w-6" />
           </Button>
-          <h1 className="text-lg font-bold">Add delivery location</h1>
+          <h1 className="text-lg font-bold">{editingAddressId ? "Edit delivery location" : "Add delivery location"}</h1>
         </div>
 
         <div
@@ -831,7 +1001,7 @@ export default function AddressSelectorPage() {
             onClick={handleAddressFormSubmit}
             disabled={loadingAddress}
           >
-            {loadingAddress ? "Saving..." : "Save Address \u0026 Proceed"}
+            {loadingAddress ? (editingAddressId ? "Updating..." : "Saving...") : editingAddressId ? "Update Address" : "Save Address \u0026 Proceed"}
           </Button>
         </div>
       </AnimatedPage>
@@ -959,25 +1129,51 @@ export default function AddressSelectorPage() {
             ) : (
               addresses.map((addr, idx) => {
                 const Icon = getAddressIcon(addr)
+                const addressLine = [addr.additionalDetails, addr.street, addr.city, addr.state].filter(Boolean).join(", ")
                 return (
-                  <button
+                  <div
                     key={getAddressId(addr) || idx}
-                    onClick={() => handleSelectSavedAddress(addr)}
-                    className="w-full flex items-start gap-4 p-4 bg-slate-50 dark:bg-[#1a1a1a] rounded-xl hover:bg-[#DC262610] dark:hover:bg-[#DC262620] transition-colors text-left group"
+                    className="w-full flex items-start gap-3 p-4 bg-slate-50 dark:bg-[#1a1a1a] rounded-xl border border-transparent hover:border-[#DC2626]/15 transition-colors"
                   >
-                    <div className="h-10 w-10 rounded-full bg-white dark:bg-gray-800 flex items-center justify-center shadow-sm">
-                      <Icon className="h-5 w-5 text-gray-600 dark:text-gray-400" />
+                    <button
+                      type="button"
+                      onClick={() => handleSelectSavedAddress(addr)}
+                      className="flex flex-1 items-start gap-3 text-left min-w-0 pr-1"
+                    >
+                      <div className="h-10 w-10 rounded-full bg-white dark:bg-gray-800 flex items-center justify-center shadow-sm flex-shrink-0">
+                        <Icon className="h-5 w-5 text-gray-600 dark:text-gray-400" />
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-1.5 min-w-0">
+                          <p className="font-bold text-gray-900 dark:text-white capitalize truncate">
+                            {addr.label || "Address"}
+                          </p>
+                          <span className="inline-flex h-6 w-6 items-center justify-center rounded-full bg-[#DC2626]/10 flex-shrink-0">
+                            <ChevronRight className="h-4 w-4 text-[#DC2626]" strokeWidth={2.5} />
+                          </span>
+                        </div>
+                        <p className="text-xs text-gray-500 dark:text-gray-400 line-clamp-2 mt-1 pr-2">{addressLine}</p>
+                      </div>
+                    </button>
+                    <div className="flex flex-col gap-1.5 pt-1 flex-shrink-0">
+                      <button
+                        type="button"
+                        onClick={(e) => handleEditAddressClick(e, addr)}
+                        className="h-9 w-9 rounded-full bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 flex items-center justify-center text-gray-500 hover:text-[#DC2626] hover:border-[#DC2626]/30 transition-colors"
+                        aria-label="Edit address"
+                      >
+                        <Pencil className="h-4 w-4" />
+                      </button>
+                      <button
+                        type="button"
+                        onClick={(e) => handleDeleteAddressClick(e, addr)}
+                        className="h-9 w-9 rounded-full bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 flex items-center justify-center text-gray-500 hover:text-red-600 hover:border-red-200 transition-colors"
+                        aria-label="Delete address"
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </button>
                     </div>
-                    <div className="flex-1 min-w-0">
-                      <p className="font-bold text-gray-900 dark:text-white capitalize">{addr.label || "Address"}</p>
-                      <p className="text-xs text-gray-500 dark:text-gray-400 line-clamp-2 mt-0.5">
-                        {[addr.additionalDetails, addr.street, addr.city, addr.state].filter(Boolean).join(", ")}
-                      </p>
-                    </div>
-                    <div className="h-6 w-6 rounded-full border border-gray-200 dark:border-gray-700 mt-2 flex items-center justify-center group-hover:border-[#DC2626]">
-                       <ChevronRight className="h-3 w-3 text-gray-400 group-hover:text-[#DC2626]" />
-                    </div>
-                  </button>
+                  </div>
                 )
               })
             )}
@@ -1003,6 +1199,74 @@ export default function AddressSelectorPage() {
           <p className="mt-4 text-[13px] font-bold text-gray-800 dark:text-gray-200 tracking-tight animate-pulse">Fetching Location...</p>
         </div>
       )}
+
+      {deleteDialog &&
+        createPortal(
+          <div className="fixed inset-0 z-[10001] flex items-center justify-center p-4">
+            <button
+              type="button"
+              className="absolute inset-0 bg-black/45"
+              style={{
+                opacity: deleteDialog.phase === "open" ? 1 : 0,
+                transition: `opacity ${DELETE_MODAL_ANIM_MS}ms ease`,
+              }}
+              onClick={() => !isDeletingAddress && closeDeleteDialog()}
+              aria-label="Close delete dialog"
+            />
+            <div
+              role="dialog"
+              aria-modal="true"
+              aria-labelledby="delete-address-title"
+              className="relative w-full max-w-[340px] rounded-3xl bg-white dark:bg-[#1a1a1a] shadow-2xl"
+              style={getDeleteModalMotion(deleteDialog.phase)}
+            >
+              <div className="px-6 pt-8 pb-6">
+                <div className="flex flex-col items-center text-center">
+                  <div className="h-14 w-14 rounded-full bg-red-50 dark:bg-red-950/30 flex items-center justify-center mb-4 ring-8 ring-red-50/60 dark:ring-red-950/20">
+                    <Trash2 className="h-6 w-6 text-red-600" />
+                  </div>
+                  <div className="space-y-2 w-full">
+                    <h2 id="delete-address-title" className="text-xl font-bold text-zinc-900 dark:text-white">
+                      Delete address?
+                    </h2>
+                    <p className="text-sm text-zinc-500 dark:text-zinc-400 leading-relaxed">
+                      This action cannot be undone. You will need to add this address again.
+                    </p>
+                  </div>
+                </div>
+
+                <div className="mt-5 rounded-2xl border border-zinc-100 dark:border-zinc-800 bg-zinc-50 dark:bg-zinc-900/60 px-4 py-3.5 text-left">
+                  <p className="text-xs font-bold uppercase tracking-wider text-zinc-400 dark:text-zinc-500 mb-1">
+                    {deleteDialog.address?.label || "Address"}
+                  </p>
+                  <p className="text-sm font-medium text-zinc-800 dark:text-zinc-100 leading-relaxed break-words">
+                    {formatAddressPreview(deleteDialog.address) || "Saved delivery address"}
+                  </p>
+                </div>
+
+                <div className="mt-6 flex flex-col gap-3">
+                  <Button
+                    onClick={confirmDeleteAddress}
+                    disabled={isDeletingAddress}
+                    className="w-full h-12 rounded-xl bg-red-600 hover:bg-red-700 text-white font-semibold text-[15px] shadow-sm"
+                  >
+                    {isDeletingAddress ? "Deleting..." : "Delete address"}
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    onClick={closeDeleteDialog}
+                    disabled={isDeletingAddress}
+                    className="w-full h-12 rounded-xl border border-zinc-200/80 dark:border-zinc-700 bg-zinc-100 hover:bg-zinc-200/90 dark:bg-zinc-800/90 dark:hover:bg-zinc-700 text-zinc-700 dark:text-zinc-100 font-semibold text-[15px] shadow-sm"
+                  >
+                    Cancel
+                  </Button>
+                </div>
+              </div>
+            </div>
+          </div>,
+          document.body
+        )}
     </AnimatedPage>
   )
 }
