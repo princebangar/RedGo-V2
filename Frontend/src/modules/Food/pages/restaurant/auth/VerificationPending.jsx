@@ -3,7 +3,6 @@ import { useLocation, useNavigate } from "react-router-dom"
 import { Clock3, ShieldCheck, XCircle, AlertTriangle, X, Loader2 } from "lucide-react"
 import { toast } from "sonner"
 import { Button } from "@food/components/ui/button"
-import { useCompanyName } from "@food/hooks/useCompanyName"
 import { restaurantAPI } from "@food/api"
 import {
   clearRestaurantPendingPhone,
@@ -14,7 +13,6 @@ import {
 import { clearOnboardingFromLocalStorage } from "@food/utils/onboardingUtils"
 
 export default function VerificationPending() {
-  const companyName = useCompanyName()
   const navigate = useNavigate()
   const location = useLocation()
   const [checkingStatus, setCheckingStatus] = useState(true)
@@ -163,13 +161,13 @@ export default function VerificationPending() {
   }, [navigate])
 
   return (
-    <div className={`min-h-screen px-6 py-10 transition-all duration-300 ${isDisabledByAdmin
+    <div className={`min-h-[100dvh] overflow-y-auto overscroll-contain px-4 py-4 pt-[max(1rem,env(safe-area-inset-top))] pb-[max(1rem,env(safe-area-inset-bottom))] sm:px-6 sm:py-10 transition-all duration-300 ${isDisabledByAdmin
         ? "bg-gradient-to-br from-[#FFF5F5] via-[#FFEBEB] to-[#FEF2F2]"
         : "bg-gradient-to-br from-slate-50 via-slate-100 to-zinc-100"
       }`}>
-      <div className="mx-auto flex min-h-[calc(100vh-80px)] max-w-md flex-col justify-center">
-        <div className="rounded-[28px] border border-slate-200 bg-white p-8 shadow-[0_24px_70px_rgba(15,23,42,0.08)]">
-          <div className="mb-6 flex items-center justify-center">
+      <div className="mx-auto flex w-full max-w-md min-h-[calc(100dvh-2rem)] flex-col justify-center py-2 sm:py-0">
+        <div className="w-full rounded-[20px] sm:rounded-[28px] border border-slate-200 bg-white p-5 sm:p-8 shadow-[0_24px_70px_rgba(15,23,42,0.08)]">
+          <div className="mb-4 sm:mb-6 flex items-center justify-center">
             {localStatus === "rejected" || localStatus === "banned" ? (
               <div className="flex items-center justify-center my-2 select-none">
                 {/* Normal parent container to prevent clipping of absolute children */}
@@ -207,7 +205,7 @@ export default function VerificationPending() {
             )}
           </div>
 
-          <div className="mb-6 text-center">
+          <div className="mb-4 sm:mb-6 text-center">
             {localStatus === "rejected" || localStatus === "banned" ? (
               <>
                 <h1 className="text-xl font-extrabold text-slate-950">
@@ -232,22 +230,25 @@ export default function VerificationPending() {
                 <p className="mb-2 text-xs font-semibold uppercase tracking-[0.32em] text-amber-600">
                   Verification Pending
                 </p>
-                <h1 className="text-xl font-extrabold text-slate-950">
-                  Your restaurant is under review
+                <h1 className="mx-auto max-w-[19rem] text-center text-[15px] font-extrabold leading-5 text-slate-950 sm:text-xl sm:leading-tight">
+                  <span className="block">Your restaurant is</span>
+                  <span className="block">under{"\u00A0"}review</span>
                 </h1>
                 <p className="mt-3 text-sm leading-6 text-slate-600">
-                  {companyName} received your onboarding details successfully. Our team will verify your restaurant and activate your dashboard once approval is complete.
+                  Admin received your onboarding details successfully. Our team will verify your restaurant and activate your dashboard once approval is complete.
                 </p>
               </>
             )}
             {checkingStatus ? (
-              <p className="mt-3 text-xs font-medium uppercase tracking-[0.18em] text-slate-400">
+              <p className="mt-3 min-h-[1rem] text-xs font-medium uppercase tracking-[0.18em] text-slate-400">
                 Checking latest approval status...
               </p>
-            ) : null}
+            ) : (
+              <div className="mt-3 min-h-[1rem]" aria-hidden="true" />
+            )}
           </div>
 
-          <div className="mb-6 rounded-2xl border border-slate-200 bg-slate-50 p-4">
+          <div className="mb-4 sm:mb-6 rounded-2xl border border-slate-200 bg-slate-50 p-3.5 sm:p-4">
             <div className="flex items-start gap-3">
               {localStatus === "rejected" || localStatus === "banned" ? (
                 <>
@@ -271,7 +272,7 @@ export default function VerificationPending() {
                   <ShieldCheck className="mt-0.5 h-5 w-5 text-emerald-600" />
                   <div className="text-sm text-slate-700">
                     <p className="font-semibold text-slate-900">What happens next</p>
-                    <p className="mt-1">We will notify you once the verification is approved.</p>
+                    <p className="mt-1">We will notify you on Gmail once the verification is approved.</p>
                     {pendingPhone ? (
                       <p className="mt-2 text-slate-500">
                         Registered phone: <span className="font-medium text-slate-700">{pendingPhone}</span>

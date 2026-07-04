@@ -102,7 +102,9 @@ const restaurantRegisterSchema = z.object({
     accountHolderName: z.string().optional(),
     accountType: z.string().optional(),
     isTakeawayEnabled: z.string().optional(),
-    isTakeawayCodEnabled: z.string().optional()
+    isTakeawayCodEnabled: z.string().optional(),
+    fcmToken: z.string().optional().nullable(),
+    platform: z.string().optional().nullable()
 });
 
 export const validateRestaurantRegisterDto = (body) => {

@@ -299,11 +299,30 @@ export default function DeliveryOTP() {
         sessionStorage.removeItem("deliveryAuthData")
         sessionStorage.removeItem(getBlockKey())
         sessionStorage.removeItem(getResendKey())
+        const digits = String(phone || "").replace(/\D/g, "").slice(-10)
+        const rejected = Boolean(data.isRejected)
+        sessionStorage.setItem("delivery_pendingPhone", digits)
+        sessionStorage.setItem("delivery_pendingStatus", rejected ? "rejected" : "pending")
+        if (data.message) {
+          sessionStorage.setItem("delivery_pendingMessage", data.message)
+        } else {
+          sessionStorage.removeItem("delivery_pendingMessage")
+        }
+        if (data.rejectionReason) {
+          sessionStorage.setItem("delivery_pendingRejectionReason", data.rejectionReason)
+        } else {
+          sessionStorage.removeItem("delivery_pendingRejectionReason")
+        }
         setIsLoading(false)
-        setError("")
-        setPendingMessage(data.message || "Your account is pending admin verification. You will be notified once approved.")
-        setIsRejected(data.isRejected || false)
-        setRejectionReason(data.rejectionReason || "")
+        navigate("/food/delivery/pending-verification", {
+          replace: true,
+          state: {
+            phone: digits,
+            isRejected: rejected,
+            message: data.message,
+            rejectionReason: data.rejectionReason,
+          },
+        })
         return
       }
 

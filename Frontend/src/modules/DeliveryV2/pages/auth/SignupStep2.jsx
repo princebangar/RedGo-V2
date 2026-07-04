@@ -258,8 +258,10 @@ export default function SignupStep2() {
         await clearSignupDocumentsFromDB()
         if (shouldRegister) {
           sessionStorage.removeItem("deliveryNeedsRegistration")
-          toast.success("Registration successful. Please login with OTP.")
-          setTimeout(() => navigate("/food/delivery/login", { replace: true }), 1500)
+          const phone = String(details.phone || "").replace(/\D/g, "").slice(-10)
+          sessionStorage.setItem("delivery_pendingPhone", phone)
+          sessionStorage.setItem("delivery_pendingStatus", "pending")
+          navigate("/food/delivery/pending-verification", { replace: true, state: { phone } })
         } else {
           toast.success("Profile submitted. Waiting for admin approval.")
           setTimeout(() => navigate("/food/delivery", { replace: true }), 1500)

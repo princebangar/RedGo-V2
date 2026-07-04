@@ -175,6 +175,21 @@ const buildMessagePayload = (payload = {}, token) => {
         }
     };
 
+    message.apns = {
+        headers: {
+            'apns-priority': '10'
+        },
+        payload: {
+            aps: {
+                alert: {
+                    title: notification.title,
+                    body: notification.body
+                },
+                sound: 'default'
+            }
+        }
+    };
+
     message.webpush = {
         headers: {
             Urgency: 'high'
