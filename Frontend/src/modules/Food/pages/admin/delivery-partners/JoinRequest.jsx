@@ -4,6 +4,7 @@ import { adminAPI } from "@food/api"
 import { toast } from "sonner"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@food/components/ui/dialog"
 import { exportJoinRequestsToExcel, exportJoinRequestsToPDF } from "@food/components/admin/deliveryman/joinRequestExportUtils"
+import { refreshSidebarBadges } from "@food/components/admin/AdminSidebar"
 const debugLog = (...args) => {}
 const debugWarn = (...args) => {}
 const debugError = (...args) => {}
@@ -119,6 +120,7 @@ export default function JoinRequest() {
       setRequests(prev => prev.filter(r => r._id !== id))
       setIsApproveOpen(false)
       setSelectedRequest(null)
+      refreshSidebarBadges("deliveryPartners")
       await adminAPI.approveDeliveryPartner(id)
       toast.success(`Successfully approved ${selectedRequest.name}'s join request!`)
       await fetchJoinRequests({ silent: true })
@@ -154,6 +156,7 @@ export default function JoinRequest() {
       setIsDenyOpen(false)
       setSelectedRequest(null)
       setRejectionReason("")
+      refreshSidebarBadges("deliveryPartners")
       await adminAPI.rejectDeliveryPartner(id, rejectionReason.trim())
       toast.success(`Successfully rejected ${selectedRequest.name}'s join request.`)
       await fetchJoinRequests({ silent: true })

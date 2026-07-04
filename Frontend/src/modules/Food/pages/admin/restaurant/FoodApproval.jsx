@@ -10,6 +10,7 @@ import {
   DialogTitle,
 } from "@food/components/ui/dialog"
 import { adminAPI } from "@food/api"
+import { refreshSidebarBadges } from "@food/components/admin/AdminSidebar"
 import { toast } from "sonner"
 const debugLog = (...args) => {}
 const debugWarn = (...args) => {}
@@ -199,7 +200,7 @@ export default function FoodApproval() {
       }
       
       await fetchFoodRequests({ silent: true })
-      window.dispatchEvent(new Event('refresh-sidebar-badges'))
+      refreshSidebarBadges("foodApprovals")
       setShowDetailModal(false)
       setSelectedRequest(null)
     } catch (error) {
@@ -236,7 +237,7 @@ export default function FoodApproval() {
       }
       
       await fetchFoodRequests({ silent: true })
-      window.dispatchEvent(new Event('refresh-sidebar-badges'))
+      refreshSidebarBadges("foodApprovals")
       setShowRejectModal(false)
       setShowDetailModal(false)
       setSelectedRequest(null)

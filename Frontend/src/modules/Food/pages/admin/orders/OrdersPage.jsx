@@ -14,6 +14,7 @@ import RefundModal from "@food/components/admin/orders/RefundModal"
 import { useOrdersManagement } from "@food/components/admin/orders/useOrdersManagement"
 import { Loader2 } from "lucide-react"
 import { OrdersDashboardSkeleton, TableSkeleton } from "@food/components/ui/loading-skeletons"
+import { refreshSidebarBadges } from "@food/components/admin/AdminSidebar"
 const alertSound = "/alert.mp3"
 const originalSound = "/original.mp3"
 const debugLog = (...args) => {}
@@ -388,7 +389,7 @@ export default function OrdersPage({ statusKey = "all" }) {
         isFirstLoadRef.current = false
         setOrders(nextOrders)
         // Refresh sidebar badges count
-        window.dispatchEvent(new CustomEvent('refresh-sidebar-badges'))
+        refreshSidebarBadges()
       } else {
         debugError("Failed to fetch orders:", response.data)
         if (!silent) toast.error("Failed to fetch orders")
@@ -516,6 +517,11 @@ export default function OrdersPage({ statusKey = "all" }) {
 
       const customerName = order.customerName || order.userId?.name || "N/A"
       const customerPhone = order.customerPhone || order.userId?.phone || "N/A"
+      const customerId =
+        order.customerId ||
+        order.userId?._id ||
+        order.userId?.id ||
+        (typeof order.userId === "string" ? order.userId : null)
       const restaurant =
         order.restaurant ||
         order.restaurantName ||
@@ -530,6 +536,7 @@ export default function OrdersPage({ statusKey = "all" }) {
         time,
         customerName,
         customerPhone,
+        customerId,
         restaurant,
         items,
         subtotal,
@@ -734,6 +741,7 @@ export default function OrdersPage({ statusKey = "all" }) {
       stopOrderAlert()
       const response = await adminAPI.acceptOrder(orderIdToUse)
       if (response.data?.success) {
+        refreshSidebarBadges("orders")
         toast.success(response.data?.message || `Order ${order.orderId} accepted`)
         await fetchOrders({ silent: true, withRingCheck: false })
       } else {
@@ -769,6 +777,7 @@ export default function OrdersPage({ statusKey = "all" }) {
       stopOrderAlert()
       const response = await adminAPI.rejectOrder(orderIdToUse, reason)
       if (response.data?.success) {
+        refreshSidebarBadges("orders")
         toast.success(response.data?.message || `Order ${order.orderId} rejected`)
         await fetchOrders({ silent: true, withRingCheck: false })
       } else {

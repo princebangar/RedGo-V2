@@ -1,4 +1,5 @@
-import { Eye, MapPin, Package, User, Phone, Mail, Calendar, Clock, Truck, CreditCard, X, Receipt, CheckCircle2 } from "lucide-react"
+import { useEffect, useState } from "react"
+import { Eye, MapPin, Package, User, Phone, Mail, Calendar, Clock, Truck, CreditCard, Receipt, CheckCircle2, FileText } from "lucide-react"
 import {
   Dialog,
   DialogContent,
@@ -6,6 +7,7 @@ import {
   DialogTitle,
   DialogDescription,
 } from "@food/components/ui/dialog"
+import { adminAPI } from "@food/api"
 const debugLog = (...args) => {}
 const debugWarn = (...args) => {}
 const debugError = (...args) => {}
@@ -30,6 +32,16 @@ const getStatusColor = (orderStatus) => {
   return colors[orderStatus] || "bg-slate-100 text-slate-700"
 }
 
+const resolveCustomerId = (order) => {
+  if (!order) return null
+  return (
+    order.customerId ||
+    order.userId?._id ||
+    order.userId?.id ||
+    (typeof order.userId === "string" ? order.userId : null)
+  )
+}
+
 const getPaymentStatusColor = (paymentStatus) => {
   if (paymentStatus === "Paid" || paymentStatus === "Collected") return "text-emerald-600"
   if (paymentStatus === "Not Collected") return "text-amber-600"
@@ -38,7 +50,57 @@ const getPaymentStatusColor = (paymentStatus) => {
 }
 
 export default function ViewOrderDialog({ isOpen, onOpenChange, order }) {
+  const [customerTotalOrders, setCustomerTotalOrders] = useState(undefined)
+  const [loadingCustomerOrders, setLoadingCustomerOrders] = useState(false)
+  const [loadedCustomerId, setLoadedCustomerId] = useState(null)
+
+  useEffect(() => {
+    if (!isOpen || !order) return
+
+    const customerId = resolveCustomerId(order)
+    if (!customerId) {
+      setCustomerTotalOrders(null)
+      setLoadingCustomerOrders(false)
+      setLoadedCustomerId(null)
+      return
+    }
+
+    let cancelled = false
+    setLoadingCustomerOrders(true)
+    setCustomerTotalOrders(undefined)
+    setLoadedCustomerId(null)
+
+    ;(async () => {
+      try {
+        const response = await adminAPI.getCustomerById(customerId)
+        const data = response?.data?.data || response?.data
+        const user = data?.user || data?.customer
+        if (!cancelled) {
+          setCustomerTotalOrders(Number(user?.totalOrders ?? user?.totalOrder ?? 0))
+          setLoadedCustomerId(customerId)
+        }
+      } catch (error) {
+        debugError("Error fetching customer order count:", error)
+        if (!cancelled) {
+          setCustomerTotalOrders(null)
+          setLoadedCustomerId(customerId)
+        }
+      } finally {
+        if (!cancelled) setLoadingCustomerOrders(false)
+      }
+    })()
+
+    return () => {
+      cancelled = true
+    }
+  }, [isOpen, order?.id, order?.orderId, order?.customerId, order?.userId])
+
   if (!order) return null
+
+  const customerId = resolveCustomerId(order)
+  const showTotalOrdersSkeleton =
+    Boolean(customerId) &&
+    (loadingCustomerOrders || loadedCustomerId !== customerId)
 
   // Debug: Log order data to check billImageUrl
   if (order.billImageUrl) {
@@ -100,7 +162,7 @@ export default function ViewOrderDialog({ isOpen, onOpenChange, order }) {
 
   return (
     <Dialog open={isOpen} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-4xl max-h-[90vh] bg-white p-0 overflow-y-auto">
+      <DialogContent className="max-w-4xl max-h-[90vh] bg-white p-0 overflow-y-auto lg:left-[calc(50%+var(--admin-sidebar-offset,10rem))]">
         <DialogHeader className="px-6 pt-6 pb-4 border-b border-slate-200 sticky top-0 bg-white z-10">
           <DialogTitle className="flex items-center gap-2">
             <Eye className="w-5 h-5 text-orange-600" />
@@ -127,6 +189,22 @@ export default function ViewOrderDialog({ isOpen, onOpenChange, order }) {
                   Order Date
                 </p>
                 <p className="text-sm font-medium text-slate-900">{order.date}{order.time ? `, ${order.time}` : ""}</p>
+              </div>
+              <div className="inline-flex flex-col self-start w-fit min-w-[8.5rem] bg-blue-100 border border-blue-200 rounded-lg p-3">
+                <div className="flex items-center gap-2 mb-1">
+                  <Package className="w-4 h-4 text-blue-600 shrink-0" />
+                  <span className="text-xs font-semibold text-slate-700 whitespace-nowrap">Total Orders</span>
+                </div>
+                {showTotalOrdersSkeleton ? (
+                  <span
+                    className="inline-block h-7 w-10 rounded bg-blue-200/70 animate-pulse"
+                    aria-label="Loading total orders"
+                  />
+                ) : !customerId ? (
+                  <p className="text-xl font-bold text-blue-600">—</p>
+                ) : (
+                  <p className="text-xl font-bold text-blue-600">{customerTotalOrders ?? "—"}</p>
+                )}
               </div>
               {order.orderOtp && (
                 <div className="space-y-1">
