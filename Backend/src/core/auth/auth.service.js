@@ -610,23 +610,13 @@ export const verifyDeliveryOtpAndLogin = async (phone, otp, fcmToken, platform, 
   // Update FCM token if provided - CRITICAL: do this BEFORE returning pendingApproval
   // so we can notify them when approved.
   if (fcmToken) {
-    let isModified = false;
-    if (platform === "mobile") {
-      if (!deliveryPartner.fcmTokenMobile) deliveryPartner.fcmTokenMobile = [];
-      if (!deliveryPartner.fcmTokenMobile.includes(fcmToken)) {
-        deliveryPartner.fcmTokenMobile.push(fcmToken);
-        isModified = true;
-      }
-    } else {
-      if (!deliveryPartner.fcmTokens) deliveryPartner.fcmTokens = [];
-      if (!deliveryPartner.fcmTokens.includes(fcmToken)) {
-        deliveryPartner.fcmTokens.push(fcmToken);
-        isModified = true;
-      }
-    }
-    if (isModified) {
-      await deliveryPartner.save();
-    }
+    const { upsertFirebaseDeviceToken } = await import('../notifications/firebase.service.js');
+    await upsertFirebaseDeviceToken({
+      ownerType: 'DELIVERY_PARTNER',
+      ownerId: String(deliveryPartner._id),
+      token: fcmToken,
+      platform: platform === 'mobile' ? 'mobile' : 'web',
+    });
   }
 
   const partnerStatus = deliveryPartner.status || "pending";

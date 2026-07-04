@@ -5,7 +5,7 @@ import { ArrowLeft, Loader2, Pencil, X, ShieldCheck } from "lucide-react"
 import { toast } from "sonner"
 import { deliveryAPI } from "@food/api"
 import { setAuthData as storeAuthData } from "@food/utils/auth"
-import { collectFcmTokenFast, persistModuleFcmToken, persistPendingModuleFcmToken } from "@food/utils/firebaseMessaging"
+import { collectFcmTokenFast, persistModuleFcmToken, finalizeDeliveryPendingSubmission, prefetchModuleFcmToken } from "@food/utils/firebaseMessaging"
 
 const debugLog = (...args) => {}
 const debugWarn = (...args) => {}
@@ -112,6 +112,10 @@ export default function DeliveryOTP() {
       sessionStorage.setItem(resendKey, (Date.now() + (59 * 1000)).toString())
     }
   }, [navigate, location.state])
+
+  useEffect(() => {
+    prefetchModuleFcmToken("delivery")
+  }, [])
 
   useEffect(() => {
     if (resendTimer <= 0) return
@@ -280,31 +284,18 @@ export default function DeliveryOTP() {
         sessionStorage.removeItem(getResendKey())
         const digits = String(phone || "").replace(/\D/g, "").slice(-10)
         const rejected = Boolean(data.isRejected)
-        sessionStorage.setItem("delivery_pendingPhone", digits)
-        sessionStorage.setItem("delivery_pendingStatus", rejected ? "rejected" : "pending")
-        if (data.message) {
-          sessionStorage.setItem("delivery_pendingMessage", data.message)
-        } else {
-          sessionStorage.removeItem("delivery_pendingMessage")
-        }
-        if (data.rejectionReason) {
-          sessionStorage.setItem("delivery_pendingRejectionReason", data.rejectionReason)
-        } else {
-          sessionStorage.removeItem("delivery_pendingRejectionReason")
-        }
         setIsLoading(false)
-        try {
-          await persistPendingModuleFcmToken("delivery", digits, { fcmToken, platform })
-        } catch {}
-        navigate("/food/delivery/pending-verification", {
-          replace: true,
-          state: {
-            phone: digits,
-            isRejected: rejected,
+        finalizeDeliveryPendingSubmission(
+          navigate,
+          digits,
+          {
+            fcmToken,
+            platform,
+            status: rejected ? "rejected" : "pending",
             message: data.message,
             rejectionReason: data.rejectionReason,
           },
-        })
+        )
         return
       }
 

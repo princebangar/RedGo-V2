@@ -3692,22 +3692,29 @@ async function sendRestaurantApprovalNotifications(restaurant, existing = {}, is
     logger.info(`[APPROVE-EMAIL] Restaurant ${restaurantId} — ownerEmail=${recipientEmail || 'MISSING'}`);
 
     try {
-        const { notifyOwnersSafely } = await import('../../../../core/notifications/firebase.service.js');
-        await notifyOwnersSafely(
+        const { notifyOwnersSafely, listOwnerTokens } = await import('../../../../core/notifications/firebase.service.js');
+        const tokens = await listOwnerTokens({ ownerType: 'RESTAURANT', ownerId: restaurant._id });
+        logger.info(`[APPROVE-FCM] Restaurant ${restaurantId} — deviceTokens=${tokens.length}`);
+
+        const fcmResult = await notifyOwnersSafely(
             [{ ownerType: 'RESTAURANT', ownerId: restaurant._id }],
             {
-                title: 'Congratulations! Ã°Å¸Å½â€°',
+                title: 'Congratulations! 🎉',
                 body: `Your restaurant "${restaurantName}" has been approved. You can now start receiving orders!`,
                 image: restaurant.profileImage || 'https://i.ibb.co/3m2Yh7r/Appzeto-Brand-Image.png',
+                sendToAllDevices: true,
                 data: {
                     type: 'restaurant_approved',
                     restaurantId
                 }
             }
         );
-        logger.info(`[APPROVE-EMAIL] Restaurant ${restaurantId} — FCM push sent`);
+        const delivered = Array.isArray(fcmResult)
+            ? fcmResult.reduce((sum, item) => sum + (item?.successCount || 0), 0)
+            : fcmResult?.successCount || 0;
+        logger.info(`[APPROVE-FCM] Restaurant ${restaurantId} — pushDelivered=${delivered}`);
     } catch (e) {
-        logger.error(`[APPROVE-EMAIL] Restaurant ${restaurantId} — FCM failed: ${e?.message || e}`);
+        logger.error(`[APPROVE-FCM] Restaurant ${restaurantId} — FCM failed: ${e?.message || e}`);
     }
 
     if (!recipientEmail) {
@@ -3735,29 +3742,43 @@ async function sendRestaurantApprovalNotifications(restaurant, existing = {}, is
     }
 }
 
-async function sendDeliveryApprovalNotifications(partner, isChangesApproval = false) {
+async function sendDeliveryApprovalNotifications(partner, existing = {}, isChangesApproval = false) {
     const partnerId = String(partner._id);
-    const recipientEmail = String(partner.email || '').trim();
+    let recipientEmail = String(partner.email || existing.email || '').trim().toLowerCase();
+    const partnerName = partner.name || existing.name || 'Partner';
+
+    if (!recipientEmail && mongoose.Types.ObjectId.isValid(partnerId)) {
+        const fresh = await FoodDeliveryPartner.findById(partnerId).select('email name').lean();
+        recipientEmail = String(fresh?.email || '').trim().toLowerCase();
+    }
 
     logger.info(`[APPROVE-EMAIL] Delivery ${partnerId} — email=${recipientEmail || 'MISSING'}`);
 
     try {
-        const { notifyOwnerSafely } = await import('../../../../core/notifications/firebase.service.js');
-        await notifyOwnerSafely(
-            { ownerType: 'DELIVERY_PARTNER', ownerId: partner._id },
-            {
-                title: 'Welcome Aboard! Ã°Å¸Å¡Â²',
-                body: 'Your delivery partner application has been approved. You can now go online and start earning!',
-                image: 'https://i.ibb.co/3m2Yh7r/Appzeto-Brand-Image.png',
-                data: {
-                    type: 'onboarding_approved',
-                    partnerId
+        const { notifyOwnerSafely, listOwnerTokens } = await import('../../../../core/notifications/firebase.service.js');
+        const tokens = await listOwnerTokens({ ownerType: 'DELIVERY_PARTNER', ownerId: partner._id });
+        logger.info(`[APPROVE-FCM] Delivery ${partnerId} — deviceTokens=${tokens.length}${tokens.length ? ` (platform fields: web+mobile)` : ' — NO TOKENS IN DB'}`);
+
+        if (!tokens.length) {
+            logger.warn(`[APPROVE-FCM] Delivery ${partnerId} — push skipped; partner has no FCM token saved`);
+        } else {
+            const fcmResult = await notifyOwnerSafely(
+                { ownerType: 'DELIVERY_PARTNER', ownerId: partner._id },
+                {
+                    title: 'Welcome Aboard! 🛵',
+                    body: 'Your delivery partner application has been approved. You can now go online and start earning!',
+                    image: 'https://i.ibb.co/3m2Yh7r/Appzeto-Brand-Image.png',
+                    sendToAllDevices: true,
+                    data: {
+                        type: 'onboarding_approved',
+                        partnerId
+                    }
                 }
-            }
-        );
-        logger.info(`[APPROVE-EMAIL] Delivery ${partnerId} — FCM push sent`);
+            );
+            logger.info(`[APPROVE-FCM] Delivery ${partnerId} — pushDelivered=${fcmResult?.successCount ?? 0}`);
+        }
     } catch (e) {
-        logger.error(`[APPROVE-EMAIL] Delivery ${partnerId} — FCM failed: ${e?.message || e}`);
+        logger.error(`[APPROVE-FCM] Delivery ${partnerId} — FCM failed: ${e?.message || e}`);
     }
 
     if (!recipientEmail) {
@@ -3769,7 +3790,7 @@ async function sendDeliveryApprovalNotifications(partner, isChangesApproval = fa
         const { sendDeliveryApprovalEmail } = await import('../../../../utils/email.js');
         const emailSent = await sendDeliveryApprovalEmail({
             to: recipientEmail,
-            partnerName: partner.name,
+            partnerName,
             partnerId,
             isChangesApproval
         });
@@ -5031,23 +5052,41 @@ export async function getDeliverymanReviews(query = {}) {
 }
 
 export async function approveDeliveryPartner(id) {
-    const partner = await FoodDeliveryPartner.findById(id);
-    if (!partner) return null;
-    const isChangesApproval = partner.pendingApprovalType === 'changes';
-    partner.status = 'approved';
-    partner.approvedAt = new Date();
-    partner.rejectedAt = undefined;
-    partner.rejectionReason = undefined;
-    partner.pendingApprovalType = 'registration';
-    await partner.save();
+    if (!id || !mongoose.Types.ObjectId.isValid(id)) return null;
 
-    await sendDeliveryApprovalNotifications(partner, isChangesApproval);
+    logger.info(`[ADMIN-APPROVE] approveDeliveryPartner service called id=${id}`);
+
+    const existing = await FoodDeliveryPartner.findById(id)
+        .select('status email name pendingApprovalType')
+        .lean();
+    if (!existing) return null;
+    const isChangesApproval = existing.pendingApprovalType === 'changes';
+
+    const updated = await FoodDeliveryPartner.findByIdAndUpdate(
+        id,
+        {
+            $set: {
+                status: 'approved',
+                approvedAt: new Date(),
+                pendingApprovalType: 'registration'
+            },
+            $unset: {
+                rejectedAt: 1,
+                rejectionReason: 1
+            }
+        },
+        { new: true, runValidators: false }
+    ).lean();
+
+    if (!updated) return null;
+
+    await sendDeliveryApprovalNotifications(updated, existing, isChangesApproval);
 
     // Referral crediting: on approval, credit the referrer partner's pocket balance via DeliveryBonusTransaction.
     try {
-        const referrerId = partner.referredBy ? String(partner.referredBy) : '';
+        const referrerId = updated.referredBy ? String(updated.referredBy) : '';
         if (referrerId && mongoose.Types.ObjectId.isValid(referrerId)) {
-            const already = await FoodReferralLog.findOne({ refereeId: partner._id, role: 'DELIVERY_PARTNER' }).lean();
+            const already = await FoodReferralLog.findOne({ refereeId: updated._id, role: 'DELIVERY_PARTNER' }).lean();
             if (!already) {
                 const settingsDoc = await FoodReferralSettings.findOne({ isActive: true }).sort({ createdAt: -1 }).lean();
                 const reward = Math.max(0, Number(settingsDoc?.referralRewardDelivery) || 0);
@@ -5057,7 +5096,7 @@ export async function approveDeliveryPartner(id) {
                 if (referrer && referrer.status === 'approved' && reward > 0 && limit > 0 && Number(referrer.referralCount || 0) < limit) {
                     const log = await FoodReferralLog.create({
                         referrerId: referrer._id,
-                        refereeId: partner._id,
+                        refereeId: updated._id,
                         role: 'DELIVERY_PARTNER',
                         rewardAmount: reward,
                         status: 'credited'
@@ -5073,7 +5112,7 @@ export async function approveDeliveryPartner(id) {
                 } else {
                     await FoodReferralLog.create({
                         referrerId: new mongoose.Types.ObjectId(referrerId),
-                        refereeId: partner._id,
+                        refereeId: updated._id,
                         role: 'DELIVERY_PARTNER',
                         rewardAmount: reward,
                         status: 'rejected',
@@ -5087,7 +5126,7 @@ export async function approveDeliveryPartner(id) {
         // eslint-disable-next-line no-console
         console.warn('Referral crediting failed (delivery approval):', e?.message || e);
     }
-    return partner.toObject();
+    return updated;
 }
 
 export async function rejectDeliveryPartner(id, reason) {

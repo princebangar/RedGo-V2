@@ -5,7 +5,7 @@ import { Loader2, Pencil, X, ShieldCheck } from "lucide-react"
 import { toast } from "sonner"
 import { deliveryAPI } from "@food/api"
 import { setAuthData as storeAuthData, clearModuleAuth } from "@food/utils/auth"
-import { collectNativeFcmToken, persistModuleFcmToken } from "@food/utils/firebaseMessaging"
+import { collectFcmTokenFast, persistModuleFcmToken, finalizeDeliveryPendingSubmission, prefetchModuleFcmToken } from "@food/utils/firebaseMessaging"
 
 const DEFAULT_COUNTRY_CODE = "+91"
 
@@ -75,6 +75,10 @@ export default function DeliverySignIn() {
     setInstantAuthTransition(true)
     navigate("/food/delivery/login", { replace: true })
   }
+
+  useEffect(() => {
+    prefetchModuleFcmToken("delivery")
+  }, [])
 
   // Handle route change transitions
   useEffect(() => {
@@ -274,10 +278,7 @@ export default function DeliverySignIn() {
         return
       }
 
-      const { fcmToken, platform } = await collectNativeFcmToken("delivery", {
-        maxAttempts: 8,
-        delayMs: 400,
-      })
+      const { fcmToken, platform } = await collectFcmTokenFast("delivery")
 
       setDeviceToken(fcmToken)
       setActivePlatform(platform)
@@ -298,28 +299,18 @@ export default function DeliverySignIn() {
         sessionStorage.removeItem(getResendKey(phoneVal))
         const digits = String(phoneVal || "").replace(/\D/g, "").slice(-10)
         const rejected = Boolean(data.isRejected)
-        sessionStorage.setItem("delivery_pendingPhone", digits)
-        sessionStorage.setItem("delivery_pendingStatus", rejected ? "rejected" : "pending")
-        if (data.message) {
-          sessionStorage.setItem("delivery_pendingMessage", data.message)
-        } else {
-          sessionStorage.removeItem("delivery_pendingMessage")
-        }
-        if (data.rejectionReason) {
-          sessionStorage.setItem("delivery_pendingRejectionReason", data.rejectionReason)
-        } else {
-          sessionStorage.removeItem("delivery_pendingRejectionReason")
-        }
         setLoading(false)
-        navigate("/food/delivery/pending-verification", {
-          replace: true,
-          state: {
-            phone: digits,
-            isRejected: rejected,
+        finalizeDeliveryPendingSubmission(
+          navigate,
+          digits,
+          {
+            fcmToken,
+            platform,
+            status: rejected ? "rejected" : "pending",
             message: data.message,
             rejectionReason: data.rejectionReason,
           },
-        })
+        )
         return
       }
 

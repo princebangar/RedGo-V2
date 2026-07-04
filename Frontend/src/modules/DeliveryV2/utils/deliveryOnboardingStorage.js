@@ -1,4 +1,5 @@
 import { clearModuleAuth } from "@food/utils/auth"
+import { clearOnboardingFcmLocal } from "@food/utils/firebaseMessaging"
 
 export const DELIVERY_SIGNUP_DOC_TYPES = [
   "profilePhoto",
@@ -299,5 +300,6 @@ export async function clearDeliveryOnboardingData() {
   }
 
   await clearSignupDocumentsFromDB()
+  clearOnboardingFcmLocal("delivery")
   clearModuleAuth("delivery")
 }

@@ -5,6 +5,7 @@ import useDeliveryOnboardingExitGuard from "../../hooks/useDeliveryOnboardingExi
 import OnboardingExitModal from "@/shared/components/OnboardingExitModal"
 import { hasDeliveryStep1Progress } from "../../utils/deliveryOnboardingStorage"
 import { EMAIL_REGEX } from "@/shared/utils/emailValidation"
+import { prefetchModuleFcmToken } from "@food/utils/firebaseMessaging"
 const debugLog = (...args) => {}
 const debugWarn = (...args) => {}
 const debugError = (...args) => {}
@@ -51,6 +52,10 @@ export default function SignupStep1() {
     "details",
     hasUnsavedProgress,
   )
+
+  useEffect(() => {
+    prefetchModuleFcmToken("delivery")
+  }, [])
 
   const sanitizeLocationValue = (value) =>
     value.replace(/[^A-Za-z\s.-]/g, "").replace(/\s{2,}/g, " ")

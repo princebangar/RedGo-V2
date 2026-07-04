@@ -7,6 +7,7 @@ import { FoodOrder } from '../../orders/models/order.model.js';
 import { uploadImageBuffer } from '../../../../services/cloudinary.service.js';
 import { ValidationError } from '../../../../core/auth/errors.js';
 import { getDeliveryCashLimitSettings } from '../../admin/services/admin.service.js';
+import { logger } from '../../../../utils/logger.js';
 
 export const normalizeDeliveryPhone = (phone) => {
     const digits = String(phone || '').replace(/\D/g, '');
@@ -80,6 +81,16 @@ const clearPartnerForReRegistration = async (existing) => {
     }
 };
 
+/** Keep FCM arrays on the in-memory doc in sync before partner.save() (avoids wiping tokens). */
+function appendPartnerFcmToken(partner, fcmToken, platform = 'web') {
+    const token = String(fcmToken || '').trim();
+    if (!token || !partner) return;
+    const field = platform === 'mobile' ? 'fcmTokenMobile' : 'fcmTokens';
+    const existing = Array.isArray(partner[field]) ? partner[field] : [];
+    if (existing.includes(token)) return;
+    partner[field] = [...existing, token].slice(-10);
+}
+
 export const registerDeliveryPartner = async (payload, files) => {
     const { 
         name, phone, email, countryCode, address, city, state, 
@@ -140,13 +151,16 @@ export const registerDeliveryPartner = async (payload, files) => {
         );
     }
 
+    const normalizedEmail =
+        email && String(email).trim() ? String(email).trim().toLowerCase() : undefined;
+
     let partner;
 
     try {
         partner = await FoodDeliveryPartner.create({
             name,
             phone: normalizedPhone,
-            email: email && String(email).trim() ? String(email).trim() : undefined,
+            email: normalizedEmail,
             countryCode,
             address,
             city,
@@ -158,6 +172,11 @@ export const registerDeliveryPartner = async (payload, files) => {
             panNumber,
             aadharNumber,
             status: 'pending',
+            ...(fcmToken
+                ? (platform === 'mobile'
+                    ? { fcmTokenMobile: [String(fcmToken).trim()] }
+                    : { fcmTokens: [String(fcmToken).trim()] })
+                : {}),
             ...images
         });
     } catch (err) {
@@ -168,29 +187,30 @@ export const registerDeliveryPartner = async (payload, files) => {
         throw err;
     }
 
-    // Update FCM token if provided
-    if (fcmToken) {
-        if (platform === 'mobile') {
-            partner.fcmTokenMobile = [fcmToken];
-        } else {
-            partner.fcmTokens = [fcmToken];
-        }
-    }
-
-    // Ensure referralCode exists for sharing.
+    const postCreateSet = {};
     if (!partner.referralCode) {
-        partner.referralCode = String(partner._id);
+        postCreateSet.referralCode = String(partner._id);
     }
 
     // Store referredBy (no credit here; credit happens on admin approval).
     if (refRaw && mongoose.Types.ObjectId.isValid(refRaw) && String(refRaw) !== String(partner._id)) {
         const referrer = await FoodDeliveryPartner.findById(refRaw).select('_id').lean();
         if (referrer) {
-            partner.referredBy = referrer._id;
+            postCreateSet.referredBy = referrer._id;
         }
     }
 
-    await partner.save();
+    if (Object.keys(postCreateSet).length) {
+        await FoodDeliveryPartner.updateOne({ _id: partner._id }, { $set: postCreateSet });
+        Object.assign(partner, postCreateSet);
+    }
+
+    const tokenSnapshot = await FoodDeliveryPartner.findById(partner._id)
+        .select('fcmTokens fcmTokenMobile')
+        .lean();
+    logger.info(
+        `[FCM-Register] Delivery ${partner._id} saved tokens web=${tokenSnapshot?.fcmTokens?.length || 0} mobile=${tokenSnapshot?.fcmTokenMobile?.length || 0}`
+    );
 
     try {
         const { notifyAdminsSafely } = await import('../../../../core/notifications/firebase.service.js');
@@ -218,12 +238,16 @@ export const updateDeliveryPartnerProfile = async (userId, payload, files) => {
     }
 
     const {
-        name, countryCode, address, city, state,
+        name, email, countryCode, address, city, state,
         vehicleType, vehicleName, vehicleNumber, drivingLicenseNumber, panNumber, aadharNumber,
         fcmToken, platform
     } = payload;
 
     if (name) partner.name = name;
+    if (email !== undefined) {
+        const normalizedEmail = String(email || '').trim().toLowerCase();
+        if (normalizedEmail) partner.email = normalizedEmail;
+    }
     if (countryCode !== undefined) partner.countryCode = countryCode;
     if (address !== undefined) partner.address = address;
     if (city !== undefined) partner.city = city;
@@ -234,17 +258,7 @@ export const updateDeliveryPartnerProfile = async (userId, payload, files) => {
     if (drivingLicenseNumber !== undefined) partner.drivingLicenseNumber = drivingLicenseNumber;
 
     if (fcmToken) {
-        if (platform === 'mobile') {
-            if (!partner.fcmTokenMobile) partner.fcmTokenMobile = [];
-            if (!partner.fcmTokenMobile.includes(fcmToken)) {
-                partner.fcmTokenMobile.push(fcmToken);
-            }
-        } else {
-            if (!partner.fcmTokens) partner.fcmTokens = [];
-            if (!partner.fcmTokens.includes(fcmToken)) {
-                partner.fcmTokens.push(fcmToken);
-            }
-        }
+        appendPartnerFcmToken(partner, fcmToken, platform);
     }
 
     let updatedDocsRequiringReapproval = false;

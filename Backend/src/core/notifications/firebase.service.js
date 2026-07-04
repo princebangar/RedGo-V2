@@ -414,6 +414,7 @@ export const sendNotificationToOwner = async ({ ownerType, ownerId, payload, pla
     const shouldFanoutAllDevices = payload?.sendToAllDevices === true;
     const targetTokens = shouldFanoutAllDevices ? normalizeTokenList(tokens) : pickLatestTokenOnly(tokens);
     if (!targetTokens.length) {
+        logger.warn(`[FCM] No device tokens for ${ownerType}:${ownerId} — push skipped`);
         return { successCount: 0, failureCount: 0, results: [] };
     }
     try {

@@ -13,7 +13,7 @@ const drivingLicenseRegex = /^[A-Z]{2}[0-9]{2}[0-9]{4}[0-9]{7}$/;
 const deliveryRegisterSchema = z.object({
     name: z.string().min(1, 'Name is required'),
     phone: phoneSchema,
-    email: z.string().email().optional().or(z.literal('')),
+    email: z.string().trim().min(1, 'Email is required').email('Valid email is required'),
     countryCode: z.string().optional(),
     address: z.string().optional(),
     city: z.string().optional(),
@@ -51,6 +51,7 @@ export const validateDeliveryRegisterDto = (body) => {
 
 const deliveryProfileUpdateSchema = z.object({
     name: z.string().min(1).optional(),
+    email: z.string().trim().email('Valid email is required').optional().or(z.literal('')),
     countryCode: z.string().optional(),
     address: z.string().optional(),
     city: z.string().optional(),
