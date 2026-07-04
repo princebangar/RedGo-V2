@@ -141,8 +141,7 @@ function buildEmailHeaderHtml() {
     return `
           <tr>
             <td style="background: ${PRIMARY_COLOR}; padding: 24px 32px; text-align: center;">
-              <img src="${safeLogoUrl}" alt="RedGo" width="150" style="display: block; margin: 0 auto 12px; max-width: 150px; width: 150px; height: auto; border: 0; outline: none; text-decoration: none;" />
-              <p style="margin: 0; color: #ffffff; font-size: 22px; font-weight: 700; letter-spacing: 0.5px; line-height: 1.2;">RedGo</p>
+              <img src="${safeLogoUrl}" alt="RedGo" width="150" style="display: block; margin: 0 auto; max-width: 150px; width: 150px; height: auto; border: 0; outline: none; text-decoration: none; border-radius: 12px;" />
             </td>
           </tr>`;
 }
