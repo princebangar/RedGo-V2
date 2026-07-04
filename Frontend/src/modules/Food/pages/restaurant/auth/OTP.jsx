@@ -9,7 +9,7 @@ import {
   setRestaurantPendingPhone,
 } from "@food/utils/auth"
 import { checkOnboardingStatus, isRestaurantOnboardingComplete } from "@food/utils/onboardingUtils"
-import { collectNativeFcmToken, persistModuleFcmToken, persistPendingModuleFcmToken } from "@food/utils/firebaseMessaging"
+import { collectFcmTokenFast, persistModuleFcmToken, persistPendingModuleFcmToken } from "@food/utils/firebaseMessaging"
 
 export default function RestaurantOTP() {
   const navigate = useNavigate()
@@ -231,10 +231,7 @@ export default function RestaurantOTP() {
       const phone = authData.phone
       const purpose = authData.isSignUp ? "register" : "login"
 
-      const { fcmToken, platform } = await collectNativeFcmToken("restaurant", {
-        maxAttempts: 8,
-        delayMs: 400,
-      })
+      const { fcmToken, platform } = await collectFcmTokenFast("restaurant")
 
       const response = await restaurantAPI.verifyOTP(
         phone,
@@ -265,7 +262,7 @@ export default function RestaurantOTP() {
         setShowRestorePopup(false)
         setIsLoading(false)
         try {
-          await persistPendingModuleFcmToken("restaurant", phone, { maxAttempts: 6, delayMs: 350 })
+          await persistPendingModuleFcmToken("restaurant", phone, { fcmToken, platform })
         } catch {}
         navigate("/food/restaurant/pending-verification", {
           replace: true,
@@ -323,7 +320,7 @@ export default function RestaurantOTP() {
         setRestaurantAuthData("restaurant", accessToken, restaurant, data?.refreshToken)
         window.dispatchEvent(new Event("restaurantAuthChanged"))
         try {
-          await persistModuleFcmToken("restaurant", { maxAttempts: 8, delayMs: 400 })
+          await persistModuleFcmToken("restaurant", { fcmToken, platform })
         } catch {}
         sessionStorage.removeItem("restaurantAuthData")
         sessionStorage.removeItem(getBlockKey())

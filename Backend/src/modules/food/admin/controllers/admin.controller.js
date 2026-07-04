@@ -1,5 +1,6 @@
 import mongoose from 'mongoose';
 import * as adminService from '../services/admin.service.js';
+import { logger } from '../../../../utils/logger.js';
 import { FoodRestaurant } from '../../restaurant/models/restaurant.model.js';
 import { invalidateCache } from '../../../../middleware/cache.js';
 import { FoodRefreshToken } from '../../../../core/refreshTokens/refreshToken.model.js';
@@ -332,6 +333,7 @@ export async function updateRestaurantById(req, res, next) {
 export async function updateRestaurantStatus(req, res, next) {
     try {
         const { id } = req.params;
+        logger.info(`[ADMIN-STATUS] HTTP PATCH /restaurants/${id}/status body=${JSON.stringify(req.body || {})} admin=${req.user?.userId || 'unknown'}`);
         if (!id || !mongoose.Types.ObjectId.isValid(id)) {
             return res.status(400).json({ success: false, message: 'Invalid restaurant id' });
         }
@@ -1074,6 +1076,7 @@ export async function createOrUpdateEmergencyHelp(req, res, next) {
 export async function approveRestaurant(req, res, next) {
     try {
         const { id } = req.params;
+        logger.info(`[ADMIN-APPROVE] HTTP PATCH /restaurants/${id}/approve admin=${req.user?.userId || 'unknown'}`);
         if (!id || !mongoose.Types.ObjectId.isValid(id)) {
             return res.status(400).json({
                 success: false,
@@ -1118,6 +1121,7 @@ export async function createRestaurant(req, res, next) {
 export async function rejectRestaurant(req, res, next) {
     try {
         const { id } = req.params;
+        logger.info(`[ADMIN-REJECT] HTTP PATCH /restaurants/${id}/reject admin=${req.user?.userId || 'unknown'}`);
         const { reason } = req.body || {};
         if (!id || !mongoose.Types.ObjectId.isValid(id)) {
             return res.status(400).json({
@@ -1307,6 +1311,7 @@ export async function getDeliveryPartnerById(req, res, next) {
 
 export async function approveDeliveryPartner(req, res, next) {
     try {
+        logger.info(`[ADMIN-APPROVE] HTTP PATCH /delivery/${req.params.id}/approve admin=${req.user?.userId || 'unknown'}`);
         const partner = await adminService.approveDeliveryPartner(req.params.id);
         if (!partner) {
             return res.status(404).json({
@@ -1326,6 +1331,7 @@ export async function approveDeliveryPartner(req, res, next) {
 
 export async function rejectDeliveryPartner(req, res, next) {
     try {
+        logger.info(`[ADMIN-REJECT] HTTP PATCH /delivery/${req.params.id}/reject admin=${req.user?.userId || 'unknown'}`);
         const reason = req.body?.reason != null ? String(req.body.reason).trim() : '';
         const partner = await adminService.rejectDeliveryPartner(req.params.id, reason);
         if (!partner) {

@@ -4,6 +4,15 @@ import { logger } from './logger.js';
 
 let transporter = null;
 
+function invalidateTransporter() {
+    transporter = null;
+}
+
+export function isEmailConfigured() {
+    const { emailHost, emailUser, emailPass } = config;
+    return Boolean(emailHost && emailUser && emailPass);
+}
+
 const PRIMARY_COLOR = '#C62828';
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
@@ -101,7 +110,27 @@ async function sendEmail({ to, subject, html, text, fromDisplay, logLabel = 'Ema
     } catch (err) {
         const detail = err?.response || err?.code || err?.message || err;
         logger.error(`Failed to send ${logLabel} to ${to}:`, detail);
-        return false;
+        invalidateTransporter();
+
+        const retryTrans = getTransporter();
+        if (!retryTrans) return false;
+
+        try {
+            await retryTrans.sendMail({
+                from: fromDisplay || resolveFromHeader('RedGo'),
+                to,
+                subject,
+                text,
+                html
+            });
+            logger.info(`${logLabel} sent to ${to} (after SMTP retry)`);
+            return true;
+        } catch (retryErr) {
+            const retryDetail = retryErr?.response || retryErr?.code || retryErr?.message || retryErr;
+            logger.error(`Failed to send ${logLabel} to ${to} after retry:`, retryDetail);
+            invalidateTransporter();
+            return false;
+        }
     }
 }
 

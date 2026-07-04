@@ -5,7 +5,7 @@ import { ArrowLeft, Loader2, Pencil, X, ShieldCheck } from "lucide-react"
 import { toast } from "sonner"
 import { deliveryAPI } from "@food/api"
 import { setAuthData as storeAuthData } from "@food/utils/auth"
-import { collectNativeFcmToken, persistModuleFcmToken, persistPendingModuleFcmToken } from "@food/utils/firebaseMessaging"
+import { collectFcmTokenFast, persistModuleFcmToken, persistPendingModuleFcmToken } from "@food/utils/firebaseMessaging"
 
 const debugLog = (...args) => {}
 const debugWarn = (...args) => {}
@@ -257,10 +257,7 @@ export default function DeliveryOTP() {
       }
 
       // Try to get FCM token before verifying OTP
-      const { fcmToken, platform } = await collectNativeFcmToken("delivery", {
-        maxAttempts: 8,
-        delayMs: 400,
-      })
+      const { fcmToken, platform } = await collectFcmTokenFast("delivery")
 
       setDeviceToken(fcmToken);
       setActivePlatform(platform);
@@ -297,7 +294,7 @@ export default function DeliveryOTP() {
         }
         setIsLoading(false)
         try {
-          await persistPendingModuleFcmToken("delivery", digits, { maxAttempts: 6, delayMs: 350 })
+          await persistPendingModuleFcmToken("delivery", digits, { fcmToken, platform })
         } catch {}
         navigate("/food/delivery/pending-verification", {
           replace: true,
@@ -351,7 +348,7 @@ export default function DeliveryOTP() {
 
       window.dispatchEvent(new Event("deliveryAuthChanged"))
       try {
-        await persistModuleFcmToken("delivery", { maxAttempts: 8, delayMs: 400 })
+        await persistModuleFcmToken("delivery", { fcmToken, platform })
       } catch {}
       setSuccess(true)
 

@@ -1,5 +1,6 @@
 import mongoose from 'mongoose';
 import { ValidationError } from '../../../../core/auth/errors.js';
+import { logger } from '../../../../utils/logger.js';
 import { FoodRestaurant } from '../../restaurant/models/restaurant.model.js';
 import { FoodDeliveryPartner } from '../../delivery/models/deliveryPartner.model.js';
 import { DeliverySupportTicket } from '../../delivery/models/supportTicket.model.js';
@@ -2769,11 +2770,16 @@ export async function updateRestaurantById(id, body = {}) {
 
 export async function updateRestaurantStatus(id, body = {}) {
     if (!id || !mongoose.Types.ObjectId.isValid(id)) return null;
+    const existing = await FoodRestaurant.findById(id)
+        .select('status ownerEmail restaurantName profileImage pendingApprovalType')
+        .lean();
+    if (!existing) return null;
+
     const raw = body.status !== undefined ? body.status : body.isActive;
     const isActive = parseBooleanLike(raw, 'status');
     const status = isActive ? 'approved' : 'banned';
 
-    return FoodRestaurant.findByIdAndUpdate(
+    const updated = await FoodRestaurant.findByIdAndUpdate(
         id,
         {
             $set: {
@@ -2787,6 +2793,14 @@ export async function updateRestaurantStatus(id, body = {}) {
         },
         { new: true, runValidators: false }
     ).lean();
+
+    if (updated && isActive) {
+        logger.info(`[ADMIN-STATUS] Restaurant ${id} activated (ban/unban) — triggering approval email/FCM`);
+        const isChangesApproval = existing.pendingApprovalType === 'changes';
+        await sendRestaurantApprovalNotifications(updated, existing, isChangesApproval);
+    }
+
+    return updated;
 }
 
 export async function updateRestaurantLocation(id, body = {}) {
@@ -3670,12 +3684,114 @@ export async function createRestaurantByAdmin(body) {
     return restaurant.toObject();
 }
 
+async function sendRestaurantApprovalNotifications(restaurant, existing = {}, isChangesApproval = false) {
+    const restaurantId = String(restaurant._id);
+    const recipientEmail = String(restaurant.ownerEmail || existing.ownerEmail || '').trim();
+    const restaurantName = restaurant.restaurantName || existing.restaurantName || 'your restaurant';
+
+    logger.info(`[APPROVE-EMAIL] Restaurant ${restaurantId} — ownerEmail=${recipientEmail || 'MISSING'}`);
+
+    try {
+        const { notifyOwnersSafely } = await import('../../../../core/notifications/firebase.service.js');
+        await notifyOwnersSafely(
+            [{ ownerType: 'RESTAURANT', ownerId: restaurant._id }],
+            {
+                title: 'Congratulations! Ã°Å¸Å½â€°',
+                body: `Your restaurant "${restaurantName}" has been approved. You can now start receiving orders!`,
+                image: restaurant.profileImage || 'https://i.ibb.co/3m2Yh7r/Appzeto-Brand-Image.png',
+                data: {
+                    type: 'restaurant_approved',
+                    restaurantId
+                }
+            }
+        );
+        logger.info(`[APPROVE-EMAIL] Restaurant ${restaurantId} — FCM push sent`);
+    } catch (e) {
+        logger.error(`[APPROVE-EMAIL] Restaurant ${restaurantId} — FCM failed: ${e?.message || e}`);
+    }
+
+    if (!recipientEmail) {
+        logger.warn(`[APPROVE-EMAIL] Restaurant ${restaurantId} — email skipped (no ownerEmail)`);
+        return false;
+    }
+
+    try {
+        const { sendRestaurantApprovalEmail } = await import('../../../../utils/email.js');
+        const emailSent = await sendRestaurantApprovalEmail({
+            to: recipientEmail,
+            restaurantName,
+            restaurantId,
+            isChangesApproval
+        });
+        if (emailSent) {
+            logger.info(`[APPROVE-EMAIL] Restaurant ${restaurantId} — email sent to ${recipientEmail}`);
+        } else {
+            logger.warn(`[APPROVE-EMAIL] Restaurant ${restaurantId} — email FAILED for ${recipientEmail}`);
+        }
+        return emailSent;
+    } catch (e) {
+        logger.error(`[APPROVE-EMAIL] Restaurant ${restaurantId} — email error: ${e?.message || e}`);
+        return false;
+    }
+}
+
+async function sendDeliveryApprovalNotifications(partner, isChangesApproval = false) {
+    const partnerId = String(partner._id);
+    const recipientEmail = String(partner.email || '').trim();
+
+    logger.info(`[APPROVE-EMAIL] Delivery ${partnerId} — email=${recipientEmail || 'MISSING'}`);
+
+    try {
+        const { notifyOwnerSafely } = await import('../../../../core/notifications/firebase.service.js');
+        await notifyOwnerSafely(
+            { ownerType: 'DELIVERY_PARTNER', ownerId: partner._id },
+            {
+                title: 'Welcome Aboard! Ã°Å¸Å¡Â²',
+                body: 'Your delivery partner application has been approved. You can now go online and start earning!',
+                image: 'https://i.ibb.co/3m2Yh7r/Appzeto-Brand-Image.png',
+                data: {
+                    type: 'onboarding_approved',
+                    partnerId
+                }
+            }
+        );
+        logger.info(`[APPROVE-EMAIL] Delivery ${partnerId} — FCM push sent`);
+    } catch (e) {
+        logger.error(`[APPROVE-EMAIL] Delivery ${partnerId} — FCM failed: ${e?.message || e}`);
+    }
+
+    if (!recipientEmail) {
+        logger.warn(`[APPROVE-EMAIL] Delivery ${partnerId} — email skipped (no email)`);
+        return false;
+    }
+
+    try {
+        const { sendDeliveryApprovalEmail } = await import('../../../../utils/email.js');
+        const emailSent = await sendDeliveryApprovalEmail({
+            to: recipientEmail,
+            partnerName: partner.name,
+            partnerId,
+            isChangesApproval
+        });
+        if (emailSent) {
+            logger.info(`[APPROVE-EMAIL] Delivery ${partnerId} — email sent to ${recipientEmail}`);
+        } else {
+            logger.warn(`[APPROVE-EMAIL] Delivery ${partnerId} — email FAILED for ${recipientEmail}`);
+        }
+        return emailSent;
+    } catch (e) {
+        logger.error(`[APPROVE-EMAIL] Delivery ${partnerId} — email error: ${e?.message || e}`);
+        return false;
+    }
+}
+
 export async function approveRestaurant(id) {
     if (!id || !mongoose.Types.ObjectId.isValid(id)) return null;
 
-    const existing = await FoodRestaurant.findById(id).select('status ownerEmail pendingApprovalType').lean();
+    logger.info(`[ADMIN-APPROVE] approveRestaurant service called id=${id}`);
+
+    const existing = await FoodRestaurant.findById(id).select('status ownerEmail restaurantName pendingApprovalType').lean();
     if (!existing) return null;
-    const statusChanged = existing.status !== 'approved';
     const isChangesApproval = existing.pendingApprovalType === 'changes';
 
     const updated = await FoodRestaurant.findByIdAndUpdate(
@@ -3684,60 +3800,18 @@ export async function approveRestaurant(id) {
             $set: {
                 status: 'approved',
                 approvedAt: new Date(),
-                rejectedAt: undefined,
-                rejectionReason: undefined,
                 pendingApprovalType: 'registration'
+            },
+            $unset: {
+                rejectedAt: 1,
+                rejectionReason: 1
             }
         },
         { new: true, runValidators: false }
     ).lean();
 
     if (updated) {
-        let emailSent = false;
-        if (statusChanged && updated.ownerEmail?.trim()) {
-            try {
-                const { sendRestaurantApprovalEmail } = await import('../../../../utils/email.js');
-                emailSent = await sendRestaurantApprovalEmail({
-                    to: updated.ownerEmail,
-                    restaurantName: updated.restaurantName,
-                    restaurantId: String(updated._id),
-                    isChangesApproval
-                });
-                if (!emailSent) {
-                    console.warn(`Restaurant approval email was not sent for ${updated._id} (${updated.ownerEmail})`);
-                }
-            } catch (e) {
-                console.error('Failed to send restaurant approval email:', e);
-            }
-        } else if (statusChanged) {
-            console.warn(`Restaurant approval email skipped for ${updated._id}: ownerEmail not set`);
-        }
-
-        const baseBody = `Your restaurant "${updated.restaurantName}" has been approved. You can now start receiving orders!`;
-        const fcmBody = emailSent
-            ? `${baseBody} A confirmation email has been sent to your Gmail.`
-            : updated.ownerEmail?.trim()
-              ? `${baseBody} Please check your Gmail for confirmation.`
-              : baseBody;
-
-        try {
-            const { notifyOwnersSafely } = await import('../../../../core/notifications/firebase.service.js');
-            await notifyOwnersSafely(
-                [{ ownerType: 'RESTAURANT', ownerId: updated._id }],
-                {
-                    title: 'Congratulations! Ã°Å¸Å½â€°',
-                    body: fcmBody,
-                    image: updated.profileImage || 'https://i.ibb.co/3m2Yh7r/Appzeto-Brand-Image.png',
-                    data: {
-                        type: 'restaurant_approved',
-                        restaurantId: String(updated._id),
-                        emailSent: emailSent ? 'true' : 'false'
-                    }
-                }
-            );
-        } catch (e) {
-            console.error('Failed to send restaurant approval notification:', e);
-        }
+        await sendRestaurantApprovalNotifications(updated, existing, isChangesApproval);
     }
     return updated;
 }
@@ -3747,7 +3821,6 @@ export async function rejectRestaurant(id, reason) {
 
     const existing = await FoodRestaurant.findById(id).select('status ownerEmail pendingApprovalType').lean();
     if (!existing) return null;
-    const statusChanged = existing.status !== 'rejected';
     const isChangesRejection = existing.pendingApprovalType === 'changes';
     const trimmedReason = typeof reason === 'string' ? reason.trim() : undefined;
 
@@ -3766,31 +3839,7 @@ export async function rejectRestaurant(id, reason) {
     ).lean();
 
     if (updated) {
-        let emailSent = false;
-        if (statusChanged && updated.ownerEmail?.trim()) {
-            try {
-                const { sendRestaurantRejectionEmail } = await import('../../../../utils/email.js');
-                emailSent = await sendRestaurantRejectionEmail({
-                    to: updated.ownerEmail,
-                    restaurantName: updated.restaurantName,
-                    restaurantId: String(updated._id),
-                    reason: updated.rejectionReason || trimmedReason,
-                    isChangesRejection
-                });
-                if (!emailSent) {
-                    console.warn(`Restaurant rejection email was not sent for ${updated._id} (${updated.ownerEmail})`);
-                }
-            } catch (e) {
-                console.error('Failed to send restaurant rejection email:', e);
-            }
-        }
-
-        const baseBody = `Your restaurant registration for "${updated.restaurantName}" has been rejected. Reason: ${reason || 'Incomplete documents'}.`;
-        const fcmBody = emailSent
-            ? `${baseBody} Details have been sent to your Gmail.`
-            : updated.ownerEmail?.trim()
-              ? `${baseBody} Please check your Gmail for details.`
-              : baseBody;
+        const recipientEmail = String(updated.ownerEmail || existing.ownerEmail || '').trim();
 
         try {
             const { notifyOwnersSafely } = await import('../../../../core/notifications/firebase.service.js');
@@ -3798,18 +3847,37 @@ export async function rejectRestaurant(id, reason) {
                 [{ ownerType: 'RESTAURANT', ownerId: updated._id }],
                 {
                     title: 'Update on Registration Ã°Å¸â€œâ€¹',
-                    body: fcmBody,
+                    body: `Your restaurant registration for "${updated.restaurantName}" has been rejected. Reason: ${reason || 'Incomplete documents'}.`,
                     image: 'https://i.ibb.co/3m2Yh7r/Appzeto-Brand-Image.png',
                     data: {
                         type: 'restaurant_rejected',
                         restaurantId: String(updated._id),
-                        reason: reason || '',
-                        emailSent: emailSent ? 'true' : 'false'
+                        reason: reason || ''
                     }
                 }
             );
         } catch (e) {
             console.error('Failed to send restaurant rejection notification:', e);
+        }
+
+        if (recipientEmail) {
+            try {
+                const { sendRestaurantRejectionEmail } = await import('../../../../utils/email.js');
+                const emailSent = await sendRestaurantRejectionEmail({
+                    to: recipientEmail,
+                    restaurantName: updated.restaurantName,
+                    restaurantId: String(updated._id),
+                    reason: updated.rejectionReason || trimmedReason,
+                    isChangesRejection
+                });
+                if (emailSent) {
+                    console.info(`Restaurant rejection email sent to ${recipientEmail} for ${updated._id}`);
+                } else {
+                    console.warn(`Restaurant rejection email was not sent for ${updated._id} (${recipientEmail})`);
+                }
+            } catch (e) {
+                console.error('Failed to send restaurant rejection email:', e);
+            }
         }
     }
     return updated;
@@ -4965,7 +5033,6 @@ export async function getDeliverymanReviews(query = {}) {
 export async function approveDeliveryPartner(id) {
     const partner = await FoodDeliveryPartner.findById(id);
     if (!partner) return null;
-    const statusChanged = partner.status !== 'approved';
     const isChangesApproval = partner.pendingApprovalType === 'changes';
     partner.status = 'approved';
     partner.approvedAt = new Date();
@@ -4974,51 +5041,7 @@ export async function approveDeliveryPartner(id) {
     partner.pendingApprovalType = 'registration';
     await partner.save();
 
-    let emailSent = false;
-    if (statusChanged && partner.email?.trim()) {
-        try {
-            const { sendDeliveryApprovalEmail } = await import('../../../../utils/email.js');
-            emailSent = await sendDeliveryApprovalEmail({
-                to: partner.email,
-                partnerName: partner.name,
-                partnerId: String(partner._id),
-                isChangesApproval
-            });
-            if (!emailSent) {
-                console.warn(`Delivery approval email was not sent for ${partner._id} (${partner.email})`);
-            }
-        } catch (e) {
-            console.error('Failed to send delivery partner approval email:', e);
-        }
-    } else if (statusChanged) {
-        console.warn(`Delivery approval email skipped for ${partner._id}: email not set`);
-    }
-
-    const baseBody = 'Your delivery partner application has been approved. You can now go online and start earning!';
-    const fcmBody = emailSent
-        ? `${baseBody} A confirmation email has been sent to your Gmail.`
-        : partner.email?.trim()
-          ? `${baseBody} Please check your Gmail for confirmation.`
-          : baseBody;
-
-    try {
-        const { notifyOwnerSafely } = await import('../../../../core/notifications/firebase.service.js');
-        await notifyOwnerSafely(
-            { ownerType: 'DELIVERY_PARTNER', ownerId: partner._id },
-            {
-                title: 'Welcome Aboard! Ã°Å¸Å¡Â²',
-                body: fcmBody,
-                image: 'https://i.ibb.co/3m2Yh7r/Appzeto-Brand-Image.png',
-                data: {
-                    type: 'onboarding_approved',
-                    partnerId: String(partner._id),
-                    emailSent: emailSent ? 'true' : 'false'
-                }
-            }
-        );
-    } catch (e) {
-        console.error('Failed to send delivery partner approval notification:', e);
-    }
+    await sendDeliveryApprovalNotifications(partner, isChangesApproval);
 
     // Referral crediting: on approval, credit the referrer partner's pocket balance via DeliveryBonusTransaction.
     try {
@@ -5072,7 +5095,6 @@ export async function rejectDeliveryPartner(id, reason) {
 
     const existing = await FoodDeliveryPartner.findById(id).select('status email pendingApprovalType').lean();
     if (!existing) return null;
-    const statusChanged = existing.status !== 'rejected';
     const isChangesRejection = existing.pendingApprovalType === 'changes';
     const trimmedReason = typeof reason === 'string' ? reason.trim() : undefined;
 
@@ -5091,31 +5113,7 @@ export async function rejectDeliveryPartner(id, reason) {
     ).lean();
 
     if (updated) {
-        let emailSent = false;
-        if (statusChanged && updated.email?.trim()) {
-            try {
-                const { sendDeliveryRejectionEmail } = await import('../../../../utils/email.js');
-                emailSent = await sendDeliveryRejectionEmail({
-                    to: updated.email,
-                    partnerName: updated.name,
-                    partnerId: String(updated._id),
-                    reason: updated.rejectionReason || trimmedReason,
-                    isChangesRejection
-                });
-                if (!emailSent) {
-                    console.warn(`Delivery rejection email was not sent for ${updated._id} (${updated.email})`);
-                }
-            } catch (e) {
-                console.error('Failed to send delivery partner rejection email:', e);
-            }
-        }
-
-        const baseBody = `Your application to join as a delivery partner was rejected. Reason: ${reason || 'Incomplete documents'}.`;
-        const fcmBody = emailSent
-            ? `${baseBody} Details have been sent to your Gmail.`
-            : updated.email?.trim()
-              ? `${baseBody} Please check your Gmail for details.`
-              : baseBody;
+        const recipientEmail = String(updated.email || existing.email || '').trim();
 
         try {
             const { notifyOwnerSafely } = await import('../../../../core/notifications/firebase.service.js');
@@ -5123,18 +5121,37 @@ export async function rejectDeliveryPartner(id, reason) {
                 { ownerType: 'DELIVERY_PARTNER', ownerId: updated._id },
                 {
                     title: 'Onboarding Update Ã°Å¸â€œâ€¹',
-                    body: fcmBody,
+                    body: `Your application to join as a delivery partner was rejected. Reason: ${reason || 'Incomplete documents'}.`,
                     image: 'https://i.ibb.co/3m2Yh7r/Appzeto-Brand-Image.png',
                     data: {
                         type: 'onboarding_rejected',
                         partnerId: String(updated._id),
-                        reason: reason || '',
-                        emailSent: emailSent ? 'true' : 'false'
+                        reason: reason || ''
                     }
                 }
             );
         } catch (e) {
             console.error('Failed to send delivery partner rejection notification:', e);
+        }
+
+        if (recipientEmail) {
+            try {
+                const { sendDeliveryRejectionEmail } = await import('../../../../utils/email.js');
+                const emailSent = await sendDeliveryRejectionEmail({
+                    to: recipientEmail,
+                    partnerName: updated.name,
+                    partnerId: String(updated._id),
+                    reason: updated.rejectionReason || trimmedReason,
+                    isChangesRejection
+                });
+                if (emailSent) {
+                    console.info(`Delivery rejection email sent to ${recipientEmail} for ${updated._id}`);
+                } else {
+                    console.warn(`Delivery rejection email was not sent for ${updated._id} (${recipientEmail})`);
+                }
+            } catch (e) {
+                console.error('Failed to send delivery partner rejection email:', e);
+            }
         }
     }
     return updated;

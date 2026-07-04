@@ -143,6 +143,37 @@ async function requestNativeNotificationPermission(moduleName) {
   }
 }
 
+export const FCM_FAST_OPTIONS = { maxAttempts: 5, delayMs: 200 };
+export const FCM_COLLECT_TIMEOUT_MS = 2000;
+
+/**
+ * Collect FCM token quickly (max ~2 seconds) for signup/login flows.
+ */
+export async function collectFcmTokenFast(moduleName, options = {}) {
+  const fastOptions = { ...FCM_FAST_OPTIONS, ...options };
+  const cached = getSavedToken(moduleName);
+  if (cached.length >= 20) {
+    return {
+      fcmToken: cached,
+      platform: isFlutterWebView() ? "mobile" : "web",
+    };
+  }
+
+  const result = await Promise.race([
+    collectNativeFcmToken(moduleName, fastOptions),
+    sleep(FCM_COLLECT_TIMEOUT_MS).then(() => ({
+      fcmToken: normalizeFcmBridgeToken(getSavedToken(moduleName)) || null,
+      platform: isFlutterWebView() ? "mobile" : "web",
+    })),
+  ]);
+
+  if (result.fcmToken) {
+    setSavedToken(moduleName, result.fcmToken);
+  }
+
+  return result;
+}
+
 /**
  * Collect FCM token from Flutter WebView (iPhone app) or web cache.
  * Retries because the native bridge is often not ready on first call.
@@ -197,21 +228,29 @@ export async function collectNativeFcmToken(moduleName, options = {}) {
   };
 }
 
-/** @deprecated Use collectNativeFcmToken("restaurant") — kept for older bundles */
+/** @deprecated Use collectFcmTokenFast("restaurant") — kept for older bundles */
 export function collectRestaurantFcmToken(options = {}) {
-  return collectNativeFcmToken("restaurant", options);
+  return collectFcmTokenFast("restaurant", options);
 }
 
-/** @deprecated Use collectNativeFcmToken("delivery") — kept for older bundles */
+/** @deprecated Use collectFcmTokenFast("delivery") — kept for older bundles */
 export function collectDeliveryFcmToken(options = {}) {
-  return collectNativeFcmToken("delivery", options);
+  return collectFcmTokenFast("delivery", options);
 }
 
 /**
  * Save FCM token to backend when the user is logged in.
  */
 export async function persistModuleFcmToken(moduleName, options = {}) {
-  const { fcmToken, platform } = await collectNativeFcmToken(moduleName, options);
+  let fcmToken = options.fcmToken || null;
+  let platform = options.platform || (isFlutterWebView() ? "mobile" : "web");
+
+  if (!fcmToken) {
+    const collected = await collectFcmTokenFast(moduleName, options);
+    fcmToken = collected.fcmToken;
+    platform = collected.platform;
+  }
+
   if (!fcmToken) return false;
 
   setSavedToken(moduleName, fcmToken);
@@ -241,7 +280,15 @@ export async function persistModuleFcmToken(moduleName, options = {}) {
  * Save FCM for pending partners using phone (no login required).
  */
 export async function persistPendingModuleFcmToken(moduleName, phone, options = {}) {
-  const { fcmToken, platform } = await collectNativeFcmToken(moduleName, options);
+  let fcmToken = options.fcmToken || null;
+  let platform = options.platform || (isFlutterWebView() ? "mobile" : "web");
+
+  if (!fcmToken) {
+    const collected = await collectFcmTokenFast(moduleName, options);
+    fcmToken = collected.fcmToken;
+    platform = collected.platform;
+  }
+
   if (!fcmToken || !phone) return false;
 
   setSavedToken(moduleName, fcmToken);
