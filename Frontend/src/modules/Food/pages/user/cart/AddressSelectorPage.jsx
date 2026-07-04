@@ -12,6 +12,10 @@ import { locationAPI, userAPI } from "@food/api"
 import { Loader } from '@googlemaps/js-api-loader'
 import AnimatedPage from "@food/components/user/AnimatedPage"
 import useAppBackNavigation from "@food/hooks/useAppBackNavigation"
+import { reverseGeocodeWithGoogle, geocodeGooglePlaceId, getFreshGpsCoordinates } from "@food/utils/googleGeocoding"
+
+const MAP_SEARCH_INPUT_CLASS =
+  "pl-12 pr-10 h-14 bg-white dark:bg-[#1a1a1a] border-2 border-zinc-200/90 dark:border-zinc-700 rounded-2xl focus:ring-0 focus-visible:ring-0 focus-visible:ring-offset-0 focus:border-zinc-400 dark:focus:border-zinc-500 text-zinc-900 dark:text-zinc-50 placeholder:!text-neutral-400 dark:placeholder:!text-neutral-500 font-medium text-sm transition-all shadow-sm w-full"
 
 const debugLog = (...args) => {}
 const debugWarn = (...args) => {}
@@ -51,7 +55,18 @@ export default function AddressSelectorPage() {
   const { location, loading, requestLocation } = useGeoLocation()
   const { addresses = [], addAddress, updateAddress, setDefaultAddress, userProfile, isAuthenticated, loading: profileLoading } = useProfile()
   const [showAddressForm, setShowAddressForm] = useState(false)
-  const [mapPosition, setMapPosition] = useState([22.7196, 75.8577]) // Default Indore coordinates [lat, lng]
+  const [mapPosition, setMapPosition] = useState(() => {
+    try {
+      const stored = localStorage.getItem("userLocation")
+      if (stored) {
+        const parsed = JSON.parse(stored)
+        if (Number.isFinite(parsed?.latitude) && Number.isFinite(parsed?.longitude)) {
+          return [parsed.latitude, parsed.longitude]
+        }
+      }
+    } catch {}
+    return [22.7196, 75.8577]
+  })
   const [addressFormData, setAddressFormData] = useState({
     street: "",
     city: "",
@@ -62,6 +77,7 @@ export default function AddressSelectorPage() {
     phone: "",
   })
   const [isFetchingLocationState, setIsFetchingLocationState] = useState(false)
+  const [mapGpsLoading, setMapGpsLoading] = useState(false)
   const [loadingAddress, setLoadingAddress] = useState(false)
   const [mapLoading, setMapLoading] = useState(false)
   const mapContainerRef = useRef(null)
@@ -75,6 +91,12 @@ export default function AddressSelectorPage() {
   const [isKeywordSearching, setIsKeywordSearching] = useState(false)
   const [lockMapToAutocomplete, setLockMapToAutocomplete] = useState(true)
   const [GOOGLE_MAPS_API_KEY, setGOOGLE_MAPS_API_KEY] = useState(null)
+  const [googleMapsLoaded, setGoogleMapsLoaded] = useState(false)
+  const googleMapsRef = useRef(null)
+  const autocompleteServiceRef = useRef(null)
+  const geocodeDebounceRef = useRef(null)
+  const initialMapCenterRef = useRef(mapPosition)
+  const pendingMapCenterRef = useRef(null)
   const [formScrollTop, setFormScrollTop] = useState(0)
   const [keyboardInset, setKeyboardInset] = useState(0)
   const [baseMapHeight, setBaseMapHeight] = useState(320)
@@ -82,7 +104,6 @@ export default function AddressSelectorPage() {
   const manualFieldRefs = useRef({})
   
   const ENABLE_LOCATION_REVERSE_GEOCODE = import.meta.env.VITE_ENABLE_LOCATION_REVERSE_GEOCODE !== "false"
-  const ENABLE_NOMINATIM_SEARCH = import.meta.env.VITE_ENABLE_NOMINATIM_SEARCH !== "false"
   const getAddressId = (address) => address?.id || address?._id || null
 
   const handleBack = () => {
@@ -113,54 +134,122 @@ export default function AddressSelectorPage() {
       .map((x) => x.addr)
   }, [addresses, addressAutocompleteValue])
 
-  // Load Google Maps API key
+  // Load Google Maps API key + Places library for search/geocoding
   useEffect(() => {
     if (!MAPS_ENABLED) return
+    let cancelled = false
     import('@food/utils/googleMapsApiKey.js').then(({ getGoogleMapsApiKey }) => {
-      getGoogleMapsApiKey().then(key => {
+      getGoogleMapsApiKey().then(async (key) => {
+        if (cancelled || !key) return
         setGOOGLE_MAPS_API_KEY(key)
+        try {
+          const loader = new Loader({ apiKey: key, version: "weekly", libraries: ["places"] })
+          const google = await loader.load()
+          if (cancelled) return
+          googleMapsRef.current = google
+          autocompleteServiceRef.current = new google.maps.places.AutocompleteService()
+          setGoogleMapsLoaded(true)
+        } catch (err) {
+          debugError("Google Maps load error:", err)
+        }
       })
     })
+    return () => { cancelled = true }
   }, [])
 
-  // Nominatim search
+  // Refresh GPS + subtitle when address selector opens (once per visit)
+  useEffect(() => {
+    let cancelled = false
+    ;(async () => {
+      try {
+        const loc = await requestLocation()
+        if (!cancelled && loc) {
+          const formatted = loc.formattedAddress || loc.address || ""
+          if (formatted) setCurrentAddress(formatted)
+          if (Number.isFinite(loc.latitude) && Number.isFinite(loc.longitude)) {
+            const coords = [loc.latitude, loc.longitude]
+            setMapPosition(coords)
+            initialMapCenterRef.current = coords
+          }
+        }
+      } catch {
+        // Keep showing last known address if GPS fails
+      }
+    })()
+    return () => { cancelled = true }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  useEffect(() => {
+    const formatted = location?.formattedAddress || location?.address
+    if (formatted) setCurrentAddress(formatted)
+  }, [location?.formattedAddress, location?.address, location?.latitude, location?.longitude])
+
+  // Google Places autocomplete search
   useEffect(() => {
     const q = String(addressAutocompleteValue || "").trim()
-    if (!ENABLE_NOMINATIM_SEARCH || q.length < 3) {
+    if (!googleMapsLoaded || !autocompleteServiceRef.current || q.length < 3) {
       setKeywordAddressSuggestions([])
       setIsKeywordSearching(false)
       return
     }
 
-    const t = setTimeout(async () => {
-      try {
-        setIsKeywordSearching(true)
-        const refLat = location?.latitude ?? 22.7196
-        const refLng = location?.longitude ?? 75.8577
-        const url = `https://nominatim.openstreetmap.org/search?format=json&addressdetails=1&limit=10&q=${encodeURIComponent(q)}`
-        const res = await fetch(url, { headers: { Accept: "application/json" } })
-        const json = await res.json()
-        const mapped = (Array.isArray(json) ? json : []).map(r => ({
-          id: r.place_id || r.osm_id,
-          display: r.display_name || "",
-          lat: Number(r.lat),
-          lng: Number(r.lon),
-          address: r.address || {},
-        }))
-        const withDistance = mapped
-          .filter(x => Number.isFinite(x.lat) && Number.isFinite(x.lng))
-          .map(x => ({ ...x, distanceMeters: calculateDistance(refLat, refLng, x.lat, x.lng) }))
-          .sort((a, b) => (a.distanceMeters ?? Infinity) - (b.distanceMeters ?? Infinity))
-          .slice(0, 4)
-        setKeywordAddressSuggestions(withDistance)
-      } catch (e) {
-        setKeywordAddressSuggestions([])
-      } finally {
-        setIsKeywordSearching(false)
+    const t = setTimeout(() => {
+      setIsKeywordSearching(true)
+      const google = googleMapsRef.current
+      const service = autocompleteServiceRef.current
+      const request = {
+        input: q,
+        componentRestrictions: { country: "in" },
       }
+      if (Number.isFinite(location?.latitude) && Number.isFinite(location?.longitude)) {
+        request.location = new google.maps.LatLng(location.latitude, location.longitude)
+        request.radius = 50000
+      }
+
+      service.getPlacePredictions(request, (predictions, status) => {
+        setIsKeywordSearching(false)
+        if (status !== google.maps.places.PlacesServiceStatus.OK || !Array.isArray(predictions)) {
+          setKeywordAddressSuggestions([])
+          return
+        }
+        setKeywordAddressSuggestions(
+          predictions.slice(0, 6).map((p) => ({
+            id: p.place_id,
+            placeId: p.place_id,
+            display: p.description,
+          }))
+        )
+      })
     }, 350)
+
     return () => clearTimeout(t)
-  }, [addressAutocompleteValue, location, ENABLE_NOMINATIM_SEARCH])
+  }, [addressAutocompleteValue, googleMapsLoaded, location?.latitude, location?.longitude])
+
+  const applyGeocodedAddressToForm = useCallback((parsed, formattedOverride) => {
+    const formatted = formattedOverride || parsed?.formattedAddress || parsed?.address || ""
+    setCurrentAddress(formatted)
+    setAddressFormData((prev) => ({
+      ...prev,
+      street: parsed?.area || parsed?.address || formatted.split(",")[0] || prev.street,
+      city: parsed?.city || prev.city,
+      state: parsed?.state || prev.state,
+      zipCode: parsed?.pincode || prev.zipCode,
+    }))
+  }, [])
+
+  const handleMapMoveEnd = useCallback(async (lat, lng) => {
+    if (!ENABLE_LOCATION_REVERSE_GEOCODE) return
+    if (geocodeDebounceRef.current) clearTimeout(geocodeDebounceRef.current)
+    geocodeDebounceRef.current = setTimeout(async () => {
+      try {
+        const parsed = await reverseGeocodeWithGoogle(lat, lng)
+        applyGeocodedAddressToForm(parsed)
+      } catch (e) {
+        debugError("Reverse geocode error:", e)
+      }
+    }, 400)
+  }, [ENABLE_LOCATION_REVERSE_GEOCODE, applyGeocodedAddressToForm])
 
   // Map Initialization logic
   useEffect(() => {
@@ -183,24 +272,35 @@ export default function AddressSelectorPage() {
           return
         }
 
-        const loader = new Loader({ apiKey: GOOGLE_MAPS_API_KEY, version: "weekly" })
+        const loader = new Loader({ apiKey: GOOGLE_MAPS_API_KEY, version: "weekly", libraries: ["places"] })
         const google = await loader.load()
         if (!isMounted || !mapContainerRef.current) return
+        googleMapsRef.current = google
+        if (!autocompleteServiceRef.current) {
+          autocompleteServiceRef.current = new google.maps.places.AutocompleteService()
+        }
 
-        const initialPos = { lat: mapPosition[0], lng: mapPosition[1] }
+        const initialPos = {
+          lat: initialMapCenterRef.current[0],
+          lng: initialMapCenterRef.current[1],
+        }
         
         const map = new google.maps.Map(mapContainerRef.current, {
           center: initialPos,
           zoom: 16,
+          mapTypeId: google.maps.MapTypeId.ROADMAP,
           disableDefaultUI: true,
           zoomControl: true,
           gestureHandling: "greedy",
-          styles: [
-            { featureType: "poi", stylers: [{ visibility: "off" }] },
-            { featureType: "transit", stylers: [{ visibility: "off" }] }
-          ]
         })
         googleMapRef.current = map
+
+        if (pendingMapCenterRef.current) {
+          const pending = pendingMapCenterRef.current
+          map.panTo({ lat: pending.lat, lng: pending.lng })
+          map.setZoom(pending.zoom || 17)
+          pendingMapCenterRef.current = null
+        }
 
         // Update coordinates on map idle (center of the map is the chosen location)
         map.addListener("idle", () => {
@@ -219,7 +319,7 @@ export default function AddressSelectorPage() {
     }
     initializeGoogleMap()
     return () => { isMounted = false }
-  }, [showAddressForm, GOOGLE_MAPS_API_KEY])
+  }, [showAddressForm, GOOGLE_MAPS_API_KEY, handleMapMoveEnd])
 
   const handleUseCurrentLocation = async () => {
     try {
@@ -262,67 +362,93 @@ export default function AddressSelectorPage() {
     }
   }
 
-  const handleSelectOuterSuggestion = (s) => {
+  const panMapToCoordinates = useCallback(async (latitude, longitude, zoom = 17) => {
+    setMapPosition([latitude, longitude])
+    initialMapCenterRef.current = [latitude, longitude]
+
+    const tryPan = () => {
+      if (!googleMapRef.current) return false
+      googleMapRef.current.panTo({ lat: latitude, lng: longitude })
+      googleMapRef.current.setZoom(zoom)
+      return true
+    }
+
+    if (tryPan()) return
+
+    pendingMapCenterRef.current = { lat: latitude, lng: longitude, zoom }
+    for (let attempt = 0; attempt < 30; attempt += 1) {
+      await new Promise((resolve) => setTimeout(resolve, 100))
+      if (tryPan()) {
+        pendingMapCenterRef.current = null
+        return
+      }
+    }
+  }, [])
+
+  const handleCenterMapOnMyLocation = async () => {
+    if (mapGpsLoading) return
+    setMapGpsLoading(true)
+    try {
+      const coords = await getFreshGpsCoordinates()
+      const { latitude, longitude } = coords
+      await panMapToCoordinates(latitude, longitude)
+      const parsed = await reverseGeocodeWithGoogle(latitude, longitude)
+      applyGeocodedAddressToForm(parsed)
+      toast.success("Moved to your current location", { id: "geo-map" })
+    } catch (err) {
+      console.error("Map GPS error:", err)
+      if (location?.latitude && location?.longitude) {
+        await panMapToCoordinates(location.latitude, location.longitude)
+        applyGeocodedAddressToForm(location, location.formattedAddress || location.address)
+        toast.info("Using last known location", { id: "geo-map" })
+      } else {
+        toast.error("Allow location permission to use GPS", { id: "geo-map" })
+      }
+    } finally {
+      setMapGpsLoading(false)
+    }
+  }
+
+  const handleSelectOuterSuggestion = async (s) => {
     setIsFetchingLocationState(true)
     try {
-      const lat = s.lat
-      const lng = s.lng
-      const display = s.display
-      const a = s.address || {}
-      
-      const displayParts = display ? display.split(",").map(p => p.trim()).filter(Boolean) : []
-      
-      // Robust city extraction
-      let city = a.city || a.town || a.village || a.hamlet || a.county || a.state_district || a.district || a.municipality || ""
-      if (!city && displayParts.length > 0) {
-        city = displayParts[0]
-      }
-      if (!city) {
-        city = "Indore"
-      }
+      let lat
+      let lng
+      let display
+      let parsed
 
-      // Robust area extraction
-      let area = a.suburb || a.neighbourhood || a.sublocality || a.quarter || ""
-      if (!area && displayParts.length > 1 && city !== displayParts[0]) {
-        area = displayParts[0]
-      }
-
-      // Robust state extraction
-      let state = a.state || ""
-      if (!state && displayParts.length > 1) {
-        const potentialStates = displayParts.slice(0, -1).filter(p => !/^\d+$/.test(p))
-        if (potentialStates.length > 0) {
-          state = potentialStates[potentialStates.length - 1]
-        }
-      }
-      if (!state) {
-        state = "Madhya Pradesh"
-      }
-
-      if (lat && lng) {
-        const finalLoc = {
-          latitude: lat,
-          longitude: lng,
-          city: city,
-          state: state,
-          country: "India",
-          area: area,
-          address: display || "Selected Location",
-          formattedAddress: display || "Selected Location"
-        }
-
-        // Save to local storage
-        localStorage.setItem("userLocation", JSON.stringify(finalLoc))
-        sessionStorage.setItem("manual_location_update", "true")
-        localStorage.setItem("deliveryAddressMode", "current")
-        
-        // Dispatch update event
-        window.dispatchEvent(new CustomEvent("userLocationUpdated"))
-        
-        handleBack()
+      if (s.placeId) {
+        parsed = await geocodeGooglePlaceId(s.placeId)
+        lat = parsed.latitude
+        lng = parsed.longitude
+        display = parsed.formattedAddress
+      } else if (s.lat && s.lng) {
+        lat = s.lat
+        lng = s.lng
+        display = s.display
+        parsed = await reverseGeocodeWithGoogle(lat, lng)
       } else {
         toast.error("Could not resolve location coordinates")
+        return
       }
+
+      const finalLoc = {
+        latitude: lat,
+        longitude: lng,
+        city: parsed.city || "",
+        state: parsed.state || "",
+        country: parsed.country || "India",
+        area: parsed.area || "",
+        address: parsed.address || display,
+        formattedAddress: display || parsed.formattedAddress,
+        pincode: parsed.pincode || "",
+      }
+
+      localStorage.setItem("userLocation", JSON.stringify(finalLoc))
+      sessionStorage.setItem("manual_location_update", "true")
+      localStorage.setItem("deliveryAddressMode", "current")
+      window.dispatchEvent(new CustomEvent("userLocationUpdated"))
+      handleBack()
     } catch (err) {
       console.error("Error selecting search suggestion:", err)
       toast.error("Failed to select location")
@@ -331,15 +457,48 @@ export default function AddressSelectorPage() {
     }
   }
 
-  const handleAddAddressClick = () => {
+  const handleSelectMapSuggestion = async (s) => {
+    try {
+      const parsed = await geocodeGooglePlaceId(s.placeId || s.id)
+      const lat = parsed.latitude
+      const lng = parsed.longitude
+      if (!Number.isFinite(lat) || !Number.isFinite(lng)) {
+        toast.error("Could not resolve location coordinates")
+        return
+      }
+      await panMapToCoordinates(lat, lng)
+      setAddressAutocompleteValue(parsed.formattedAddress || s.display || "")
+      applyGeocodedAddressToForm(parsed)
+      setKeywordAddressSuggestions([])
+    } catch (err) {
+      console.error("Error selecting map suggestion:", err)
+      toast.error("Failed to select location")
+    }
+  }
+
+  const handleAddAddressClick = async () => {
     if (!isAuthenticated) {
       toast.info("Please login to add an address")
       navigate("/user/auth/login")
       return
     }
-    setAddressAutocompleteValue("")
-    setKeywordAddressSuggestions([])
-    setShowAddressForm(true)
+    setIsFetchingLocationState(true)
+    try {
+      setAddressAutocompleteValue("")
+      setKeywordAddressSuggestions([])
+      const loc = await requestLocation()
+      if (loc?.latitude && loc?.longitude) {
+        initialMapCenterRef.current = [loc.latitude, loc.longitude]
+        setMapPosition([loc.latitude, loc.longitude])
+        applyGeocodedAddressToForm(loc, loc.formattedAddress || loc.address)
+      }
+      setShowAddressForm(true)
+    } catch {
+      toast.error("Could not fetch your location. You can still pick on the map.")
+      setShowAddressForm(true)
+    } finally {
+      setIsFetchingLocationState(false)
+    }
   }
 
   const handleCancelAddressForm = () => {
@@ -389,49 +548,6 @@ export default function AddressSelectorPage() {
   }, [keyboardInset])
 
   const clamp = (value, min, max) => Math.min(max, Math.max(min, value))
-
-  const handleMapMoveEnd = async (lat, lng) => {
-    if (!ENABLE_LOCATION_REVERSE_GEOCODE) return
-    try {
-      // Use Nominatim for free reverse geocoding on the client side
-      const url = `https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=${lat}&lon=${lng}`
-      const response = await fetch(url, { 
-        headers: { 
-          "Accept-Language": "en",
-          "User-Agent": "AppZeto-Food-App" 
-        } 
-      })
-      const json = await response.json()
-      
-      if (json && json.address) {
-        const addr = json.address
-        const formatted = json.display_name
-        
-        // Extract meaningful street/area info
-        const street = [
-          addr.road,
-          addr.suburb,
-          addr.neighbourhood,
-          addr.house_number
-        ].filter(Boolean).slice(0, 2).join(", ") || addr.amenity || addr.industrial || ""
-
-        const city = addr.city || addr.town || addr.village || addr.municipality || addr.county || ""
-        const state = addr.state || ""
-        const postcode = addr.postcode || ""
-
-        setCurrentAddress(formatted)
-        setAddressFormData(prev => ({
-          ...prev,
-          street: street || formatted.split(",")[0] || prev.street,
-          city: city || prev.city,
-          state: state || prev.state,
-          zipCode: postcode || prev.zipCode,
-        }))
-      }
-    } catch (e) {
-      debugError("Reverse geocode error:", e)
-    }
-  }
 
   const handleAddressFormSubmit = async (e) => {
     e.preventDefault()
@@ -538,13 +654,13 @@ export default function AddressSelectorPage() {
             <div className="absolute top-4 left-4 right-4 z-20">
               <div className="relative group shadow-2xl">
                 <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
-                  <Search className="h-5 w-5 text-[#DC2626]" />
+                  <Search className="h-5 w-5 text-neutral-400 dark:text-neutral-500" />
                 </div>
                 <Input
                   value={addressAutocompleteValue}
                   onChange={(e) => setAddressAutocompleteValue(e.target.value)}
                   placeholder="Search area, street, landmark..."
-                  className="pl-12 pr-10 h-14 bg-white dark:bg-[#1a1a1a] border-2 border-zinc-300 dark:border-zinc-700 rounded-2xl focus:ring-0 focus-visible:ring-0 focus-visible:ring-offset-0 focus:border-zinc-500 dark:focus:border-zinc-500 text-zinc-900 dark:text-zinc-50 placeholder-zinc-400 font-medium text-sm transition-all shadow-sm w-full"
+                  className={MAP_SEARCH_INPUT_CLASS}
                 />
                 {addressAutocompleteValue && (
                   <button 
@@ -566,32 +682,12 @@ export default function AddressSelectorPage() {
                     {keywordAddressSuggestions.map((s) => (
                       <button
                         key={s.id}
-                        onClick={() => {
-                          const { lat, lng, display, address: a } = s
-                          setMapPosition([lat, lng])
-                          if (googleMapRef.current) {
-                            googleMapRef.current.panTo({ lat, lng })
-                            googleMapRef.current.setZoom(17)
-                          }
-                          setAddressAutocompleteValue(display)
-                          const city = a.city || a.town || a.village || a.county || ""
-                          const state = a.state || ""
-                          const zipCode = a.postcode || ""
-                          setAddressFormData((prev) => ({
-                            ...prev,
-                            street: display || prev.street,
-                            city: city || prev.city,
-                            state: state || prev.state,
-                            zipCode: zipCode || prev.zipCode,
-                          }))
-                          setKeywordAddressSuggestions([])
-                        }}
+                        onClick={() => handleSelectMapSuggestion(s)}
                         className="w-full px-4 py-3 flex items-start gap-3 hover:bg-[#DC2626]/5 dark:hover:bg-[#DC2626]/10 transition-colors text-left border-b border-gray-50 dark:border-gray-800 last:border-none"
                       >
                         <MapPin className="h-4 w-4 text-gray-400 mt-1 flex-shrink-0" />
                         <div className="min-w-0">
                            <p className="text-sm font-semibold text-gray-900 dark:text-white truncate">{s.display}</p>
-                           <p className="text-xs text-gray-500 dark:text-gray-400 truncate">{s.address?.city || s.address?.state}</p>
                         </div>
                       </button>
                     ))}
@@ -620,12 +716,19 @@ export default function AddressSelectorPage() {
               </div>
             )}
             
-            <div className="absolute bottom-10 right-4 z-10">
-              <Button 
-                  onClick={handleUseCurrentLocation} 
-                  className="bg-white text-black hover:bg-gray-100 shadow-xl border border-gray-200 rounded-full h-12 px-6"
+            <div className="absolute bottom-10 right-4 z-10 pointer-events-auto">
+              <Button
+                type="button"
+                onClick={handleCenterMapOnMyLocation}
+                disabled={mapGpsLoading}
+                className="bg-white text-black hover:bg-gray-100 shadow-xl border border-gray-200 rounded-full h-12 px-6 disabled:opacity-70"
               >
-                <Navigation className="h-4 w-4 mr-2 text-[#DC2626]" /> Use My Location
+                {mapGpsLoading ? (
+                  <div className="animate-spin rounded-full h-4 w-4 border-2 border-[#DC2626] border-t-transparent mr-2" />
+                ) : (
+                  <Navigation className="h-4 w-4 mr-2 text-[#DC2626]" />
+                )}
+                {mapGpsLoading ? "Locating..." : "Use My Location"}
               </Button>
             </div>
           </div>
@@ -749,13 +852,13 @@ export default function AddressSelectorPage() {
         <div className="p-4 bg-white dark:bg-[#0a0a0a] border-b dark:border-gray-800/10">
           <div className="relative group">
             <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
-              <Search className="h-5 w-5 text-[#DC2626]" />
+              <Search className="h-5 w-5 text-neutral-400 dark:text-neutral-500" />
             </div>
             <Input
               value={addressAutocompleteValue}
               onChange={(e) => setAddressAutocompleteValue(e.target.value)}
               placeholder="Search for area, street name..."
-              className="pl-12 pr-10 h-14 bg-white dark:bg-[#1a1a1a] border-2 border-zinc-300 dark:border-zinc-700 rounded-2xl focus:ring-0 focus-visible:ring-0 focus-visible:ring-offset-0 focus:border-zinc-500 dark:focus:border-zinc-500 text-zinc-900 dark:text-zinc-50 placeholder-zinc-400 font-medium text-sm transition-all shadow-sm w-full"
+              className={MAP_SEARCH_INPUT_CLASS}
             />
             {addressAutocompleteValue && (
               <button 
