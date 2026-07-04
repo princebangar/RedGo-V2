@@ -278,44 +278,147 @@ export async function persistModuleFcmToken(moduleName, options = {}) {
 
 /**
  * Save FCM for pending partners using phone (no login required).
+ * Requires an existing restaurant/delivery record in DB (post-registration or pending OTP login).
  */
 export async function persistPendingModuleFcmToken(moduleName, phone, options = {}) {
-  let fcmToken = options.fcmToken || null;
-  let platform = options.platform || (isFlutterWebView() ? "mobile" : "web");
+  const hasKnownToken = Boolean(options.fcmToken);
+  const maxAttempts = options.maxAttempts ?? (hasKnownToken ? 1 : 2);
+  const retryDelayMs = options.retryDelayMs ?? 400;
 
-  if (!fcmToken) {
-    const collected = await collectFcmTokenFast(moduleName, options);
-    fcmToken = collected.fcmToken;
-    platform = collected.platform;
+  for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
+    let fcmToken = options.fcmToken || null;
+    let platform = options.platform || (isFlutterWebView() ? "mobile" : "web");
+
+    if (!fcmToken) {
+      const collected = await collectFcmTokenFast(moduleName, options);
+      fcmToken = collected.fcmToken;
+      platform = collected.platform;
+    }
+
+    if (!fcmToken || !phone) {
+      if (attempt < maxAttempts - 1) {
+        await sleep(retryDelayMs);
+        continue;
+      }
+      return false;
+    }
+
+    setSavedToken(moduleName, fcmToken);
+
+    const normalizedPhone = String(phone || "").replace(/\D/g, "").slice(-10);
+    if (!normalizedPhone) return false;
+
+    try {
+      const apiClient = (await import("@food/api")).default;
+      await apiClient.post("/fcm-tokens/pending-save", {
+        phone: normalizedPhone,
+        token: fcmToken,
+        platform,
+        role: moduleName,
+      });
+      pushDebugLog(PUSH_DEBUG_PREFIX, "Pending FCM token saved by phone", {
+        moduleName,
+        phone: normalizedPhone,
+        attempt: attempt + 1,
+      });
+      return true;
+    } catch (error) {
+      pushDebugWarn(PUSH_DEBUG_PREFIX, "Failed to save pending FCM token", {
+        moduleName,
+        attempt: attempt + 1,
+        error: error?.message || error,
+      });
+      if (attempt < maxAttempts - 1) {
+        options.fcmToken = null;
+        await sleep(retryDelayMs);
+      }
+    }
   }
 
-  if (!fcmToken || !phone) return false;
+  return false;
+}
 
-  setSavedToken(moduleName, fcmToken);
+/** Warm FCM cache early during onboarding (non-blocking). Local only — not saved to server until profile submit. */
+export function prefetchModuleFcmToken(moduleName) {
+  void collectFcmTokenFast(moduleName).catch(() => {});
+}
 
+/**
+ * Drop local FCM prefetch when user leaves onboarding before profile submit.
+ * Server tokens are only stored after registration; nothing to remove remotely yet.
+ */
+export function clearOnboardingFcmLocal(moduleName) {
+  if (typeof localStorage === "undefined") return;
+  localStorage.removeItem(`${tokenCachePrefix}${moduleName}`);
+}
+
+/**
+ * Fast background FCM sync for pending partners (post-registration only).
+ * Retries at 0s, 1s, 2s — does not block navigation.
+ */
+export function syncPendingPartnerFcmQuick(moduleName, phone, options = {}) {
+  if (!phone || typeof window === "undefined") return;
+
+  const runSync = () => {
+    void persistPendingModuleFcmToken(moduleName, phone, {
+      ...options,
+      maxAttempts: 3,
+      retryDelayMs: 500,
+    });
+  };
+
+  runSync();
+  [1500, 3500].forEach((delayMs) => {
+    window.setTimeout(runSync, delayMs);
+  });
+}
+
+/**
+ * Navigate to delivery pending screen immediately; persist FCM in background (restaurant parity).
+ */
+export function finalizeDeliveryPendingSubmission(
+  navigate,
+  phone,
+  { fcmToken, platform, status = "pending", message, rejectionReason } = {},
+  navigateState = {},
+) {
   const normalizedPhone = String(phone || "").replace(/\D/g, "").slice(-10);
-  if (!normalizedPhone) return false;
+
+  if (normalizedPhone) {
+    sessionStorage.setItem("delivery_pendingPhone", normalizedPhone);
+  }
+  sessionStorage.setItem("delivery_pendingStatus", status);
+  if (message) {
+    sessionStorage.setItem("delivery_pendingMessage", message);
+  } else {
+    sessionStorage.removeItem("delivery_pendingMessage");
+  }
+  if (rejectionReason) {
+    sessionStorage.setItem("delivery_pendingRejectionReason", rejectionReason);
+  } else {
+    sessionStorage.removeItem("delivery_pendingRejectionReason");
+  }
 
   try {
-    const apiClient = (await import("@food/api")).default;
-    await apiClient.post("/fcm-tokens/pending-save", {
-      phone: normalizedPhone,
-      token: fcmToken,
-      platform,
-      role: moduleName,
-    });
-    pushDebugLog(PUSH_DEBUG_PREFIX, "Pending FCM token saved by phone", {
-      moduleName,
-      phone: normalizedPhone,
-    });
-    return true;
-  } catch (error) {
-    pushDebugWarn(PUSH_DEBUG_PREFIX, "Failed to save pending FCM token", {
-      moduleName,
-      error: error?.message || error,
-    });
-    return false;
+    syncPendingPartnerFcmQuick("delivery", normalizedPhone, { fcmToken, platform });
+  } catch {}
+
+  if (typeof localStorage !== "undefined" && localStorage.getItem("delivery_accessToken")) {
+    try {
+      void persistModuleFcmToken("delivery", { fcmToken, platform });
+    } catch {}
   }
+
+  navigate("/food/delivery/pending-verification", {
+    replace: true,
+    state: {
+      phone: normalizedPhone,
+      isRejected: status === "rejected",
+      message,
+      rejectionReason,
+      ...navigateState,
+    },
+  });
 }
 
 function isSecureContextForPush() {

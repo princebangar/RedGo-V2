@@ -28,7 +28,7 @@ import { EMAIL_REGEX } from "@/shared/utils/emailValidation"
 import { OnboardingSkeleton } from "@food/components/ui/loading-skeletons"
 import OnboardingExitModal from "@/shared/components/OnboardingExitModal"
 import useOnboardingExitGuard from "@/shared/hooks/useOnboardingExitGuard"
-import { collectFcmTokenFast, persistModuleFcmToken, persistPendingModuleFcmToken } from "@food/utils/firebaseMessaging"
+import { collectFcmTokenFast, persistModuleFcmToken, syncPendingPartnerFcmQuick, clearOnboardingFcmLocal } from "@food/utils/firebaseMessaging"
 const debugLog = (...args) => {}
 const debugWarn = (...args) => {}
 const debugError = (...args) => {}
@@ -58,7 +58,7 @@ async function finalizeRestaurantPendingSubmission(navigate, phone, fcmOptions =
   localStorage.removeItem("restaurant_pendingMessage")
 
   try {
-    persistPendingModuleFcmToken("restaurant", normalizedPhone, { fcmToken, platform }).catch(() => {})
+    syncPendingPartnerFcmQuick("restaurant", normalizedPhone, { fcmToken, platform })
   } catch {}
 
   if (localStorage.getItem("restaurant_accessToken")) {
@@ -558,14 +558,15 @@ export default function RestaurantOnboarding() {
 
     void (async () => {
       try {
-        restaurantAPI.logout().catch(() => {})
-      } catch (e) {}
-
-      try {
+        clearOnboardingFcmLocal("restaurant")
         clearOnboardingFromLocalStorage()
         clearOnboardingFileCache()
         await clearAllFilesFromDB()
 
+        const hasSession = Boolean(localStorage.getItem("restaurant_refreshToken"))
+        if (hasSession) {
+          await restaurantAPI.logout().catch(() => {})
+        }
         clearModuleAuth("restaurant")
         clearAuthData()
         window.dispatchEvent(new Event("restaurantAuthChanged"))

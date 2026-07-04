@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from "react"
 import { useLocation, useNavigate } from "react-router-dom"
 import { Clock3, ShieldCheck, AlertTriangle, X } from "lucide-react"
 import { clearModuleAuth } from "@food/utils/auth"
-import { persistModuleFcmToken, persistPendingModuleFcmToken } from "@food/utils/firebaseMessaging"
+import { persistModuleFcmToken, syncPendingPartnerFcmQuick } from "@food/utils/firebaseMessaging"
 
 const DELIVERY_PRIMARY_BTN =
   "h-12 w-full rounded-full text-base font-semibold bg-gradient-to-r from-[#0E4B9C] to-[#021024] hover:from-[#1157b5] hover:to-[#041630] text-white shadow-[0_8px_20px_rgba(14,75,156,0.25)] active:scale-[0.98] transition-all duration-300"
@@ -61,19 +61,14 @@ export default function VerificationPending() {
   useEffect(() => {
     let cancelled = false
 
-    const syncPushToken = async () => {
-      try {
-        if (pendingPhone) {
-          await persistPendingModuleFcmToken("delivery", pendingPhone)
-        }
-      } catch {}
+    const syncPushToken = () => {
+      if (!pendingPhone) return
+      syncPendingPartnerFcmQuick("delivery", pendingPhone)
 
       if (cancelled) return
 
       if (typeof localStorage !== "undefined" && localStorage.getItem("delivery_accessToken")) {
-        try {
-          await persistModuleFcmToken("delivery")
-        } catch {}
+        void persistModuleFcmToken("delivery").catch(() => {})
       }
     }
 
@@ -94,6 +89,9 @@ export default function VerificationPending() {
   }
 
   const handleBackToLogin = () => {
+    if (pendingPhone) {
+      syncPendingPartnerFcmQuick("delivery", pendingPhone)
+    }
     clearModuleAuth("delivery")
     clearPendingState()
     navigate("/food/delivery/login", { replace: true })

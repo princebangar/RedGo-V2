@@ -9,7 +9,7 @@ import {
   setRestaurantPendingPhone,
 } from "@food/utils/auth"
 import { checkOnboardingStatus, isRestaurantOnboardingComplete } from "@food/utils/onboardingUtils"
-import { collectFcmTokenFast, persistModuleFcmToken, persistPendingModuleFcmToken } from "@food/utils/firebaseMessaging"
+import { collectFcmTokenFast, persistModuleFcmToken, syncPendingPartnerFcmQuick } from "@food/utils/firebaseMessaging"
 
 export default function RestaurantOTP() {
   const navigate = useNavigate()
@@ -261,9 +261,7 @@ export default function RestaurantOTP() {
         localStorage.setItem("restaurant_pendingMessage", data.message || "")
         setShowRestorePopup(false)
         setIsLoading(false)
-        try {
-          await persistPendingModuleFcmToken("restaurant", phone, { fcmToken, platform })
-        } catch {}
+        syncPendingPartnerFcmQuick("restaurant", phone, { fcmToken, platform })
         navigate("/food/restaurant/pending-verification", {
           replace: true,
           state: {

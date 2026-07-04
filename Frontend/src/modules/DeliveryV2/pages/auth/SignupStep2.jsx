@@ -16,8 +16,8 @@ import {
 } from "../../utils/deliveryOnboardingStorage"
 import {
   collectFcmTokenFast,
-  persistModuleFcmToken,
-  persistPendingModuleFcmToken,
+  finalizeDeliveryPendingSubmission,
+  prefetchModuleFcmToken,
 } from "@food/utils/firebaseMessaging"
 
 const debugError = (...args) => { }
@@ -43,6 +43,10 @@ export default function SignupStep2() {
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [uploading, setUploading] = useState({})
   const [isDummyMode, setIsDummyMode] = useState(false)
+
+  useEffect(() => {
+    prefetchModuleFcmToken("delivery")
+  }, [])
 
   useEffect(() => {
     window.scrollTo({ top: 0, left: 0, behavior: "auto" })
@@ -191,7 +195,7 @@ export default function SignupStep2() {
     const formData = new FormData()
     formData.append("name", details.name || "")
     formData.append("phone", String(details.phone || "").replace(/\D/g, "").slice(0, 15))
-    if (details.email) formData.append("email", String(details.email).trim())
+    formData.append("email", String(details.email || "").trim().toLowerCase())
     if (details.ref) formData.append("ref", String(details.ref).trim())
     if (details.countryCode) formData.append("countryCode", details.countryCode)
     if (details.address) formData.append("address", details.address)
@@ -217,6 +221,11 @@ export default function SignupStep2() {
       const collected = await collectFcmTokenFast("delivery")
       fcmToken = collected.fcmToken
       platform = collected.platform
+      if (!fcmToken) {
+        const retry = await collectFcmTokenFast("delivery", { maxAttempts: 8, delayMs: 250 })
+        fcmToken = retry.fcmToken
+        platform = retry.platform
+      }
     } catch (error) {
       debugError("Failed to get FCM token during signup", error)
     }
@@ -250,12 +259,7 @@ export default function SignupStep2() {
         if (shouldRegister) {
           sessionStorage.removeItem("deliveryNeedsRegistration")
           const phone = String(details.phone || "").replace(/\D/g, "").slice(-10)
-          sessionStorage.setItem("delivery_pendingPhone", phone)
-          sessionStorage.setItem("delivery_pendingStatus", "pending")
-          if (phone) {
-            persistPendingModuleFcmToken("delivery", phone, { fcmToken, platform }).catch(() => {})
-          }
-          navigate("/food/delivery/pending-verification", { replace: true, state: { phone } })
+          finalizeDeliveryPendingSubmission(navigate, phone, { fcmToken, platform })
         } else {
           toast.success("Profile submitted. Waiting for admin approval.")
           setTimeout(() => navigate("/food/delivery", { replace: true }), 1500)

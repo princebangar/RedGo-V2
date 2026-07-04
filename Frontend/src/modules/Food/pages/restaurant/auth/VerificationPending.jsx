@@ -11,7 +11,7 @@ import {
   clearModuleAuth,
 } from "@food/utils/auth"
 import { clearOnboardingFromLocalStorage } from "@food/utils/onboardingUtils"
-import { persistModuleFcmToken, persistPendingModuleFcmToken } from "@food/utils/firebaseMessaging"
+import { persistModuleFcmToken, syncPendingPartnerFcmQuick } from "@food/utils/firebaseMessaging"
 
 export default function VerificationPending() {
   const navigate = useNavigate()
@@ -77,27 +77,28 @@ export default function VerificationPending() {
 
   const isDisabledByAdmin = localStatus === "banned"
 
+  const syncFcmBeforeLeave = () => {
+    const phone = pendingPhone || getRestaurantPendingPhone() || ""
+    if (phone) syncPendingPartnerFcmQuick("restaurant", phone)
+  }
+
   useEffect(() => {
     let cancelled = false
 
-    const syncPushToken = async () => {
+    const syncPushToken = () => {
       const phone =
         pendingPhone ||
         getRestaurantPendingPhone() ||
         ""
 
-      try {
-        if (phone) {
-          await persistPendingModuleFcmToken("restaurant", phone)
-        }
-      } catch {}
+      if (phone) {
+        syncPendingPartnerFcmQuick("restaurant", phone)
+      }
 
       if (cancelled) return
 
       if (getModuleToken("restaurant")) {
-        try {
-          await persistModuleFcmToken("restaurant")
-        } catch {}
+        void persistModuleFcmToken("restaurant").catch(() => {})
       }
     }
 
@@ -329,6 +330,7 @@ export default function VerificationPending() {
                   variant="outline"
                   className="h-12 w-full rounded-xl text-base font-semibold border border-slate-200 bg-white text-slate-700 hover:bg-slate-50 hover:text-slate-900 active:scale-[0.98] transition-all duration-300"
                   onClick={() => {
+                    syncFcmBeforeLeave()
                     clearModuleAuth("restaurant")
                     clearRestaurantPendingPhone()
                     localStorage.removeItem("restaurant_pendingStatus")
@@ -356,6 +358,7 @@ export default function VerificationPending() {
                   variant="outline"
                   className="h-12 w-full rounded-xl text-base font-semibold border border-slate-200 bg-white text-slate-700 hover:bg-slate-50 hover:text-slate-900 active:scale-[0.98] transition-all duration-300"
                   onClick={() => {
+                    syncFcmBeforeLeave()
                     clearModuleAuth("restaurant")
                     clearRestaurantPendingPhone()
                     localStorage.removeItem("restaurant_pendingStatus")
@@ -370,6 +373,7 @@ export default function VerificationPending() {
               <Button
                 className="h-12 w-full rounded-xl text-base font-semibold transition-all duration-300 bg-gradient-to-br from-[#B80B3D] to-[#66001D] hover:opacity-90 text-white active:scale-[0.98]"
                 onClick={() => {
+                  syncFcmBeforeLeave()
                   clearModuleAuth("restaurant")
                   clearRestaurantPendingPhone()
                   localStorage.removeItem("restaurant_pendingStatus")
