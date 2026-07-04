@@ -14,6 +14,11 @@ import {
   prepareSignupDocumentFile,
   saveSignupDocumentToDB,
 } from "../../utils/deliveryOnboardingStorage"
+import {
+  collectDeliveryFcmToken,
+  persistModuleFcmToken,
+  persistPendingModuleFcmToken,
+} from "@food/utils/firebaseMessaging"
 
 const debugError = (...args) => { }
 
@@ -209,23 +214,12 @@ export default function SignupStep2() {
     let fcmToken = null
     let platform = "web"
     try {
-      if (typeof window !== "undefined") {
-        if (window.flutter_inappwebview) {
-          platform = "mobile"
-          const handlerNames = ["getFcmToken", "getFCMToken", "getPushToken", "getFirebaseToken"]
-          for (const handlerName of handlerNames) {
-            try {
-              const token = await window.flutter_inappwebview.callHandler(handlerName, { module: "delivery" })
-              if (token && typeof token === "string" && token.length > 20) {
-                fcmToken = token.trim()
-                break
-              }
-            } catch (error) { }
-          }
-        } else {
-          fcmToken = localStorage.getItem("fcm_web_registered_token_delivery") || null
-        }
-      }
+      const collected = await collectDeliveryFcmToken({
+        maxAttempts: 8,
+        delayMs: 400,
+      })
+      fcmToken = collected.fcmToken
+      platform = collected.platform
     } catch (error) {
       debugError("Failed to get FCM token during signup", error)
     }
@@ -261,6 +255,12 @@ export default function SignupStep2() {
           const phone = String(details.phone || "").replace(/\D/g, "").slice(-10)
           sessionStorage.setItem("delivery_pendingPhone", phone)
           sessionStorage.setItem("delivery_pendingStatus", "pending")
+          try {
+            await persistPendingModuleFcmToken("delivery", phone, {
+              maxAttempts: 8,
+              delayMs: 400,
+            })
+          } catch {}
           navigate("/food/delivery/pending-verification", { replace: true, state: { phone } })
         } else {
           toast.success("Profile submitted. Waiting for admin approval.")

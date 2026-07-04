@@ -11,6 +11,7 @@ import {
   clearModuleAuth,
 } from "@food/utils/auth"
 import { clearOnboardingFromLocalStorage } from "@food/utils/onboardingUtils"
+import { persistModuleFcmToken, persistPendingModuleFcmToken } from "@food/utils/firebaseMessaging"
 
 export default function VerificationPending() {
   const navigate = useNavigate()
@@ -75,6 +76,40 @@ export default function VerificationPending() {
   }, [localMessage, localStatus])
 
   const isDisabledByAdmin = localStatus === "banned"
+
+  useEffect(() => {
+    let cancelled = false
+
+    const syncPushToken = async () => {
+      const phone =
+        pendingPhone ||
+        getRestaurantPendingPhone() ||
+        ""
+
+      try {
+        if (phone) {
+          await persistPendingModuleFcmToken("restaurant", phone, {
+            maxAttempts: 8,
+            delayMs: 400,
+          })
+        }
+      } catch {}
+
+      if (cancelled) return
+
+      if (getModuleToken("restaurant")) {
+        try {
+          await persistModuleFcmToken("restaurant", { maxAttempts: 6, delayMs: 350 })
+        } catch {}
+      }
+    }
+
+    syncPushToken()
+
+    return () => {
+      cancelled = true
+    }
+  }, [pendingPhone])
 
   useEffect(() => {
     let cancelled = false

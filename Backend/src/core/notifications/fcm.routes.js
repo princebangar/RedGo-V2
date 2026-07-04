@@ -8,6 +8,7 @@ import {
 } from './firebase.service.js';
 import { FoodUser } from '../users/user.model.js';
 import { FoodRestaurant } from '../../modules/food/restaurant/models/restaurant.model.js';
+import { findDeliveryPartnerByPhone } from '../../modules/food/delivery/services/delivery.service.js';
 
 import mongoose from 'mongoose';
 
@@ -24,8 +25,76 @@ router.get('/check', (req, res) => {
         success: true, 
         message: 'FCM tokens service is operational',
         timestamp: new Date().toISOString(),
-        endpoints: ['/save', '/mobile/save', '/remove', '/test', '/test-set-token/:phone/:token']
+        endpoints: ['/save', '/mobile/save', '/remove', '/test', '/pending-save', '/test-set-token/:phone/:token']
     });
+});
+
+// Save FCM token for pending restaurant/delivery partners (no login session required).
+router.post('/pending-save', async (req, res, next) => {
+    try {
+        const token = String(req.body?.token || '').trim();
+        const platform = req.body?.platform === 'mobile' ? 'mobile' : 'web';
+        const role = String(req.body?.role || '').trim().toLowerCase();
+        const phone = String(req.body?.phone || '').replace(/\D/g, '').slice(-10);
+
+        if (!phone || phone.length < 10) {
+            return sendError(res, 400, 'Valid phone is required');
+        }
+        if (!token || token.length < 20) {
+            return sendError(res, 400, 'FCM token is required');
+        }
+
+        if (role === 'restaurant') {
+            const restaurant = await FoodRestaurant.findOne({
+                $or: [
+                    { ownerPhoneLast10: phone },
+                    { ownerPhone: { $regex: new RegExp(`${phone}$`) } },
+                    { ownerPhoneDigits: { $regex: new RegExp(`${phone}$`) } }
+                ]
+            }).select('_id status').lean();
+
+            if (!restaurant) {
+                return sendError(res, 404, 'Restaurant not found for this phone');
+            }
+
+            await upsertFirebaseDeviceToken({
+                ownerType: 'RESTAURANT',
+                ownerId: String(restaurant._id),
+                token,
+                platform
+            });
+
+            return res.status(200).json({
+                success: true,
+                message: 'Pending restaurant FCM token saved',
+                data: { ownerType: 'RESTAURANT', ownerId: String(restaurant._id), platform }
+            });
+        }
+
+        if (role === 'delivery') {
+            const partner = await findDeliveryPartnerByPhone(phone);
+            if (!partner) {
+                return sendError(res, 404, 'Delivery partner not found for this phone');
+            }
+
+            await upsertFirebaseDeviceToken({
+                ownerType: 'DELIVERY_PARTNER',
+                ownerId: String(partner._id),
+                token,
+                platform
+            });
+
+            return res.status(200).json({
+                success: true,
+                message: 'Pending delivery FCM token saved',
+                data: { ownerType: 'DELIVERY_PARTNER', ownerId: String(partner._id), platform }
+            });
+        }
+
+        return sendError(res, 400, 'role must be restaurant or delivery');
+    } catch (error) {
+        next(error);
+    }
 });
 
 // Temporary administrative test route to set token by phone
