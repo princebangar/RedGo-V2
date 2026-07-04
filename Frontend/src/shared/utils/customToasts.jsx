@@ -33,6 +33,42 @@ export const showNotificationToast = ({ title, message } = {}) => {
   });
 };
 
+export const showRedGoBrandedToast = ({ title, message, id = "redgo-branded-toast", duration = 4000 } = {}) => {
+  toast.custom(
+    () => (
+      <div className="w-[calc(100vw-32px)] sm:w-[380px] bg-white shadow-[0_8px_30px_rgb(0,0,0,0.12)] rounded-3xl pointer-events-auto flex items-center gap-4 p-3.5 border border-gray-50 animate-in fade-in slide-in-from-top-4 z-[11000]">
+        <div className="flex-shrink-0">
+          <div className="h-14 w-14 rounded-2xl bg-gradient-to-br from-[#DC2626] to-[#991B1B] flex items-center justify-center p-1.5 shadow-lg">
+            <img
+              src="/assets/images/redgo-toast-logo.png"
+              alt="RedGo"
+              className="w-full h-full object-contain brightness-0 invert"
+            />
+          </div>
+        </div>
+        <div className="flex-1 pr-2 min-w-0">
+          <p className="text-[14px] font-bold text-gray-800 leading-tight">{title}</p>
+          {message ? (
+            <p className="text-[13px] font-medium text-gray-500 mt-1">{message}</p>
+          ) : null}
+        </div>
+      </div>
+    ),
+    {
+      id,
+      duration,
+      position: "top-center",
+    }
+  );
+};
+
+export const showAddressRemovedToast = () => {
+  showRedGoBrandedToast({
+    title: "Address Removed Successfully",
+    id: "address-removed-toast",
+  });
+};
+
 export const showAccountDeletedToast = () => {
   toast.custom(() => (
     <div className="flex items-center gap-3 bg-[#f0fdf4] border border-[#bbf7d0] px-4 py-3 rounded-xl shadow-lg min-w-[300px] animate-in fade-in slide-in-from-top-4">

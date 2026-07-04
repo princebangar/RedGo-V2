@@ -166,3 +166,17 @@
   z-index: 999999 !important;
   pointer-events: auto !important;
 }
+
+/* Sonner toasts above modals / overlays */
+[data-sonner-toaster] {
+  z-index: 11000 !important;
+}
+
+[data-sonner-toast][data-styled="false"] {
+  padding: 0 !important;
+  margin: 0 !important;
+  background: transparent !important;
+  border: none !important;
+  box-shadow: none !important;
+  min-height: 0 !important;
+}
