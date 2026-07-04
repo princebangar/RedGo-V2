@@ -145,6 +145,16 @@ const SidebarSkeleton = ({ isCollapsed }) => {
   )
 }
 
+
+/** Dispatch refresh for sidebar notification badges. Optional key optimistically decrements before refetch. */
+export function refreshSidebarBadges(decrement) {
+  window.dispatchEvent(
+    new CustomEvent("refresh-sidebar-badges", {
+      detail: decrement ? { decrement } : undefined,
+    }),
+  )
+}
+
 export default function AdminSidebar({ isOpen = false, onClose, onCollapseChange }) {
   const location = useLocation()
   const navigationType = useNavigationType()
@@ -169,10 +179,22 @@ export default function AdminSidebar({ isOpen = false, onClose, onCollapseChange
         setIsLoading(false)
       }
     }
+
+    const handleRefreshBadges = (event) => {
+      const decrement = event?.detail?.decrement
+      if (decrement) {
+        setBadges((prev) => ({
+          ...prev,
+          [decrement]: Math.max(0, (prev[decrement] ?? 0) - 1),
+        }))
+      }
+      fetchBadges()
+    }
+
     fetchBadges()
     const timer = setInterval(fetchBadges, 15000)
 
-    window.addEventListener('refresh-sidebar-badges', fetchBadges)
+    window.addEventListener("refresh-sidebar-badges", handleRefreshBadges)
 
     // Fallback timer to turn off loading in case network hangs or is slow
     const fallbackTimer = setTimeout(() => {
@@ -182,7 +204,7 @@ export default function AdminSidebar({ isOpen = false, onClose, onCollapseChange
     return () => {
       clearInterval(timer)
       clearTimeout(fallbackTimer)
-      window.removeEventListener('refresh-sidebar-badges', fetchBadges)
+      window.removeEventListener("refresh-sidebar-badges", handleRefreshBadges)
     }
   }, [])
 

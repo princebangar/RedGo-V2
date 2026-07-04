@@ -57,6 +57,15 @@ export default function AdminLayout() {
     setIsSidebarCollapsed(collapsed)
   }
 
+  // Offset dialogs toward the main content area (sidebar is fixed; viewport center sits too far left).
+  useEffect(() => {
+    const offset = isSidebarCollapsed ? "2.5rem" : "10rem"
+    document.documentElement.style.setProperty("--admin-sidebar-offset", offset)
+    return () => {
+      document.documentElement.style.removeProperty("--admin-sidebar-offset")
+    }
+  }, [isSidebarCollapsed])
+
   // Dynamic back button target detection (runs safe check via React Portal)
   // Dynamic back button target detection (runs safe check via direct DOM insertion)
   useLayoutEffect(() => {

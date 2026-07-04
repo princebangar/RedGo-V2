@@ -4,6 +4,7 @@ import {
   FileText, Image as ImageIcon, ExternalLink, CreditCard, Calendar, Star, Building2, User, Phone, Mail, MapPin, Clock
 } from "lucide-react"
 import { adminAPI, restaurantAPI } from "@food/api"
+import { refreshSidebarBadges } from "@food/components/admin/AdminSidebar"
 const debugLog = (...args) => {}
 const debugWarn = (...args) => {}
 const debugError = (...args) => {}
@@ -176,6 +177,7 @@ export default function JoiningRequest() {
         setProcessing(true)
         await adminAPI.approveRestaurant(request._id)
         
+        refreshSidebarBadges("restaurants")
         // Refresh the list
         await fetchRequests()
         
@@ -205,6 +207,7 @@ export default function JoiningRequest() {
       setProcessing(true)
       await adminAPI.rejectRestaurant(selectedRequest._id, rejectionReason)
       
+      refreshSidebarBadges("restaurants")
       // Refresh the list
       await fetchRequests()
       
