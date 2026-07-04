@@ -1081,10 +1081,7 @@ export function useLocation() {
               const isInIndiaRange = latitude >= 6.5 && latitude <= 37.1 && longitude >= 68.7 && longitude <= 97.4 && longitude > 0
 
               if (!isInIndiaRange || longitude < 0) {
-                // Coordinates are outside India (Mocking or VPN) - route coordinates to Indore (Vijay Nagar) to reverse geocode a real Indian address
-                debugWarn("?? Coordinates outside India range (Mocking to Indore Vijay Nagar):", { latitude, longitude })
-                finalLat = 22.7533
-                finalLng = 75.8937
+                debugWarn("?? Coordinates outside India range:", { latitude, longitude })
               }
 
               debugLog("?? Calling reverse geocode with coordinates:", { latitude: finalLat, longitude: finalLng })
@@ -1264,8 +1261,8 @@ export function useLocation() {
               // Retry with lower accuracy - faster response (uses network-based location)
               getPositionWithRetry({
                 enableHighAccuracy: false,
-                timeout: 3000,  // 3 seconds for lower accuracy (network-based is faster)
-                maximumAge: 300000 // Allow 5 minute old cached location for instant response
+                timeout: forceFresh ? 12000 : 8000,
+                maximumAge: forceFresh ? 0 : 300000,
               }, 1).then(resolve).catch(reject)
               return
             }
@@ -1276,6 +1273,15 @@ export function useLocation() {
             } else {
               debugError("? Geolocation error:", err.code, err.message)
             }
+
+            // Explicit user action must not silently reuse stale cached coordinates.
+            if (forceFresh && showLoading) {
+              setPermissionGranted(false)
+              if (showLoading) setGlobalLocationLoading(false)
+              reject(err)
+              return
+            }
+
             // Try multiple fallback strategies
             try {
               // Strategy 1: Use DB location if available
@@ -1339,9 +1345,9 @@ export function useLocation() {
     // If forceFresh is true, don't use cached location (maximumAge: 0)
     // Otherwise, allow cached location for faster response
     return getPositionWithRetry({
-      enableHighAccuracy: true,  // Use GPS for exact location (highest accuracy)
-      timeout: 3000,             // Optimized 3s timeout for hardware GPS cold starts (best balance)
-      maximumAge: forceFresh ? 300000 : 600000  // Allow up to 5 mins cached coordinates to deliver instant locks
+      enableHighAccuracy: true,
+      timeout: forceFresh ? 15000 : 10000,
+      maximumAge: forceFresh ? 0 : 120000,
     })
   }
 
