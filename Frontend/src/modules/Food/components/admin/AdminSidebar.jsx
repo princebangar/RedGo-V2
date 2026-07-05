@@ -155,6 +155,31 @@ export function refreshSidebarBadges(decrement) {
   )
 }
 
+function dispatchAdminListRefresh(counts, changedKeys) {
+  if (!changedKeys?.length) return
+  window.dispatchEvent(
+    new CustomEvent("admin-list-refresh", {
+      detail: { counts, changedKeys },
+    }),
+  )
+}
+
+function getBadgeKeyForPath(path = "") {
+  const p = String(path || "").toLowerCase()
+  if (p.includes("food-approval")) return "foodApprovals"
+  if (p.includes("restaurants/joining-request")) return "restaurants"
+  if (p.includes("delivery-partners/join-request")) return "deliveryPartners"
+  if (p.includes("orders/pending")) return "orders"
+  return null
+}
+
+function refreshAdminListForPath(path = "") {
+  const key = getBadgeKeyForPath(path)
+  if (key) {
+    dispatchAdminListRefresh({}, [key])
+  }
+}
+
 export default function AdminSidebar({ isOpen = false, onClose, onCollapseChange }) {
   const location = useLocation()
   const navigationType = useNavigationType()
@@ -164,6 +189,8 @@ export default function AdminSidebar({ isOpen = false, onClose, onCollapseChange
   const sidebarNavRef = useRef(null)
   const lastScrolledPathname = useRef(null)
   const hasScrolledOnMount = useRef(false)
+  const badgeCountsRef = useRef({})
+  const pendingNavScrollPath = useRef(null)
   const [isLoading, setIsLoading] = useState(true)
 
   useEffect(() => {
@@ -171,7 +198,16 @@ export default function AdminSidebar({ isOpen = false, onClose, onCollapseChange
       try {
         const res = await adminAPI.getSidebarBadges()
         if (res?.data?.success) {
-          setBadges(res.data.counts || {})
+          const nextCounts = res.data.counts || {}
+          const prevCounts = badgeCountsRef.current || {}
+          const changedKeys = Object.keys({ ...prevCounts, ...nextCounts }).filter(
+            (key) => (prevCounts[key] ?? 0) !== (nextCounts[key] ?? 0),
+          )
+          badgeCountsRef.current = nextCounts
+          setBadges(nextCounts)
+          if (changedKeys.length > 0) {
+            dispatchAdminListRefresh(nextCounts, changedKeys)
+          }
         }
       } catch (error) {
         debugError("Error fetching sidebar badges:", error)
@@ -526,16 +562,21 @@ export default function AdminSidebar({ isOpen = false, onClose, onCollapseChange
   const scrollToActiveItem = (behavior = "auto") => {
     if (typeof document === "undefined" || !sidebarNavRef.current) return
     const container = sidebarNavRef.current
-    const activeElement = container.querySelector('[data-active="true"]')
+    const activeElements = container.querySelectorAll('[data-active="true"]')
+    const activeElement = activeElements.length
+      ? activeElements[activeElements.length - 1]
+      : null
     if (activeElement) {
       const containerRect = container.getBoundingClientRect()
       const activeRect = activeElement.getBoundingClientRect()
       
       const relativeTop = activeRect.top - containerRect.top + container.scrollTop
       const targetScrollTop = relativeTop - (containerRect.height / 2) + (activeRect.height / 2)
+      const maxScroll = Math.max(0, container.scrollHeight - container.clientHeight)
+      const clampedTop = Math.max(0, Math.min(targetScrollTop, maxScroll))
       
       container.scrollTo({
-        top: targetScrollTop,
+        top: clampedTop,
         behavior: behavior
       })
       lastScrolledPathname.current = location.pathname
@@ -549,17 +590,19 @@ export default function AdminSidebar({ isOpen = false, onClose, onCollapseChange
     const containerRect = container.getBoundingClientRect()
     const elementRect = element.getBoundingClientRect()
     
-    const relativeTop = elementRect.top - containerRect.top
-    const relativeBottom = elementRect.bottom - containerRect.top
+    const relativeTop = elementRect.top - containerRect.top + container.scrollTop
+    const relativeBottom = relativeTop + elementRect.height
+    const maxScroll = Math.max(0, container.scrollHeight - container.clientHeight)
     
-    if (relativeTop < 0) {
+    if (relativeTop < container.scrollTop) {
       container.scrollTo({
-        top: container.scrollTop + relativeTop,
+        top: Math.max(0, relativeTop - 8),
         behavior: behavior
       })
-    } else if (relativeBottom > containerRect.height) {
+    } else if (relativeBottom > container.scrollTop + containerRect.height) {
+      const nextTop = relativeBottom - containerRect.height + 8
       container.scrollTo({
-        top: container.scrollTop + (relativeBottom - containerRect.height),
+        top: Math.min(maxScroll, nextTop),
         behavior: behavior
       })
     }
@@ -580,9 +623,8 @@ export default function AdminSidebar({ isOpen = false, onClose, onCollapseChange
     }
   }, [isLoading])
 
-  // 2. Smoothly scroll active sidebar item into the center of the sidebar on user route navigation clicks.
+  // 2. Smoothly scroll active sidebar item into the center on route navigation.
   useEffect(() => {
-    // Skip if it hasn't finished initial mount scroll
     if (!hasScrolledOnMount.current) {
       return
     }
@@ -591,12 +633,35 @@ export default function AdminSidebar({ isOpen = false, onClose, onCollapseChange
       return
     }
 
-    const timer = setTimeout(() => {
-      scrollToActiveItem("smooth")
-    }, 200)
+    pendingNavScrollPath.current = location.pathname
 
-    return () => clearTimeout(timer)
+    const timer1 = setTimeout(() => {
+      scrollToActiveItem("smooth")
+    }, 180)
+
+    const timer2 = setTimeout(() => {
+      if (pendingNavScrollPath.current === location.pathname) {
+        scrollToActiveItem("smooth")
+        pendingNavScrollPath.current = null
+      }
+    }, 420)
+
+    return () => {
+      clearTimeout(timer1)
+      clearTimeout(timer2)
+    }
   }, [location.pathname])
+
+  // After expandable section opens for the new route, center the active link again.
+  useLayoutEffect(() => {
+    if (!hasScrolledOnMount.current || !pendingNavScrollPath.current) return
+    if (pendingNavScrollPath.current !== location.pathname) return
+
+    const frame = requestAnimationFrame(() => {
+      scrollToActiveItem("auto")
+    })
+    return () => cancelAnimationFrame(frame)
+  }, [location.pathname, expandedSections])
 
   useEffect(() => {
     try {
@@ -640,7 +705,10 @@ export default function AdminSidebar({ isOpen = false, onClose, onCollapseChange
           key={index}
           to={item.path}
           data-active={isActive(item.path) ? "true" : undefined}
-          onClick={(e) => {
+          onClick={() => {
+            if (isActive(item.path)) {
+              refreshAdminListForPath(item.path)
+            }
             if (window.innerWidth < 1024 && onClose) {
               onClose()
             }
@@ -744,7 +812,10 @@ export default function AdminSidebar({ isOpen = false, onClose, onCollapseChange
                     key={subIndex}
                     to={subItem.path}
                     data-active={isActive(subItem.path, allSubPaths) ? "true" : undefined}
-                    onClick={(e) => {
+                    onClick={() => {
+                      if (isActive(subItem.path, allSubPaths)) {
+                        refreshAdminListForPath(subItem.path)
+                      }
                       if (window.innerWidth < 1024 && onClose) {
                         onClose()
                       }

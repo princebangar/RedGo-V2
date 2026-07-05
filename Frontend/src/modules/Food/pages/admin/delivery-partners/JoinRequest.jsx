@@ -5,6 +5,7 @@ import { toast } from "sonner"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@food/components/ui/dialog"
 import { exportJoinRequestsToExcel, exportJoinRequestsToPDF } from "@food/components/admin/deliveryman/joinRequestExportUtils"
 import { refreshSidebarBadges } from "@food/components/admin/AdminSidebar"
+import { useAdminBadgeListRefresh } from "@food/hooks/useAdminBadgeListRefresh"
 const debugLog = (...args) => {}
 const debugWarn = (...args) => {}
 const debugError = (...args) => {}
@@ -101,6 +102,28 @@ export default function JoinRequest() {
       fetchJoinRequests()
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeTab, debouncedSearch, filters, isFilterOpen])
+
+  useAdminBadgeListRefresh("deliveryPartners", fetchJoinRequests, [
+    activeTab,
+    debouncedSearch,
+    filters,
+    isFilterOpen,
+  ])
+
+  useEffect(() => {
+    const onFocus = () => fetchJoinRequests({ silent: true })
+    const onVisibility = () => {
+      if (document.visibilityState === "visible") {
+        fetchJoinRequests({ silent: true })
+      }
+    }
+    window.addEventListener("focus", onFocus)
+    document.addEventListener("visibilitychange", onVisibility)
+    return () => {
+      window.removeEventListener("focus", onFocus)
+      document.removeEventListener("visibilitychange", onVisibility)
+    }
   }, [activeTab, debouncedSearch, filters, isFilterOpen])
 
   const filteredRequests = useMemo(() => {

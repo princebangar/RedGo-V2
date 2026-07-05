@@ -7,6 +7,7 @@ import { adminAPI, restaurantAPI } from "@food/api"
 import { toast } from "sonner"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@food/components/ui/dialog"
 import { refreshSidebarBadges } from "@food/components/admin/AdminSidebar"
+import { useAdminBadgeListRefresh } from "@food/hooks/useAdminBadgeListRefresh"
 const debugLog = (...args) => {}
 const debugWarn = (...args) => {}
 const debugError = (...args) => {}
@@ -47,14 +48,9 @@ export default function JoiningRequest() {
   // Track first render to avoid duplicate fetch in React StrictMode
   const hasFetchedOnceRef = useRef(false)
 
-  // Fetch restaurant join requests
-  useEffect(() => {
-    fetchRequests()
-  }, [])
-
-  const fetchRequests = async () => {
+  const fetchRequests = async ({ silent = false } = {}) => {
     try {
-      setLoading(true)
+      if (!silent) setLoading(true)
       setError(null)
 
       const response = await adminAPI.getPendingRestaurants()
@@ -62,12 +58,36 @@ export default function JoiningRequest() {
       setPendingRequests(list.filter((r) => String(r.status || "").toLowerCase() === "pending"))
     } catch (err) {
       debugError("Error fetching restaurant requests:", err)
-      setError(err.message || "Failed to fetch restaurant requests")
-      setPendingRequests([])
+      if (!silent) {
+        setError(err.message || "Failed to fetch restaurant requests")
+        setPendingRequests([])
+      }
     } finally {
-      setLoading(false)
+      if (!silent) setLoading(false)
     }
   }
+
+  useAdminBadgeListRefresh("restaurants", fetchRequests, [])
+
+  // Fetch restaurant join requests
+  useEffect(() => {
+    fetchRequests()
+  }, [])
+
+  useEffect(() => {
+    const onFocus = () => fetchRequests({ silent: true })
+    const onVisibility = () => {
+      if (document.visibilityState === "visible") {
+        fetchRequests({ silent: true })
+      }
+    }
+    window.addEventListener("focus", onFocus)
+    document.addEventListener("visibilitychange", onVisibility)
+    return () => {
+      window.removeEventListener("focus", onFocus)
+      document.removeEventListener("visibilitychange", onVisibility)
+    }
+  }, [])
 
   const currentRequests = pendingRequests
 
@@ -195,7 +215,7 @@ export default function JoiningRequest() {
       setSelectedRequest(null)
       refreshSidebarBadges("restaurants")
       toast.success(`Successfully approved ${restaurantName}'s join request!`)
-      await fetchRequests()
+      await fetchRequests({ silent: true })
     } catch (err) {
       debugError("Error approving request:", err)
       toast.error(err.response?.data?.message || "Failed to approve request. Please try again.")
@@ -230,7 +250,7 @@ export default function JoiningRequest() {
       setSelectedRequest(null)
       setRejectionReason("")
       toast.success(`Successfully rejected ${restaurantName}'s join request!`)
-      await fetchRequests()
+      await fetchRequests({ silent: true })
     } catch (err) {
       debugError("Error rejecting request:", err)
       toast.error(err.response?.data?.message || "Failed to reject request. Please try again.")

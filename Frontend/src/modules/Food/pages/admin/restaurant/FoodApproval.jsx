@@ -11,6 +11,7 @@ import {
 } from "@food/components/ui/dialog"
 import { adminAPI } from "@food/api"
 import { refreshSidebarBadges } from "@food/components/admin/AdminSidebar"
+import { useAdminBadgeListRefresh } from "@food/hooks/useAdminBadgeListRefresh"
 import { toast } from "sonner"
 const debugLog = (...args) => {}
 const debugWarn = (...args) => {}
@@ -133,6 +134,8 @@ export default function FoodApproval() {
       }
     }
   }, [])
+
+  useAdminBadgeListRefresh("foodApprovals", fetchFoodRequests, [fetchFoodRequests])
 
   useEffect(() => {
     isMountedRef.current = true
