@@ -45,25 +45,40 @@ function getTargetPathFromPayload(payload = {}) {
 
 async function hasVisibleClientForTarget(payload = {}) {
   const windowClients = await clients.matchAll({ type: "window", includeUncontrolled: true });
+  const hasExplicitTarget = Boolean(
+    payload?.data?.targetUrl ||
+      payload?.data?.link ||
+      payload?.data?.click_action ||
+      payload?.fcmOptions?.link,
+  );
+
+  // Approval / onboarding pushes often have no target — always show OS notification.
+  if (!hasExplicitTarget) {
+    return false;
+  }
+
   const targetPath = getTargetPathFromPayload(payload);
-  const targetRoot = `/${String(targetPath).split("/").filter(Boolean)[0] || ""}`;
+  const normalizedTarget =
+    targetPath.length > 1 && targetPath.endsWith("/")
+      ? targetPath.slice(0, -1)
+      : targetPath;
+
   const visibleClient = windowClients.find((client) => {
     const isVisible = client.visibilityState === "visible" || client.focused;
     if (!isVisible) return false;
     try {
-      const clientUrl = new URL(client.url);
-      if (targetRoot === "/" || !targetRoot) {
-        return true;
+      const clientPath = new URL(client.url).pathname.replace(/\/$/, "") || "/";
+      if (normalizedTarget === "/" || !normalizedTarget) {
+        return false;
       }
-      return clientUrl.pathname.startsWith(targetRoot);
+      return clientPath === normalizedTarget || clientPath.startsWith(`${normalizedTarget}/`);
     } catch {
       return false;
     }
   });
   pushDebugLog(PUSH_DEBUG_PREFIX, "Visible client check", {
     count: windowClients.length,
-    targetPath,
-    targetRoot,
+    targetPath: normalizedTarget,
     hasVisibleClient: Boolean(visibleClient),
     clients: windowClients.map((client) => ({
       url: client.url,

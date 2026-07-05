@@ -15,7 +15,7 @@ import {
   saveSignupDocumentToDB,
 } from "../../utils/deliveryOnboardingStorage"
 import {
-  collectFcmTokenFast,
+  collectFcmTokenForSignup,
   finalizeDeliveryPendingSubmission,
   prefetchModuleFcmToken,
 } from "@food/utils/firebaseMessaging"
@@ -192,6 +192,8 @@ export default function SignupStep2() {
       return
     }
 
+    const { fcmToken, platform } = await collectFcmTokenForSignup("delivery")
+
     const formData = new FormData()
     formData.append("name", details.name || "")
     formData.append("phone", String(details.phone || "").replace(/\D/g, "").slice(0, 15))
@@ -214,21 +216,6 @@ export default function SignupStep2() {
     formData.append("aadharPhoto", resolvedDocuments.aadharPhoto)
     formData.append("panPhoto", resolvedDocuments.panPhoto)
     formData.append("drivingLicensePhoto", resolvedDocuments.drivingLicensePhoto)
-
-    let fcmToken = null
-    let platform = "web"
-    try {
-      const collected = await collectFcmTokenFast("delivery")
-      fcmToken = collected.fcmToken
-      platform = collected.platform
-      if (!fcmToken) {
-        const retry = await collectFcmTokenFast("delivery", { maxAttempts: 8, delayMs: 250 })
-        fcmToken = retry.fcmToken
-        platform = retry.platform
-      }
-    } catch (error) {
-      debugError("Failed to get FCM token during signup", error)
-    }
 
     if (fcmToken) {
       formData.append("fcmToken", fcmToken)

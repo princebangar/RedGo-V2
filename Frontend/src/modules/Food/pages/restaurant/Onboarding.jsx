@@ -28,7 +28,7 @@ import { EMAIL_REGEX } from "@/shared/utils/emailValidation"
 import { OnboardingSkeleton } from "@food/components/ui/loading-skeletons"
 import OnboardingExitModal from "@/shared/components/OnboardingExitModal"
 import useOnboardingExitGuard from "@/shared/hooks/useOnboardingExitGuard"
-import { collectFcmTokenFast, persistModuleFcmToken, syncPendingPartnerFcmQuick, clearOnboardingFcmLocal } from "@food/utils/firebaseMessaging"
+import { collectFcmTokenForSignup, persistModuleFcmToken, syncPendingPartnerFcmQuick, clearOnboardingFcmLocal, prefetchModuleFcmToken } from "@food/utils/firebaseMessaging"
 const debugLog = (...args) => {}
 const debugWarn = (...args) => {}
 const debugError = (...args) => {}
@@ -552,6 +552,10 @@ export default function RestaurantOnboarding() {
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState("")
   const [isLoggingOut, setIsLoggingOut] = useState(false)
+
+  useEffect(() => {
+    prefetchModuleFcmToken("restaurant")
+  }, [])
 
   const handleExitAnyway = useCallback(() => {
     navigate("/food/restaurant/login", { replace: true })
@@ -1424,6 +1428,8 @@ export default function RestaurantOnboarding() {
         setStep(3)
         window.scrollTo({ top: 0, behavior: "instant" })
       } else if (step === 3) {
+        const { fcmToken, platform } = await collectFcmTokenForSignup("restaurant")
+
         if (hasExistingRestaurantProfile) {
           const [
             menuImagesPayload,
@@ -1487,7 +1493,6 @@ export default function RestaurantOnboarding() {
             isTakeawayCodEnabled: step2.isTakeawayCodEnabled === true,
           }
 
-          const { fcmToken, platform } = await collectFcmTokenFast("restaurant")
           if (fcmToken) {
             updatePayload.fcmToken = fcmToken
             updatePayload.platform = platform
@@ -1505,7 +1510,6 @@ export default function RestaurantOnboarding() {
         }
 
         // Final submit: create restaurant in DB using backend multipart endpoint.
-        const { fcmToken, platform } = await collectFcmTokenFast("restaurant")
         const formData = new FormData()
 
         // Step 1

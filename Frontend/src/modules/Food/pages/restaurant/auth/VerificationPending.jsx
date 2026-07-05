@@ -11,12 +11,22 @@ import {
   clearModuleAuth,
 } from "@food/utils/auth"
 import { clearOnboardingFromLocalStorage } from "@food/utils/onboardingUtils"
-import { persistModuleFcmToken, syncPendingPartnerFcmQuick } from "@food/utils/firebaseMessaging"
+import {
+  enablePendingVerificationPush,
+  getWebNotificationPermission,
+  isNativeAppWebView,
+  persistModuleFcmToken,
+  setupPendingVerificationPushListeners,
+  syncNativeAppPushToken,
+  syncPendingPartnerFcmQuick,
+} from "@food/utils/firebaseMessaging"
 
 export default function VerificationPending() {
   const navigate = useNavigate()
   const location = useLocation()
   const [checkingStatus, setCheckingStatus] = useState(true)
+  const [pushPermission, setPushPermission] = useState(() => getWebNotificationPermission())
+  const [enablingPush, setEnablingPush] = useState(false)
 
   const [localStatus, setLocalStatus] = useState(() => {
     if (location.state?.isDisabled) {
@@ -85,29 +95,56 @@ export default function VerificationPending() {
   useEffect(() => {
     let cancelled = false
 
-    const syncPushToken = () => {
+    const syncPushToken = async () => {
       const phone =
         pendingPhone ||
         getRestaurantPendingPhone() ||
         ""
 
-      if (phone) {
-        syncPendingPartnerFcmQuick("restaurant", phone)
-      }
+      await setupPendingVerificationPushListeners("restaurant")
 
       if (cancelled) return
+
+      if (phone) {
+        if (isNativeAppWebView()) {
+          void syncNativeAppPushToken("restaurant", phone)
+        } else {
+          syncPendingPartnerFcmQuick("restaurant", phone)
+        }
+      }
 
       if (getModuleToken("restaurant")) {
         void persistModuleFcmToken("restaurant").catch(() => {})
       }
+
+      if (!cancelled) {
+        setPushPermission(getWebNotificationPermission())
+      }
     }
 
-    syncPushToken()
+    void syncPushToken()
 
     return () => {
       cancelled = true
     }
   }, [pendingPhone])
+
+  const handleEnablePush = async () => {
+    const phone = pendingPhone || getRestaurantPendingPhone() || ""
+    if (!phone || enablingPush) return
+    setEnablingPush(true)
+    try {
+      const saved = await enablePendingVerificationPush("restaurant", phone)
+      setPushPermission(getWebNotificationPermission())
+      if (saved) {
+        toast.success("Push notifications enabled")
+      } else if (getWebNotificationPermission() === "denied") {
+        toast.error("Notifications blocked. Enable them in browser settings.")
+      }
+    } finally {
+      setEnablingPush(false)
+    }
+  }
 
   useEffect(() => {
     let cancelled = false
@@ -305,7 +342,7 @@ export default function VerificationPending() {
                   <ShieldCheck className="mt-0.5 h-5 w-5 text-emerald-600" />
                   <div className="text-sm text-slate-700">
                     <p className="font-semibold text-slate-900">What happens next</p>
-                    <p className="mt-1">We will notify you on Gmail once the verification is approved.</p>
+                    <p className="mt-1">We will notify you by email and push notification once verification is approved.</p>
                     {pendingPhone ? (
                       <p className="mt-2 text-slate-500">
                         Registered phone: <span className="font-medium text-slate-700">{pendingPhone}</span>
@@ -370,19 +407,37 @@ export default function VerificationPending() {
                 </Button>
               </>
             ) : (
-              <Button
-                className="h-12 w-full rounded-xl text-base font-semibold transition-all duration-300 bg-gradient-to-br from-[#B80B3D] to-[#66001D] hover:opacity-90 text-white active:scale-[0.98]"
-                onClick={() => {
-                  syncFcmBeforeLeave()
-                  clearModuleAuth("restaurant")
-                  clearRestaurantPendingPhone()
-                  localStorage.removeItem("restaurant_pendingStatus")
-                  localStorage.removeItem("restaurant_pendingMessage")
-                  navigate("/food/restaurant/login", { replace: true })
-                }}
-              >
-                Back to login
-              </Button>
+              <>
+                {pushPermission !== "granted" && pushPermission !== "unsupported" && !isNativeAppWebView() ? (
+                  <Button
+                    className="h-12 w-full rounded-xl text-base font-semibold bg-emerald-600 hover:bg-emerald-700 text-white active:scale-[0.98] transition-all duration-300"
+                    disabled={enablingPush}
+                    onClick={handleEnablePush}
+                  >
+                    {enablingPush ? (
+                      <span className="inline-flex items-center gap-2">
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                        Enabling...
+                      </span>
+                    ) : (
+                      "Allow Mail Notifications"
+                    )}
+                  </Button>
+                ) : null}
+                <Button
+                  className="h-12 w-full rounded-xl text-base font-semibold transition-all duration-300 bg-gradient-to-br from-[#B80B3D] to-[#66001D] hover:opacity-90 text-white active:scale-[0.98]"
+                  onClick={() => {
+                    syncFcmBeforeLeave()
+                    clearModuleAuth("restaurant")
+                    clearRestaurantPendingPhone()
+                    localStorage.removeItem("restaurant_pendingStatus")
+                    localStorage.removeItem("restaurant_pendingMessage")
+                    navigate("/food/restaurant/login", { replace: true })
+                  }}
+                >
+                  Back to login
+                </Button>
+              </>
             )}
           </div>
         </div>

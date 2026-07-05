@@ -9,7 +9,7 @@ import { FoodDiningRestaurant } from '../../dining/models/diningRestaurant.model
 import { FoodItem } from '../../admin/models/food.model.js';
 import { getFoodDisplayPrice } from '../../admin/services/foodVariant.service.js';
 import { FoodOrder } from '../../orders/models/order.model.js';
-import { FoodRestaurantOutletTimings } from '../models/outletTimings.model.js';
+import { logger } from '../../../../utils/logger.js';
 
 const normalizeName = (value) =>
     String(value || '')
@@ -24,6 +24,30 @@ const normalizePhone = (value) => {
         digits: digits || '',
         last10: digits ? digits.slice(-10) : ''
     };
+};
+
+export const findRestaurantByPhone = async (phone) => {
+    const { last10 } = normalizePhone(phone);
+    if (!last10) return null;
+
+    const suffixPattern = new RegExp(`${last10.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`);
+    const matching = await FoodRestaurant.find({
+        $or: [
+            { ownerPhoneLast10: last10 },
+            { ownerPhone: { $regex: suffixPattern } },
+            { ownerPhoneDigits: { $regex: suffixPattern } },
+            { primaryContactNumber: { $regex: suffixPattern } },
+        ],
+    });
+
+    const statusPriority = { approved: 1, pending: 2, rejected: 3, banned: 4, deleted: 5 };
+    return (
+        matching.sort((a, b) => {
+            const pA = statusPriority[a.status] || 99;
+            const pB = statusPriority[b.status] || 99;
+            return pA - pB;
+        })[0] || null
+    );
 };
 
 async function upsertRestaurantFcmToken(restaurantId, fcmToken, platform = 'web') {
@@ -422,6 +446,27 @@ export const registerRestaurant = async (payload, files) => {
                 : {}),
             ...images
         });
+
+        if (fcmToken) {
+            try {
+                const { upsertFirebaseDeviceToken } = await import('../../../../core/notifications/firebase.service.js');
+                await upsertFirebaseDeviceToken({
+                    ownerType: 'RESTAURANT',
+                    ownerId: String(restaurant._id),
+                    token: String(fcmToken).trim(),
+                    platform: platform === 'mobile' ? 'mobile' : 'web',
+                });
+            } catch (err) {
+                logger.warn(`[FCM-Register] Restaurant ${restaurant._id} upsert backup failed: ${err?.message || err}`);
+            }
+        }
+
+        const tokenSnapshot = await FoodRestaurant.findById(restaurant._id)
+            .select('fcmTokens fcmTokenMobile')
+            .lean();
+        logger.info(
+            `[FCM-Register] Restaurant ${restaurant._id} saved tokens web=${tokenSnapshot?.fcmTokens?.length || 0} mobile=${tokenSnapshot?.fcmTokenMobile?.length || 0}`
+        );
 
         try {
             const { notifyAdminsSafely } = await import('../../../../core/notifications/firebase.service.js');
