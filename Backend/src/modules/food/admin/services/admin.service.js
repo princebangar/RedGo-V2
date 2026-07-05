@@ -3705,7 +3705,9 @@ async function sendRestaurantApprovalNotifications(restaurant, existing = {}, is
                 sendToAllDevices: true,
                 data: {
                     type: 'restaurant_approved',
-                    restaurantId
+                    restaurantId,
+                    targetUrl: '/food/restaurant/pending-verification',
+                    link: '/food/restaurant/pending-verification',
                 }
             }
         );
@@ -3771,7 +3773,9 @@ async function sendDeliveryApprovalNotifications(partner, existing = {}, isChang
                     sendToAllDevices: true,
                     data: {
                         type: 'onboarding_approved',
-                        partnerId
+                        partnerId,
+                        targetUrl: '/food/delivery/pending-verification',
+                        link: '/food/delivery/pending-verification',
                     }
                 }
             );

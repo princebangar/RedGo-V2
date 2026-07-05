@@ -5,7 +5,7 @@ import AuthRedirect from "@food/components/AuthRedirect"
 import Loader from "@food/components/Loader"
 import AuthInitializer from "@food/components/AuthInitializer"
 import PushSoundEnableButton from "@food/components/PushSoundEnableButton"
-import { registerWebPushForCurrentModule } from "@food/utils/firebaseMessaging"
+import { initPushNotificationClient, registerWebPushForCurrentModule } from "@food/utils/firebaseMessaging"
 import { isModuleAuthenticated } from "@food/utils/auth"
 import { useRestaurantNotifications } from "@food/hooks/useRestaurantNotifications"
 import { AppShellSkeleton } from "./components/ui/loading-skeletons"
@@ -122,6 +122,7 @@ export default function App() {
   const navigate = useNavigate()
 
   useEffect(() => {
+    initPushNotificationClient()
     registerWebPushForCurrentModule(location.pathname)
   }, [location.pathname])
 

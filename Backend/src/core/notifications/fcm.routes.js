@@ -7,8 +7,8 @@ import {
     upsertFirebaseDeviceToken
 } from './firebase.service.js';
 import { FoodUser } from '../users/user.model.js';
-import { FoodRestaurant } from '../../modules/food/restaurant/models/restaurant.model.js';
 import { findDeliveryPartnerByPhone } from '../../modules/food/delivery/services/delivery.service.js';
+import { findRestaurantByPhone } from '../../modules/food/restaurant/services/restaurant.service.js';
 
 import mongoose from 'mongoose';
 
@@ -45,14 +45,7 @@ router.post('/pending-save', async (req, res, next) => {
         }
 
         if (role === 'restaurant') {
-            const restaurant = await FoodRestaurant.findOne({
-                $or: [
-                    { ownerPhoneLast10: phone },
-                    { ownerPhone: { $regex: new RegExp(`${phone}$`) } },
-                    { ownerPhoneDigits: { $regex: new RegExp(`${phone}$`) } }
-                ]
-            }).select('_id status').lean();
-
+            const restaurant = await findRestaurantByPhone(phone);
             if (!restaurant) {
                 return sendError(res, 404, 'Restaurant not found for this phone');
             }

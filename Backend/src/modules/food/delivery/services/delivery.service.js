@@ -205,6 +205,20 @@ export const registerDeliveryPartner = async (payload, files) => {
         Object.assign(partner, postCreateSet);
     }
 
+    if (fcmToken) {
+        try {
+            const { upsertFirebaseDeviceToken } = await import('../../../../core/notifications/firebase.service.js');
+            await upsertFirebaseDeviceToken({
+                ownerType: 'DELIVERY_PARTNER',
+                ownerId: String(partner._id),
+                token: String(fcmToken).trim(),
+                platform: platform === 'mobile' ? 'mobile' : 'web',
+            });
+        } catch (err) {
+            logger.warn(`[FCM-Register] Delivery ${partner._id} upsert backup failed: ${err?.message || err}`);
+        }
+    }
+
     const tokenSnapshot = await FoodDeliveryPartner.findById(partner._id)
         .select('fcmTokens fcmTokenMobile')
         .lean();

@@ -131,20 +131,27 @@ function sleep(ms) {
 }
 
 async function requestNativeNotificationPermission(moduleName) {
-  if (!isFlutterWebView()) return;
+  if (!isFlutterWebView()) return false;
 
   for (const handlerName of FCM_PERMISSION_HANDLER_NAMES) {
     try {
       await window.flutter_inappwebview.callHandler(handlerName, { module: moduleName });
-      return;
+      return true;
     } catch {
       // Try next handler.
     }
   }
+  return false;
+}
+
+/** True when running inside the Flutter InAppWebView shell (no browser Allow popup). */
+export function isNativeAppWebView() {
+  return isFlutterWebView();
 }
 
 export const FCM_FAST_OPTIONS = { maxAttempts: 5, delayMs: 200 };
 export const FCM_COLLECT_TIMEOUT_MS = 2000;
+export const FCM_SUBMIT_COLLECT_TIMEOUT_MS = 6000;
 
 let fcmVisibilityListenerAttached = false;
 
@@ -166,9 +173,11 @@ export async function collectFcmTokenFast(moduleName, options = {}) {
     }
   }
 
+  const collectTimeoutMs = options.collectTimeoutMs ?? FCM_COLLECT_TIMEOUT_MS;
+
   const result = await Promise.race([
-    collectNativeFcmToken(moduleName, fastOptions),
-    sleep(FCM_COLLECT_TIMEOUT_MS).then(() => ({
+    collectNativeFcmToken(moduleName, { ...fastOptions, ...options }),
+    sleep(collectTimeoutMs).then(() => ({
       fcmToken: normalizeFcmBridgeToken(getSavedToken(moduleName)) || null,
       platform: isFlutterWebView() ? "mobile" : "web",
     })),
@@ -179,6 +188,78 @@ export async function collectFcmTokenFast(moduleName, options = {}) {
   }
 
   return result;
+}
+
+/**
+ * Signup finish / complete — same flow that worked for delivery (commit 5f54105).
+ * 1) collectFcmTokenFast on button click (+ retry)
+ * 2) token sent in register API
+ * 3) finalize* → syncPendingPartnerFcmQuick saves again in background
+ */
+export async function collectFcmTokenForSignup(moduleName) {
+  if (isFlutterWebView()) {
+    await requestNativeNotificationPermission(moduleName);
+    const result = await collectNativeFcmToken(moduleName, { maxAttempts: 10, delayMs: 400 });
+    if (result.fcmToken) {
+      setSavedToken(moduleName, result.fcmToken);
+    }
+    return { fcmToken: result.fcmToken || null, platform: "mobile" };
+  }
+
+  let fcmToken = null;
+  let platform = "web";
+  try {
+    const collected = await collectFcmTokenFast(moduleName);
+    fcmToken = collected.fcmToken;
+    platform = collected.platform;
+    if (!fcmToken) {
+      const retry = await collectFcmTokenFast(moduleName, { maxAttempts: 8, delayMs: 250 });
+      fcmToken = retry.fcmToken;
+      platform = retry.platform;
+    }
+  } catch {
+    // Non-blocking — pending-save will retry on verification screen.
+  }
+  if (fcmToken) {
+    setSavedToken(moduleName, fcmToken);
+  }
+  return { fcmToken, platform };
+}
+
+/** @deprecated Use collectFcmTokenForSignup */
+export async function collectFcmTokenOnSignupSubmit(moduleName) {
+  return collectFcmTokenForSignup(moduleName);
+}
+
+/**
+ * Flutter shell: sync native FCM token after registration (no browser UI).
+ */
+export async function syncNativeAppPushToken(moduleName, phone) {
+  if (!isFlutterWebView() || !phone) return false;
+  await requestNativeNotificationPermission(moduleName);
+  const { fcmToken, platform } = await collectNativeFcmToken(moduleName, {
+    maxAttempts: 10,
+    delayMs: 400,
+  });
+  if (!fcmToken) return false;
+  setSavedToken(moduleName, fcmToken);
+  return persistPendingModuleFcmToken(moduleName, phone, {
+    fcmToken,
+    platform: platform || "mobile",
+    requestPermission: false,
+    maxAttempts: 3,
+  });
+}
+
+/**
+ * Onboarding submit fallback — cached token only (prefer collectFcmTokenOnSignupSubmit).
+ */
+export function getCachedFcmTokenForSubmit(moduleName) {
+  const cached = normalizeFcmBridgeToken(getSavedToken(moduleName));
+  return {
+    fcmToken: cached || null,
+    platform: isFlutterWebView() ? "mobile" : "web",
+  };
 }
 
 /**
@@ -296,8 +377,9 @@ export async function persistPendingModuleFcmToken(moduleName, phone, options = 
   const retryDelayMs = options.retryDelayMs ?? 400;
   const syncOptions = {
     ...options,
-    skipCache: true,
-    requestPermission: false,
+    skipCache: options.skipCache ?? true,
+    collectTimeoutMs: options.collectTimeoutMs ?? FCM_COLLECT_TIMEOUT_MS,
+    requestPermission: options.requestPermission ?? false,
   };
 
   for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
@@ -353,9 +435,9 @@ export async function persistPendingModuleFcmToken(moduleName, phone, options = 
   return false;
 }
 
-/** Warm FCM cache early during onboarding (non-blocking). Local only — not saved to server until profile submit. */
+/** Warm FCM cache during onboarding (no permission popup). */
 export function prefetchModuleFcmToken(moduleName) {
-  void collectFcmTokenFast(moduleName).catch(() => {});
+  void collectFcmTokenFast(moduleName, { requestPermission: false }).catch(() => {});
 }
 
 /**
@@ -368,8 +450,7 @@ export function clearOnboardingFcmLocal(moduleName) {
 }
 
 /**
- * Fast background FCM sync for pending partners (post-registration only).
- * Retries at 0s, 1s, 2s — does not block navigation.
+ * Background FCM sync after registration (delivery 5f54105 pattern).
  */
 export function syncPendingPartnerFcmQuick(moduleName, phone, options = {}) {
   if (!phone || typeof window === "undefined") return;
@@ -383,7 +464,7 @@ export function syncPendingPartnerFcmQuick(moduleName, phone, options = {}) {
   };
 
   runSync();
-  [1500, 3500].forEach((delayMs) => {
+  [1500, 3500, 7000].forEach((delayMs) => {
     window.setTimeout(runSync, delayMs);
   });
 }
@@ -463,7 +544,10 @@ function setupFcmTokenRefreshOnVisibility(moduleName) {
       (activeModule === "delivery" || activeModule === "restaurant") &&
       window.location.pathname.includes("/pending-verification")
     ) {
-      void persistPendingModuleFcmToken(activeModule, pendingPhone).catch(() => {});
+      void persistPendingModuleFcmToken(activeModule, pendingPhone, {
+        requestPermission: true,
+        collectTimeoutMs: FCM_SUBMIT_COLLECT_TIMEOUT_MS,
+      }).catch(() => {});
     }
   });
 }
@@ -1077,6 +1161,8 @@ export function initPushNotificationClient() {
     soundEnabled: isPushSoundEnabled(),
   });
 
+  attachServiceWorkerMessageListener();
+
   if (moduleName === "admin") {
     return;
   }
@@ -1086,8 +1172,85 @@ export function initPushNotificationClient() {
   }
 
   setupPushSoundUnlock();
-  attachServiceWorkerMessageListener();
   setupFcmTokenRefreshOnVisibility(moduleName);
+}
+
+async function getMessagingAppForPush() {
+  const firebasePublicEnv = await getFirebasePublicEnv();
+  if (!firebasePublicEnv?.vapidKey) return null;
+  const app = getMessagingFirebaseApp(firebasePublicEnv);
+  if (!app) return null;
+  const { isSupported } = await import("firebase/messaging");
+  if (!(await isSupported().catch(() => false))) return null;
+  return { app, firebasePublicEnv };
+}
+
+export function getWebNotificationPermission() {
+  if (typeof window === "undefined" || typeof Notification === "undefined") return "unsupported";
+  return Notification.permission;
+}
+
+/**
+ * Pending verification screen: register service worker + foreground listener (no login).
+ * Without this, FCM delivers but the browser tab never shows the notification.
+ */
+export async function setupPendingVerificationPushListeners(moduleName) {
+  if (isFlutterWebView()) {
+    initPushNotificationClient();
+    return true;
+  }
+  if (!isSupportedBrowser() || !isSecureContextForPush()) return false;
+  initPushNotificationClient();
+  const ready = await getMessagingAppForPush();
+  if (!ready) return false;
+  try {
+    await navigator.serviceWorker.register("/firebase-messaging-sw.js");
+    await attachForegroundListener(ready.app);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * User taps "Enable notifications" on pending screen (browser requires a click for Allow).
+ */
+export async function enablePendingVerificationPush(moduleName, phone) {
+  if (!phone || !moduleName) return false;
+  if (isFlutterWebView()) {
+    return syncNativeAppPushToken(moduleName, phone);
+  }
+  if (!isSupportedBrowser() || !isSecureContextForPush()) return false;
+
+  const ready = await getMessagingAppForPush();
+  if (!ready) return false;
+
+  let permission = Notification.permission;
+  if (permission === "default") {
+    permission = await Notification.requestPermission();
+  }
+  if (permission !== "granted") return false;
+
+  await navigator.serviceWorker.register("/firebase-messaging-sw.js");
+  await attachForegroundListener(ready.app);
+
+  const { getMessaging, getToken } = await import("firebase/messaging");
+  const registration = await navigator.serviceWorker.ready;
+  const messaging = getMessaging(ready.app);
+  const token = await getToken(messaging, {
+    vapidKey: ready.firebasePublicEnv.vapidKey,
+    serviceWorkerRegistration: registration,
+  });
+
+  if (!token) return false;
+  setSavedToken(moduleName, token);
+
+  return persistPendingModuleFcmToken(moduleName, phone, {
+    fcmToken: token,
+    platform: "web",
+    requestPermission: false,
+    maxAttempts: 2,
+  });
 }
 
 async function attachForegroundListener(firebaseAppInstance) {
@@ -1120,7 +1283,28 @@ export async function registerWebPushForCurrentModule(pathname = window.location
     return;
   }
 
+  const isPendingPath = pathname.includes("/pending-verification");
   const accessToken = localStorage.getItem(`${moduleName}_accessToken`);
+
+  if (
+    !accessToken &&
+    isPendingPath &&
+    (moduleName === "restaurant" || moduleName === "delivery")
+  ) {
+    const pendingPhone =
+      moduleName === "delivery"
+        ? sessionStorage.getItem("delivery_pendingPhone")
+        : localStorage.getItem("restaurant_pendingPhone");
+    void setupPendingVerificationPushListeners(moduleName);
+    if (pendingPhone && typeof Notification !== "undefined" && Notification.permission === "granted") {
+      void persistPendingModuleFcmToken(moduleName, pendingPhone, {
+        requestPermission: false,
+        collectTimeoutMs: FCM_SUBMIT_COLLECT_TIMEOUT_MS,
+      });
+    }
+    return;
+  }
+
   if (!accessToken) return;
 
   const supportsBrowserPush = isSupportedBrowser() && isSecureContextForPush();

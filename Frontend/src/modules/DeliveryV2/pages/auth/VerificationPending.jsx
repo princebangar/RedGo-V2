@@ -2,7 +2,15 @@ import { useEffect, useMemo, useState } from "react"
 import { useLocation, useNavigate } from "react-router-dom"
 import { Clock3, ShieldCheck, AlertTriangle, X } from "lucide-react"
 import { clearModuleAuth } from "@food/utils/auth"
-import { persistModuleFcmToken, syncPendingPartnerFcmQuick } from "@food/utils/firebaseMessaging"
+import {
+  enablePendingVerificationPush,
+  getWebNotificationPermission,
+  isNativeAppWebView,
+  persistModuleFcmToken,
+  setupPendingVerificationPushListeners,
+  syncNativeAppPushToken,
+  syncPendingPartnerFcmQuick,
+} from "@food/utils/firebaseMessaging"
 
 const DELIVERY_PRIMARY_BTN =
   "h-12 w-full rounded-full text-base font-semibold bg-gradient-to-r from-[#0E4B9C] to-[#021024] hover:from-[#1157b5] hover:to-[#041630] text-white shadow-[0_8px_20px_rgba(14,75,156,0.25)] active:scale-[0.98] transition-all duration-300"
@@ -57,27 +65,53 @@ export default function VerificationPending() {
   }, [localMessage, rejectionReason])
 
   const isRejected = localStatus === "rejected"
+  const [pushPermission, setPushPermission] = useState(() => getWebNotificationPermission())
+  const [enablingPush, setEnablingPush] = useState(false)
 
   useEffect(() => {
     let cancelled = false
 
-    const syncPushToken = () => {
+    const syncPushToken = async () => {
       if (!pendingPhone) return
-      syncPendingPartnerFcmQuick("delivery", pendingPhone)
+      await setupPendingVerificationPushListeners("delivery")
 
       if (cancelled) return
+
+      if (isNativeAppWebView()) {
+        void syncNativeAppPushToken("delivery", pendingPhone)
+      } else {
+        syncPendingPartnerFcmQuick("delivery", pendingPhone)
+      }
 
       if (typeof localStorage !== "undefined" && localStorage.getItem("delivery_accessToken")) {
         void persistModuleFcmToken("delivery").catch(() => {})
       }
+
+      if (!cancelled) {
+        setPushPermission(getWebNotificationPermission())
+      }
     }
 
-    syncPushToken()
+    void syncPushToken()
 
     return () => {
       cancelled = true
     }
   }, [pendingPhone])
+
+  const handleEnablePush = async () => {
+    if (!pendingPhone || enablingPush) return
+    setEnablingPush(true)
+    try {
+      const saved = await enablePendingVerificationPush("delivery", pendingPhone)
+      setPushPermission(getWebNotificationPermission())
+      if (!saved && getWebNotificationPermission() === "denied") {
+        // silent — delivery page uses minimal UI
+      }
+    } finally {
+      setEnablingPush(false)
+    }
+  }
 
   const clearPendingState = () => {
     sessionStorage.removeItem("delivery_pendingPhone")
@@ -207,7 +241,7 @@ export default function VerificationPending() {
                   <ShieldCheck className="mt-0.5 h-5 w-5 text-[#0E4B9C]" />
                   <div className="text-sm text-slate-700">
                     <p className="font-semibold text-slate-900">What happens next</p>
-                    <p className="mt-1">We will notify you on Gmail once the verification is approved.</p>
+                    <p className="mt-1">We will notify you by email and push notification once verification is approved.</p>
                     {pendingPhone ? (
                       <p className="mt-2 text-slate-500">
                         Registered phone:{" "}
@@ -231,9 +265,21 @@ export default function VerificationPending() {
                 </button>
               </>
             ) : (
-              <button type="button" className={DELIVERY_PRIMARY_BTN} onClick={handleBackToLogin}>
-                Back to login
-              </button>
+              <>
+                {pushPermission !== "granted" && pushPermission !== "unsupported" && !isNativeAppWebView() ? (
+                  <button
+                    type="button"
+                    className="h-12 w-full rounded-full text-base font-semibold bg-emerald-600 hover:bg-emerald-700 text-white active:scale-[0.98] transition-all duration-300 disabled:opacity-70"
+                    disabled={enablingPush}
+                    onClick={handleEnablePush}
+                  >
+                    {enablingPush ? "Enabling..." : "Allow Mail Notifications"}
+                  </button>
+                ) : null}
+                <button type="button" className={DELIVERY_PRIMARY_BTN} onClick={handleBackToLogin}>
+                  Back to login
+                </button>
+              </>
             )}
           </div>
         </div>
