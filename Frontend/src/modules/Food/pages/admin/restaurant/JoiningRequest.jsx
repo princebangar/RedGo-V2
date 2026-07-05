@@ -4,6 +4,8 @@ import {
   FileText, Image as ImageIcon, ExternalLink, CreditCard, Calendar, Star, Building2, User, Phone, Mail, MapPin, Clock
 } from "lucide-react"
 import { adminAPI, restaurantAPI } from "@food/api"
+import { toast } from "sonner"
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@food/components/ui/dialog"
 import { refreshSidebarBadges } from "@food/components/admin/AdminSidebar"
 const debugLog = (...args) => {}
 const debugWarn = (...args) => {}
@@ -26,7 +28,9 @@ export default function JoiningRequest() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
   const [processing, setProcessing] = useState(false)
+  const [processingRequestId, setProcessingRequestId] = useState(null)
   const [selectedRequest, setSelectedRequest] = useState(null)
+  const [isApproveOpen, setIsApproveOpen] = useState(false)
   const [showRejectDialog, setShowRejectDialog] = useState(false)
   const [rejectionReason, setRejectionReason] = useState("")
   const [showDetailsModal, setShowDetailsModal] = useState(false)
@@ -171,23 +175,33 @@ export default function JoiningRequest() {
 
   const hasActiveFilters = filters.zone || filters.dateFrom || filters.dateTo
 
-  const handleApprove = async (request) => {
-    if (window.confirm(`Are you sure you want to approve "${request.restaurantName}" restaurant request?`)) {
-      try {
-        setProcessing(true)
-        await adminAPI.approveRestaurant(request._id)
-        
-        refreshSidebarBadges("restaurants")
-        // Refresh the list
-        await fetchRequests()
-        
-        alert(`Successfully approved ${request.restaurantName}'s join request!`)
-      } catch (err) {
-        debugError("Error approving request:", err)
-        alert(err.response?.data?.message || "Failed to approve request. Please try again.")
-      } finally {
-        setProcessing(false)
-      }
+  const handleApprove = (request) => {
+    setSelectedRequest(request)
+    setIsApproveOpen(true)
+  }
+
+  const confirmApprove = async () => {
+    if (!selectedRequest) return
+
+    const id = selectedRequest._id
+    const restaurantName = selectedRequest.restaurantName
+
+    try {
+      setProcessing(true)
+      setProcessingRequestId(id)
+      await adminAPI.approveRestaurant(id)
+      setPendingRequests((prev) => prev.filter((r) => r._id !== id))
+      setIsApproveOpen(false)
+      setSelectedRequest(null)
+      refreshSidebarBadges("restaurants")
+      toast.success(`Successfully approved ${restaurantName}'s join request!`)
+      await fetchRequests()
+    } catch (err) {
+      debugError("Error approving request:", err)
+      toast.error(err.response?.data?.message || "Failed to approve request. Please try again.")
+    } finally {
+      setProcessing(false)
+      setProcessingRequestId(null)
     }
   }
 
@@ -199,28 +213,30 @@ export default function JoiningRequest() {
 
   const confirmReject = async () => {
     if (!selectedRequest || !rejectionReason.trim()) {
-      alert("Please provide a rejection reason")
+      toast.error("Please provide a rejection reason")
       return
     }
 
+    const id = selectedRequest._id
+    const restaurantName = selectedRequest.restaurantName
+
     try {
       setProcessing(true)
-      await adminAPI.rejectRestaurant(selectedRequest._id, rejectionReason)
-      
+      setProcessingRequestId(id)
+      await adminAPI.rejectRestaurant(id, rejectionReason)
+      setPendingRequests((prev) => prev.filter((r) => r._id !== id))
       refreshSidebarBadges("restaurants")
-      // Refresh the list
-      await fetchRequests()
-      
       setShowRejectDialog(false)
       setSelectedRequest(null)
       setRejectionReason("")
-      
-      alert(`Successfully rejected ${selectedRequest.restaurantName}'s join request!`)
+      toast.success(`Successfully rejected ${restaurantName}'s join request!`)
+      await fetchRequests()
     } catch (err) {
       debugError("Error rejecting request:", err)
-      alert(err.response?.data?.message || "Failed to reject request. Please try again.")
+      toast.error(err.response?.data?.message || "Failed to reject request. Please try again.")
     } finally {
       setProcessing(false)
+      setProcessingRequestId(null)
     }
   }
 
@@ -412,8 +428,10 @@ export default function JoiningRequest() {
                     </td>
                   </tr>
                 ) : (
-                  sortedRequests.map((request, index) => (
-                    <tr key={request._id || index} className="hover:bg-slate-50 transition-colors">
+                  sortedRequests.map((request, index) => {
+                    const isRowProcessing = processingRequestId === request._id
+                    return (
+                    <tr key={request._id || index} className={`hover:bg-slate-50 transition-colors ${isRowProcessing ? "bg-blue-50/50" : ""}`}>
                       <td className="px-6 py-4 whitespace-nowrap">
                         <span className="text-sm font-medium text-slate-700">{request.sl ?? index + 1}</span>
                       </td>
@@ -456,6 +474,12 @@ export default function JoiningRequest() {
                         <span className="text-sm text-slate-700">{request.zone || "—"}</span>
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap">
+                        {isRowProcessing ? (
+                          <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-medium bg-amber-100 text-amber-700">
+                            <Loader2 className="w-3 h-3 animate-spin" />
+                            Processing...
+                          </span>
+                        ) : (
                         <span className={`px-3 py-1 rounded-full text-xs font-medium capitalize ${
                           String(request.status || "").toLowerCase() === "pending"
                             ? "bg-blue-100 text-blue-700"
@@ -463,6 +487,7 @@ export default function JoiningRequest() {
                         }`}>
                           {request.status}
                         </span>
+                        )}
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap text-center">
                         <div className="flex items-center justify-center gap-2">
@@ -481,7 +506,7 @@ export default function JoiningRequest() {
                                 className="p-1.5 rounded-full bg-green-50 text-green-600 hover:bg-green-100 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                                 title="Approve"
                               >
-                                <Check className="w-4 h-4" />
+                                {isRowProcessing ? <Loader2 className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />}
                               </button>
                               <button
                                 onClick={() => handleReject(request)}
@@ -496,7 +521,8 @@ export default function JoiningRequest() {
                         </div>
                       </td>
                     </tr>
-                  ))
+                    )
+                  })
                 )}
               </tbody>
             </table>
@@ -607,9 +633,40 @@ export default function JoiningRequest() {
         </div>
       )}
 
+      {/* Approve Confirmation Dialog */}
+      <Dialog open={isApproveOpen} onOpenChange={(open) => { if (!processing) setIsApproveOpen(open) }}>
+        <DialogContent className="max-w-md bg-white p-0 opacity-0 data-[state=open]:opacity-100 data-[state=closed]:opacity-0 transition-opacity duration-200 data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=open]:fade-in-0 data-[state=closed]:fade-out-0 data-[state=open]:scale-100 data-[state=closed]:scale-100">
+          <DialogHeader className="px-6 pt-6 pb-4">
+            <DialogTitle>Approve Request</DialogTitle>
+          </DialogHeader>
+          <div className="px-6 pb-6">
+            <p className="text-sm text-slate-700">
+              Are you sure you want to approve "{selectedRequest?.restaurantName}"'s join request?
+            </p>
+          </div>
+          <DialogFooter className="px-6 pb-6">
+            <button
+              onClick={() => setIsApproveOpen(false)}
+              disabled={processing}
+              className="px-4 py-2 text-sm font-medium rounded-lg border border-slate-300 bg-white text-slate-700 hover:bg-slate-50 transition-all disabled:opacity-50"
+            >
+              Cancel
+            </button>
+            <button
+              onClick={confirmApprove}
+              disabled={processing}
+              className="px-4 py-2 text-sm font-medium rounded-lg bg-green-600 text-white hover:bg-green-700 transition-all shadow-md disabled:opacity-50 flex items-center gap-2"
+            >
+              {processing && <Loader2 className="w-4 h-4 animate-spin" />}
+              Approve
+            </button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
       {/* Reject Confirmation Dialog */}
       {showRejectDialog && selectedRequest && (
-        <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-50 flex items-center justify-center p-4" onClick={() => setShowRejectDialog(false)}>
+        <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-50 flex items-center justify-center p-4" onClick={() => { if (!processing) setShowRejectDialog(false) }}>
           <div className="bg-white rounded-xl shadow-2xl max-w-md w-full" onClick={(e) => e.stopPropagation()}>
             <div className="p-6">
               <div className="flex items-center gap-4 mb-4">
