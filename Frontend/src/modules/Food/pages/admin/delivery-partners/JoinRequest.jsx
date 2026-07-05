@@ -22,6 +22,7 @@ export default function JoinRequest() {
   const [selectedRequest, setSelectedRequest] = useState(null)
   const [viewDetails, setViewDetails] = useState(null)
   const [processing, setProcessing] = useState(false)
+  const [processingRequestId, setProcessingRequestId] = useState(null)
   const [loadingDetails, setLoadingDetails] = useState(false)
   const [rejectionReason, setRejectionReason] = useState("")
   const [filters, setFilters] = useState({
@@ -114,15 +115,18 @@ export default function JoinRequest() {
   const confirmApprove = async () => {
     if (!selectedRequest) return
 
+    const id = selectedRequest._id
+    const partnerName = selectedRequest.name
+
     try {
       setProcessing(true)
-      const id = selectedRequest._id
-      setRequests(prev => prev.filter(r => r._id !== id))
+      setProcessingRequestId(id)
+      await adminAPI.approveDeliveryPartner(id)
+      setRequests((prev) => prev.filter((r) => r._id !== id))
       setIsApproveOpen(false)
       setSelectedRequest(null)
       refreshSidebarBadges("deliveryPartners")
-      await adminAPI.approveDeliveryPartner(id)
-      toast.success(`Successfully approved ${selectedRequest.name}'s join request!`)
+      toast.success(`Successfully approved ${partnerName}'s join request!`)
       await fetchJoinRequests({ silent: true })
     } catch (err) {
       debugError("Error approving request:", err)
@@ -131,6 +135,7 @@ export default function JoinRequest() {
       await fetchJoinRequests({ silent: true })
     } finally {
       setProcessing(false)
+      setProcessingRequestId(null)
     }
   }
 
@@ -151,14 +156,17 @@ export default function JoinRequest() {
 
     try {
       setProcessing(true)
+      setProcessingRequestId(selectedRequest._id)
       const id = selectedRequest._id
-      setRequests(prev => prev.filter(r => r._id !== id))
+      const partnerName = selectedRequest.name
+      const reason = rejectionReason.trim()
+      await adminAPI.rejectDeliveryPartner(id, reason)
+      setRequests((prev) => prev.filter((r) => r._id !== id))
       setIsDenyOpen(false)
       setSelectedRequest(null)
       setRejectionReason("")
       refreshSidebarBadges("deliveryPartners")
-      await adminAPI.rejectDeliveryPartner(id, rejectionReason.trim())
-      toast.success(`Successfully rejected ${selectedRequest.name}'s join request.`)
+      toast.success(`Successfully rejected ${partnerName}'s join request.`)
       await fetchJoinRequests({ silent: true })
     } catch (err) {
       debugError("Error rejecting request:", err)
@@ -167,6 +175,7 @@ export default function JoinRequest() {
       await fetchJoinRequests({ silent: true })
     } finally {
       setProcessing(false)
+      setProcessingRequestId(null)
     }
   }
 
@@ -375,8 +384,10 @@ export default function JoinRequest() {
                       </td>
                     </tr>
                   ) : (
-                    filteredRequests.map((request) => (
-                      <tr key={request._id} className="hover:bg-slate-50 transition-colors">
+                    filteredRequests.map((request) => {
+                      const isRowProcessing = processingRequestId === request._id
+                      return (
+                      <tr key={request._id} className={`hover:bg-slate-50 transition-colors ${isRowProcessing ? "bg-blue-50/50" : ""}`}>
                         <td className="px-6 py-4 whitespace-nowrap">
                           <span className="text-sm font-medium text-slate-700">{request.sl}</span>
                         </td>
@@ -421,6 +432,12 @@ export default function JoinRequest() {
                         </td>
                         <td className="px-6 py-4">
                           <div className="flex flex-col gap-1">
+                            {isRowProcessing ? (
+                              <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-medium bg-amber-100 text-amber-700 w-fit">
+                                <Loader2 className="w-3 h-3 animate-spin" />
+                                Processing...
+                              </span>
+                            ) : (
                             <span className={`px-3 py-1 rounded-full text-xs font-medium inline-block w-fit ${
                               request.status === "Pending" || request.status === "pending"
                                 ? "bg-blue-100 text-blue-700"
@@ -430,6 +447,7 @@ export default function JoinRequest() {
                             }`}>
                               {request.status === "blocked" || request.status === "Blocked" || request.status === "Denied" || request.status === "denied" ? "Rejected" : request.status}
                             </span>
+                            )}
                             {request.rejectionReason && (
                               <span className="text-xs text-red-600 italic max-w-[200px] truncate" title={request.rejectionReason}>
                                 {request.rejectionReason}
@@ -454,7 +472,7 @@ export default function JoinRequest() {
                                   className="p-1.5 rounded bg-green-50 text-green-600 hover:bg-green-100 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                                   title="Approve"
                                 >
-                                  <Check className="w-4 h-4" />
+                                  {isRowProcessing ? <Loader2 className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />}
                                 </button>
                                 <button
                                   onClick={() => handleDeny(request)}
@@ -469,7 +487,8 @@ export default function JoinRequest() {
                           </div>
                         </td>
                       </tr>
-                    ))
+                      )
+                    })
                   )}
                 </tbody>
               </table>
@@ -479,7 +498,7 @@ export default function JoinRequest() {
       </div>
 
       {/* Approve Confirmation Dialog */}
-      <Dialog open={isApproveOpen} onOpenChange={setIsApproveOpen}>
+      <Dialog open={isApproveOpen} onOpenChange={(open) => { if (!processing) setIsApproveOpen(open) }}>
         <DialogContent className="max-w-md bg-white p-0 opacity-0 data-[state=open]:opacity-100 data-[state=closed]:opacity-0 transition-opacity duration-200 data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=open]:fade-in-0 data-[state=closed]:fade-out-0 data-[state=open]:scale-100 data-[state=closed]:scale-100">
           <DialogHeader className="px-6 pt-6 pb-4">
             <DialogTitle>Approve Request</DialogTitle>
@@ -510,7 +529,7 @@ export default function JoinRequest() {
       </Dialog>
 
       {/* Deny Confirmation Dialog */}
-      <Dialog open={isDenyOpen} onOpenChange={setIsDenyOpen}>
+      <Dialog open={isDenyOpen} onOpenChange={(open) => { if (!processing) setIsDenyOpen(open) }}>
         <DialogContent className="max-w-md bg-white p-0 opacity-0 data-[state=open]:opacity-100 data-[state=closed]:opacity-0 transition-opacity duration-200 data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=open]:fade-in-0 data-[state=closed]:fade-out-0 data-[state=open]:scale-100 data-[state=closed]:scale-100">
           <DialogHeader className="px-6 pt-6 pb-4">
             <DialogTitle>Deny Request</DialogTitle>
