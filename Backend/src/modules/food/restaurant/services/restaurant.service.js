@@ -9,6 +9,7 @@ import { FoodDiningRestaurant } from '../../dining/models/diningRestaurant.model
 import { FoodItem } from '../../admin/models/food.model.js';
 import { getFoodDisplayPrice } from '../../admin/services/foodVariant.service.js';
 import { FoodOrder } from '../../orders/models/order.model.js';
+import { FoodRestaurantOutletTimings } from '../models/outletTimings.model.js';
 import { logger } from '../../../../utils/logger.js';
 
 const normalizeName = (value) =>
