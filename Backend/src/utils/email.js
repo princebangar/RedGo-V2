@@ -1,8 +1,11 @@
 import nodemailer from 'nodemailer';
+import { readFileSync, existsSync } from 'fs';
+import { resolve } from 'path';
 import { config } from '../config/env.js';
 import { logger } from './logger.js';
 
 let transporter = null;
+let cachedInlineLogoAttachment = null;
 
 function invalidateTransporter() {
     transporter = null;
@@ -64,6 +67,33 @@ function getRedGoLogoUrl() {
     return 'https://redgoindia.cloud/logo-transparent.webp';
 }
 
+function getInlineLogoAttachment() {
+    if (cachedInlineLogoAttachment) return cachedInlineLogoAttachment;
+
+    const candidatePaths = [
+        resolve(process.cwd(), 'public', 'logo-transparent.webp'),
+        resolve(process.cwd(), '..', 'Frontend', 'public', 'logo-transparent.webp'),
+        resolve(process.cwd(), '..', 'frontend', 'public', 'logo-transparent.webp')
+    ];
+
+    const logoPath = candidatePaths.find((p) => existsSync(p));
+    if (!logoPath) return null;
+
+    try {
+        const content = readFileSync(logoPath);
+        cachedInlineLogoAttachment = {
+            filename: 'redgo-logo.webp',
+            content,
+            contentType: 'image/webp',
+            cid: 'redgo-logo'
+        };
+        return cachedInlineLogoAttachment;
+    } catch (error) {
+        logger.warn(`Inline email logo load failed: ${error?.message || error}`);
+        return null;
+    }
+}
+
 function getFirstName(name) {
     const value = String(name || '').trim();
     if (!value) return 'Partner';
@@ -97,13 +127,17 @@ async function sendEmail({ to, subject, html, text, fromDisplay, logLabel = 'Ema
         return false;
     }
 
+    const inlineLogo = getInlineLogoAttachment();
+    const attachments = inlineLogo ? [inlineLogo] : [];
+
     try {
         await trans.sendMail({
             from: fromDisplay || resolveFromHeader('RedGo'),
             to,
             subject,
             text,
-            html
+            html,
+            attachments
         });
         logger.info(`${logLabel} sent to ${to}`);
         return true;
@@ -121,7 +155,8 @@ async function sendEmail({ to, subject, html, text, fromDisplay, logLabel = 'Ema
                 to,
                 subject,
                 text,
-                html
+                html,
+                attachments
             });
             logger.info(`${logLabel} sent to ${to} (after SMTP retry)`);
             return true;
@@ -137,11 +172,13 @@ async function sendEmail({ to, subject, html, text, fromDisplay, logLabel = 'Ema
 function buildEmailHeaderHtml() {
     const logoUrl = getRedGoLogoUrl();
     const safeLogoUrl = escapeHtml(logoUrl);
+    const inlineLogo = getInlineLogoAttachment();
+    const logoSrc = inlineLogo ? 'cid:redgo-logo' : safeLogoUrl;
 
     return `
           <tr>
             <td style="background: ${PRIMARY_COLOR}; padding: 24px 32px; text-align: center;">
-              <img src="${safeLogoUrl}" alt="RedGo" width="150" style="display: block; margin: 0 auto; max-width: 150px; width: 150px; height: auto; border: 0; outline: none; text-decoration: none; border-radius: 12px;" />
+              <img src="${logoSrc}" alt="RedGo" width="150" style="display: block; margin: 0 auto; max-width: 150px; width: 150px; height: auto; border: 0; outline: none; text-decoration: none; border-radius: 12px;" />
             </td>
           </tr>`;
 }

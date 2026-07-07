@@ -3255,13 +3255,16 @@ export async function approveRestaurantAddon(addonId) {
             await notifyOwnersSafely(
                 [{ ownerType: 'RESTAURANT', ownerId: updated.restaurantId }],
                 {
-                    title: 'Addon Approved! Ã¢Å“â€¦',
+                    title: 'Addon Approved! ✅',
                     body: `Your addon "${updated.published?.name || 'New Addon'}" has been approved and is now live.`,
                     image: 'https://i.ibb.co/3m2Yh7r/Appzeto-Brand-Image.png',
+                    sendToAllDevices: true,
                     data: {
                         type: 'addon_approved',
                         addonId: String(updated._id),
-                        restaurantId: String(updated.restaurantId)
+                        restaurantId: String(updated.restaurantId),
+                        targetUrl: '/food/restaurant',
+                        link: '/food/restaurant',
                     }
                 }
             );
@@ -3298,14 +3301,17 @@ export async function rejectRestaurantAddon(addonId, reason) {
             await notifyOwnersSafely(
                 [{ ownerType: 'RESTAURANT', ownerId: updated.restaurantId }],
                 {
-                    title: 'Addon Rejected Ã¢ÂÅ’',
+                    title: 'Addon Rejected ❌',
                     body: `Your addon request for "${updated.draft?.name || 'New Addon'}" was rejected. Reason: ${rejectionReason}`,
                     image: 'https://i.ibb.co/3m2Yh7r/Appzeto-Brand-Image.png',
+                    sendToAllDevices: true,
                     data: {
                         type: 'addon_rejected',
                         addonId: String(updated._id),
                         restaurantId: String(updated.restaurantId),
-                        reason: rejectionReason
+                        reason: rejectionReason,
+                        targetUrl: '/food/restaurant',
+                        link: '/food/restaurant',
                     }
                 }
             );
@@ -3689,25 +3695,35 @@ async function sendRestaurantApprovalNotifications(restaurant, existing = {}, is
     const recipientEmail = String(restaurant.ownerEmail || existing.ownerEmail || '').trim();
     const restaurantName = restaurant.restaurantName || existing.restaurantName || 'your restaurant';
 
+    const pushTitle = isChangesApproval
+        ? 'Profile Changes Approved! ✅'
+        : 'Congratulations! 🎉';
+    const pushBody = isChangesApproval
+        ? `Your profile changes for "${restaurantName}" have been approved and are now live.`
+        : `Your restaurant "${restaurantName}" has been approved. You can now start receiving orders!`;
+    const targetUrl = isChangesApproval
+        ? '/food/restaurant'
+        : '/food/restaurant/pending-verification';
+
     logger.info(`[APPROVE-EMAIL] Restaurant ${restaurantId} — ownerEmail=${recipientEmail || 'MISSING'}`);
 
     try {
         const { notifyOwnersSafely, listOwnerTokens } = await import('../../../../core/notifications/firebase.service.js');
         const tokens = await listOwnerTokens({ ownerType: 'RESTAURANT', ownerId: restaurant._id });
-        logger.info(`[APPROVE-FCM] Restaurant ${restaurantId} — deviceTokens=${tokens.length}`);
+        logger.info(`[APPROVE-FCM] Restaurant ${restaurantId} — deviceTokens=${tokens.length}${isChangesApproval ? ' (changes)' : ''}`);
 
         const fcmResult = await notifyOwnersSafely(
             [{ ownerType: 'RESTAURANT', ownerId: restaurant._id }],
             {
-                title: 'Congratulations! 🎉',
-                body: `Your restaurant "${restaurantName}" has been approved. You can now start receiving orders!`,
+                title: pushTitle,
+                body: pushBody,
                 image: restaurant.profileImage || 'https://i.ibb.co/3m2Yh7r/Appzeto-Brand-Image.png',
                 sendToAllDevices: true,
                 data: {
-                    type: 'restaurant_approved',
+                    type: isChangesApproval ? 'restaurant_changes_approved' : 'restaurant_approved',
                     restaurantId,
-                    targetUrl: '/food/restaurant/pending-verification',
-                    link: '/food/restaurant/pending-verification',
+                    targetUrl,
+                    link: targetUrl,
                 }
             }
         );
@@ -3749,6 +3765,16 @@ async function sendDeliveryApprovalNotifications(partner, existing = {}, isChang
     let recipientEmail = String(partner.email || existing.email || '').trim().toLowerCase();
     const partnerName = partner.name || existing.name || 'Partner';
 
+    const pushTitle = isChangesApproval
+        ? 'Profile Changes Approved! ✅'
+        : 'Welcome Aboard! 🛵';
+    const pushBody = isChangesApproval
+        ? 'Your delivery profile changes have been approved. You can continue delivering with RedGo.'
+        : 'Your delivery partner application has been approved. You can now go online and start earning!';
+    const targetUrl = isChangesApproval
+        ? '/food/delivery'
+        : '/food/delivery/pending-verification';
+
     if (!recipientEmail && mongoose.Types.ObjectId.isValid(partnerId)) {
         const fresh = await FoodDeliveryPartner.findById(partnerId).select('email name').lean();
         recipientEmail = String(fresh?.email || '').trim().toLowerCase();
@@ -3759,7 +3785,7 @@ async function sendDeliveryApprovalNotifications(partner, existing = {}, isChang
     try {
         const { notifyOwnerSafely, listOwnerTokens } = await import('../../../../core/notifications/firebase.service.js');
         const tokens = await listOwnerTokens({ ownerType: 'DELIVERY_PARTNER', ownerId: partner._id });
-        logger.info(`[APPROVE-FCM] Delivery ${partnerId} — deviceTokens=${tokens.length}${tokens.length ? ` (platform fields: web+mobile)` : ' — NO TOKENS IN DB'}`);
+        logger.info(`[APPROVE-FCM] Delivery ${partnerId} — deviceTokens=${tokens.length}${tokens.length ? ` (platform fields: web+mobile)` : ' — NO TOKENS IN DB'}${isChangesApproval ? ' (changes)' : ''}`);
 
         if (!tokens.length) {
             logger.warn(`[APPROVE-FCM] Delivery ${partnerId} — push skipped; partner has no FCM token saved`);
@@ -3767,15 +3793,15 @@ async function sendDeliveryApprovalNotifications(partner, existing = {}, isChang
             const fcmResult = await notifyOwnerSafely(
                 { ownerType: 'DELIVERY_PARTNER', ownerId: partner._id },
                 {
-                    title: 'Welcome Aboard! 🛵',
-                    body: 'Your delivery partner application has been approved. You can now go online and start earning!',
+                    title: pushTitle,
+                    body: pushBody,
                     image: 'https://i.ibb.co/3m2Yh7r/Appzeto-Brand-Image.png',
                     sendToAllDevices: true,
                     data: {
-                        type: 'onboarding_approved',
+                        type: isChangesApproval ? 'delivery_changes_approved' : 'onboarding_approved',
                         partnerId,
-                        targetUrl: '/food/delivery/pending-verification',
-                        link: '/food/delivery/pending-verification',
+                        targetUrl,
+                        link: targetUrl,
                     }
                 }
             );
@@ -3868,16 +3894,26 @@ export async function rejectRestaurant(id, reason) {
 
         try {
             const { notifyOwnersSafely } = await import('../../../../core/notifications/firebase.service.js');
+            const rejectTitle = isChangesRejection
+                ? 'Profile Changes Rejected ❌'
+                : 'Update on Registration 📋';
+            const rejectBody = isChangesRejection
+                ? `Your profile changes for "${updated.restaurantName}" were rejected. Reason: ${reason || 'Incomplete documents'}.`
+                : `Your restaurant registration for "${updated.restaurantName}" has been rejected. Reason: ${reason || 'Incomplete documents'}.`;
+            const targetUrl = isChangesRejection ? '/food/restaurant' : '/food/restaurant/pending-verification';
             await notifyOwnersSafely(
                 [{ ownerType: 'RESTAURANT', ownerId: updated._id }],
                 {
-                    title: 'Update on Registration Ã°Å¸â€œâ€¹',
-                    body: `Your restaurant registration for "${updated.restaurantName}" has been rejected. Reason: ${reason || 'Incomplete documents'}.`,
+                    title: rejectTitle,
+                    body: rejectBody,
                     image: 'https://i.ibb.co/3m2Yh7r/Appzeto-Brand-Image.png',
+                    sendToAllDevices: true,
                     data: {
-                        type: 'restaurant_rejected',
+                        type: isChangesRejection ? 'restaurant_changes_rejected' : 'restaurant_rejected',
                         restaurantId: String(updated._id),
-                        reason: reason || ''
+                        reason: reason || '',
+                        targetUrl,
+                        link: targetUrl,
                     }
                 }
             );
@@ -5160,16 +5196,26 @@ export async function rejectDeliveryPartner(id, reason) {
 
         try {
             const { notifyOwnerSafely } = await import('../../../../core/notifications/firebase.service.js');
+            const rejectTitle = isChangesRejection
+                ? 'Profile Changes Rejected ❌'
+                : 'Onboarding Update 📋';
+            const rejectBody = isChangesRejection
+                ? `Your delivery profile changes were rejected. Reason: ${reason || 'Incomplete documents'}.`
+                : `Your application to join as a delivery partner was rejected. Reason: ${reason || 'Incomplete documents'}.`;
+            const targetUrl = isChangesRejection ? '/food/delivery' : '/food/delivery/pending-verification';
             await notifyOwnerSafely(
                 { ownerType: 'DELIVERY_PARTNER', ownerId: updated._id },
                 {
-                    title: 'Onboarding Update Ã°Å¸â€œâ€¹',
-                    body: `Your application to join as a delivery partner was rejected. Reason: ${reason || 'Incomplete documents'}.`,
+                    title: rejectTitle,
+                    body: rejectBody,
                     image: 'https://i.ibb.co/3m2Yh7r/Appzeto-Brand-Image.png',
+                    sendToAllDevices: true,
                     data: {
-                        type: 'onboarding_rejected',
+                        type: isChangesRejection ? 'delivery_changes_rejected' : 'onboarding_rejected',
                         partnerId: String(updated._id),
-                        reason: reason || ''
+                        reason: reason || '',
+                        targetUrl,
+                        link: targetUrl,
                     }
                 }
             );

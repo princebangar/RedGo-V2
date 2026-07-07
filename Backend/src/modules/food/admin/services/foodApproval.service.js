@@ -119,17 +119,20 @@ export async function approveFoodItem(id) {
         await syncMenuItemApprovalStatus(updated.restaurantId, updated._id, 'approved', '');
         
         try {
-            const { notifyOwnersSafely } = await import('../../../core/notifications/firebase.service.js');
+            const { notifyOwnersSafely } = await import('../../../../core/notifications/firebase.service.js');
             await notifyOwnersSafely(
                 [{ ownerType: 'RESTAURANT', ownerId: updated.restaurantId }],
                 {
                     title: 'Dish Approved! 🍲',
                     body: `Your dish "${updated.name}" has been approved and is now visible to customers.`,
                     image: updated.image || 'https://i.ibb.co/3m2Yh7r/Appzeto-Brand-Image.png',
+                    sendToAllDevices: true,
                     data: {
                         type: 'food_approved',
                         foodId: String(updated._id),
-                        restaurantId: String(updated.restaurantId)
+                        restaurantId: String(updated.restaurantId),
+                        targetUrl: '/food/restaurant',
+                        link: '/food/restaurant',
                     }
                 }
             );
@@ -157,18 +160,21 @@ export async function rejectFoodItem(id, reason) {
         await syncMenuItemApprovalStatus(updated.restaurantId, updated._id, 'rejected', r);
         
         try {
-            const { notifyOwnersSafely } = await import('../../../core/notifications/firebase.service.js');
+            const { notifyOwnersSafely } = await import('../../../../core/notifications/firebase.service.js');
             await notifyOwnersSafely(
                 [{ ownerType: 'RESTAURANT', ownerId: updated.restaurantId }],
                 {
                     title: 'Dish Rejected ❌',
                     body: `Your dish "${updated.name}" was rejected. Reason: ${r}`,
                     image: updated.image || 'https://i.ibb.co/3m2Yh7r/Appzeto-Brand-Image.png',
+                    sendToAllDevices: true,
                     data: {
                         type: 'food_rejected',
                         foodId: String(updated._id),
                         restaurantId: String(updated.restaurantId),
-                        reason: r
+                        reason: r,
+                        targetUrl: '/food/restaurant',
+                        link: '/food/restaurant',
                     }
                 }
             );
