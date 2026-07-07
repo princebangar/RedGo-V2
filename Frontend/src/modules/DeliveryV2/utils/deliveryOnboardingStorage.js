@@ -17,12 +17,34 @@ const ONBOARDING_SESSION_KEYS = [
 
 const DELIVERY_FILES_DB = "DeliveryOnboardingFiles"
 const DELIVERY_FILES_STORE = "files"
+const IDB_OPERATION_TIMEOUT_MS = 3000
+
+const withTimeout = (promise, timeoutMs, timeoutValueFactory) =>
+  new Promise((resolve, reject) => {
+    const timeoutId = setTimeout(() => {
+      try {
+        resolve(timeoutValueFactory())
+      } catch (error) {
+        reject(error)
+      }
+    }, timeoutMs)
+
+    promise
+      .then((value) => {
+        clearTimeout(timeoutId)
+        resolve(value)
+      })
+      .catch((error) => {
+        clearTimeout(timeoutId)
+        reject(error)
+      })
+  })
 
 const openDeliveryFilesDB = () =>
   new Promise((resolve, reject) => {
     const timeout = setTimeout(() => {
       reject(new Error("IndexedDB connection timeout"))
-    }, 3000)
+    }, IDB_OPERATION_TIMEOUT_MS)
 
     try {
       if (typeof indexedDB === "undefined") {
@@ -131,13 +153,18 @@ export const getSignupDocumentFromDB = async (docType) => {
     const db = await openDeliveryFilesDB()
     const tx = db.transaction(DELIVERY_FILES_STORE, "readonly")
     const request = tx.objectStore(DELIVERY_FILES_STORE).get(docType)
-    return await new Promise((resolve) => {
-      request.onsuccess = () => {
-        const result = request.result
-        resolve(isUploadableFile(result) ? result : null)
-      }
-      request.onerror = () => resolve(null)
-    })
+    return await withTimeout(
+      new Promise((resolve) => {
+        request.onsuccess = () => {
+          const result = request.result
+          resolve(isUploadableFile(result) ? result : null)
+        }
+        request.onerror = () => resolve(null)
+        tx.onabort = () => resolve(null)
+      }),
+      IDB_OPERATION_TIMEOUT_MS,
+      () => null,
+    )
   } catch {
     return null
   }

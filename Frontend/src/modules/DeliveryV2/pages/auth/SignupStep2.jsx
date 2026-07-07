@@ -56,6 +56,11 @@ export default function SignupStep2() {
 
   useEffect(() => {
     let cancelled = false
+    const hydrationFailSafe = setTimeout(() => {
+      if (!cancelled) {
+        setIsHydrating(false)
+      }
+    }, 6000)
 
     const hydrateDocuments = async () => {
       try {
@@ -73,6 +78,7 @@ export default function SignupStep2() {
         debugError("Failed to hydrate signup documents:", error)
       } finally {
         if (!cancelled) {
+          clearTimeout(hydrationFailSafe)
           setIsHydrating(false)
         }
       }
@@ -82,6 +88,7 @@ export default function SignupStep2() {
 
     return () => {
       cancelled = true
+      clearTimeout(hydrationFailSafe)
       Object.values(previewUrlsRef.current).forEach((url) => {
         if (url) {
           try {
