@@ -30,7 +30,13 @@ export const validateCreateOfferDto = (body) => {
         restaurantId: body?.restaurantId ? String(body.restaurantId) : undefined,
         endDate: body?.endDate ? String(body.endDate) : undefined,
         startDate: body?.startDate ? String(body.startDate) : undefined,
-        minOrderValue: body?.minOrderValue !== undefined ? Number(body.minOrderValue) : undefined,
+        minOrderValue: (() => {
+            if (body?.minOrderValue === undefined || body?.minOrderValue === null || body?.minOrderValue === '') {
+                return undefined;
+            }
+            const parsed = Number(body.minOrderValue);
+            return Number.isFinite(parsed) && parsed > 0 ? parsed : undefined;
+        })(),
         maxDiscount: body?.maxDiscount !== undefined ? Number(body.maxDiscount) : undefined,
         usageLimit: body?.usageLimit !== undefined ? Number(body.usageLimit) : undefined,
         perUserLimit: body?.perUserLimit !== undefined ? Number(body.perUserLimit) : undefined,
@@ -87,7 +93,7 @@ export const validateCreateOfferDto = (body) => {
         maxDiscount,
         usageLimit: result.data.usageLimit,
         perUserLimit: result.data.perUserLimit,
-        isFirstOrderOnly: result.data.isFirstOrderOnly,
+        isFirstOrderOnly: result.data.isFirstOrderOnly === true,
         couponType: result.data.couponType
     };
 };

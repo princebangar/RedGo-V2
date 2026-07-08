@@ -474,13 +474,15 @@ const ScallopBadge = ({ className = "" }) => (
 
 const formatCouponText = (coupon) => {
   if (!coupon) return "";
+  const minOrderValue = Number(coupon.minOrderValue);
+  const minOrderText = Number.isFinite(minOrderValue) && minOrderValue > 0 ? ` above ₹${minOrderValue}` : "";
   if (coupon.discountType === "percentage") {
     const discountPercentage = coupon.discountPercentage ?? coupon.discountValue;
     const limitText = coupon.maxDiscount ? ` up to ₹${coupon.maxDiscount}` : "";
-    return `${discountPercentage}% OFF above ₹${coupon.minOrderValue || 0}${limitText}`;
+    return `${discountPercentage}% OFF${minOrderText}${limitText}`;
   }
   const value = coupon.originalPrice || coupon.discountValue || 0;
-  return `Flat ₹${value} OFF above ₹${coupon.minOrderValue || 0}`;
+  return `Flat ₹${value} OFF${minOrderText}`;
 };
 
 // Restaurant Card Offer Carousel Component - cycles through active coupons

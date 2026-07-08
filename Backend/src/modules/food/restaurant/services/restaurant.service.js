@@ -1733,7 +1733,7 @@ export const listPublicOffers = async () => {
             restaurantRating: typeof restaurant?.rating === 'number' ? restaurant.rating : 0,
             endDate: o.endDate || null,
             showInCart: o.showInCart !== false,
-            minOrderValue: o.minOrderValue ?? 0,
+            minOrderValue: Number(o.minOrderValue) > 0 ? Number(o.minOrderValue) : null,
             couponType: o.couponType || 'all'
         };
     });

@@ -5,6 +5,7 @@
 import apiClient from "./axios.js";
 import { API_ENDPOINTS } from "./config.js";
 import * as authService from "./auth.js";
+import { filterPublicOffers } from "@food/utils/offerUtils";
 
 const stub = () =>
   Promise.resolve({
@@ -1116,42 +1117,34 @@ export const restaurantAPI = {
   /** Public Offers for users (global/selected restaurant) */
   getPublicOffers: () => apiClient.get("/food/restaurant/offers"),
   /** Backward-compat helper used by Cart: returns coupons array for an item by adapting public offers */
-  getCouponsByItemIdPublic: (restaurantId, _itemId) =>
+  getCouponsByItemIdPublic: (restaurantId, _itemId, options = {}) =>
     apiClient.get("/food/restaurant/offers").then((res) => {
       const list = res?.data?.data?.allOffers || res?.data?.allOffers || [];
-      const now = Date.now();
-      const coupons = list
-        .filter((o) => {
-          // Filter out coupons toggled off or inactive
-          if (o.showInCart === false) return false;
-          if (o.status && o.status !== "active") return false;
-
-          // Guard: respect selected restaurant scope
-          if (String(o?.restaurantScope) === "selected") {
-            if (!restaurantId) return false;
-            return String(o.restaurantId || "") === String(restaurantId || "");
-          }
-          return true;
-        })
-        .map((o) => {
-          const isPct = o.discountType === "percentage";
-          return {
-            couponCode: o.couponCode,
-            discountType: o.discountType,
-            discountPercentage: isPct ? Number(o.discountValue) || 0 : 0,
-            originalPrice: isPct ? 0 : Number(o.discountValue || 0),
-            discountedPrice: 0,
-            minOrderValue: Number(o.minOrderValue || 0),
-            minOrder: Number(o.minOrderValue || 0),
-            maxDiscount: o.maxDiscount != null ? Number(o.maxDiscount) : null,
-            customerGroup: o.customerScope || "all",
-            isGlobalCoupon: true,
-            endDate: o.endDate || null,
-            showInCart: o.showInCart !== false,
-            couponType: o.couponType || "all",
-            _ts: now,
-          };
-        });
+      const filtered = filterPublicOffers(list, {
+        restaurantId,
+        restaurantSlug: options?.restaurantSlug,
+        restaurant: options?.restaurant,
+        orderType: options?.orderType || "delivery",
+        requireShowInCart: true,
+      });
+      const coupons = filtered.map((o) => {
+        const isPct = o.discountType === "percentage";
+        return {
+          couponCode: o.couponCode,
+          discountType: o.discountType,
+          discountPercentage: isPct ? Number(o.discountValue) || 0 : 0,
+          originalPrice: isPct ? 0 : Number(o.discountValue || 0),
+          discountedPrice: 0,
+          minOrderValue: Number(o.minOrderValue) > 0 ? Number(o.minOrderValue) : null,
+          minOrder: Number(o.minOrderValue) > 0 ? Number(o.minOrderValue) : 0,
+          maxDiscount: o.maxDiscount != null ? Number(o.maxDiscount) : null,
+          customerGroup: o.customerScope || "all",
+          isGlobalCoupon: true,
+          endDate: o.endDate || null,
+          showInCart: o.showInCart !== false,
+          couponType: o.couponType || "all",
+        };
+      });
       return { data: { success: true, data: { coupons } } };
     }),
   /** Categories (restaurant dashboard) */

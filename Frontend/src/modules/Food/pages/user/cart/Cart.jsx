@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, useMemo, Fragment } from "react"
 import { createPortal } from "react-dom"
 import { Link, useNavigate, useLocation } from "react-router-dom"
-import { Plus, Minus, ArrowLeft, ChevronRight, Clock, MapPin, Phone, FileText, Utensils, Tag, Percent, Share2, Share, ChevronUp, ChevronDown, X, Check, Settings, CreditCard, Wallet, Building2, Sparkles, Banknote, Zap, CheckCircle2, MessageCircle, Send, Mail, Copy, ShoppingBag } from "lucide-react"
+import { Plus, Minus, ArrowLeft, ChevronRight, Clock, MapPin, Phone, FileText, Utensils, Tag, Percent, Share2, Share, ChevronUp, ChevronDown, X, Check, Settings, CreditCard, Wallet, Building2, Sparkles, Banknote, Zap, CheckCircle2, MessageCircle, Send, Mail, Copy, ShoppingBag, AlertTriangle } from "lucide-react"
 import { motion, AnimatePresence } from "framer-motion"
 import confetti from "canvas-confetti"
 
@@ -22,6 +22,7 @@ import { calculateDistance } from "@food/utils/common"
 import { useCompanyName } from "@food/hooks/useCompanyName"
 import { getRestaurantAvailabilityStatus } from "@food/utils/restaurantAvailability"
 import useAppBackNavigation from "@food/hooks/useAppBackNavigation"
+import { filterPublicOffers, mapPublicOfferToCartCoupon } from "@food/utils/offerUtils"
 const zoopSound = "/zomato_sms.mp3"
 const debugLog = (...args) => { }
 const debugWarn = (...args) => { }
@@ -120,7 +121,7 @@ export default function Cart() {
   const { openLocationSelector } = useLocationSelector()
   const { location: currentLocation, loading: currentLocationLoading } = useUserLocation() // Get live location address
 
-  const [showCoupons, setShowCoupons] = useState(false)
+  const [showCouponSheet, setShowCouponSheet] = useState(false)
   const [appliedCoupon, setAppliedCoupon] = useState(null)
   const [couponCode, setCouponCode] = useState("")
   const [manualCouponCode, setManualCouponCode] = useState("")
@@ -359,65 +360,74 @@ export default function Cart() {
     })
   }, [availableCoupons, orderType, cart, pricing, userOrderCount])
 
-  // Lock body scroll when auto coupon popup is open
+  // Lock body scroll when auto coupon popup or coupon sheet is open
   useEffect(() => {
-    if (showAutoCouponPopup) {
-      document.body.style.overflow = 'hidden'
+    if (showAutoCouponPopup || showCouponSheet) {
+      document.body.style.overflow = "hidden"
     } else {
-      document.body.style.overflow = ''
+      document.body.style.overflow = ""
     }
     return () => {
-      document.body.style.overflow = ''
+      document.body.style.overflow = ""
     }
-  }, [showAutoCouponPopup])
+  }, [showAutoCouponPopup, showCouponSheet])
 
-  // Trigger auto-coupon popup on load if eligible coupons exist and none is applied yet
-  useEffect(() => {
-    // If cart is empty, reset the popup tracking entirely so next time they add items and visit cart, it shows again!
-    if (cart.length === 0) {
-      hasShownPromoPopupRef.current = { delivery: false, takeaway: false, dining: false }
-      return
-    }
+  const renderCartCouponCard = (coupon, { compact = false, blocked = false } = {}) => {
+    const meetsMinOrder = subtotal >= (Number(coupon.minOrder) || 0)
+    const isApplicable = !blocked && meetsMinOrder
 
-    const currentOrderType = orderType || "delivery"
-    console.log("[AUTO-COUPON] Check trigger:", {
-      cartLength: cart.length,
-      filteredCouponsLength: filteredCoupons.length,
-      appliedCoupon: !!appliedCoupon,
-      hasShown: hasShownPromoPopupRef.current[currentOrderType],
-      loadingCoupons,
-      subtotal,
-      firstCoupon: filteredCoupons[0],
-      orderType: currentOrderType
-    })
-
-    if (
-      cart.length > 0 && 
-      filteredCoupons.length > 0 && 
-      !appliedCoupon && 
-      !hasShownPromoPopupRef.current[currentOrderType] && 
-      !loadingCoupons
-    ) {
-      const topCoupon = filteredCoupons[0]
-      const discountAmount = topCoupon.discountType === "percentage"
-        ? Math.min(subtotal * (Number(topCoupon.discountPercentage || 0) / 100), Number(topCoupon.maxDiscount) || Infinity)
-        : Number(topCoupon.originalPrice || 0)
-      const isApplicable = subtotal >= (Number(topCoupon.minOrder) || 0) && discountAmount > 0
-      console.log("[AUTO-COUPON] Checking applicability:", {
-        isApplicable,
-        subtotal,
-        minOrder: topCoupon.minOrder,
-        discountAmount
-      })
-      
-      if (isApplicable) {
-        console.log("[AUTO-COUPON] Showing popup for:", topCoupon.code)
-        setBestCoupon(topCoupon)
-        setShowAutoCouponPopup(true)
-        hasShownPromoPopupRef.current[currentOrderType] = true
-      }
-    }
-  }, [filteredCoupons, appliedCoupon, loadingCoupons, subtotal, cart.length, orderType])
+    return (
+      <div
+        key={coupon.code}
+        className={`bg-[#DC2626]/5 dark:bg-[#DC2626]/10 border border-[#DC2626]/10 dark:border-[#DC2626]/20 rounded-xl flex items-center justify-between gap-3 ${
+          compact ? "p-3 shadow-[0_2px_8px_rgba(220,38,38,0.02)] hover:shadow-[0_4px_12px_rgba(220,38,38,0.05)] transition-all" : "p-3.5"
+        } ${blocked ? "opacity-60 grayscale" : ""}`}
+      >
+        <div className="flex items-center gap-2.5 min-w-0">
+          <div className="w-8 h-8 rounded-full bg-red-100 dark:bg-[#DC2626]/20 flex items-center justify-center flex-shrink-0">
+            <Percent className="w-4 h-4 text-[#DC2626]" />
+          </div>
+          <div className="min-w-0 flex-1">
+            <div className="flex items-center gap-2 flex-wrap">
+              <span className="inline-block text-[10px] font-bold text-[#DC2626] uppercase tracking-wider bg-white dark:bg-gray-900 border border-dashed border-[#DC2626]/30 px-2 py-0.5 rounded shadow-sm">
+                {coupon.code}
+              </span>
+              <span className="text-xs font-black text-gray-900 dark:text-gray-100">
+                {coupon.discountDisplay || `Save ${RUPEE_SYMBOL}${coupon.discount}`}
+              </span>
+            </div>
+            <p className={`text-[11px] font-medium text-gray-500 dark:text-gray-400 mt-1 ${compact ? "line-clamp-1" : "line-clamp-2"}`}>
+              {coupon.description || "Save flat amount on your order"}
+            </p>
+            {blocked ? (
+              <p className="text-[9px] font-semibold text-gray-400 dark:text-gray-500 mt-0.5">
+                Not available for this delivery location
+              </p>
+            ) : !meetsMinOrder ? (
+              <p className="text-[9px] font-semibold text-gray-400 dark:text-gray-500 mt-0.5">
+                Add items worth {RUPEE_SYMBOL}{Math.max(0, (Number(coupon.minOrder) || 0) - subtotal).toFixed(0)} more to apply
+              </p>
+            ) : null}
+          </div>
+        </div>
+        <button
+          disabled={!isApplicable}
+          onClick={(e) => {
+            e.preventDefault()
+            e.stopPropagation()
+            handleApplyCoupon(coupon)
+          }}
+          className={`text-xs font-black px-4 py-1.5 rounded-lg shadow-sm active:scale-95 transition-all flex-shrink-0 uppercase tracking-wider ${
+            isApplicable
+              ? "text-[#DC2626] bg-white dark:bg-gray-900 border border-[#DC2626]/20 hover:bg-[#DC2626]/5"
+              : "text-gray-400 bg-gray-50 dark:bg-gray-900/50 border border-gray-200 dark:border-gray-800 cursor-not-allowed"
+          }`}
+        >
+          Apply
+        </button>
+      </div>
+    )
+  }
 
   const handleApplyAutoCoupon = () => {
     if (bestCoupon) {
@@ -588,8 +598,17 @@ export default function Cart() {
       longitude: selectedAddressCoordinates[0]
     }
     : currentLocation
-  const { zoneId } = useZone(zoneLocation) // Prefer selected/saved address zone
+  const { zoneId, zoneStatus } = useZone(zoneLocation) // Prefer selected/saved address zone
   const defaultPayment = getDefaultPaymentMethod()
+
+  const isCartZoneMismatch = useMemo(() => {
+    if (orderType !== "delivery" || !cart.length || !zoneId || zoneStatus === "loading") {
+      return false
+    }
+    const restaurantZoneId = cart[0]?.restaurantZoneId || restaurantData?.zoneId
+    if (!restaurantZoneId) return false
+    return String(restaurantZoneId).trim() !== String(zoneId).trim()
+  }, [orderType, cart, zoneId, zoneStatus, restaurantData?.zoneId])
 
   useEffect(() => {
     // Sync delivery mode from overlay/localStorage changes.
@@ -993,75 +1012,49 @@ export default function Cart() {
     fetchAddons()
   }, [restaurantData, cart.length, loadingRestaurant])
 
-  // Fetch coupons for items in cart
+  // Fetch restaurant-level coupons once (same source as restaurant details page)
   useEffect(() => {
-    const fetchCouponsForCartItems = async () => {
-      if (cart.length === 0 || !restaurantId) {
+    const fetchCouponsForCart = async () => {
+      if (cart.length === 0) {
         setAvailableCoupons([])
         return
       }
 
-      debugLog(`[CART-COUPONS] Fetching coupons for ${cart.length} items in cart`)
+      const resolvedRestaurantId =
+        restaurantData?._id ||
+        restaurantData?.restaurantId ||
+        cart[0]?.restaurantId ||
+        null
+
       setLoadingCoupons(true)
 
-      const allCoupons = []
-      const uniqueCouponCodes = new Set()
+      try {
+        const response = await restaurantAPI.getPublicOffers()
+        const list = response?.data?.data?.allOffers || response?.data?.allOffers || []
+        const filteredOffers = filterPublicOffers(list, {
+          restaurantId: resolvedRestaurantId,
+          restaurantSlug: restaurantData?.slug || restaurantData?.restaurantNameNormalized,
+          restaurant: restaurantData,
+          orderType,
+          requireShowInCart: true,
+        })
 
-      // Fetch coupons for each item in cart
-      for (const cartItem of cart) {
-        const couponItemId = cartItem.itemId || cartItem.id
-        if (!couponItemId) {
-          debugLog(`[CART-COUPONS] Skipping item without id:`, cartItem)
-          continue
-        }
-
-        try {
-          debugLog(`[CART-COUPONS] Fetching coupons for itemId: ${couponItemId}, name: ${cartItem.name}`)
-          const response = await restaurantAPI.getCouponsByItemIdPublic(restaurantId, couponItemId)
-
-          if (response?.data?.success && response?.data?.data?.coupons) {
-            const coupons = response.data.data.coupons
-            debugLog(`[CART-COUPONS] Found ${coupons.length} coupons for item ${couponItemId}`)
-
-            // Add coupons, avoiding duplicates
-            coupons.forEach(coupon => {
-              if (!uniqueCouponCodes.has(coupon.couponCode)) {
-                uniqueCouponCodes.add(coupon.couponCode)
-                // Convert backend coupon format to frontend format
-                allCoupons.push({
-                  code: coupon.couponCode,
-                  discount: coupon.originalPrice - coupon.discountedPrice,
-                  discountPercentage: coupon.discountPercentage,
-                  discountDisplay: coupon.discountType === "percentage"
-                    ? `${coupon.discountPercentage}% OFF`
-                    : `${RUPEE_SYMBOL}${Math.max(0, (coupon.originalPrice || 0) - (coupon.discountedPrice || 0))} OFF`,
-                  minOrder: coupon.minOrderValue || 0,
-                  description: coupon.discountType === "percentage"
-                    ? `${coupon.discountPercentage}% OFF with '${coupon.couponCode}'`
-                    : `Save ${RUPEE_SYMBOL}${Math.max(0, (coupon.originalPrice || 0) - (coupon.discountedPrice || 0))} with '${coupon.couponCode}'`,
-                  originalPrice: coupon.originalPrice,
-                  discountedPrice: coupon.discountedPrice,
-                  customerGroup: coupon.customerGroup || "all",
-                  isGlobalCoupon: Boolean(coupon.isGlobalCoupon),
-                  itemId: couponItemId,
-                  itemName: cartItem.name,
-                  couponType: coupon.couponType || "all",
-                })
-              }
-            })
-          }
-        } catch (error) {
-          debugError(`[CART-COUPONS] Error fetching coupons for item ${cartItem.id}:`, error)
-        }
+        const coupons = filteredOffers.map((offer) => mapPublicOfferToCartCoupon(offer, RUPEE_SYMBOL))
+        debugLog(`[CART-COUPONS] Loaded ${coupons.length} coupons for restaurant`, {
+          resolvedRestaurantId,
+          orderType,
+        })
+        setAvailableCoupons(coupons)
+      } catch (error) {
+        debugError("[CART-COUPONS] Error fetching coupons:", error)
+        setAvailableCoupons([])
+      } finally {
+        setLoadingCoupons(false)
       }
-
-      debugLog(`[CART-COUPONS] Total unique coupons found: ${allCoupons.length}`, allCoupons)
-      setAvailableCoupons(allCoupons)
-      setLoadingCoupons(false)
     }
 
-    fetchCouponsForCartItems()
-  }, [cart, restaurantId])
+    fetchCouponsForCart()
+  }, [cart, restaurantData, orderType])
 
   // Calculate pricing from backend whenever cart, address, or coupon changes
   useEffect(() => {
@@ -1099,7 +1092,8 @@ export default function Cart() {
           restaurantId: resolvedRestaurantId,
           deliveryAddress: orderType === "takeaway" ? undefined : (defaultAddress || undefined),
           couponCode: resolvedCouponCode,
-          orderType: orderType
+          orderType: orderType,
+          zoneId: zoneId || undefined,
         }
         
         debugLog("Recalculating pricing with body:", requestBody)
@@ -1357,6 +1351,43 @@ export default function Cart() {
   }, [restaurantData])
 
   const isRestaurantClosed = !availability.isOpen
+  const isCartUnavailable = isRestaurantClosed || isCartZoneMismatch
+
+  // Trigger auto-coupon popup only when cart is orderable for this location
+  useEffect(() => {
+    if (cart.length === 0) {
+      hasShownPromoPopupRef.current = { delivery: false, takeaway: false, dining: false }
+      return
+    }
+
+    if (isCartUnavailable) {
+      setShowAutoCouponPopup(false)
+      setShowCouponSheet(false)
+      return
+    }
+
+    const currentOrderType = orderType || "delivery"
+
+    if (
+      cart.length > 0 &&
+      filteredCoupons.length > 0 &&
+      !appliedCoupon &&
+      !hasShownPromoPopupRef.current[currentOrderType] &&
+      !loadingCoupons
+    ) {
+      const topCoupon = filteredCoupons[0]
+      const discountAmount = topCoupon.discountType === "percentage"
+        ? Math.min(subtotal * (Number(topCoupon.discountPercentage || 0) / 100), Number(topCoupon.maxDiscount) || Infinity)
+        : Number(topCoupon.originalPrice || 0)
+      const isApplicable = subtotal >= (Number(topCoupon.minOrder) || 0) && discountAmount > 0
+
+      if (isApplicable) {
+        setBestCoupon(topCoupon)
+        setShowAutoCouponPopup(true)
+        hasShownPromoPopupRef.current[currentOrderType] = true
+      }
+    }
+  }, [filteredCoupons, appliedCoupon, loadingCoupons, subtotal, cart.length, orderType, isCartUnavailable])
 
   const handleShare = async () => {
     const restaurantNameStr = restaurantName || companyName || "this restaurant"
@@ -1554,6 +1585,15 @@ export default function Cart() {
   }
 
   const handleApplyCoupon = async (coupon) => {
+    if (isCartZoneMismatch) {
+      toast.error("This restaurant does not deliver to your selected location")
+      return
+    }
+    if (isRestaurantClosed) {
+      toast.error("Restaurant is closed. Coupons cannot be applied right now.")
+      return
+    }
+
     const isFirstTimeOnly = coupon?.customerGroup === "new" || coupon?.customerGroup === "first-time"
     if (isFirstTimeOnly && userOrderCount > 0) {
       toast.error("This coupon is only for first-time users")
@@ -1604,7 +1644,7 @@ export default function Cart() {
         setAppliedCoupon(coupon)
         setCouponCode(coupon.code)
         setManualCouponCode(coupon.code)
-        setShowCoupons(false)
+        setShowCouponSheet(false)
       } catch (error) {
         debugError("Error recalculating pricing:", error)
         toast.error("Failed to apply coupon")
@@ -1616,6 +1656,15 @@ export default function Cart() {
     const inputCode = manualCouponCode.trim().toUpperCase()
     if (!inputCode) {
       toast.error("Enter coupon code")
+      return
+    }
+
+    if (isCartZoneMismatch) {
+      toast.error("This restaurant does not deliver to your selected location")
+      return
+    }
+    if (isRestaurantClosed) {
+      toast.error("Restaurant is closed. Coupons cannot be applied right now.")
       return
     }
 
@@ -1685,7 +1734,7 @@ export default function Cart() {
           couponType: "all",
         },
       )
-      setShowCoupons(false)
+      setShowCouponSheet(false)
       toast.success("Coupon applied")
     } catch (error) {
       debugError("Error applying coupon code:", error)
@@ -1736,6 +1785,11 @@ export default function Cart() {
     if (!hasSavedAddress) {
       toast.error("Please choose a delivery location to continue")
       openLocationSelector()
+      return
+    }
+
+    if (isCartZoneMismatch) {
+      toast.error("This restaurant does not deliver to your selected location")
       return
     }
 
@@ -2350,6 +2404,50 @@ export default function Cart() {
 
       {/* Scrollable Content Area */}
       <div className="flex-1 overflow-y-auto overflow-x-hidden pb-44 md:pb-52">
+        {/* Zone mismatch warning */}
+        {isCartZoneMismatch && (
+          <div className="px-4 md:px-6 pt-4 pb-1 flex-shrink-0">
+            <div className="max-w-7xl mx-auto">
+              <div className="relative overflow-hidden rounded-2xl border border-amber-200/80 dark:border-amber-800/50 bg-gradient-to-br from-amber-50 via-orange-50/80 to-white dark:from-amber-950/40 dark:via-[#1a1a1a] dark:to-[#1a1a1a] shadow-[0_8px_24px_rgba(245,158,11,0.08)]">
+                <div className="absolute inset-y-0 left-0 w-1 bg-gradient-to-b from-amber-400 to-orange-500" />
+                <div className="p-4 pl-5 flex items-start gap-3.5">
+                  <div className="w-10 h-10 rounded-xl bg-amber-100 dark:bg-amber-900/40 border border-amber-200/70 dark:border-amber-800/60 flex items-center justify-center flex-shrink-0 shadow-sm">
+                    <AlertTriangle className="w-5 h-5 text-amber-600 dark:text-amber-400" />
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <p className="text-sm font-bold text-amber-950 dark:text-amber-100 tracking-tight">
+                      Delivery not available here
+                    </p>
+                    <p className="text-xs text-amber-800/80 dark:text-amber-200/70 mt-1 leading-relaxed">
+                      {restaurantName} doesn’t deliver to your selected location. Switch address to continue, or clear this cart.
+                    </p>
+                    <div className="mt-3 flex flex-wrap items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={openLocationSelector}
+                        className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-amber-600 hover:bg-amber-700 text-white text-[11px] font-bold tracking-wide transition-colors active:scale-[0.98] shadow-sm"
+                      >
+                        <MapPin className="w-3.5 h-3.5" />
+                        Change location
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          clearCart()
+                          toast.success("Cart cleared")
+                        }}
+                        className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-white dark:bg-gray-900 border border-amber-200 dark:border-amber-800/70 text-amber-800 dark:text-amber-200 text-[11px] font-bold tracking-wide hover:bg-amber-50 dark:hover:bg-amber-950/30 transition-colors active:scale-[0.98]"
+                      >
+                        Clear cart
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
         {/* Savings Banner */}
         {savings > 0 && (
           <div className="bg-green-50 dark:bg-green-950/20 px-4 md:px-6 py-2.5 flex-shrink-0 border-b border-green-100/30 dark:border-green-900/10">
@@ -2373,7 +2471,7 @@ export default function Cart() {
                 <div className="space-y-3 md:space-y-4">
                   <div className="space-y-6">
                     {cart.map((item, index) => (
-                      <div key={item.id} className={isRestaurantClosed ? "opacity-60 grayscale transition-all duration-300" : ""}>
+                      <div key={item.id} className={isCartUnavailable ? "opacity-60 grayscale transition-all duration-300" : ""}>
                         <div className="flex items-center gap-4">
                           {/* Veg/Non-veg indicator */}
                           <div className={`w-4 h-4 border-2 ${item.isVeg === true || item.foodType === 'Veg' ? 'border-green-600' : 'border-red-600'} flex items-center justify-center flex-shrink-0 rounded-[2px]`}>
@@ -2403,6 +2501,11 @@ export default function Cart() {
                               {isRestaurantClosed && (
                                 <p className="text-[11px] text-red-500 dark:text-red-400 font-semibold mt-1">
                                   Remove this dish to order available dishes
+                                </p>
+                              )}
+                              {isCartZoneMismatch && !isRestaurantClosed && (
+                                <p className="text-[11px] text-amber-600 dark:text-amber-400 font-semibold mt-1">
+                                  Not deliverable to your selected location
                                 </p>
                               )}
                             </div>
@@ -2570,86 +2673,42 @@ export default function Cart() {
 
               {/* Simplified Coupon Section */}
               <div className="bg-white dark:bg-[#1a1a1a] rounded-2xl overflow-hidden border border-slate-100 dark:border-gray-800 shadow-sm">
-                <div 
-                  className="w-full px-4 py-4 md:px-6 flex items-center justify-between"
-                >
+                <div className="w-full px-4 py-4 md:px-6 flex items-center justify-between">
                   <div className="flex items-center gap-3">
                     <Tag className="h-5 w-5 text-gray-400" />
                     <span className="text-sm md:text-base font-bold text-gray-800 dark:text-gray-200">Offers & Coupons</span>
                   </div>
-                  {showCoupons && (
-                    <button 
-                      onClick={() => setShowCoupons(false)}
-                      className="flex items-center gap-1 text-[#DC2626] font-black text-xs md:text-sm tracking-wider hover:underline"
-                    >
-                      CLOSE <ChevronRight className="h-4 w-4 rotate-90" />
-                    </button>
-                  )}
                 </div>
 
-                {/* Zomato/Swiggy style outer coupons preview */}
-                {!showCoupons && !appliedCoupon && (
+                {/* Cart coupon preview */}
+                {!appliedCoupon && (
                   <div className="px-4 pb-4 md:px-6 md:pb-5 pt-1 animate-in fade-in duration-300">
                     {filteredCoupons.length > 0 ? (
                       <div className="space-y-2.5">
                         <div className="flex flex-col gap-2.5">
-                          {filteredCoupons.slice(0, 2).map((coupon) => {
-                            const isApplicable = subtotal >= (Number(coupon.minOrder) || 0)
-                            
-                            return (
-                              <div 
-                                key={coupon.code} 
-                                className="bg-[#DC2626]/5 dark:bg-[#DC2626]/10 border border-[#DC2626]/10 dark:border-[#DC2626]/20 rounded-xl p-3 flex items-center justify-between gap-3 shadow-[0_2px_8px_rgba(220,38,38,0.02)] hover:shadow-[0_4px_12px_rgba(220,38,38,0.05)] transition-all"
-                              >
-                                <div className="flex items-center gap-2.5 min-w-0">
-                                  <div className="w-8 h-8 rounded-full bg-red-100 dark:bg-[#DC2626]/20 flex items-center justify-center flex-shrink-0">
-                                    <Percent className="w-4 h-4 text-[#DC2626]" />
-                                  </div>
-                                  <div className="min-w-0 flex-1">
-                                    <div className="flex items-center gap-2 flex-wrap">
-                                      <span className="inline-block text-[10px] font-bold text-[#DC2626] uppercase tracking-wider bg-white dark:bg-gray-900 border border-dashed border-[#DC2626]/30 px-2 py-0.5 rounded shadow-sm">
-                                        {coupon.code}
-                                      </span>
-                                      <span className="text-xs font-black text-gray-900 dark:text-gray-100">
-                                        {coupon.discountDisplay || `Save ${RUPEE_SYMBOL}${coupon.discount}`}
-                                      </span>
-                                    </div>
-                                    <p className="text-[11px] font-medium text-gray-500 dark:text-gray-400 mt-1 line-clamp-1">
-                                      {coupon.description || `Save flat amount on your order`}
-                                    </p>
-                                    {!isApplicable && (
-                                      <p className="text-[9px] font-semibold text-gray-400 dark:text-gray-500 mt-0.5">
-                                        Add items worth {RUPEE_SYMBOL}{((Number(coupon.minOrder) || 0) - subtotal).toFixed(0)} more to apply
-                                      </p>
-                                    )}
-                                  </div>
-                                </div>
-                                <button
-                                  disabled={!isApplicable}
-                                  onClick={(e) => {
-                                    e.preventDefault()
-                                    e.stopPropagation()
-                                    handleApplyCoupon(coupon)
-                                  }}
-                                  className={`text-xs font-black px-4 py-1.5 rounded-lg shadow-sm active:scale-95 transition-all flex-shrink-0 uppercase tracking-wider ${
-                                    isApplicable 
-                                      ? "text-[#DC2626] bg-white dark:bg-gray-900 border border-[#DC2626]/20 hover:bg-[#DC2626]/5" 
-                                      : "text-gray-400 bg-gray-50 dark:bg-gray-900/50 border border-gray-200 dark:border-gray-800 cursor-not-allowed"
-                                  }`}
-                                >
-                                  Apply
-                                </button>
-                              </div>
-                            )
-                          })}
+                          {filteredCoupons.slice(0, 2).map((coupon) =>
+                            renderCartCouponCard(coupon, { compact: true, blocked: isCartUnavailable }),
+                          )}
                         </div>
                         <button
-                          onClick={() => setShowCoupons(true)}
-                          className="w-full py-2.5 px-4 bg-gray-50/50 hover:bg-gray-50 dark:bg-gray-900/30 dark:hover:bg-gray-900/50 border border-dashed border-gray-200 dark:border-gray-800 rounded-xl text-xs font-bold text-[#DC2626] flex items-center justify-between transition-all active:scale-[0.98] mt-2.5"
+                          onClick={() => {
+                            if (isCartUnavailable) {
+                              toast.error(
+                                isCartZoneMismatch
+                                  ? "This restaurant does not deliver to your selected location"
+                                  : "Restaurant is closed. Coupons cannot be applied right now.",
+                              )
+                              return
+                            }
+                            setShowCouponSheet(true)
+                          }}
+                          className={`w-full py-2.5 px-4 bg-gray-50/50 hover:bg-gray-50 dark:bg-gray-900/30 dark:hover:bg-gray-900/50 border border-dashed border-gray-200 dark:border-gray-800 rounded-xl text-xs font-bold text-[#DC2626] flex items-center justify-between transition-all active:scale-[0.98] mt-2.5 ${
+                            isCartUnavailable ? "opacity-60 grayscale pointer-events-auto" : ""
+                          }`}
                         >
                           <span>
-                            {filteredCoupons.length > 2 
-                              ? `+ ${filteredCoupons.length - 2} more offer${filteredCoupons.length - 2 > 1 ? 's' : ''}` 
+                            {filteredCoupons.length > 2
+                              ? `+ ${filteredCoupons.length - 2} more offer${filteredCoupons.length - 2 > 1 ? "s" : ""}`
                               : "More offers available"}
                           </span>
                           <span className="flex items-center gap-1 font-black uppercase tracking-wider text-[10px]">
@@ -2660,8 +2719,20 @@ export default function Cart() {
                       </div>
                     ) : (
                       <button
-                        onClick={() => setShowCoupons(true)}
-                        className="w-full py-2.5 px-4 bg-gray-50/50 hover:bg-gray-50 dark:bg-gray-900/30 dark:hover:bg-gray-900/50 border border-dashed border-gray-200 dark:border-gray-800 rounded-xl text-xs font-bold text-[#DC2626] flex items-center justify-between transition-all active:scale-[0.98]"
+                        onClick={() => {
+                          if (isCartUnavailable) {
+                            toast.error(
+                              isCartZoneMismatch
+                                ? "This restaurant does not deliver to your selected location"
+                                : "Restaurant is closed. Coupons cannot be applied right now.",
+                            )
+                            return
+                          }
+                          setShowCouponSheet(true)
+                        }}
+                        className={`w-full py-2.5 px-4 bg-gray-50/50 hover:bg-gray-50 dark:bg-gray-900/30 dark:hover:bg-gray-900/50 border border-dashed border-gray-200 dark:border-gray-800 rounded-xl text-xs font-bold text-[#DC2626] flex items-center justify-between transition-all active:scale-[0.98] ${
+                          isCartUnavailable ? "opacity-60 grayscale" : ""
+                        }`}
                       >
                         <span>Have a coupon code?</span>
                         <span className="flex items-center gap-1 font-black uppercase tracking-wider text-[10px]">
@@ -2669,54 +2740,6 @@ export default function Cart() {
                           <ChevronRight className="h-3.5 w-3.5" />
                         </span>
                       </button>
-                    )}
-                  </div>
-                )}
-
-                {/* Expandable Coupon Input Area */}
-                {showCoupons && !appliedCoupon && (
-                  <div className="px-4 pb-5 md:px-6 md:pb-6 space-y-4 animate-in fade-in slide-in-from-top-2 duration-300">
-                    <div className="flex items-center gap-3">
-                      <div className="flex-1 bg-white dark:bg-gray-950 rounded-xl px-4 h-12 border border-gray-200 dark:border-gray-800/80 flex items-center focus-within:border-[#DC2626] focus-within:ring-1 focus-within:ring-[#DC2626]/20 transition-all shadow-sm">
-                        <input
-                          type="text"
-                          value={manualCouponCode}
-                          onChange={(e) => setManualCouponCode(e.target.value.toUpperCase())}
-                          placeholder="Coupon code"
-                          className="w-full bg-transparent text-sm md:text-base font-semibold text-gray-800 dark:text-gray-100 outline-none placeholder:text-gray-400/85"
-                        />
-                      </div>
-                      <button
-                        onClick={handleApplyCouponCode}
-                        className="h-12 px-6 border border-[#DC2626] text-[#DC2626] rounded-xl text-xs md:text-sm font-black uppercase tracking-widest hover:bg-[#DC262605] active:scale-95 transition-all"
-                      >
-                        APPLY
-                      </button>
-                    </div>
-
-                    {/* Quick Suggestions if any */}
-                    {filteredCoupons.length > 0 && (
-                      <div className="space-y-3 pt-2 border-t border-dashed border-gray-100 dark:border-gray-800">
-                        {filteredCoupons.slice(0, 2).map((coupon) => (
-                          <div key={coupon.code} className="flex items-center justify-between group">
-                            <div className="flex flex-col gap-1.5">
-                              <div className="flex items-center gap-1.5">
-                                <span className="text-xs text-gray-500 dark:text-gray-400 font-bold">Use code</span>
-                                <span className="text-xs font-bold text-[#DC2626] uppercase tracking-wider bg-[#DC2626]/5 dark:bg-[#DC2626]/10 border border-dashed border-[#DC2626]/45 px-2 py-0.5 rounded shadow-sm">
-                                  {coupon.code}
-                                </span>
-                              </div>
-                              <p className="text-[11px] text-gray-500 font-medium">{coupon.description || `Save ${RUPEE_SYMBOL}${coupon.discount}`}</p>
-                            </div>
-                            <button
-                              onClick={() => handleApplyCoupon(coupon)}
-                              className="text-[10px] font-bold text-[#DC2626] uppercase tracking-widest px-2 py-1 hover:bg-[#DC2626]/5 rounded transition-colors"
-                            >
-                              APPLY
-                            </button>
-                          </div>
-                        ))}
-                      </div>
                     )}
                   </div>
                 )}
@@ -3200,7 +3223,7 @@ export default function Cart() {
             {/* Place Order Button */}
             <button
               onClick={handlePlaceOrder}
-              disabled={isPlacingOrder || (selectedPaymentMethod === "wallet" && walletBalance < total) || isRestaurantClosed}
+              disabled={isPlacingOrder || isCartZoneMismatch || (selectedPaymentMethod === "wallet" && walletBalance < total) || isRestaurantClosed}
               className="w-full bg-gradient-to-r from-[#DC2626] to-[#991B1B] hover:from-[#991B1B] hover:to-[#7F1D1D] text-white px-6 h-12 md:h-14 rounded-2xl font-black shadow-lg shadow-[#DC2626]/30 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-between transition-all active:scale-[0.98] border-b-4 border-red-900/30"
             >
               {(selectedPaymentMethod === "razorpay" || selectedPaymentMethod === "wallet" || selectedPaymentMethod === "cash") && (
@@ -3212,6 +3235,8 @@ export default function Cart() {
               <div className="flex items-center gap-1 mx-auto text-sm md:text-lg tracking-wide">
                 {isRestaurantClosed
                   ? "Restaurant Closed"
+                  : isCartZoneMismatch
+                    ? "Not Deliverable Here"
                   : isPlacingOrder
                     ? "Processing..."
                     : (orderType !== "takeaway" && !hasSavedAddress)
@@ -3795,6 +3820,90 @@ export default function Cart() {
         }
       `}</style>
 
+      {/* All Coupons Bottom Sheet */}
+      {typeof window !== "undefined" &&
+        createPortal(
+          <AnimatePresence>
+            {showCouponSheet && !appliedCoupon && !isCartUnavailable && (
+              <>
+                <motion.div
+                  className="fixed inset-0 bg-black/60 z-[10020]"
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  exit={{ opacity: 0 }}
+                  onClick={() => setShowCouponSheet(false)}
+                />
+                <div className="fixed inset-0 flex items-end justify-center z-[10021] pointer-events-none p-0">
+                  <motion.div
+                    className="relative w-full max-w-lg pointer-events-auto bg-white dark:bg-[#1a1a1a] rounded-t-3xl shadow-2xl border border-gray-100 dark:border-gray-800 flex flex-col max-h-[85vh]"
+                    initial={{ y: "100%" }}
+                    animate={{ y: 0 }}
+                    exit={{ y: "100%" }}
+                    transition={{ type: "spring", damping: 30, stiffness: 300 }}
+                    onClick={(e) => e.stopPropagation()}
+                  >
+                    <div className="flex justify-center pt-3 pb-1">
+                      <div className="w-10 h-1 rounded-full bg-gray-300 dark:bg-gray-600" />
+                    </div>
+
+                    <div className="px-5 pt-2 pb-4 border-b border-gray-100 dark:border-gray-800 flex items-center justify-between gap-3">
+                      <div>
+                        <h2 className="text-lg font-bold text-gray-900 dark:text-gray-100">All Offers & Coupons</h2>
+                        <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
+                          {filteredCoupons.length} offer{filteredCoupons.length === 1 ? "" : "s"} available
+                        </p>
+                      </div>
+                      <button
+                        onClick={() => setShowCouponSheet(false)}
+                        className="w-8 h-8 rounded-full bg-gray-100 dark:bg-gray-800 flex items-center justify-center text-gray-500 hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors"
+                        aria-label="Close coupons"
+                      >
+                        <X className="h-4 w-4" />
+                      </button>
+                    </div>
+
+                    <div className="px-5 py-4 border-b border-gray-100 dark:border-gray-800 bg-gray-50/60 dark:bg-gray-900/30">
+                      <div className="flex items-center gap-3">
+                        <div className="flex-1 bg-white dark:bg-gray-950 rounded-xl px-4 h-11 border border-gray-200 dark:border-gray-800 flex items-center focus-within:border-[#DC2626] focus-within:ring-1 focus-within:ring-[#DC2626]/20 transition-all">
+                          <input
+                            type="text"
+                            value={manualCouponCode}
+                            onChange={(e) => setManualCouponCode(e.target.value.toUpperCase())}
+                            placeholder="Enter coupon code"
+                            className="w-full bg-transparent text-sm font-semibold text-gray-800 dark:text-gray-100 outline-none placeholder:text-gray-400/85"
+                          />
+                        </div>
+                        <button
+                          onClick={handleApplyCouponCode}
+                          disabled={isCartUnavailable}
+                          className="h-11 px-5 border border-[#DC2626] text-[#DC2626] rounded-xl text-xs font-black uppercase tracking-widest hover:bg-[#DC262605] active:scale-95 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                        >
+                          Apply
+                        </button>
+                      </div>
+                    </div>
+
+                    <div className="flex-1 overflow-y-auto px-5 py-4 space-y-3">
+                      {loadingCoupons ? (
+                        <div className="py-10 text-center text-sm text-gray-500">Loading offers...</div>
+                      ) : filteredCoupons.length > 0 ? (
+                        filteredCoupons.map((coupon) =>
+                          renderCartCouponCard(coupon, { blocked: isCartUnavailable }),
+                        )
+                      ) : (
+                        <div className="py-10 text-center text-sm text-gray-500">
+                          No offers available right now. You can still enter a coupon code above.
+                        </div>
+                      )}
+                    </div>
+                  </motion.div>
+                </div>
+              </>
+            )}
+          </AnimatePresence>,
+          document.body,
+        )}
+
       {/* Share Modal */}
       {typeof window !== "undefined" &&
         createPortal(
@@ -3876,7 +3985,7 @@ export default function Cart() {
         {/* Auto Apply Coupon Popup Sheet */}
         {createPortal(
           <AnimatePresence>
-            {showAutoCouponPopup && bestCoupon && (
+            {showAutoCouponPopup && bestCoupon && !isCartUnavailable && (
               <>
                 {/* Backdrop Overlay */}
                 <motion.div
