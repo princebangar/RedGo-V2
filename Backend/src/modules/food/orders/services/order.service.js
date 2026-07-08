@@ -37,6 +37,7 @@ import * as paymentService from './order-payment.service.js';
 import {
   enqueueOrderEvent,
   haversineKm,
+  assertRestaurantDeliversToZone,
   generateFourDigitDeliveryOtp,
   sanitizeOrderForExternal,
   emitDeliveryDropOtpToUser,
@@ -145,6 +146,16 @@ export async function createOrder(userId, dto) {
       throw new ValidationError("Takeaway is not available for this restaurant");
     }
   }
+
+  assertRestaurantDeliversToZone(restaurant, {
+    zoneId: dto.zoneId,
+    orderType,
+    deliveryAddress: {
+      location: dto.address?.location?.coordinates
+        ? { coordinates: dto.address.location.coordinates }
+        : undefined,
+    },
+  });
 
 
   const settings = await getDispatchSettings();

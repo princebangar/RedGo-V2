@@ -5,15 +5,21 @@ import { FoodFeeSettings } from '../../admin/models/feeSettings.model.js';
 import { FoodOffer } from '../../admin/models/offer.model.js';
 import { FoodOfferUsage } from '../../admin/models/offerUsage.model.js';
 import { ValidationError } from '../../../../core/auth/errors.js';
-import { haversineKm } from './order.helpers.js';
+import { haversineKm, assertRestaurantDeliversToZone } from './order.helpers.js';
 
 export async function calculateOrderPricing(userId, dto) {
   const restaurant = await FoodRestaurant.findById(dto.restaurantId)
-    .select("status location")
+    .select("status location zoneId")
     .lean();
   if (!restaurant) throw new ValidationError("Restaurant not found");
   if (restaurant.status !== "approved")
     throw new ValidationError("Restaurant not available");
+
+  assertRestaurantDeliversToZone(restaurant, {
+    zoneId: dto.zoneId,
+    orderType: dto.orderType,
+    deliveryAddress: dto.deliveryAddress,
+  });
 
   const items = Array.isArray(dto.items) ? dto.items : [];
   const subtotal = items.reduce(
@@ -136,7 +142,8 @@ export async function calculateOrderPricing(userId, dto) {
       const scopeOk =
         offer.restaurantScope !== "selected" ||
         String(offer.restaurantId || "") === String(dto.restaurantId || "");
-      const minOk = subtotal >= (Number(offer.minOrderValue) || 0);
+      const minOrderValue = Number(offer.minOrderValue);
+      const minOk = !Number.isFinite(minOrderValue) || minOrderValue <= 0 || subtotal >= minOrderValue;
       let usageOk = true;
       if (
         Number(offer.usageLimit) > 0 &&

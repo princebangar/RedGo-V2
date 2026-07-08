@@ -17,6 +17,7 @@ import { useUserNotifications } from "../../hooks/useUserNotifications"
 import { useProfile } from "@food/context/ProfileContext"
 import { useLocation as useGeoLocation } from "../../hooks/useLocation"
 import { useZone } from "../../hooks/useZone"
+import { useCartZoneGuard } from "../../hooks/useCartZoneGuard"
 import OutOfZoneScreen from "./OutOfZoneScreen"
 import { isModuleAuthenticated } from "../../utils/auth"
 import { AppShellSkeleton } from "@food/components/ui/loading-skeletons"
@@ -163,7 +164,8 @@ function UserLayoutContent() {
   const location = useLocation()
   const { location: activeLocation, loading: isGeoLoading } = useGeoLocation()
   const { loading: isProfileLoading } = useProfile()
-  const { isOutOfService, loading: isZoneLoading, zoneStatus } = useZone(activeLocation)
+  const { isOutOfService, loading: isZoneLoading, zoneStatus, zoneId } = useZone(activeLocation)
+  useCartZoneGuard(zoneId, zoneStatus)
   const hasValidCoordinates = activeLocation && Number.isFinite(activeLocation.latitude) && Number.isFinite(activeLocation.longitude);
   const isOutOfZone = isOutOfService && hasValidCoordinates;
   const { openLocationSelector } = useLocationSelector()

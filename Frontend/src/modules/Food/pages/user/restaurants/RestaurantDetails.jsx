@@ -7,6 +7,7 @@ import { API_BASE_URL } from "@food/api/config"
 import { toast } from "sonner"
 import { useLocation } from "@food/hooks/useLocation"
 import { useZone } from "@food/hooks/useZone"
+import { filterPublicOffers } from "@food/utils/offerUtils"
 import {
   ArrowLeft,
   Search,
@@ -168,13 +169,15 @@ function RestaurantDetailsContent() {
 
   const formatCouponStripText = (coupon) => {
     if (!coupon) return ""
+    const minOrderValue = Number(coupon.minOrderValue)
+    const minOrderText = Number.isFinite(minOrderValue) && minOrderValue > 0 ? ` above ₹${minOrderValue}` : ""
     if (coupon.discountType === "percentage") {
       const discountPercentage = coupon.discountPercentage ?? coupon.discountValue ?? 0
       const limitText = coupon.maxDiscount ? ` up to ₹${coupon.maxDiscount}` : ""
-      return `${discountPercentage}% OFF above ₹${coupon.minOrderValue || 0}${limitText}`
+      return `${discountPercentage}% OFF${minOrderText}${limitText}`
     }
     const value = coupon.originalPrice || coupon.discountValue || 0
-    return `Flat ₹${value} OFF above ₹${coupon.minOrderValue || 0}`
+    return `Flat ₹${value} OFF${minOrderText}`
   }
 
   const formatCouponTitle = (coupon) => {
@@ -350,57 +353,29 @@ function RestaurantDetailsContent() {
     if (!allOffers || allOffers.length === 0) return []
 
     const rId = restaurant?.id || restaurant?.restaurantId || restaurant?.mongoId || restaurant?._id
-    const isTakeawayActive = orderType === "takeaway"
 
-    const filtered = allOffers
-      .filter((o) => {
-        if (o.showInCart === false) return false
-        if (o.status && o.status !== "active") return false
-
-        // Respect selected restaurant scope - matches by slug first (available immediately), then by ID
-        if (String(o?.restaurantScope) === "selected") {
-          // Slug match works before restaurant object is loaded
-          const matchesSlug = slug && String(o.restaurantSlug || o.slug || "").trim().toLowerCase() === slug.toLowerCase()
-          if (matchesSlug) return true
-          // ID match as fallback once restaurant is loaded
-          if (rId) {
-            const couponRestId = String(o.restaurantId || "").trim()
-            return (
-              couponRestId === String(rId).trim() ||
-              couponRestId === String(restaurant?.id || "").trim() ||
-              couponRestId === String(restaurant?.restaurantId || "").trim() ||
-              couponRestId === String(restaurant?.mongoId || "").trim()
-            )
-          }
-          return false
-        }
-        return true
-      })
-      .map((o) => {
-        const isPct = o.discountType === "percentage"
-        return {
-          couponCode: o.couponCode,
-          discountType: o.discountType,
-          discountPercentage: isPct ? Number(o.discountValue) || 0 : 0,
-          originalPrice: isPct ? 0 : Number(o.discountValue || 0),
-          discountedPrice: 0,
-          minOrderValue: Number(o.minOrderValue || 0),
-          minOrder: Number(o.minOrderValue || 0),
-          maxDiscount: o.maxDiscount != null ? Number(o.maxDiscount) : null,
-          customerGroup: o.customerScope || "all",
-          isGlobalCoupon: true,
-          endDate: o.endDate || null,
-          showInCart: o.showInCart !== false,
-          couponType: o.couponType || "all",
-        }
-      })
-
-    return filtered.filter((c) => {
-      const cType = String(c.couponType || "all").trim().toLowerCase()
-      if (isTakeawayActive) {
-        return cType === "takeaway" || cType === "all"
-      } else {
-        return cType === "delivery" || cType === "all"
+    return filterPublicOffers(allOffers, {
+      restaurantId: rId,
+      restaurantSlug: slug,
+      restaurant,
+      orderType,
+      requireShowInCart: true,
+    }).map((o) => {
+      const isPct = o.discountType === "percentage"
+      return {
+        couponCode: o.couponCode,
+        discountType: o.discountType,
+        discountPercentage: isPct ? Number(o.discountValue) || 0 : 0,
+        originalPrice: isPct ? 0 : Number(o.discountValue || 0),
+        discountedPrice: 0,
+        minOrderValue: Number(o.minOrderValue) > 0 ? Number(o.minOrderValue) : null,
+        minOrder: Number(o.minOrderValue) > 0 ? Number(o.minOrderValue) : 0,
+        maxDiscount: o.maxDiscount != null ? Number(o.maxDiscount) : null,
+        customerGroup: o.customerScope || "all",
+        isGlobalCoupon: true,
+        endDate: o.endDate || null,
+        showInCart: o.showInCart !== false,
+        couponType: o.couponType || "all",
       }
     })
   }, [allOffers, restaurant, orderType, slug])
@@ -1364,6 +1339,7 @@ function RestaurantDetailsContent() {
       image: item.image,
       restaurant: restaurant.name, // Use restaurant.name directly (already validated)
       restaurantId: validRestaurantId, // Use validated restaurantId
+      restaurantZoneId: restaurant.zoneId ? String(restaurant.zoneId) : "",
       description: item.description,
       originalPrice: item.originalPrice,
       isVeg: item.isVeg === true, // Use strict check

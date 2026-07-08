@@ -1,5 +1,6 @@
 import mongoose from 'mongoose';
 import { logger } from '../../../../utils/logger.js';
+import { ValidationError } from '../../../../core/auth/errors.js';
 import {
   sendNotificationToOwner,
   sendNotificationToOwners,
@@ -27,6 +28,35 @@ export function haversineKm(lat1, lon1, lat2, lon2) {
     Math.sin(dLon / 2) * Math.sin(dLon / 2);
   const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
   return R * c;
+}
+
+const MAX_DELIVERY_DISTANCE_KM = 50;
+
+export function assertRestaurantDeliversToZone(
+  restaurant,
+  { zoneId, orderType, deliveryAddress } = {},
+) {
+  const type = String(orderType || "delivery").toLowerCase();
+  if (type !== "delivery") return;
+
+  const restaurantZoneId = restaurant?.zoneId ? String(restaurant.zoneId) : "";
+  const deliveryZoneId = zoneId ? String(zoneId) : "";
+
+  if (restaurantZoneId && deliveryZoneId && restaurantZoneId !== deliveryZoneId) {
+    throw new ValidationError("This restaurant does not deliver to your selected location");
+  }
+
+  if (
+    restaurant?.location?.coordinates?.length === 2 &&
+    deliveryAddress?.location?.coordinates?.length === 2
+  ) {
+    const [rLng, rLat] = restaurant.location.coordinates;
+    const [dLng, dLat] = deliveryAddress.location.coordinates;
+    const distanceKm = haversineKm(rLat, rLng, dLat, dLng);
+    if (Number.isFinite(distanceKm) && distanceKm > MAX_DELIVERY_DISTANCE_KM) {
+      throw new ValidationError("Delivery address is too far from this restaurant");
+    }
+  }
 }
 
 export function generateFourDigitDeliveryOtp() {

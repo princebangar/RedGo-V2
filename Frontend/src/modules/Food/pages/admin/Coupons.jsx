@@ -6,6 +6,8 @@ const debugLog = (...args) => {}
 const debugWarn = (...args) => {}
 const debugError = (...args) => {}
 
+const RequiredMark = () => <span className="text-red-500">*</span>
+
 
 export default function Coupons() {
   const [searchQuery, setSearchQuery] = useState("")
@@ -300,16 +302,16 @@ export default function Coupons() {
       discountValue: offer.discountType === "flat-price"
         ? String(offer.originalPrice || "")
         : String(offer.discountPercentage || ""),
-      customerScope: offer.customerGroup === "new" ? "first-time" : "all",
+      customerScope: offer.customerScope || (offer.customerGroup === "new" ? "first-time" : "all"),
       restaurantScope: offer.restaurantScope || "all",
       restaurantId: offer.restaurantId || "",
       endDate: formatDateForInput(offer.endDate),
       startDate: formatDateForInput(offer.startDate),
-      minOrderValue: offer.minOrderValue !== undefined && offer.minOrderValue !== null ? String(offer.minOrderValue) : "",
+      minOrderValue: Number(offer.minOrderValue) > 0 ? String(offer.minOrderValue) : "",
       maxDiscount: offer.maxDiscount !== undefined && offer.maxDiscount !== null ? String(offer.maxDiscount) : "",
       usageLimit: offer.usageLimit !== undefined && offer.usageLimit !== null ? String(offer.usageLimit) : "",
       perUserLimit: offer.perUserLimit !== undefined && offer.perUserLimit !== null ? String(offer.perUserLimit) : "",
-      isFirstOrderOnly: Boolean(offer.isFirstOrderOnly || offer.customerGroup === "new"),
+      isFirstOrderOnly: offer.isFirstOrderOnly === true,
     }
     setFormData(mappedData)
     setOriginalFormData(mappedData)
@@ -387,14 +389,17 @@ export default function Coupons() {
                 </div>
 
                 <div>
-                  <label className="block text-xs font-semibold text-slate-600 mb-1">Coupon Code</label>
+                  <label className="block text-xs font-semibold text-slate-600 mb-1">
+                    Coupon Code <RequiredMark />
+                  </label>
                   <input
                     type="text"
                     value={formData.couponCode}
                     onChange={(e) => handleFormChange("couponCode", e.target.value)}
                     placeholder="e.g. NEWUSER50"
-                    className="w-full px-3 py-2.5 text-sm rounded-lg border border-slate-300 bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                    className={`w-full px-3 py-2.5 text-sm rounded-lg border ${errors.couponCode ? "border-red-500" : "border-slate-300"} bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500`}
                   />
+                  {errors.couponCode && <p className="mt-1 text-xs text-red-600">{errors.couponCode}</p>}
                 </div>
 
                 <div>
@@ -411,7 +416,7 @@ export default function Coupons() {
 
                 <div title={formData.discountType === "flat-price" ? "Max discount is not applicable for flat coupons" : ""}>
                   <label className="block text-xs font-semibold text-slate-600 mb-1">
-                    {formData.discountType === "percentage" ? "Discount (%)" : "Discount Amount"}
+                    {formData.discountType === "percentage" ? "Discount (%)" : "Discount Amount"} <RequiredMark />
                   </label>
                   <input
                     type="number"
@@ -488,7 +493,18 @@ export default function Coupons() {
               </div>
 
                 <div title={formData.discountType === "flat-price" ? "Max discount is not applicable for flat coupons" : ""}>
-                <label className="block text-xs font-semibold text-slate-600 mb-1">Max Discount (₹, optional)</label>
+                <label className="block text-xs font-semibold text-slate-600 mb-1">
+                  Max Discount (₹)
+                  {formData.discountType === "percentage" && (
+                    <>
+                      {" "}
+                      <RequiredMark />
+                    </>
+                  )}
+                  {formData.discountType === "flat-price" && (
+                    <span className="font-normal text-slate-400"> (optional)</span>
+                  )}
+                </label>
                 <input
                   type="number"
                   min="0"
@@ -543,7 +559,9 @@ export default function Coupons() {
 
                 {formData.restaurantScope === "selected" && (
                   <div className="md:col-span-2 lg:col-span-3">
-                    <label className="block text-xs font-semibold text-slate-600 mb-1">Select Restaurant</label>
+                    <label className="block text-xs font-semibold text-slate-600 mb-1">
+                      Select Restaurant <RequiredMark />
+                    </label>
                     <select
                       value={formData.restaurantId}
                       onChange={(e) => handleFormChange("restaurantId", e.target.value)}
