@@ -1787,10 +1787,57 @@ function RestaurantDetailsContent() {
     }
   }
 
-  // Handle item card click
-  const handleItemClick = (item) => {
-    setSelectedItem(item)
+  // Prefetch only when we don't already have the list image decoded
+  const preloadDishImage = (src) =>
+    new Promise((resolve) => {
+      if (!src) {
+        resolve()
+        return
+      }
+      const img = new Image()
+      let settled = false
+      const finish = () => {
+        if (settled) return
+        settled = true
+        resolve()
+      }
+      const timeoutId = setTimeout(finish, 500)
+      img.onload = () => {
+        clearTimeout(timeoutId)
+        finish()
+      }
+      img.onerror = () => {
+        clearTimeout(timeoutId)
+        finish()
+      }
+      img.src = src
+      if (img.complete) {
+        clearTimeout(timeoutId)
+        finish()
+      }
+    })
+
+  const itemDetailOpenSeqRef = useRef(0)
+
+  // Reuse the exact URL the list already loaded (srcset/webp). Raw item.image is a
+  // different URL, so the browser treats the popup as a fresh download otherwise.
+  const handleItemClick = async (item, event) => {
+    const seq = ++itemDetailOpenSeqRef.current
+    const listImg = event?.currentTarget?.querySelector?.("img")
+    const cachedSrc = listImg?.currentSrc || listImg?.src || ""
+    const imageSrc = cachedSrc || item?.image || ""
+    setSelectedItem({ ...item, displayImage: imageSrc })
+
+    const alreadyReady = Boolean(listImg?.complete && cachedSrc)
+    if (!alreadyReady) {
+      await preloadDishImage(imageSrc)
+    }
+    if (seq !== itemDetailOpenSeqRef.current) return
     setShowItemDetail(true)
+  }
+
+  const closeItemDetail = () => {
+    setShowItemDetail(false)
   }
 
   // Helper function to calculate final price after discount
@@ -2827,8 +2874,7 @@ function RestaurantDetailsContent() {
                                   delete dishCardRefs.current[item.id]
                                 }
                               }}
-                              className={`flex gap-4 p-4 ${highlightedDishId === item.id && isRecommended ? "border-b-transparent" : "border-b border-gray-100 dark:border-gray-800 last:border-none"} relative cursor-pointer transition-all duration-300 ${highlightedDishId === item.id && isRecommended ? "bg-[#DC262605] dark:bg-[#DC262610] rounded-2xl" : ""}`}
-                              onClick={() => handleItemClick(item)}
+                              className={`flex gap-4 p-4 ${highlightedDishId === item.id && isRecommended ? "border-b-transparent" : "border-b border-gray-100 dark:border-gray-800 last:border-none"} relative transition-all duration-300 ${highlightedDishId === item.id && isRecommended ? "bg-[#DC262605] dark:bg-[#DC262610] rounded-2xl" : ""}`}
                             >
                               {/* Vibrant Red Background Gradient Highlight - Recommended Section Only */}
                               <AnimatePresence>
@@ -2938,23 +2984,30 @@ function RestaurantDetailsContent() {
 
                               {/* Right Side - Image and Add Button */}
                               <div className="relative w-32 h-32 flex-shrink-0">
-                                {item.image ? (
-                                  <OptimizedImage
-                                    src={item.image}
-                                    alt={item.name}
-                                    priority={isPriority}
-                                    className="w-full h-full object-cover rounded-2xl shadow-sm"
-                                    onError={(e) => {
-                                      if (e.currentTarget.src !== FOOD_IMAGE_FALLBACK) {
-                                        e.currentTarget.src = FOOD_IMAGE_FALLBACK
-                                      }
-                                    }}
-                                  />
-                                ) : (
-                                  <div className="w-full h-full bg-gray-200 dark:bg-gray-700 rounded-2xl flex items-center justify-center">
-                                    <span className="text-xs text-gray-400">No image</span>
-                                  </div>
-                                )}
+                                <button
+                                  type="button"
+                                  onClick={(e) => handleItemClick(item, e)}
+                                  className="w-full h-full rounded-2xl overflow-hidden cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-[#DC2626]"
+                                  aria-label={`View ${item.name} details`}
+                                >
+                                  {item.image ? (
+                                    <OptimizedImage
+                                      src={item.image}
+                                      alt={item.name}
+                                      priority={isPriority}
+                                      className="w-full h-full object-cover rounded-2xl shadow-sm"
+                                      onError={(e) => {
+                                        if (e.currentTarget.src !== FOOD_IMAGE_FALLBACK) {
+                                          e.currentTarget.src = FOOD_IMAGE_FALLBACK
+                                        }
+                                      }}
+                                    />
+                                  ) : (
+                                    <div className="w-full h-full bg-gray-200 dark:bg-gray-700 rounded-2xl flex items-center justify-center">
+                                      <span className="text-xs text-gray-400">No image</span>
+                                    </div>
+                                  )}
+                                </button>
                                 {quantity > 0 ? (
                                   <div
                                     className={`absolute -bottom-2 left-1/2 -translate-x-1/2 bg-white border border-[#DC2626] text-[#DC2626] font-bold px-4 py-1.5 rounded-lg shadow-md flex items-center gap-1 ${shouldShowGrayscale
@@ -3006,11 +3059,7 @@ function RestaurantDetailsContent() {
                                       onClick={(e) => {
                                         e.stopPropagation()
                                         if (!shouldShowGrayscale) {
-                                          if (hasFoodVariants(item)) {
-                                            handleItemClick(item)
-                                          } else {
-                                            updateItemQuantity(item, 1, e)
-                                          }
+                                          updateItemQuantity(item, 1, e, getDefaultFoodVariant(item))
                                         }
                                       }}
                                       disabled={shouldShowGrayscale}
@@ -3094,8 +3143,7 @@ function RestaurantDetailsContent() {
                                             delete dishCardRefs.current[item.id]
                                           }
                                         }}
-                                        className={`flex gap-4 p-4 border-b border-gray-100 dark:border-gray-800 last:border-none relative cursor-pointer transition-all duration-300 ${highlightedDishId === item.id ? "bg-[#DC262605] ring-2 ring-[#DC2626] ring-inset dark:bg-[#DC262610] rounded-2xl" : ""}`}
-                                        onClick={() => handleItemClick(item)}
+                                        className={`flex gap-4 p-4 border-b border-gray-100 dark:border-gray-800 last:border-none relative transition-all duration-300 ${highlightedDishId === item.id ? "bg-[#DC262605] ring-2 ring-[#DC2626] ring-inset dark:bg-[#DC262610] rounded-2xl" : ""}`}
                                       >
                                         {/* Left Side - Details */}
                                         <div className="flex-1 min-w-0">
@@ -3165,23 +3213,30 @@ function RestaurantDetailsContent() {
 
                                         {/* Right Side - Image and Add Button */}
                                         <div className="relative w-32 h-32 flex-shrink-0">
-                                          {item.image ? (
-                                            <OptimizedImage
-                                              src={item.image}
-                                              alt={item.name}
-                                              priority={isPriority}
-                                              className="w-full h-full object-cover rounded-2xl shadow-sm"
-                                              onError={(e) => {
-                                                if (e.currentTarget.src !== FOOD_IMAGE_FALLBACK) {
-                                                  e.currentTarget.src = FOOD_IMAGE_FALLBACK
-                                                }
-                                              }}
-                                            />
-                                          ) : (
-                                            <div className="w-full h-full bg-gray-200 dark:bg-gray-700 rounded-2xl flex items-center justify-center">
-                                              <span className="text-xs text-gray-400">No image</span>
-                                            </div>
-                                          )}
+                                          <button
+                                            type="button"
+                                            onClick={(e) => handleItemClick(item, e)}
+                                            className="w-full h-full rounded-2xl overflow-hidden cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-[#DC2626]"
+                                            aria-label={`View ${item.name} details`}
+                                          >
+                                            {item.image ? (
+                                              <OptimizedImage
+                                                src={item.image}
+                                                alt={item.name}
+                                                priority={isPriority}
+                                                className="w-full h-full object-cover rounded-2xl shadow-sm"
+                                                onError={(e) => {
+                                                  if (e.currentTarget.src !== FOOD_IMAGE_FALLBACK) {
+                                                    e.currentTarget.src = FOOD_IMAGE_FALLBACK
+                                                  }
+                                                }}
+                                              />
+                                            ) : (
+                                              <div className="w-full h-full bg-gray-200 dark:bg-gray-700 rounded-2xl flex items-center justify-center">
+                                                <span className="text-xs text-gray-400">No image</span>
+                                              </div>
+                                            )}
+                                          </button>
                                           {quantity > 0 ? (
                                             <motion.div
                                               initial={{ opacity: 0, scale: 0.8 }}
@@ -3238,11 +3293,7 @@ function RestaurantDetailsContent() {
                                               onClick={(e) => {
                                                 e.stopPropagation()
                                                 if (!shouldShowGrayscale) {
-                                                  if (hasFoodVariants(item)) {
-                                                    handleItemClick(item)
-                                                  } else {
-                                                    updateItemQuantity(item, 1, e)
-                                                  }
+                                                  updateItemQuantity(item, 1, e, getDefaultFoodVariant(item))
                                                 }
                                               }}
                                               disabled={shouldShowGrayscale}
@@ -3848,33 +3899,43 @@ function RestaurantDetailsContent() {
                 initial={{ opacity: 0 }}
                 animate={{ opacity: 1 }}
                 exit={{ opacity: 0 }}
-                transition={{ duration: 0.2 }}
-                onClick={() => setShowItemDetail(false)}
+                transition={{ duration: 0.18, ease: [0.22, 1, 0.36, 1] }}
+                onClick={closeItemDetail}
               >
                 {/* Item Detail Modal */}
                 <motion.div
                   className="relative bg-white dark:bg-[#1a1a1a] rounded-3xl shadow-2xl max-h-[90vh] w-full max-w-[450px] md:max-w-2xl flex flex-col overflow-hidden"
-                  initial={{ opacity: 0, scale: 0.95, y: 20 }}
+                  initial={{ opacity: 0, scale: 0.97, y: 12 }}
                   animate={{ opacity: 1, scale: 1, y: 0 }}
-                  exit={{ opacity: 0, scale: 0.95, y: 20 }}
-                  transition={{ duration: 0.2, type: "spring", damping: 25, stiffness: 300 }}
+                  exit={{ opacity: 0, scale: 0.97, y: 12 }}
+                  transition={{ duration: 0.2, ease: [0.22, 1, 0.36, 1] }}
                   onClick={(e) => e.stopPropagation()}
                 >
                   {/* Close Button - Inside Top Right */}
                   <button
-                    onClick={() => setShowItemDetail(false)}
+                    onClick={closeItemDetail}
                     className="absolute top-4 right-4 z-[10001] h-8 w-8 rounded-full bg-gray-900/90 shadow-md flex items-center justify-center hover:bg-black transition-colors"
                   >
                     <X className="h-5 w-5 text-white" />
                   </button>
 
-                  {/* Image Section */}
-                  <div className="relative w-full h-64 overflow-hidden rounded-t-3xl">
-                    {selectedItem.image ? (
+                  {/* Image Section — uses the same cached URL as the list thumb for instant paint */}
+                  <div className="relative w-full h-64 overflow-hidden rounded-t-3xl bg-gray-100 dark:bg-gray-800">
+                    {(selectedItem.displayImage || selectedItem.image) ? (
                       <img
-                        src={selectedItem.image}
+                        src={selectedItem.displayImage || selectedItem.image}
                         alt={selectedItem.name}
                         className="w-full h-full object-cover"
+                        decoding="sync"
+                        loading="eager"
+                        fetchPriority="high"
+                        onError={(e) => {
+                          if (selectedItem.image && e.currentTarget.src !== selectedItem.image) {
+                            e.currentTarget.src = selectedItem.image
+                          } else if (e.currentTarget.src !== FOOD_IMAGE_FALLBACK) {
+                            e.currentTarget.src = FOOD_IMAGE_FALLBACK
+                          }
+                        }}
                       />
                     ) : (
                       <div className="w-full h-full bg-gray-200 dark:bg-gray-700 flex items-center justify-center">
@@ -4001,7 +4062,7 @@ function RestaurantDetailsContent() {
                               e,
                               getVariantForDish(selectedItem, selectedVariantId),
                             )
-                            setShowItemDetail(false)
+                            closeItemDetail()
                           }
                         }}
                         disabled={shouldShowGrayscale}
