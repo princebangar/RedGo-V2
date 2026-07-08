@@ -3842,11 +3842,7 @@ export default function Cart() {
                     transition={{ type: "spring", damping: 30, stiffness: 300 }}
                     onClick={(e) => e.stopPropagation()}
                   >
-                    <div className="flex justify-center pt-3 pb-1">
-                      <div className="w-10 h-1 rounded-full bg-gray-300 dark:bg-gray-600" />
-                    </div>
-
-                    <div className="px-5 pt-2 pb-4 border-b border-gray-100 dark:border-gray-800 flex items-center justify-between gap-3">
+                    <div className="px-5 pt-5 pb-4 border-b border-gray-100 dark:border-gray-800 flex items-center justify-between gap-3">
                       <div>
                         <h2 className="text-lg font-bold text-gray-900 dark:text-gray-100">All Offers & Coupons</h2>
                         <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
