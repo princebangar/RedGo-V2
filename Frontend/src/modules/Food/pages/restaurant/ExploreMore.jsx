@@ -37,6 +37,7 @@ import { Card, CardContent } from "@food/components/ui/card"
 import { DateRangeCalendar } from "@food/components/ui/date-range-calendar"
 import { clearModuleAuth, clearAuthData, getCurrentUser } from "@food/utils/auth"
 import { restaurantAPI, authAPI } from "@food/api"
+import { formatRestaurantDisplayAddress } from "@food/utils/restaurantLocation"
 import { toast } from "sonner"
 import { showAccountDeletedToast } from "@/shared/utils/customToasts"
 import { firebaseAuth, ensureFirebaseInitialized } from "@food/firebase"
@@ -45,14 +46,6 @@ const debugLog = (...args) => {}
 const debugWarn = (...args) => {}
 const debugError = (...args) => {}
 
-
-const isCoordinateString = (str) => {
-  if (!str) return false
-  const trimmed = str.trim()
-  // Matches "22.123, 75.123" or similar variants
-  const coordRegex = /^-?\d+\.\d+,\s*-?\d+\.\d+/
-  return coordRegex.test(trimmed)
-}
 
 // Time Picker Wheel Component
 function TimePickerWheel({
@@ -424,7 +417,7 @@ export default function ExploreMore() {
     const fetchRestaurantData = async () => {
       try {
         setLoadingRestaurant(true)
-        const response = await restaurantAPI.getCurrentRestaurant()
+        const response = await restaurantAPI.refreshCurrentRestaurant()
         const data = response?.data?.data?.restaurant || response?.data?.restaurant
         if (data) {
           setRestaurantData(data)
@@ -441,84 +434,23 @@ export default function ExploreMore() {
     }
 
     fetchRestaurantData()
+
+    const handleRestaurantDataUpdate = () => {
+      fetchRestaurantData()
+    }
+
+    window.addEventListener("ownerDataUpdated", handleRestaurantDataUpdate)
+    window.addEventListener("addressUpdated", handleRestaurantDataUpdate)
+
+    return () => {
+      window.removeEventListener("ownerDataUpdated", handleRestaurantDataUpdate)
+      window.removeEventListener("addressUpdated", handleRestaurantDataUpdate)
+    }
   }, [])
 
-  // Format address from location object
-  const formatAddress = (location) => {
-    if (!location) return ""
-
-    if (location.formattedAddress && location.formattedAddress.trim() !== "" && location.formattedAddress !== "Select location") {
-      if (!isCoordinateString(location.formattedAddress)) {
-        return location.formattedAddress.trim()
-      }
-    }
-
-    if (location.address && location.address.trim() !== "") {
-      if (!isCoordinateString(location.address)) {
-        return location.address.trim()
-      }
-    }
-
-    const parts = []
-
-    if (location.addressLine1) {
-      parts.push(location.addressLine1.trim())
-    } else if (location.street) {
-      parts.push(location.street.trim())
-    }
-
-    if (location.addressLine2) {
-      parts.push(location.addressLine2.trim())
-    }
-
-    if (location.area) {
-      parts.push(location.area.trim())
-    }
-
-    if (location.landmark) {
-      parts.push(location.landmark.trim())
-    }
-
-    if (location.city) {
-      const city = location.city.trim()
-      if (!parts.some((part) => part.toLowerCase().includes(city.toLowerCase()))) {
-        parts.push(city)
-      }
-    }
-
-    if (location.state) {
-      const state = location.state.trim()
-      if (!parts.some((part) => part.toLowerCase().includes(state.toLowerCase()))) {
-        parts.push(state)
-      }
-    }
-
-    if (location.zipCode || location.pincode || location.postalCode) {
-      parts.push((location.zipCode || location.pincode || location.postalCode).trim())
-    }
-
-    return parts.join(", ") || ""
-  }
-
-  // Sync address logic with Navbar
   const restaurantDisplayAddress = useMemo(() => {
     if (!restaurantData) return ""
-    let newLocation = ""
-
-    if (restaurantData.location) {
-      newLocation = formatAddress(restaurantData.location)
-    }
-
-    if (!newLocation && (restaurantData.city || restaurantData.area)) {
-      newLocation = [restaurantData.area, restaurantData.city].filter(Boolean).join(", ")
-    }
-
-    if (!newLocation && restaurantData.address && restaurantData.address.trim() !== "") {
-      if (!isCoordinateString(restaurantData.address)) {
-        newLocation = restaurantData.address.trim()
-      }
-    }
-    return newLocation
+    return formatRestaurantDisplayAddress(restaurantData.location, restaurantData)
   }, [restaurantData])
 
   // Get user data from logged in session and restaurant data

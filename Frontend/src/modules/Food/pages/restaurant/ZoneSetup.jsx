@@ -4,8 +4,16 @@ import useRestaurantBackNavigation from "@food/hooks/useRestaurantBackNavigation
 import { MapPin, Search, Save, Loader2, ArrowLeft } from "lucide-react"
 import RestaurantNavbar from "@food/components/restaurant/RestaurantNavbar"
 import { restaurantAPI } from "@food/api"
+import { reverseGeocodeWithGoogle } from "@food/utils/googleGeocoding"
+import {
+  buildRestaurantLocationUpdatePayload,
+  dispatchRestaurantLocationUpdated,
+  formatRestaurantDisplayAddress,
+  normalizeRestaurantLocationFields,
+} from "@food/utils/restaurantLocation"
 import { getGoogleMapsApiKey } from "@food/utils/googleMapsApiKey"
 import { Loader } from "@googlemaps/js-api-loader"
+import { toast } from "sonner"
 const debugLog = (...args) => {}
 const debugWarn = (...args) => {}
 const debugError = (...args) => console.error("[ZoneSetup]", ...args)
@@ -58,16 +66,53 @@ export default function ZoneSetup() {
   const markerRef = useRef(null)
   const sessionTokenRef = useRef(null)
   const debounceRef = useRef(null)
+  const geocodeDebounceRef = useRef(null)
+  const locationRef = useRef(null)
 
   const [googleMapsApiKey, setGoogleMapsApiKey] = useState("")
   const [mapLoading, setMapLoading] = useState(true)
   const [saving, setSaving] = useState(false)
+  const [geocoding, setGeocoding] = useState(false)
   const [restaurantData, setRestaurantData] = useState(null)
   const [selectedLocation, setSelectedLocation] = useState(null)
-  const [selectedAddress, setSelectedAddress] = useState("")
   const [locationSearch, setLocationSearch] = useState("")
   const [suggestions, setSuggestions] = useState([])
   const [showSuggestions, setShowSuggestions] = useState(false)
+
+  const applyResolvedLocation = (fields) => {
+    const next = normalizeRestaurantLocationFields(fields)
+    if (!next) return
+    locationRef.current = next
+    setSelectedLocation(next)
+    if (next.latitude != null) updateMarker(next.latitude, next.longitude, formatRestaurantDisplayAddress(next))
+  }
+
+  const updateLocationFromCoords = async (nextLat, nextLng) => {
+    if (geocodeDebounceRef.current) clearTimeout(geocodeDebounceRef.current)
+
+    geocodeDebounceRef.current = setTimeout(async () => {
+      try {
+        setGeocoding(true)
+        const parsed = await reverseGeocodeWithGoogle(nextLat, nextLng)
+        applyResolvedLocation(parsed.locationFields || {
+          ...(locationRef.current || {}),
+          latitude: nextLat,
+          longitude: nextLng,
+          formattedAddress: `${nextLat.toFixed(6)}, ${nextLng.toFixed(6)}`,
+        })
+      } catch (error) {
+        debugError("Reverse geocode failed:", error)
+        applyResolvedLocation({
+          ...(locationRef.current || {}),
+          latitude: nextLat,
+          longitude: nextLng,
+          formattedAddress: `${nextLat.toFixed(6)}, ${nextLng.toFixed(6)}`,
+        })
+      } finally {
+        setGeocoding(false)
+      }
+    }, 450)
+  }
 
   useEffect(() => {
     fetchRestaurantData()
@@ -127,19 +172,15 @@ export default function ZoneSetup() {
       const loc = place.location
       const lat = typeof loc.lat === "function" ? loc.lat() : loc.lat
       const lng = typeof loc.lng === "function" ? loc.lng() : loc.lng
-      const address = place.formattedAddress || place.displayName || ""
 
       mapInstanceRef.current.setCenter({ lat, lng })
       mapInstanceRef.current.setZoom(17)
 
-      setLocationSearch(address)
-      setSelectedAddress(address)
-      updateMarker(lat, lng, address)
-      setSelectedLocation({ lat, lng, address })
-
+      setLocationSearch(place.formattedAddress || place.displayName || "")
       setSuggestions([])
       setShowSuggestions(false)
-      sessionTokenRef.current = null // token is consumed after a selection
+      sessionTokenRef.current = null
+      await updateLocationFromCoords(lat, lng)
     } catch (err) {
       debugError("Error resolving selected place:", err)
     }
@@ -156,12 +197,13 @@ export default function ZoneSetup() {
         const locationObj = new window.google.maps.LatLng(lat, lng)
         mapInstanceRef.current.setCenter(locationObj)
         mapInstanceRef.current.setZoom(17)
-        
-        const address = location.formattedAddress || location.address || formatAddress(location) || ""
-        setSelectedAddress(address)
-        setSelectedLocation({ lat, lng, address })
-        
-        updateMarker(lat, lng, address)
+
+        const normalized = normalizeRestaurantLocationFields(location)
+        if (normalized) {
+          applyResolvedLocation(normalized)
+        } else {
+          updateLocationFromCoords(lat, lng)
+        }
       }
     }
   }, [restaurantData, mapLoading])
@@ -309,11 +351,8 @@ export default function ZoneSetup() {
       map.addListener('click', (event) => {
         const lat = event.latLng.lat()
         const lng = event.latLng.lng()
-        // Maps geocode API disabled - use coordinates as address (no external API call)
-        const address = `${lat.toFixed(6)}, ${lng.toFixed(6)}`
-        setSelectedAddress(address)
-        setSelectedLocation({ lat, lng, address })
-        updateMarker(lat, lng, address)
+        updateMarker(lat, lng, "Resolving address...")
+        updateLocationFromCoords(lat, lng)
       })
 
       setMapLoading(false)
@@ -360,79 +399,45 @@ export default function ZoneSetup() {
     marker.addListener('dragend', (event) => {
       const newLat = event.latLng.lat()
       const newLng = event.latLng.lng()
-      // Maps geocode API disabled - use coordinates as address (no external API call)
-      const newAddress = `${newLat.toFixed(6)}, ${newLng.toFixed(6)}`
-      setSelectedAddress(newAddress)
-      setSelectedLocation({ lat: newLat, lng: newLng, address: newAddress })
+      updateLocationFromCoords(newLat, newLng)
     })
 
     markerRef.current = marker
   }
 
-  const formatAddress = (location) => {
-    if (!location) return ""
-    
-    if (location.formattedAddress && location.formattedAddress.trim() !== "") {
-      return location.formattedAddress.trim()
-    }
-    
-    if (location.address && location.address.trim() !== "") {
-      return location.address.trim()
-    }
-    
-    const parts = []
-    if (location.addressLine1) parts.push(location.addressLine1.trim())
-    if (location.addressLine2) parts.push(location.addressLine2.trim())
-    if (location.area) parts.push(location.area.trim())
-    if (location.city) parts.push(location.city.trim())
-    if (location.state) parts.push(location.state.trim())
-    if (location.zipCode || location.pincode) parts.push((location.zipCode || location.pincode).trim())
-    
-    return parts.length > 0 ? parts.join(", ") : ""
-  }
-
   const handleSaveLocation = async () => {
-    if (!selectedLocation) {
-      alert("Please select a location on the map first")
+    if (!selectedLocation?.latitude || !selectedLocation?.longitude) {
+      toast.error("Please select a location on the map first")
       return
     }
 
     try {
       setSaving(true)
-      
-      const { lat, lng, address } = selectedLocation
-      
-      // Update restaurant location
+
       const response = await restaurantAPI.updateProfile({
-        location: {
-          ...(restaurantData?.location || {}),
-          latitude: lat,
-          longitude: lng,
-          coordinates: [lng, lat], // GeoJSON format: [longitude, latitude]
-          formattedAddress: address
-        }
+        location: buildRestaurantLocationUpdatePayload(selectedLocation),
       })
 
       if (response?.data?.data?.restaurant) {
         setRestaurantData(response.data.data.restaurant)
-        alert("Location saved successfully!")
-        
-        // Refresh the page to update navbar
-        window.location.reload()
+        toast.success("Location saved successfully. Awaiting admin approval.", { duration: 4000 })
+        dispatchRestaurantLocationUpdated()
       } else {
         throw new Error("Failed to save location")
       }
     } catch (error) {
       debugError("Error saving location:", error)
-      alert(error.response?.data?.message || "Failed to save location. Please try again.")
+      toast.error(error.response?.data?.message || "Failed to save location. Please try again.")
     } finally {
       setSaving(false)
     }
   }
 
+  const selectedAddress = formatRestaurantDisplayAddress(selectedLocation, restaurantData)
+
   return (
     <div className="min-h-screen bg-gray-50">
-      <RestaurantNavbar />
+      <RestaurantNavbar hideSearch />
       <div className="p-4 md:p-6 max-w-7xl mx-auto">
         {/* Header */}
         <div className="flex flex-col md:flex-row md:items-center md:justify-between mb-6">
@@ -456,10 +461,10 @@ export default function ZoneSetup() {
         </div>
 
         {/* Search Bar */}
-        <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-4 mb-6">
-          <div className="flex items-center gap-3">
-            <div className="flex-1 relative">
-              <Search className="absolute left-4 top-1/2 transform -translate-y-1/2 w-5 h-5 text-gray-400 z-10" />
+        <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-3 sm:p-4 mb-6 overflow-visible">
+          <div className="flex flex-col gap-3">
+            <div className="relative w-full min-w-0">
+              <Search className="absolute left-3 sm:left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400 z-10 pointer-events-none" />
               <input
                 type="text"
                 value={locationSearch}
@@ -467,11 +472,10 @@ export default function ZoneSetup() {
                 onFocus={() => suggestions.length > 0 && setShowSuggestions(true)}
                 onBlur={() => setTimeout(() => setShowSuggestions(false), 150)}
                 placeholder="Search for your restaurant location..."
-                className="w-full pl-12 pr-4 py-3.5 text-base border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#B80B3D] focus:border-transparent"
+                className="w-full min-w-0 pl-10 sm:pl-12 pr-4 py-3.5 text-sm sm:text-base border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#B80B3D] focus:border-transparent"
               />
-              {/* Suggestions dropdown — appears right below the input */}
               {showSuggestions && suggestions.length > 0 && (
-                <ul className="absolute z-50 left-0 right-0 mt-1 bg-white border border-gray-200 rounded-lg shadow-lg max-h-72 overflow-y-auto">
+                <ul className="absolute z-[200] left-0 right-0 w-full mt-1 bg-white border border-gray-200 rounded-lg shadow-lg max-h-72 overflow-y-auto">
                   {suggestions.map((prediction, idx) => {
                     const main = prediction.mainText?.text || prediction.text?.text || ""
                     const secondary = prediction.secondaryText?.text || ""
@@ -479,16 +483,16 @@ export default function ZoneSetup() {
                       <li
                         key={prediction.placeId || idx}
                         onMouseDown={(e) => {
-                          e.preventDefault() // keep input focus so onBlur doesn't fire first
+                          e.preventDefault()
                           handleSelectSuggestion(prediction)
                         }}
-                        className="flex items-start gap-2 px-4 py-2.5 cursor-pointer hover:bg-gray-50 border-b border-gray-100 last:border-b-0"
+                        className="flex items-start gap-2.5 px-3 sm:px-4 py-3 cursor-pointer hover:bg-gray-50 border-b border-gray-100 last:border-b-0"
                       >
-                        <MapPin className="w-4 h-4 text-[#B80B3D] mt-0.5 flex-shrink-0" />
-                        <div className="min-w-0">
-                          <p className="text-sm text-gray-900 truncate">{main}</p>
+                        <MapPin className="w-4 h-4 text-[#B80B3D] mt-0.5 shrink-0" />
+                        <div className="min-w-0 flex-1">
+                          <p className="text-sm text-gray-900 font-medium leading-snug break-words">{main}</p>
                           {secondary && (
-                            <p className="text-xs text-gray-500 truncate">{secondary}</p>
+                            <p className="text-xs text-gray-500 mt-0.5 leading-snug break-words">{secondary}</p>
                           )}
                         </div>
                       </li>
@@ -500,7 +504,7 @@ export default function ZoneSetup() {
             <button
               onClick={handleSaveLocation}
               disabled={!selectedLocation || saving}
-              className="flex items-center gap-2 px-6 py-2 bg-gradient-to-br from-[#B80B3D] to-[#66001D] text-white rounded-lg hover:bg-red-700 transition-colors disabled:bg-gray-400 disabled:cursor-not-allowed"
+              className="w-full sm:w-auto sm:self-end flex items-center justify-center gap-2 px-6 py-3.5 bg-gradient-to-br from-[#B80B3D] to-[#66001D] text-white text-sm sm:text-base font-semibold rounded-lg hover:opacity-95 transition-opacity disabled:bg-gray-400 disabled:cursor-not-allowed shrink-0"
             >
               {saving ? (
                 <>
@@ -518,11 +522,14 @@ export default function ZoneSetup() {
           {selectedLocation && (
             <div className="mt-3 p-3 bg-green-50 border border-green-200 rounded-lg">
               <p className="text-sm text-gray-700">
-                <strong>Selected Location:</strong> {selectedAddress}
+                <strong>Selected Location:</strong> {selectedAddress || "Resolving address..."}
               </p>
               <p className="text-xs text-gray-500 mt-1">
-                Coordinates: {selectedLocation.lat.toFixed(6)}, {selectedLocation.lng.toFixed(6)}
+                Coordinates: {Number(selectedLocation.latitude).toFixed(6)}, {Number(selectedLocation.longitude).toFixed(6)}
               </p>
+              {geocoding && (
+                <p className="text-xs text-[#B80B3D] mt-1">Updating address details...</p>
+              )}
             </div>
           )}
         </div>

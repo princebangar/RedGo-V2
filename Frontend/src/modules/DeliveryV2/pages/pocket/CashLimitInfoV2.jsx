@@ -106,7 +106,7 @@ export const CashLimitInfoV2 = () => {
                    <DetailRow 
                       label="Total cash limit" 
                       value={formatCurrency(walletState.totalCashLimit)} 
-                      subLabel="Resets every Monday and increases with earnings"
+                      subLabel="Max COD cash you can hold. Restored when you deposit/settle."
                    />
                    <DetailRow label="Cash in hand" value={formatCurrency(walletState.cashInHand)} />
                    <DetailRow label="Deductions" value={formatCurrency(walletState.deductions)} />
@@ -123,7 +123,7 @@ export const CashLimitInfoV2 = () => {
                 <HelpCircle className="w-8 h-8 text-gray-200 mx-auto mb-4" />
                 <h4 className="text-xs font-bold text-gray-400 uppercase tracking-widest mb-2">How it works?</h4>
                 <p className="text-[11px] text-gray-500 font-medium leading-relaxed px-4">
-                   Your available limit is the maximum cash you can carry in hand. As you receive cash orders, this limit decreases. Settling your dues or earning more will increase this limit.
+                   Your available limit is how much more COD cash you can collect. Cash orders reduce it. When you deposit (pay) your cash in hand, available limit increases automatically — the total limit itself does not change.
                 </p>
              </div>
 

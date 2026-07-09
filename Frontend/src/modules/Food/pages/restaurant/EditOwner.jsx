@@ -1,6 +1,5 @@
 import { useState, useEffect, useRef } from "react"
 import { useNavigate, useLocation } from "react-router-dom"
-import useRestaurantBackNavigation from "@food/hooks/useRestaurantBackNavigation"
 import Lenis from "lenis"
 import {
   ArrowLeft,
@@ -33,6 +32,8 @@ import OptimizedImage from "@food/components/OptimizedImage"
 import { ImageSourcePicker } from "@food/components/ImageSourcePicker"
 import { isFlutterBridgeAvailable } from "@food/utils/imageUploadUtils"
 import { toast } from "sonner"
+import LocationSearchInput from "@food/components/restaurant/LocationSearchInput"
+import { dispatchRestaurantLocationUpdated, buildRestaurantLocationUpdatePayload } from "@food/utils/restaurantLocation"
 import { MobileTimePicker } from "@mui/x-date-pickers/MobileTimePicker"
 import { LocalizationProvider } from "@mui/x-date-pickers/LocalizationProvider"
 import { AdapterDateFns } from "@mui/x-date-pickers/AdapterDateFns"
@@ -116,6 +117,53 @@ const OWNER_NAME_REGEX = /^[A-Za-z ]+$/
 const ACCOUNT_HOLDER_NAME_REGEX = /^[A-Za-z ]+$/
 const GST_LEGAL_NAME_REGEX = /^[A-Za-z ]+$/
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
+const EDIT_OWNER_DRAFT_KEY = "restaurant_edit_owner_draft"
+const EDIT_OWNER_ACTIVE_TAB_KEY = "restaurant_edit_owner_active_tab"
+
+const createDefaultFormData = () => ({
+  ownerName: "",
+  ownerEmail: "",
+  ownerPhone: "",
+  profileImage: null,
+  restaurantName: "",
+  pureVegRestaurant: false,
+  primaryContactNumber: "",
+  zoneId: "",
+  location: {
+    formattedAddress: "",
+    addressLine1: "",
+    addressLine2: "",
+    area: "",
+    city: "Indore",
+    state: "Madhya Pradesh",
+    pincode: "",
+    landmark: "",
+    latitude: "",
+    longitude: "",
+  },
+  cuisines: [],
+  openingTime: "",
+  closingTime: "",
+  openDays: [],
+  estimatedDeliveryTime: "",
+  panNumber: "",
+  nameOnPan: "",
+  panImage: null,
+  accountNumber: "",
+  confirmAccountNumber: "",
+  ifscCode: "",
+  accountHolderName: "",
+  accountType: "Saving",
+  gstRegistered: false,
+  gstNumber: "",
+  gstLegalName: "",
+  gstAddress: "",
+  gstImage: null,
+  fssaiNumber: "",
+  fssaiExpiry: "",
+  fssaiImage: null,
+  menuImages: [],
+})
 
 const daysOfWeek = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
 
@@ -158,10 +206,75 @@ const formatNameToCapital = (str) => {
     .join(" ")
 }
 
+const mergePendingLocation = (baseLocation, pendingLocation) => {
+  if (!pendingLocation || typeof pendingLocation !== "object") return baseLocation
+
+  return {
+    ...baseLocation,
+    formattedAddress: pendingLocation.formattedAddress || baseLocation.formattedAddress || "",
+    addressLine1:
+      pendingLocation.addressLine1 ||
+      pendingLocation.placeName ||
+      baseLocation.addressLine1 ||
+      "",
+    addressLine2: pendingLocation.addressLine2 || baseLocation.addressLine2 || "",
+    area: pendingLocation.area || baseLocation.area || "",
+    city: pendingLocation.city || baseLocation.city || "",
+    state: pendingLocation.state || baseLocation.state || "",
+    pincode: pendingLocation.pincode || baseLocation.pincode || "",
+    landmark:
+      pendingLocation.landmark ||
+      pendingLocation.placeName ||
+      pendingLocation.addressLine1 ||
+      baseLocation.landmark ||
+      "",
+    latitude:
+      pendingLocation.latitude != null && pendingLocation.latitude !== ""
+        ? String(pendingLocation.latitude)
+        : baseLocation.latitude,
+    longitude:
+      pendingLocation.longitude != null && pendingLocation.longitude !== ""
+        ? String(pendingLocation.longitude)
+        : baseLocation.longitude,
+  }
+}
+
+const readStoredDraft = (pendingLocation = null) => {
+  try {
+    const draftRaw = sessionStorage.getItem(EDIT_OWNER_DRAFT_KEY)
+    if (!draftRaw) return null
+    const draft = JSON.parse(draftRaw)
+    if (!draft || typeof draft !== "object") return null
+    if (pendingLocation) {
+      return {
+        ...draft,
+        location: mergePendingLocation(draft.location, pendingLocation),
+      }
+    }
+    return draft
+  } catch {
+    return null
+  }
+}
+
 export default function EditOwner() {
   const navigate = useNavigate()
   const routerLocation = useLocation()
-  const goBack = useRestaurantBackNavigation()
+  const outletInfoPath = "/food/restaurant/outlet-info"
+  const backTarget = routerLocation.state?.from || outletInfoPath
+  const restoredDraftOnMount = readStoredDraft(routerLocation.state?.updatedLocation)
+
+  const handleBack = () => {
+    try {
+      sessionStorage.removeItem(EDIT_OWNER_DRAFT_KEY)
+    } catch {
+      // ignore storage errors
+    }
+    if (initialData) {
+      setFormData(JSON.parse(JSON.stringify(initialData)))
+    }
+    navigate(backTarget)
+  }
 
   // Tabs structure
   const TABS = [
@@ -170,64 +283,28 @@ export default function EditOwner() {
     { id: "kyc", label: "Bank & KYC", icon: CreditCard },
     { id: "docs", label: "FSSAI & Docs", icon: FileText },
   ]
-  const [activeTab, setActiveTab] = useState("owner")
+  const [activeTab, setActiveTab] = useState(() => {
+    const fromState = routerLocation.state?.activeTab
+    if (fromState && ["owner", "restaurant", "kyc", "docs"].includes(fromState)) {
+      return fromState
+    }
+    try {
+      const saved = sessionStorage.getItem(EDIT_OWNER_ACTIVE_TAB_KEY)
+      if (saved && ["owner", "restaurant", "kyc", "docs"].includes(saved)) {
+        return saved
+      }
+    } catch {
+      // ignore storage errors
+    }
+    return "owner"
+  })
 
   // Master Form Data
-  const [formData, setFormData] = useState({
-    // Owner details
-    ownerName: "",
-    ownerEmail: "",
-    ownerPhone: "",
-    profileImage: null,
-
-    // Restaurant details
-    restaurantName: "",
-    pureVegRestaurant: false,
-    primaryContactNumber: "",
-    zoneId: "",
-    location: {
-      formattedAddress: "",
-      addressLine1: "",
-      addressLine2: "",
-      area: "",
-      city: "Indore",
-      state: "Madhya Pradesh",
-      pincode: "",
-      landmark: "",
-      latitude: "",
-      longitude: "",
-    },
-    cuisines: [],
-    openingTime: "",
-    closingTime: "",
-    openDays: [],
-    estimatedDeliveryTime: "",
-
-    // Bank & KYC
-    panNumber: "",
-    nameOnPan: "",
-    panImage: null,
-    accountNumber: "",
-    confirmAccountNumber: "",
-    ifscCode: "",
-    accountHolderName: "",
-    accountType: "Saving",
-    gstRegistered: false,
-    gstNumber: "",
-    gstLegalName: "",
-    gstAddress: "",
-    gstImage: null,
-
-    // Documents & FSSAI
-    fssaiNumber: "",
-    fssaiExpiry: "",
-    fssaiImage: null,
-    menuImages: [],
-  })
+  const [formData, setFormData] = useState(() => restoredDraftOnMount || createDefaultFormData())
 
   const [initialData, setInitialData] = useState(null)
   const [zones, setZones] = useState([])
-  const [loading, setLoading] = useState(true)
+  const [loading, setLoading] = useState(() => !restoredDraftOnMount)
   const [saving, setSaving] = useState(false)
 
   // Photo Picker helpers
@@ -271,11 +348,41 @@ export default function EditOwner() {
     }
   }, [])
 
+  useEffect(() => {
+    try {
+      sessionStorage.setItem(EDIT_OWNER_ACTIVE_TAB_KEY, activeTab)
+    } catch {
+      // ignore storage errors
+    }
+  }, [activeTab])
+
   // Fetch restaurant details
   useEffect(() => {
+    const pendingLocation = routerLocation.state?.updatedLocation
+    const returnTab = routerLocation.state?.activeTab
+
+    if (returnTab && ["owner", "restaurant", "kyc", "docs"].includes(returnTab)) {
+      setActiveTab(returnTab)
+    }
+
+    let draftData = restoredDraftOnMount
+    if (!draftData) {
+      try {
+        const draftRaw = sessionStorage.getItem(EDIT_OWNER_DRAFT_KEY)
+        if (draftRaw) {
+          draftData = JSON.parse(draftRaw)
+        }
+      } catch {
+        draftData = null
+      }
+    }
+
     const fetchRestaurantData = async () => {
       try {
-        setLoading(true)
+        if (!draftData) {
+          setLoading(true)
+        }
+
         const response = await restaurantAPI.refreshCurrentRestaurant()
         const apiData = response?.data?.data?.restaurant || response?.data?.restaurant
 
@@ -315,8 +422,18 @@ export default function EditOwner() {
               state: loc.state || "Madhya Pradesh",
               pincode: loc.pincode || "",
               landmark: loc.landmark || "",
-              latitude: loc.latitude ?? (Array.isArray(loc.coordinates) ? loc.coordinates[1] : ""),
-              longitude: loc.longitude ?? (Array.isArray(loc.coordinates) ? loc.coordinates[0] : ""),
+              latitude:
+                loc.latitude != null && loc.latitude !== ""
+                  ? String(loc.latitude)
+                  : Array.isArray(loc.coordinates)
+                    ? String(loc.coordinates[1] ?? "")
+                    : "",
+              longitude:
+                loc.longitude != null && loc.longitude !== ""
+                  ? String(loc.longitude)
+                  : Array.isArray(loc.coordinates)
+                    ? String(loc.coordinates[0] ?? "")
+                    : "",
             },
             cuisines: Array.isArray(apiData.cuisines) 
               ? apiData.cuisines.flatMap(c => typeof c === "string" ? c.split(",").map(s => s.trim()) : c).map(c => ALL_CUISINES.find(ac => ac.toLowerCase() === String(c).toLowerCase()) || c) 
@@ -348,12 +465,46 @@ export default function EditOwner() {
             menuImages: menuImagesArr,
           }
 
-          setFormData(mappedData)
-          setInitialData(JSON.parse(JSON.stringify(mappedData))) // deep copy
+          const savedInitial = JSON.parse(JSON.stringify(mappedData))
+
+          let cachedDraft = draftData
+          if (!cachedDraft) {
+            try {
+              const draftRaw = sessionStorage.getItem(EDIT_OWNER_DRAFT_KEY)
+              if (draftRaw) {
+                cachedDraft = JSON.parse(draftRaw)
+              }
+            } catch {
+              cachedDraft = null
+            }
+          }
+
+          let nextFormData = cachedDraft || mappedData
+          if (pendingLocation) {
+            nextFormData = {
+              ...nextFormData,
+              location: mergePendingLocation(nextFormData.location, pendingLocation),
+            }
+          }
+
+          setInitialData(savedInitial)
+          setFormData(nextFormData)
+
+          if (pendingLocation) {
+            navigate(routerLocation.pathname, {
+              replace: true,
+              state: {
+                from: routerLocation.state?.from || outletInfoPath,
+                activeTab: returnTab || activeTab || "restaurant",
+              },
+            })
+          }
         }
       } catch (err) {
         console.error("Error loading restaurant data:", err)
-        toast.error("Failed to load restaurant profile details")
+        if (!draftData) {
+          toast.error("Failed to load restaurant profile details")
+        }
       } finally {
         setLoading(false)
       }
@@ -381,6 +532,43 @@ export default function EditOwner() {
         [field]: value,
       },
     }))
+  }
+
+  const handleLocationSearchSelect = (location) => {
+    if (!location) return
+
+    setFormData((prev) => {
+      const next = {
+        ...prev,
+        location: {
+          ...prev.location,
+          formattedAddress: location.formattedAddress || prev.location.formattedAddress || "",
+          addressLine1: location.addressLine1 || location.placeName || "",
+          addressLine2: location.addressLine2 || "",
+          area: location.area || "",
+          city: location.city || prev.location.city || "Indore",
+          state: location.state || prev.location.state || "Madhya Pradesh",
+          pincode: location.pincode || "",
+          landmark: location.landmark || location.placeName || "",
+          latitude:
+            location.latitude != null && location.latitude !== ""
+              ? String(location.latitude)
+              : prev.location.latitude,
+          longitude:
+            location.longitude != null && location.longitude !== ""
+              ? String(location.longitude)
+              : prev.location.longitude,
+        },
+      }
+
+      try {
+        sessionStorage.setItem(EDIT_OWNER_DRAFT_KEY, JSON.stringify(next))
+      } catch {
+        // ignore storage errors
+      }
+
+      return next
+    })
   }
 
   // Cuisines helper
@@ -665,7 +853,6 @@ export default function EditOwner() {
 
     try {
       setSaving(true)
-      toast.info("Uploading images and updating profile...")
 
       // 1. Upload images in parallel
       const [profRes, panRes, gstRes, fssaiRes] = await Promise.all([
@@ -699,18 +886,7 @@ export default function EditOwner() {
         pureVegRestaurant: formData.pureVegRestaurant,
         primaryContactNumber: formData.primaryContactNumber.trim(),
         zoneId: formData.zoneId,
-        location: {
-          formattedAddress: formData.location.formattedAddress || "",
-          addressLine1: formData.location.addressLine1.trim(),
-          addressLine2: formData.location.addressLine2.trim(),
-          area: formData.location.area.trim(),
-          city: formData.location.city.trim(),
-          state: formData.location.state.trim(),
-          pincode: formData.location.pincode.trim(),
-          landmark: formData.location.landmark.trim(),
-          latitude: formData.location.latitude ? parseFloat(formData.location.latitude) : null,
-          longitude: formData.location.longitude ? parseFloat(formData.location.longitude) : null,
-        },
+        location: buildRestaurantLocationUpdatePayload(formData.location),
         cuisines: formData.cuisines,
         openingTime: formData.openingTime,
         closingTime: formData.closingTime,
@@ -740,9 +916,20 @@ export default function EditOwner() {
 
       if (response?.data?.success || response?.data?.data) {
         toast.success("Profile details updated and submitted for approval")
-        window.dispatchEvent(new Event("ownerDataUpdated"))
-        setInitialData(JSON.parse(JSON.stringify(formData))) // update initial references
-        goBack()
+        try {
+          sessionStorage.removeItem(EDIT_OWNER_DRAFT_KEY)
+        } catch {
+          // ignore storage errors
+        }
+        setInitialData(JSON.parse(JSON.stringify(formData)))
+        navigate(backTarget, {
+          state: {
+            savedLocation: buildRestaurantLocationUpdatePayload(formData.location),
+          },
+        })
+        window.setTimeout(() => {
+          dispatchRestaurantLocationUpdated()
+        }, 0)
       } else {
         throw new Error(response?.data?.message || "Failed to save profile changes")
       }
@@ -771,7 +958,7 @@ export default function EditOwner() {
         {/* Header */}
         <div className="bg-white border-b border-gray-200 px-4 py-3.5 sticky top-0 z-50 flex items-center gap-3">
           <button
-            onClick={goBack}
+            onClick={handleBack}
             className="p-1.5 hover:bg-gray-100 rounded-lg transition-colors"
             aria-label="Go back"
           >
@@ -1007,13 +1194,44 @@ export default function EditOwner() {
                   <h3 className="text-sm font-bold text-gray-900">Address & Location</h3>
                   <button
                     type="button"
-                    onClick={() => navigate("/food/restaurant/edit-address", { state: { from: routerLocation.pathname } })}
+                    onClick={() => {
+                      try {
+                        sessionStorage.setItem(EDIT_OWNER_DRAFT_KEY, JSON.stringify(formData))
+                        sessionStorage.setItem(EDIT_OWNER_ACTIVE_TAB_KEY, activeTab)
+                      } catch {
+                        // ignore storage errors
+                      }
+                      navigate("/food/restaurant/edit-address", {
+                        state: {
+                          from: routerLocation.pathname,
+                          outletFrom: backTarget,
+                          currentLocation: formData.location,
+                          returnTab: activeTab,
+                        },
+                      })
+                    }}
                     className="flex items-center gap-1 text-[10px] font-bold uppercase tracking-wider text-[#B80B3D] hover:bg-red-50 px-2 py-1 rounded-md transition-colors"
                   >
                     <MapPin className="w-3.5 h-3.5" />
                     Select from map
                   </button>
                 </div>
+
+                <LocationSearchInput
+                  label="Search your outlet location"
+                  placeholder="Search area, street, landmark..."
+                  biasLocation={
+                    Number.isFinite(Number(formData.location?.latitude)) &&
+                    Number.isFinite(Number(formData.location?.longitude))
+                      ? {
+                          latitude: Number(formData.location.latitude),
+                          longitude: Number(formData.location.longitude),
+                        }
+                      : null
+                  }
+                  onLocationSelect={handleLocationSearchSelect}
+                  className="relative z-20"
+                />
 
                 <div>
                   <label className="text-xs font-bold text-gray-700 block mb-1.5 uppercase tracking-wide">
