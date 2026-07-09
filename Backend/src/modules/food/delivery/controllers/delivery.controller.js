@@ -1,6 +1,6 @@
 import mongoose from 'mongoose';
 import { registerDeliveryPartner, updateDeliveryPartnerProfile, updateDeliveryPartnerBankDetails, listSupportTicketsByPartner, createSupportTicket, getSupportTicketByIdAndPartner, updateDeliveryPartnerDetails, updateDeliveryPartnerProfilePhotoBase64, updateDeliveryAvailability, getDeliveryPartnerWallet, getDeliveryPartnerEarnings, getDeliveryPartnerTripHistory, getDeliveryPocketDetails, getActiveEarningAddonsForPartner, getDeliveryPartnerReviews } from '../services/delivery.service.js';
-import { createDeliveryCashDepositOrder, getDeliveryPartnerWalletEnhanced, requestDeliveryWithdrawal, verifyDeliveryCashDepositPayment } from '../services/deliveryFinance.service.js';
+import { createDeliveryCashDepositOrder, getDeliveryPartnerWalletEnhanced, requestDeliveryWithdrawal, verifyDeliveryCashDepositPayment, submitCashDepositByHand } from '../services/deliveryFinance.service.js';
 import { getDeliveryCashLimitSettings, getDeliveryEmergencyHelp } from '../../admin/services/admin.service.js';
 import { DeliveryBonusTransaction } from '../../admin/models/deliveryBonusTransaction.model.js';
 import { validateDeliveryRegisterDto, validateDeliveryProfileUpdateDto, validateDeliveryBankDetailsDto } from '../validators/delivery.validator.js';
@@ -224,6 +224,17 @@ export const verifyCashDepositPaymentController = async (req, res, next) => {
             amount: req.body?.amount
         });
         return sendResponse(res, 200, 'Cash deposit verified successfully', data);
+    } catch (error) {
+        next(error);
+    }
+};
+
+export const submitCashDepositByHandController = async (req, res, next) => {
+    try {
+        const deliveryPartnerId = req.user?.userId;
+        const amount = req.body?.amount;
+        const data = await submitCashDepositByHand(deliveryPartnerId, amount);
+        return sendResponse(res, 201, 'Cash submitted successfully. Waiting for admin confirmation.', data);
     } catch (error) {
         next(error);
     }

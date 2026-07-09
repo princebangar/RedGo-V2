@@ -4,12 +4,12 @@ import { adminAPI } from "@food/api"
 import { toast } from "sonner"
 
 const formatCurrency = (amount) => {
-  if (amount == null) return "?0.00"
-  return `?${Number(amount).toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+  if (amount == null) return "\u20B90.00"
+  return `\u20B9${Number(amount).toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
 }
 
 const formatDate = (value) => {
-  if (!value) return "—"
+  if (!value) return "\u2014"
   try {
     return new Date(value).toLocaleString("en-IN", {
       day: "2-digit",
@@ -19,7 +19,7 @@ const formatDate = (value) => {
       minute: "2-digit",
     })
   } catch {
-    return "—"
+    return "\u2014"
   }
 }
 
@@ -97,7 +97,7 @@ export default function CashLimitSettlement() {
         <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-6 mb-6">
           <div className="flex items-center justify-between gap-4">
             <div className="flex items-center gap-3">
-              <Receipt className="w-5 h-5 text-emerald-600" />
+              <Receipt className="w-5 h-5 text-emerald-600 shrink-0" />
               <div>
                 <h1 className="text-2xl font-bold text-slate-900">Cash Limit Settlement</h1>
                 <p className="text-sm text-slate-600 mt-1">
@@ -151,14 +151,14 @@ export default function CashLimitSettlement() {
           {loading ? (
             <div className="py-20 text-center">
               <Loader2 className="w-8 h-8 animate-spin text-emerald-600 mx-auto mb-4" />
-              <p className="text-slate-600">Loading settlements…</p>
+              <p className="text-slate-600">Loading settlements...</p>
             </div>
           ) : (
             <div className="overflow-x-auto">
               <table className="w-full min-w-[960px]">
                 <thead className="bg-slate-50 border-b border-slate-200">
                   <tr>
-                    <th className="px-4 py-3 text-left text-[10px] font-bold text-slate-700 uppercase tracking-wider">#</th>
+                    <th className="px-4 py-3 text-left text-[10px] font-bold text-slate-700 uppercase tracking-wider">S.No</th>
                     <th className="px-4 py-3 text-left text-[10px] font-bold text-slate-700 uppercase tracking-wider">Date</th>
                     <th className="px-4 py-3 text-left text-[10px] font-bold text-slate-700 uppercase tracking-wider">Delivery Boy</th>
                     <th className="px-4 py-3 text-left text-[10px] font-bold text-slate-700 uppercase tracking-wider">Phone</th>
@@ -188,16 +188,16 @@ export default function CashLimitSettlement() {
                       <tr key={tx.id || i} className="hover:bg-slate-50 transition-colors">
                         <td className="px-4 py-4 whitespace-nowrap text-sm text-slate-500">{(page - 1) * limit + i + 1}</td>
                         <td className="px-4 py-4 whitespace-nowrap text-sm text-slate-600">{formatDate(tx.createdAt)}</td>
-                        <td className="px-4 py-4 whitespace-nowrap text-sm font-semibold text-slate-800">{tx.deliveryName || "—"}</td>
-                        <td className="px-4 py-4 whitespace-nowrap text-sm text-slate-600">{tx.deliveryPhone || tx.deliveryIdString || "—"}</td>
+                        <td className="px-4 py-4 whitespace-nowrap text-sm font-semibold text-slate-800">{tx.deliveryName || "\u2014"}</td>
+                        <td className="px-4 py-4 whitespace-nowrap text-sm text-slate-600">{tx.deliveryPhone || tx.deliveryIdString || "\u2014"}</td>
                         <td className="px-4 py-4 whitespace-nowrap text-sm font-semibold text-emerald-700">{formatCurrency(tx.amount)}</td>
-                        <td className="px-4 py-4 whitespace-nowrap text-sm text-slate-600 capitalize">{tx.paymentMethod || "—"}</td>
+                        <td className="px-4 py-4 whitespace-nowrap text-sm text-slate-600">{tx.paymentMethod || "\u2014"}</td>
                         <td className="px-4 py-4 whitespace-nowrap">
                           <span className={`px-2.5 py-1 rounded-full text-xs font-bold ${getStatusBadge(tx.status)}`}>
-                            {String(tx.status || "—")}
+                            {String(tx.status || "\u2014")}
                           </span>
                         </td>
-                        <td className="px-4 py-4 whitespace-nowrap text-xs font-mono text-slate-500">{tx.razorpayPaymentId || "—"}</td>
+                        <td className="px-4 py-4 whitespace-nowrap text-xs font-mono text-slate-500">{tx.razorpayPaymentId || "N/A"}</td>
                       </tr>
                     ))
                   )}
@@ -209,7 +209,7 @@ export default function CashLimitSettlement() {
           {pages > 1 && (
             <div className="flex items-center justify-between mt-4 pt-4 border-t border-slate-200">
               <p className="text-sm text-slate-600">
-                Page {page} of {pages} · {total} total
+                Page {page} of {pages} &middot; {total} total
               </p>
               <div className="flex gap-2">
                 <button

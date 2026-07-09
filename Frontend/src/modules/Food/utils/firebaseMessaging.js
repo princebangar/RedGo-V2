@@ -1026,6 +1026,14 @@ function showForegroundNotification(payload = {}) {
 
   playPushSound(payload);
 
+  const notificationType = String(payload?.data?.type || "").toLowerCase();
+  if (
+    notificationType === "cash_deposit" ||
+    notificationType === "cash_deposit_rejected"
+  ) {
+    window.dispatchEvent(new CustomEvent("delivery-wallet-refresh"));
+  }
+
   // Force system notification even when the tab is in focus
   if (typeof Notification !== "undefined" && Notification.permission === "granted") {
     try {

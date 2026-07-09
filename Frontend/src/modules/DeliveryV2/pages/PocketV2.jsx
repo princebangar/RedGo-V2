@@ -26,6 +26,8 @@ export const PocketV2 = () => {
     cashInHand: 0,
     availableCashLimit: 0,
     totalCashLimit: 0,
+    pendingCashSubmission: 0,
+    availableToDeposit: 0,
     weeklyEarnings: 0,
     weeklyOrders: 0,
     payoutAmount: 0,
@@ -45,6 +47,74 @@ export const PocketV2 = () => {
   const [showDepositPopup, setShowDepositPopup] = useState(false);
   const [depositAmount, setDepositAmount] = useState("");
   const [depositing, setDepositing] = useState(false);
+  const [depositMode, setDepositMode] = useState("cash"); // cash | online
+
+  const openDepositPopup = () => {
+    setDepositMode("cash");
+    setDepositAmount("");
+    setShowDepositPopup(true);
+    refreshWalletSilent();
+  };
+
+  const closeDepositPopup = () => {
+    setShowDepositPopup(false);
+    setDepositMode("cash");
+    setDepositAmount("");
+    setDepositing(false);
+  };
+
+  const applyWalletFromApi = (wallet = {}) => {
+    if (!wallet || typeof wallet !== "object") return;
+    setWalletState((prev) => ({
+      ...prev,
+      totalBalance: Number(wallet.pocketBalance) || prev.totalBalance,
+      cashInHand: Number(wallet.cashInHand) ?? prev.cashInHand,
+      availableCashLimit: Number(wallet.availableCashLimit) ?? prev.availableCashLimit,
+      totalCashLimit: Number(wallet.totalCashLimit) ?? prev.totalCashLimit,
+      pendingCashSubmission: Number(wallet.pendingCashSubmission) ?? prev.pendingCashSubmission,
+      availableToDeposit:
+        wallet.availableToDeposit != null
+          ? Number(wallet.availableToDeposit)
+          : Math.max(0, Number(wallet.cashInHand ?? prev.cashInHand) - Number(wallet.pendingCashSubmission ?? prev.pendingCashSubmission)),
+      payoutAmount:
+        wallet.lastPayout?.amount != null
+          ? Number(wallet.lastPayout.amount)
+          : wallet.totalWithdrawn != null
+            ? Number(wallet.totalWithdrawn)
+            : prev.payoutAmount,
+      payoutPeriod: wallet.lastPayout
+        ? new Date(wallet.lastPayout.date).toLocaleDateString()
+        : prev.payoutPeriod,
+    }));
+    window.dispatchEvent(new CustomEvent("deliveryWalletStateUpdated"));
+  };
+
+  const refreshWalletSilent = async () => {
+    try {
+      const walletRes = await deliveryAPI.getWallet();
+      const wallet = walletRes?.data?.data?.wallet || {};
+      applyWalletFromApi(wallet);
+    } catch {
+      // keep existing wallet state if refresh fails
+    }
+  };
+
+  useEffect(() => {
+    const handleWalletRefresh = () => {
+      refreshWalletSilent();
+    };
+    window.addEventListener("delivery-wallet-refresh", handleWalletRefresh);
+    const onVisibility = () => {
+      if (document.visibilityState === "visible") {
+        refreshWalletSilent();
+      }
+    };
+    document.addEventListener("visibilitychange", onVisibility);
+    return () => {
+      window.removeEventListener("delivery-wallet-refresh", handleWalletRefresh);
+      document.removeEventListener("visibilitychange", onVisibility);
+    };
+  }, []);
 
   useEffect(() => {
     const fetchData = async () => {
@@ -73,6 +143,11 @@ export const PocketV2 = () => {
           cashInHand: Number(wallet.cashInHand) || 0,
           availableCashLimit: Number(wallet.availableCashLimit) || 0,
           totalCashLimit: Number(wallet.totalCashLimit) || 0,
+          pendingCashSubmission: Number(wallet.pendingCashSubmission) || 0,
+          availableToDeposit:
+            wallet.availableToDeposit != null
+              ? Number(wallet.availableToDeposit)
+              : Math.max(0, Number(wallet.cashInHand) || 0),
           weeklyEarnings: Number(summary.totalEarnings) || 0,
           weeklyOrders: Number(summary.totalOrders) || 0,
           payoutAmount: Number(wallet.lastPayout?.amount || wallet.totalWithdrawn || 0),
@@ -99,14 +174,18 @@ export const PocketV2 = () => {
   }, []);
 
   const handleDeposit = async () => {
+    if (!canDepositMore) return;
     const amt = parseFloat(depositAmount);
     if (!depositAmount || isNaN(amt) || amt < 1) {
       toast.error("Enter a valid amount (minimum ₹1)");
       return;
     }
     
-    if (amt > walletState.cashInHand) {
-       toast.error(`Deposit amount cannot exceed cash in hand (₹${walletState.cashInHand})`);
+    if (amt > walletState.availableToDeposit) {
+       const pendingNote = walletState.pendingCashSubmission > 0
+         ? ` (₹${walletState.pendingCashSubmission} already pending admin confirmation)`
+         : "";
+       toast.error(`Deposit amount cannot exceed available cash (₹${walletState.availableToDeposit})${pendingNote}`);
        return;
     }
 
@@ -148,10 +227,8 @@ export const PocketV2 = () => {
             });
             if (verifyRes?.data?.success) {
               toast.success("Deposit successful");
-              setShowDepositPopup(false);
-              setDepositAmount("");
-              // Refresh data
-              window.location.reload();
+              applyWalletFromApi(verifyRes?.data?.data?.wallet);
+              closeDepositPopup();
             }
           } catch (err) {
             toast.error("Verification failed");
@@ -164,9 +241,48 @@ export const PocketV2 = () => {
       });
     } catch (err) {
       setDepositing(false);
-      toast.error("Deposit failed to start");
+      toast.error(err?.response?.data?.message || "Deposit failed to start");
     }
   };
+
+  const handleCashSubmit = async () => {
+    if (!canDepositMore) return;
+    const amt = parseFloat(depositAmount);
+    if (!depositAmount || isNaN(amt) || amt < 1) {
+      toast.error("Enter a valid amount (minimum ₹1)");
+      return;
+    }
+
+    if (amt > walletState.availableToDeposit) {
+      const pendingNote = walletState.pendingCashSubmission > 0
+        ? ` (₹${walletState.pendingCashSubmission} already pending admin confirmation)`
+        : "";
+      toast.error(`Amount cannot exceed available cash (₹${walletState.availableToDeposit})${pendingNote}`);
+      return;
+    }
+
+    try {
+      setDepositing(true);
+      const res = await deliveryAPI.submitCashDeposit(amt);
+      if (res?.data?.success) {
+        toast.success("Cash submitted successfully. Waiting for admin confirmation.");
+        applyWalletFromApi(res?.data?.data?.wallet);
+        setDepositAmount("");
+        setDepositMode("cash");
+      } else {
+        toast.error(res?.data?.message || "Cash submission failed");
+      }
+    } catch (err) {
+      toast.error(err?.response?.data?.message || "Cash submission failed");
+    } finally {
+      setDepositing(false);
+    }
+  };
+
+  const hasPendingCashSubmission = walletState.pendingCashSubmission > 0;
+  const canDepositMore = walletState.availableToDeposit > 0;
+  const isDepositInputDisabled = !canDepositMore;
+  const isSubmitDisabled = isDepositInputDisabled || depositing || !String(depositAmount).trim();
 
   const ordersProgress = activeOffer.targetOrders > 0 ? Math.min(activeOffer.currentOrders / activeOffer.targetOrders, 1) : 0;
   const earningsProgress = activeOffer.targetAmount > 0 ? Math.min(activeOffer.currentEarnings / activeOffer.targetAmount, 1) : 0;
@@ -335,7 +451,7 @@ export const PocketV2 = () => {
 
              <div className="p-5">
                 <button 
-                   onClick={() => setShowDepositPopup(true)}
+                   onClick={openDepositPopup}
                    className="w-full py-4 bg-[#ff8100] hover:bg-orange-600 text-white rounded-xl font-bold text-sm shadow-lg shadow-orange-500/20 active:scale-95 transition-all"
                 >
                    Deposit Cash
@@ -385,9 +501,27 @@ export const PocketV2 = () => {
        <AnimatePresence>
           {showDepositPopup && (
              <div className="fixed inset-0 z-[1000] flex items-end">
-                <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={() => setShowDepositPopup(false)} className="absolute inset-0 bg-black/80 backdrop-blur-sm" />
+                <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={closeDepositPopup} className="absolute inset-0 bg-black/80 backdrop-blur-sm" />
                 <motion.div initial={{ y: '100%' }} animate={{ y: 0 }} exit={{ y: '100%' }} transition={{ type: "spring", damping: 25, stiffness: 200 }} className="relative w-full bg-white rounded-t-[2.5rem] p-8 pb-12 shadow-2xl">
-                   <div className="w-16 h-1.5 bg-gray-100 rounded-full mx-auto mb-8" />
+                   <button
+                      type="button"
+                      onClick={closeDepositPopup}
+                      className="w-full flex justify-center py-3 mb-5 -mt-2"
+                      aria-label="Close deposit popup"
+                   >
+                      <span className="w-16 h-1.5 bg-gray-300 rounded-full" />
+                   </button>
+
+                   {hasPendingCashSubmission && (
+                      <div className="mb-6 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-4">
+                         <p className="text-sm font-bold text-amber-900 leading-relaxed text-center">
+                            You already paid ₹{walletState.pendingCashSubmission.toLocaleString("en-IN")}
+                            <span className="block text-xs font-semibold text-amber-700 mt-1 uppercase tracking-wide">
+                               Waiting for admin confirmation
+                            </span>
+                         </p>
+                      </div>
+                   )}
                    
                    <div className="text-center mb-8">
                       <div className="w-20 h-20 bg-orange-50 rounded-3xl flex items-center justify-center mx-auto mb-4 border border-orange-100 text-[#ff8100]">
@@ -397,32 +531,93 @@ export const PocketV2 = () => {
                       <p className="text-sm text-gray-400 font-bold uppercase tracking-widest">Settle Hand Dues</p>
                    </div>
                    
-                   <div className="bg-gray-50 rounded-2xl p-6 mb-8 border border-gray-100">
+                   <div className="bg-gray-50 rounded-2xl p-6 mb-6 border border-gray-100">
                       <div className="flex justify-between items-center mb-4">
                          <span className="text-xs font-bold text-gray-400 uppercase">Cash in your hand</span>
                          <span className="text-base font-black text-black">₹{walletState.cashInHand}</span>
                       </div>
-                      <div className="relative">
-                         <IndianRupee className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
-                         <input 
-                            type="number" value={depositAmount} onChange={(e) => setDepositAmount(e.target.value)}
-                            placeholder="Enter amount to deposit"
-                            className="w-full bg-white border border-gray-200 rounded-xl py-4 pl-12 pr-4 text-xl font-bold focus:border-[#ff8100] focus:ring-4 focus:ring-orange-500/10 outline-none transition-all"
-                         />
+
+                      <div className="grid grid-cols-2 gap-3 mb-4">
+                         <button
+                            type="button"
+                            onClick={() => { setDepositMode("cash"); setDepositAmount(""); }}
+                            className={`py-3 rounded-xl text-xs font-black uppercase tracking-wide border transition-all ${
+                              depositMode === "cash"
+                                ? "bg-[#ff8100] text-white border-[#ff8100] shadow-lg shadow-orange-500/20"
+                                : "bg-white text-gray-600 border-gray-200"
+                            }`}
+                         >
+                            Submit by Cash
+                         </button>
+                         <button
+                            type="button"
+                            onClick={() => { setDepositMode("online"); setDepositAmount(""); }}
+                            className={`py-3 rounded-xl text-xs font-black uppercase tracking-wide border transition-all ${
+                              depositMode === "online"
+                                ? "bg-[#ff8100] text-white border-[#ff8100] shadow-lg shadow-orange-500/20"
+                                : "bg-white text-gray-600 border-gray-200"
+                            }`}
+                         >
+                            Deposit Online
+                         </button>
                       </div>
-                      <p className="text-[10px] font-bold text-gray-400 mt-3 text-center uppercase tracking-tight">Minimum deposit ₹1 • Instant limit update</p>
+
+                      {depositMode === "cash" && (
+                         <div className="relative">
+                            <IndianRupee className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
+                            <input 
+                               type="number"
+                               value={depositAmount}
+                               onChange={(e) => setDepositAmount(e.target.value)}
+                               placeholder="Cash amount"
+                               disabled={isDepositInputDisabled}
+                               className="w-full bg-white border border-gray-200 rounded-xl py-4 pl-12 pr-4 text-xl font-bold focus:border-[#ff8100] focus:ring-4 focus:ring-orange-500/10 outline-none transition-all disabled:bg-gray-100 disabled:text-gray-400"
+                            />
+                         </div>
+                      )}
+
+                      {depositMode === "online" && (
+                         <div className="relative">
+                            <IndianRupee className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
+                            <input 
+                               type="number"
+                               value={depositAmount}
+                               onChange={(e) => setDepositAmount(e.target.value)}
+                               placeholder="Enter amount to deposit"
+                               disabled={isDepositInputDisabled}
+                               className="w-full bg-white border border-gray-200 rounded-xl py-4 pl-12 pr-4 text-xl font-bold focus:border-[#ff8100] focus:ring-4 focus:ring-orange-500/10 outline-none transition-all disabled:bg-gray-100 disabled:text-gray-400"
+                            />
+                         </div>
+                      )}
+
+                      {canDepositMore && (
+                         <p className="text-[10px] font-bold text-gray-400 mt-3 text-center uppercase tracking-tight">
+                           {depositMode === "cash"
+                             ? "Minimum ₹1 • Admin confirmation required"
+                             : "Minimum deposit ₹1 • Instant limit update"}
+                         </p>
+                      )}
                    </div>
                    
                    <div className="space-y-3">
                       <button 
-                         onClick={handleDeposit}
-                         disabled={depositing}
-                         className="w-full py-5 bg-[#ff8100] text-white rounded-2xl font-black text-sm shadow-xl shadow-orange-500/20 active:scale-95 transition-all flex items-center justify-center gap-3 disabled:bg-gray-300 disabled:shadow-none"
+                         type="button"
+                         onClick={depositMode === "cash" ? handleCashSubmit : handleDeposit}
+                         disabled={isSubmitDisabled}
+                         className={`w-full py-5 rounded-2xl font-black text-sm transition-all flex items-center justify-center gap-3 active:scale-95 ${
+                           isSubmitDisabled
+                             ? "bg-blue-100 text-blue-400 shadow-none cursor-not-allowed"
+                             : "bg-[#ff8100] text-white shadow-xl shadow-orange-500/20"
+                         }`}
                       >
                          {depositing ? <Loader2 className="w-5 h-5 animate-spin" /> : <ShieldCheck className="w-5 h-5" />}
-                         {depositing ? 'Securely Processing...' : 'Proceed to Pay'}
+                         {depositing
+                           ? "Processing..."
+                           : depositMode === "cash"
+                             ? "Cash Submit"
+                             : "Proceed to Pay"}
                       </button>
-                      <button onClick={() => setShowDepositPopup(false)} className="w-full py-3 text-gray-400 font-bold text-xs uppercase tracking-widest">Maybe Later</button>
+                      <button onClick={closeDepositPopup} className="w-full py-3 text-gray-400 font-bold text-xs uppercase tracking-widest">Maybe Later</button>
                    </div>
                 </motion.div>
              </div>

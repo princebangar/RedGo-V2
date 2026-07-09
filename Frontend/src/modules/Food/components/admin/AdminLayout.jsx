@@ -28,7 +28,9 @@ export default function AdminLayout() {
     location.pathname !== "/admin/food" &&
     location.pathname !== "/admin/food/" &&
     location.pathname !== "/admin/food/coupons" &&
-    location.pathname !== "/admin/food/coupons/";
+    location.pathname !== "/admin/food/coupons/" &&
+    location.pathname !== "/admin/food/cash-confirmations" &&
+    location.pathname !== "/admin/food/cash-confirmations/";
 
   const handleBackClick = () => {
     if (window.history.state && window.history.state.idx > 0) {

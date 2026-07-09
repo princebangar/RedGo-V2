@@ -26,7 +26,7 @@ export const getDeliveryPartnerWalletEnhanced = async (deliveryPartnerId) => {
     const partner = await FoodDeliveryPartner.findById(partnerId).lean();
     if (!partner) throw new ValidationError('Delivery partner not found');
 
-    const [cashLimitSettings, earningsAgg, cashCollectedAgg, cashDepositsAgg, bonusAgg, withdrawalAgg, withdrawalsList, depositList] = await Promise.all([
+    const [cashLimitSettings, earningsAgg, cashCollectedAgg, cashDepositsAgg, pendingCashAgg, bonusAgg, withdrawalAgg, withdrawalsList, depositList] = await Promise.all([
         getDeliveryCashLimitSettings(),
         // 1. Total Earnings from Delivered Orders
         FoodOrder.aggregate([
@@ -53,6 +53,17 @@ export const getDeliveryPartnerWalletEnhanced = async (deliveryPartnerId) => {
                 }
             },
             { $group: { _id: null, depositedCash: { $sum: { $ifNull: ['$amount', 0] } } } }
+        ]),
+        // 3b. Pending manual cash submissions (awaiting admin confirmation)
+        FoodDeliveryCashDeposit.aggregate([
+            {
+                $match: {
+                    deliveryPartnerId: partnerId,
+                    status: 'Pending',
+                    paymentMethod: 'cash',
+                },
+            },
+            { $group: { _id: null, pendingCash: { $sum: { $ifNull: ['$amount', 0] } } } },
         ]),
         // 4. Admin Bonuses
         DeliveryBonusTransaction.aggregate([
@@ -84,7 +95,9 @@ export const getDeliveryPartnerWalletEnhanced = async (deliveryPartnerId) => {
     const totalEarned = Number(earningsAgg?.[0]?.totalEarned) || 0;
     const grossCashCollected = Number(cashCollectedAgg?.[0]?.cashCollected) || 0;
     const totalDepositedCash = Number(cashDepositsAgg?.[0]?.depositedCash) || 0;
+    const pendingCashSubmission = Number(pendingCashAgg?.[0]?.pendingCash) || 0;
     const cashInHand = Math.max(0, grossCashCollected - totalDepositedCash);
+    const availableToDeposit = Math.max(0, cashInHand - pendingCashSubmission);
     const totalBonus = Number(bonusAgg?.[0]?.total) || 0;
     const totalWithdrawn = Number(withdrawalAgg?.[0]?.totalWithdrawn) || 0;
     const pendingWithdrawals = Number(withdrawalAgg?.[0]?.pendingWithdrawals) || 0;
@@ -147,6 +160,8 @@ export const getDeliveryPartnerWalletEnhanced = async (deliveryPartnerId) => {
         totalBonus,
         totalCashLimit,
         availableCashLimit: Math.max(0, totalCashLimit - cashInHand),
+        pendingCashSubmission,
+        availableToDeposit,
         deliveryWithdrawalLimit,
         transactions: transactions.slice(0, 50)
     };
@@ -198,8 +213,8 @@ export const createDeliveryCashDepositOrder = async (deliveryPartnerId, amountIn
         throw new ValidationError('Maximum deposit is ₹5,00,000');
     }
 
-    const wallet = await getDeliveryPartnerWalletEnhanced(deliveryPartnerId);
-    if (amount > wallet.cashInHand) {
+    const { availableToDeposit } = await getDepositCapacity(deliveryPartnerId);
+    if (amount > availableToDeposit) {
         throw new ValidationError('Deposit amount cannot exceed cash in hand');
     }
 
@@ -251,8 +266,8 @@ export const verifyDeliveryCashDepositPayment = async (deliveryPartnerId, payloa
         return { deposit: existing, wallet: await getDeliveryPartnerWalletEnhanced(deliveryPartnerId) };
     }
 
-    const wallet = await getDeliveryPartnerWalletEnhanced(deliveryPartnerId);
-    if (amount > wallet.cashInHand) {
+    const { availableToDeposit } = await getDepositCapacity(deliveryPartnerId);
+    if (amount > availableToDeposit) {
         throw new ValidationError('Deposit amount cannot exceed cash in hand');
     }
 
@@ -292,3 +307,129 @@ export const verifyDeliveryCashDepositPayment = async (deliveryPartnerId, payloa
         wallet: await getDeliveryPartnerWalletEnhanced(deliveryPartnerId)
     };
 };
+
+async function getPendingCashSubmissionTotal(deliveryPartnerId) {
+    const partnerId = new mongoose.Types.ObjectId(deliveryPartnerId);
+    const agg = await FoodDeliveryCashDeposit.aggregate([
+        {
+            $match: {
+                deliveryPartnerId: partnerId,
+                status: 'Pending',
+                paymentMethod: 'cash',
+            },
+        },
+        { $group: { _id: null, total: { $sum: { $ifNull: ['$amount', 0] } } } },
+    ]);
+    return Number(agg?.[0]?.total) || 0;
+}
+
+async function getDepositCapacity(deliveryPartnerId) {
+    const wallet = await getDeliveryPartnerWalletEnhanced(deliveryPartnerId);
+    const pendingCashSubmission = await getPendingCashSubmissionTotal(deliveryPartnerId);
+    const availableToDeposit = Math.max(0, wallet.cashInHand - pendingCashSubmission);
+    return { wallet, pendingCashSubmission, availableToDeposit };
+}
+
+export const submitCashDepositByHand = async (deliveryPartnerId, amountInr) => {
+    const amount = Number(amountInr);
+    if (!Number.isFinite(amount) || amount < 1) {
+        throw new ValidationError('Amount must be at least ₹1');
+    }
+    if (amount > 500000) {
+        throw new ValidationError('Maximum deposit is ₹5,00,000');
+    }
+
+    const { wallet, pendingCashSubmission, availableToDeposit } = await getDepositCapacity(deliveryPartnerId);
+    if (amount > availableToDeposit) {
+        const suffix = pendingCashSubmission > 0
+            ? ` (₹${pendingCashSubmission} already pending admin confirmation)`
+            : '';
+        throw new ValidationError(`Deposit amount cannot exceed cash in hand (₹${availableToDeposit})${suffix}`);
+    }
+
+    const deposit = await FoodDeliveryCashDeposit.create({
+        deliveryPartnerId,
+        amount,
+        paymentMethod: 'cash',
+        status: 'Pending',
+    });
+
+    const capacityAfter = await getDepositCapacity(deliveryPartnerId);
+
+    return {
+        deposit: deposit.toObject(),
+        wallet: {
+            ...capacityAfter.wallet,
+            pendingCashSubmission: capacityAfter.pendingCashSubmission,
+            availableToDeposit: capacityAfter.availableToDeposit,
+        },
+        pendingCashSubmission: capacityAfter.pendingCashSubmission,
+        availableToDeposit: capacityAfter.availableToDeposit,
+    };
+};
+
+export async function notifyDeliveryPartnerCashDepositStatus(deliveryPartnerId, { amount, status, wallet }) {
+    const partnerId = String(deliveryPartnerId);
+    const amt = Number(amount) || 0;
+    const availableLimit = Number(wallet?.availableCashLimit) || 0;
+    const cashInHand = Number(wallet?.cashInHand) || 0;
+
+    let title = 'Cash Deposit Update';
+    let body = '';
+    let category = 'cash_deposit';
+
+    if (status === 'Completed') {
+        title = 'Cash Deposit Confirmed';
+        body = cashInHand <= 0
+            ? `Your cash deposit of ₹${amt.toLocaleString('en-IN')} has been confirmed. Your cash limit has been fully restored.`
+            : `Your cash deposit of ₹${amt.toLocaleString('en-IN')} has been confirmed. Your available cash limit is now ₹${availableLimit.toLocaleString('en-IN')}.`;
+    } else if (status === 'Failed') {
+        title = 'Cash Not Received';
+        body = `The admin has not received ₹${amt.toLocaleString('en-IN')} in cash. Please submit it again.`;
+        category = 'cash_deposit_rejected';
+    } else {
+        return;
+    }
+
+    try {
+        const { notifyOwnerSafely } = await import('../../../../core/notifications/firebase.service.js');
+        const { createInboxNotifications } = await import('../../../../core/notifications/notification.service.js');
+
+        await notifyOwnerSafely(
+            { ownerType: 'DELIVERY_PARTNER', ownerId: partnerId },
+            {
+                sendToAllDevices: true,
+                title,
+                body,
+                data: {
+                    type: category,
+                    amount: String(amt),
+                    status: String(status),
+                    availableCashLimit: String(availableLimit),
+                    cashInHand: String(cashInHand),
+                    link: '/food/delivery/pocket',
+                },
+            },
+        );
+
+        await createInboxNotifications({
+            notifications: [{
+                ownerType: 'DELIVERY_PARTNER',
+                ownerId: partnerId,
+                title,
+                message: body,
+                link: '/food/delivery/pocket',
+                category,
+                source: 'ORDER_UPDATE',
+                metadata: {
+                    amount: amt,
+                    status,
+                    availableCashLimit: availableLimit,
+                    cashInHand,
+                },
+            }],
+        });
+    } catch (err) {
+        console.error('Failed to send cash deposit notification:', err?.message || err);
+    }
+}

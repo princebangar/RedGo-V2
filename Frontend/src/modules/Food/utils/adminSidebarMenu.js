@@ -139,6 +139,7 @@ export const adminSidebarMenu = [
       { type: "link", label: "Delivery Cash Limit", path: "/admin/food/delivery-cash-limit", icon: "IndianRupee" },
       { type: "link", label: "Multiorder Setting", path: "/admin/food/multiorder-setting", icon: "Package" },
       { type: "link", label: "Delivery & Platform Fee", path: "/admin/food/fee-settings", icon: "DollarSign" },
+      { type: "link", label: "Cash Confirmations", path: "/admin/food/cash-confirmations", icon: "CheckCircle2" },
       { type: "link", label: "Cash limit settlement", path: "/admin/food/cash-limit-settlement", icon: "Receipt" },
       { type: "link", label: "Delivery Withdrawal", path: "/admin/food/delivery-withdrawal", icon: "Wallet" },
       { type: "link", label: "Delivery boy Wallet", path: "/admin/food/delivery-boy-wallet", icon: "PiggyBank" },
