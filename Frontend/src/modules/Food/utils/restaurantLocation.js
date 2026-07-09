@@ -105,6 +105,32 @@ export function buildRestaurantLocationUpdatePayload(fields = {}) {
   }
 }
 
+export function getRestaurantDisplayAddress(restaurant) {
+  if (!restaurant || typeof restaurant !== "object") return ""
+
+  const nested = restaurant.location || restaurant.onboarding?.step1?.location || null
+
+  const locationForDisplay = {
+    formattedAddress:
+      nested?.formattedAddress ||
+      nested?.address ||
+      restaurant.formattedAddress ||
+      restaurant.address ||
+      "",
+    addressLine1: nested?.addressLine1 || restaurant.addressLine1 || "",
+    addressLine2: nested?.addressLine2 || restaurant.addressLine2 || "",
+    area: nested?.area || restaurant.area || "",
+    city: nested?.city || restaurant.city || "",
+    state: nested?.state || restaurant.state || "",
+    pincode: nested?.pincode || restaurant.pincode || "",
+    landmark: nested?.landmark || restaurant.landmark || "",
+    latitude: nested?.latitude ?? restaurant.latitude,
+    longitude: nested?.longitude ?? restaurant.longitude,
+  }
+
+  return formatRestaurantDisplayAddress(locationForDisplay, restaurant)
+}
+
 export function dispatchRestaurantLocationUpdated() {
   window.dispatchEvent(new Event("ownerDataUpdated"))
   window.dispatchEvent(new Event("addressUpdated"))
