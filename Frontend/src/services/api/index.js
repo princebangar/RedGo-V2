@@ -775,6 +775,15 @@ export const adminAPI = {
       params,
       contextModule: "admin",
     }),
+  getCashConfirmations: (params = {}) =>
+    apiClient.get("/food/admin/delivery/cash-confirmations", {
+      params,
+      contextModule: "admin",
+    }),
+  updateCashLimitSettlement: (id, body) =>
+    apiClient.patch(`/food/admin/delivery/cash-limit-settlements/${String(id)}`, body ?? {}, {
+      contextModule: "admin",
+    }),
 
   /** Restaurant Commission (admin) */
   getRestaurantCommissionBootstrap: () =>
@@ -2110,6 +2119,10 @@ export const deliveryAPI = {
     }),
   verifyDepositPayment: (body) =>
     apiClient.post("/food/delivery/wallet/deposit/verify", body ?? {}, {
+      contextModule: "delivery"
+    }),
+  submitCashDeposit: (amount) =>
+    apiClient.post("/food/delivery/wallet/deposit/cash-submit", { amount }, {
       contextModule: "delivery"
     }),
   /** Wallet transactions - from wallet response (no separate backend endpoint) */

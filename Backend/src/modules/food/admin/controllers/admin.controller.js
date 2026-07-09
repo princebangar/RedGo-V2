@@ -1534,6 +1534,28 @@ export async function getCashLimitSettlements(req, res, next) {
     }
 }
 
+export async function getCashConfirmations(req, res, next) {
+    try {
+        const data = await adminService.getCashConfirmations(req.query || {});
+        res.status(200).json({ success: true, message: 'Cash confirmations fetched successfully', data });
+    } catch (error) {
+        next(error);
+    }
+}
+
+export async function updateCashLimitSettlement(req, res, next) {
+    try {
+        const data = await adminService.updateCashLimitSettlementStatus(
+            req.params.id,
+            req.body || {},
+            req.user,
+        );
+        res.status(200).json({ success: true, message: 'Settlement updated successfully', data });
+    } catch (error) {
+        next(error);
+    }
+}
+
 export async function getSidebarBadges(req, res, next) {
     try {
         const counts = await adminService.getSidebarBadges();

@@ -1,5 +1,5 @@
 import mongoose from 'mongoose';
-import { ValidationError } from '../../../../core/auth/errors.js';
+import { ValidationError, NotFoundError } from '../../../../core/auth/errors.js';
 import { logger } from '../../../../utils/logger.js';
 import { FoodRestaurant } from '../../restaurant/models/restaurant.model.js';
 import { FoodDeliveryPartner } from '../../delivery/models/deliveryPartner.model.js';
@@ -5693,8 +5693,12 @@ export async function getCashLimitSettlements(query = {}) {
         deliveryIdString: d.deliveryPartnerId?.phone || 'N/A',
         amount: Number(d.amount || 0),
         status: d.status,
-        paymentMethod: d.paymentMethod || 'razorpay',
-        razorpayPaymentId: d.razorpayPaymentId || '-',
+        paymentMethod: String(d.paymentMethod || 'razorpay').toLowerCase() === 'cash'
+            ? 'Cash'
+            : 'Razorpay',
+        razorpayPaymentId: String(d.paymentMethod || '').toLowerCase() === 'cash'
+            ? 'N/A'
+            : (d.razorpayPaymentId || '-'),
         razorpayOrderId: d.razorpayOrderId || '-',
     }));
 
@@ -5706,6 +5710,151 @@ export async function getCashLimitSettlements(query = {}) {
             limit, 
             pages: Math.ceil(total / limit) || 1 
         } 
+    };
+}
+
+/**
+ * Admin confirms or rejects a pending cash deposit submission.
+ */
+export async function updateCashLimitSettlementStatus(depositId, body = {}, adminUser = null) {
+    if (!depositId || !mongoose.Types.ObjectId.isValid(String(depositId))) {
+        throw new ValidationError('Invalid settlement id');
+    }
+
+    const action = String(body.action || '').trim().toLowerCase();
+    if (!['received', 'not_received'].includes(action)) {
+        throw new ValidationError('action must be received or not_received');
+    }
+
+    const deposit = await FoodDeliveryCashDeposit.findById(depositId);
+    if (!deposit) throw new NotFoundError('Settlement not found');
+
+    if (deposit.status !== 'Pending') {
+        throw new ValidationError(`Settlement is already ${deposit.status}`);
+    }
+
+    if (String(deposit.paymentMethod || '').toLowerCase() !== 'cash') {
+        throw new ValidationError('Only cash submissions can be confirmed manually');
+    }
+
+    const nextStatus = action === 'received' ? 'Completed' : 'Failed';
+    deposit.status = nextStatus;
+    deposit.confirmationAction = action;
+    deposit.adminId = adminUser?._id || null;
+    deposit.adminNote = action === 'received'
+        ? 'Cash received and confirmed by admin'
+        : 'Cash not received — marked by admin';
+    await deposit.save();
+
+    const { getDeliveryPartnerWalletEnhanced, notifyDeliveryPartnerCashDepositStatus } = await import('../../delivery/services/deliveryFinance.service.js');
+    const wallet = await getDeliveryPartnerWalletEnhanced(deposit.deliveryPartnerId);
+
+    await notifyDeliveryPartnerCashDepositStatus(deposit.deliveryPartnerId, {
+        amount: deposit.amount,
+        status: nextStatus,
+        wallet,
+    });
+
+    return {
+        deposit: deposit.toObject(),
+        wallet,
+    };
+}
+
+function getManualCashSubmissionFilter(extra = {}) {
+    return {
+        paymentMethod: 'cash',
+        $or: [
+            { razorpayPaymentId: { $exists: false } },
+            { razorpayPaymentId: null },
+            { razorpayPaymentId: '' },
+        ],
+        ...extra,
+    };
+}
+
+export async function countPendingCashConfirmations() {
+    return FoodDeliveryCashDeposit.countDocuments(
+        getManualCashSubmissionFilter({ status: 'Pending' }),
+    );
+}
+
+function mapCashConfirmationRow(d) {
+    const paymentMethod = 'Cash';
+    const confirmationAction = d.confirmationAction || null;
+    let actionLabel = null;
+    if (confirmationAction === 'received') actionLabel = 'Received';
+    if (confirmationAction === 'not_received') actionLabel = 'Not Received';
+
+    let statusLabel = d.status || 'Pending';
+
+    return {
+        id: d._id,
+        createdAt: d.createdAt,
+        deliveryId: d.deliveryPartnerId?._id,
+        deliveryName: d.deliveryPartnerId?.name || 'N/A',
+        deliveryPhone: d.deliveryPartnerId?.phone || 'N/A',
+        deliveryIdString: d.deliveryPartnerId?.phone || 'N/A',
+        amount: Number(d.amount || 0),
+        status: statusLabel,
+        rawStatus: d.status,
+        paymentMethod,
+        confirmationAction,
+        actionLabel,
+        razorpayPaymentId: 'N/A',
+    };
+}
+
+/**
+ * Cash submissions that need admin confirmation (paymentMethod = cash, manual submit).
+ */
+export async function getCashConfirmations(query = {}) {
+    const limit = parseInt(query.limit, 10) || 20;
+    const page = parseInt(query.page, 10) || 1;
+    const skip = (page - 1) * limit;
+    const search = String(query.search || '').trim();
+    const tab = String(query.tab || 'all').trim().toLowerCase();
+
+    const filter = getManualCashSubmissionFilter();
+
+    if (tab === 'pending') {
+        filter.status = 'Pending';
+    } else if (tab === 'confirmed') {
+        filter.confirmationAction = { $in: ['received', 'not_received'] };
+    }
+
+    if (search) {
+        const partnerIds = await FoodDeliveryPartner.find({
+            $or: [
+                { name: { $regex: search, $options: 'i' } },
+                { phone: { $regex: search, $options: 'i' } },
+            ],
+        })
+            .select('_id')
+            .lean();
+        filter.deliveryPartnerId = { $in: partnerIds.map((p) => p._id) };
+    }
+
+    const [deposits, total] = await Promise.all([
+        FoodDeliveryCashDeposit.find(filter)
+            .sort({ createdAt: -1 })
+            .skip(skip)
+            .limit(limit)
+            .populate('deliveryPartnerId', 'name phone')
+            .lean(),
+        FoodDeliveryCashDeposit.countDocuments(filter),
+    ]);
+
+    const transactions = deposits.map(mapCashConfirmationRow);
+
+    return {
+        transactions,
+        pagination: {
+            total,
+            page,
+            limit,
+            pages: Math.ceil(total / limit) || 1,
+        },
     };
 }
 
@@ -5725,7 +5874,8 @@ export async function getSidebarBadges() {
             pendingEarningAddons,
             pendingSafetyReports,
             pendingEmergencyHelp,
-            pendingRestaurantComplaints
+            pendingRestaurantComplaints,
+            pendingCashConfirmations,
         ] = await Promise.all([
             FoodRestaurant.countDocuments({ status: 'pending' }),
             FoodDeliveryPartner.countDocuments({ status: 'pending' }),
@@ -5746,7 +5896,8 @@ export async function getSidebarBadges() {
             FoodEarningAddonHistory.countDocuments({ status: 'pending' }),
             FoodSafetyEmergencyReport.countDocuments({ status: 'pending' }),
             FoodDeliveryEmergencyHelp.countDocuments({ status: 'pending' }),
-            FoodSupportTicket.countDocuments({ type: 'order', status: 'pending' })
+            FoodSupportTicket.countDocuments({ type: 'order', status: 'pending' }),
+            countPendingCashConfirmations(),
         ]);
 
         return {
@@ -5758,6 +5909,7 @@ export async function getSidebarBadges() {
             offlinePayments: pendingOfflinePayments,
             restaurantWithdrawals: pendingRestaurantWithdrawals,
             deliveryWithdrawals: pendingDeliveryWithdrawals,
+            cashConfirmations: pendingCashConfirmations,
             userSupportTickets: openUserSupportTickets,
             deliverySupportTickets: openDeliverySupportTickets,
             earningAddons: pendingEarningAddons,

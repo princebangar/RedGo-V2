@@ -257,6 +257,7 @@ export default function AdminSidebar({ isOpen = false, onClose, onCollapseChange
     if (p.includes("delivery-support-tickets")) return badges.deliverySupportTickets ?? 0
     if (p.includes("/support-tickets")) return badges.userSupportTickets ?? 0
     if (p.includes("delivery-withdrawal")) return badges.deliveryWithdrawals ?? 0
+    if (p.includes("cash-confirmations")) return badges.cashConfirmations ?? 0
     if (p.includes("restaurant-withdraws")) return badges.restaurantWithdrawals ?? 0
     if (p.includes("delivery-emergency-help")) return badges.emergencyHelp ?? 0
     if (p.includes("earning-addon-history")) return badges.earningAddons ?? 0
@@ -270,6 +271,7 @@ export default function AdminSidebar({ isOpen = false, onClose, onCollapseChange
     if (l.includes("restaurant complaints")) return badges.restaurantComplaints ?? 0
     if (l.includes("support tickets")) return l.includes("delivery") ? (badges.deliverySupportTickets ?? 0) : (badges.userSupportTickets ?? 0)
     if (l.includes("withdrawal") || l.includes("withdraws")) return l.includes("delivery") ? (badges.deliveryWithdrawals ?? 0) : (badges.restaurantWithdrawals ?? 0)
+    if (l.includes("cash confirmations")) return badges.cashConfirmations ?? 0
     if (l.includes("emergency help")) return badges.emergencyHelp ?? 0
     if (l.includes("earning addon history")) return badges.earningAddons ?? 0
     if (l.includes("safety emergency reports")) return badges.safetyReports ?? 0
