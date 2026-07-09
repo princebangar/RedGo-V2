@@ -29,6 +29,7 @@ import {
 import { Button } from "@food/components/ui/button"
 import { Input } from "@food/components/ui/input"
 import { restaurantAPI } from "@food/api"
+import { formatRestaurantDisplayAddress } from "@food/utils/restaurantLocation"
 import { toast } from "sonner"
 import { ImageSourcePicker } from "@food/components/ImageSourcePicker"
 import { isFlutterBridgeAvailable, convertBase64ToFile } from "@food/utils/imageUploadUtils"
@@ -83,75 +84,48 @@ export default function OutletInfo() {
   const menuImageInputRef = useRef(null)
   const [activePicker, setActivePicker] = useState(null) // { type: 'profile' | 'cover', ref: any, title: string, multiple: boolean }
 
-  // Format address from location object
-  const formatAddress = (location) => {
-    if (!location) return ""
-    
-    const parts = []
-    if (location.addressLine1) parts.push(location.addressLine1.trim())
-    if (location.addressLine2) parts.push(location.addressLine2.trim())
-    if (location.area) parts.push(location.area.trim())
-    if (location.city) {
-      const city = location.city.trim()
-      // Only add city if it's not already included in area
-      if (!location.area || !location.area.includes(city)) {
-        parts.push(city)
+  // Fetch restaurant data on mount and whenever this page is opened again
+  useEffect(() => {
+    const applyRestaurantData = (data) => {
+      if (!data) return
+
+      setRestaurantData(data)
+      setRestaurantName(data.name || "")
+      setRestaurantId(data.restaurantId || data.id || "")
+      setRestaurantMongoId(String(data.id || data._id || ""))
+      setAddress(formatRestaurantDisplayAddress(data.location, data))
+
+      if (data.cuisines && Array.isArray(data.cuisines) && data.cuisines.length > 0) {
+        setCuisineTags(data.cuisines.join(", "))
+      }
+
+      if (data.profileImage?.url) {
+        setThumbnailImage(data.profileImage.url)
+      }
+
+      if (data.coverImages && Array.isArray(data.coverImages) && data.coverImages.length > 0) {
+        setCoverImages(data.coverImages.map(img => ({
+          url: img.url || img,
+          publicId: img.publicId
+        })))
+        setMainImage(data.coverImages[0].url || data.coverImages[0])
+      } else if (data.menuImages && Array.isArray(data.menuImages) && data.menuImages.length > 0) {
+        setCoverImages(data.menuImages.map(img => ({
+          url: img.url,
+          publicId: img.publicId
+        })))
+        setMainImage(data.menuImages[0].url)
+      } else {
+        setCoverImages([])
       }
     }
-    if (location.landmark) parts.push(location.landmark.trim())
-    
-    return parts.join(", ") || ""
-  }
 
-  // Fetch restaurant data on mount
-  useEffect(() => {
     const fetchRestaurantData = async () => {
       try {
         setLoading(true)
-        const response = await restaurantAPI.getCurrentRestaurant()
+        const response = await restaurantAPI.refreshCurrentRestaurant()
         const data = response?.data?.data?.restaurant || response?.data?.restaurant
-        if (data) {
-          setRestaurantData(data)
-          
-          // Set restaurant name
-          setRestaurantName(data.name || "")
-          
-          // Set restaurant ID
-          setRestaurantId(data.restaurantId || data.id || "")
-          // Set MongoDB _id for last 5 digits display
-          const mongoId = String(data.id || data._id || "")
-          setRestaurantMongoId(mongoId)
-          
-          // Format and set address
-          const formattedAddress = formatAddress(data.location)
-          setAddress(formattedAddress)
-          
-          // Format cuisines
-          if (data.cuisines && Array.isArray(data.cuisines) && data.cuisines.length > 0) {
-            setCuisineTags(data.cuisines.join(", "))
-          }
-          
-          // Set images
-          if (data.profileImage?.url) {
-            setThumbnailImage(data.profileImage.url)
-          }
-          // Use coverImages if available, otherwise fallback to menuImages for backward compatibility
-          if (data.coverImages && Array.isArray(data.coverImages) && data.coverImages.length > 0) {
-            setCoverImages(data.coverImages.map(img => ({
-              url: img.url || img,
-              publicId: img.publicId
-            })))
-            setMainImage(data.coverImages[0].url || data.coverImages[0])
-          } else if (data.menuImages && Array.isArray(data.menuImages) && data.menuImages.length > 0) {
-            setCoverImages(data.menuImages.map(img => ({
-              url: img.url,
-              publicId: img.publicId
-            })))
-            setMainImage(data.menuImages[0].url)
-          } else {
-            setCoverImages([])
-          }
-        }
+        applyRestaurantData(data)
       } catch (error) {
         if (error.code !== 'ERR_NETWORK' && error.code !== 'ECONNABORTED' && !error.message?.includes('timeout')) {
           debugError("Error fetching restaurant data:", error)
@@ -161,24 +135,27 @@ export default function OutletInfo() {
       }
     }
 
+    const savedLocation = location.state?.savedLocation
+    if (savedLocation) {
+      setAddress(formatRestaurantDisplayAddress(savedLocation))
+    }
+
     fetchRestaurantData()
 
-    // Listen for updates from edit pages
-    const handleCuisinesUpdate = () => {
-      fetchRestaurantData()
-    }
-    const handleAddressUpdate = () => {
+    const handleRestaurantDataUpdate = () => {
       fetchRestaurantData()
     }
 
-    window.addEventListener("cuisinesUpdated", handleCuisinesUpdate)
-    window.addEventListener("addressUpdated", handleAddressUpdate)
+    window.addEventListener("cuisinesUpdated", handleRestaurantDataUpdate)
+    window.addEventListener("addressUpdated", handleRestaurantDataUpdate)
+    window.addEventListener("ownerDataUpdated", handleRestaurantDataUpdate)
     
     return () => {
-      window.removeEventListener("cuisinesUpdated", handleCuisinesUpdate)
-      window.removeEventListener("addressUpdated", handleAddressUpdate)
+      window.removeEventListener("cuisinesUpdated", handleRestaurantDataUpdate)
+      window.removeEventListener("addressUpdated", handleRestaurantDataUpdate)
+      window.removeEventListener("ownerDataUpdated", handleRestaurantDataUpdate)
     }
-  }, [])
+  }, [location.pathname, location.state?.savedLocation])
 
   // Lenis smooth scrolling
   useEffect(() => {
@@ -424,7 +401,7 @@ export default function OutletInfo() {
                 </div>
                 
                 <button
-                  onClick={() => navigate("/food/restaurant/edit-owner", { state: { from: location.pathname } })}
+                  onClick={() => navigate("/food/restaurant/edit-owner", { state: { from: location.pathname, activeTab: "restaurant" } })}
                   className="mt-4 bg-gradient-to-br from-[#B80B3D] to-[#66001D] text-white px-5 py-2.5 rounded-xl text-xs font-bold flex items-center gap-2 shadow-lg shadow-[#B80B3D]/20 active:scale-95 transition-all w-fit"
                 >
                   <Pencil className="w-3.5 h-3.5" />

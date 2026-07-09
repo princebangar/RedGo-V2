@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from "react"
 import { useNavigate, useLocation } from "react-router-dom"
 import { Search, Menu, ChevronRight, MapPin, X, Bell, HelpCircle } from "lucide-react"
 import { restaurantAPI } from "@food/api"
+import { formatRestaurantDisplayAddress } from "@food/utils/restaurantLocation"
 import { getCachedSettings, loadBusinessSettings } from "@food/utils/businessSettings"
 import useNotificationInbox from "@food/hooks/useNotificationInbox"
 import { useRestaurantNotifications } from "@food/hooks/useRestaurantNotifications"
@@ -18,15 +19,6 @@ const extractRestaurantPayload = (response) =>
   response?.data?.user ||
   response?.data?.data ||
   null
-
-
-const isCoordinateString = (str) => {
-  if (!str) return false
-  const trimmed = str.trim()
-  // Matches "22.123, 75.123" or similar variants
-  const coordRegex = /^-?\d+\.\d+,\s*-?\d+\.\d+/
-  return coordRegex.test(trimmed)
-}
 
 export default function RestaurantNavbar({
   restaurantName: propRestaurantName,
@@ -141,7 +133,7 @@ export default function RestaurantNavbar({
     const fetchRestaurantData = async () => {
       try {
         setLoading(true)
-        const response = await restaurantAPI.getCurrentRestaurant()
+        const response = await restaurantAPI.refreshCurrentRestaurant()
         const data = extractRestaurantPayload(response)
         if (data) {
           setRestaurantData(data)
@@ -158,78 +150,19 @@ export default function RestaurantNavbar({
     }
 
     fetchRestaurantData()
-  }, [])
 
-  // Format full address from location object - using stored data only, no live fetching
-  const formatAddress = (location) => {
-    if (!location) return ""
-    
-    if (location.formattedAddress && location.formattedAddress.trim() !== "" && location.formattedAddress !== "Select location") {
-      if (!isCoordinateString(location.formattedAddress)) {
-        return location.formattedAddress.trim()
-      }
+    const handleRestaurantDataUpdate = () => {
+      fetchRestaurantData()
     }
-    
-    // Priority 2: Use address field if available
-    if (location.address && location.address.trim() !== "") {
-      if (!isCoordinateString(location.address)) {
-        return location.address.trim()
-      }
+
+    window.addEventListener("ownerDataUpdated", handleRestaurantDataUpdate)
+    window.addEventListener("addressUpdated", handleRestaurantDataUpdate)
+
+    return () => {
+      window.removeEventListener("ownerDataUpdated", handleRestaurantDataUpdate)
+      window.removeEventListener("addressUpdated", handleRestaurantDataUpdate)
     }
-    
-    // Priority 3: Build from individual components
-    const parts = []
-    
-    // Add street address (addressLine1 or street)
-    if (location.addressLine1) {
-      parts.push(location.addressLine1.trim())
-    } else if (location.street) {
-      parts.push(location.street.trim())
-    }
-    
-    // Add addressLine2 if available
-    if (location.addressLine2) {
-      parts.push(location.addressLine2.trim())
-    }
-    
-    // Add area if available
-    if (location.area) {
-      parts.push(location.area.trim())
-    }
-    
-    // Add landmark if available
-    if (location.landmark) {
-      parts.push(location.landmark.trim())
-    }
-    
-    // Add city if available and not already in area
-    if (location.city) {
-      const city = location.city.trim()
-      // Only add city if it's not already included in previous parts
-      const cityAlreadyIncluded = parts.some(part => part.toLowerCase().includes(city.toLowerCase()))
-      if (!cityAlreadyIncluded) {
-        parts.push(city)
-      }
-    }
-    
-    // Add state if available
-    if (location.state) {
-      const state = location.state.trim()
-      // Only add state if it's not already included
-      const stateAlreadyIncluded = parts.some(part => part.toLowerCase().includes(state.toLowerCase()))
-      if (!stateAlreadyIncluded) {
-        parts.push(state)
-      }
-    }
-    
-    // Add zipCode/pincode if available
-    if (location.zipCode || location.pincode || location.postalCode) {
-      const zip = (location.zipCode || location.pincode || location.postalCode).trim()
-      parts.push(zip)
-    }
-    
-    return parts.length > 0 ? parts.join(", ") : ""
-  }
+  }, [])
 
   // Get restaurant name (use prop if provided, otherwise use fetched data)
   const restaurantName = propRestaurantName || restaurantData?.name || "Restaurant"
@@ -238,71 +171,15 @@ export default function RestaurantNavbar({
 
   // Update location when restaurantData or propLocation changes
   useEffect(() => {
-    let newLocation = ""
-    
-    // Priority 1: Explicit prop takes highest priority
     if (propLocation && propLocation.trim() !== "") {
-      newLocation = propLocation.trim()
+      setRestaurantAddress(propLocation.trim())
+      return
     }
-    // Priority 2: Check restaurantData location
-    else if (restaurantData) {
-      debugLog('?? Checking restaurant data for address:', {
-        hasLocation: !!restaurantData.location,
-        locationKeys: restaurantData.location ? Object.keys(restaurantData.location) : [],
-        formattedAddress: restaurantData.location?.formattedAddress,
-        address: restaurantData.location?.address,
-        directAddress: restaurantData.address,
-        fullLocation: restaurantData.location
-      })
-      
-      if (restaurantData.location) {
-        // Use stored formattedAddress first (from database)
-        if (restaurantData.location.formattedAddress && 
-            restaurantData.location.formattedAddress.trim() !== "" && 
-            restaurantData.location.formattedAddress !== "Select location") {
-          if (!isCoordinateString(restaurantData.location.formattedAddress)) {
-            newLocation = restaurantData.location.formattedAddress.trim()
-            debugLog('? Using formattedAddress:', newLocation)
-          }
-        }
-        
-        // If formattedAddress is not available or is coordinates, try formatAddress function
-        if (!newLocation) {
-          const formatted = formatAddress(restaurantData.location)
-          if (formatted && formatted.trim() !== "") {
-            newLocation = formatted.trim()
-            debugLog('? Using formatAddress result:', newLocation)
-          }
-        }
-        
-        // Additional fallback: check if address is directly on location
-        if (!newLocation && restaurantData.location.address && restaurantData.location.address.trim() !== "") {
-          if (!isCoordinateString(restaurantData.location.address)) {
-            newLocation = restaurantData.location.address.trim()
-            debugLog('? Using location.address:', newLocation)
-          }
-        }
-      }
-      
-      // Fallback: Use city/area if only coordinates were found
-      if (!newLocation && (restaurantData.city || restaurantData.area)) {
-        newLocation = [restaurantData.area, restaurantData.city].filter(Boolean).join(", ")
-      }
 
-      if (!newLocation && restaurantData.address && restaurantData.address.trim() !== "") {
-        if (!isCoordinateString(restaurantData.address)) {
-          newLocation = restaurantData.address.trim()
-        }
-      }
-    }
-    
-    setRestaurantAddress(newLocation)
-    
-    // Debug log
-    if (newLocation) {
-      debugLog('?? Restaurant address displayed:', newLocation)
-    } else if (restaurantData) {
-      debugLog('?? Restaurant data available but no address found')
+    if (restaurantData) {
+      setRestaurantAddress(formatRestaurantDisplayAddress(restaurantData.location, restaurantData))
+    } else {
+      setRestaurantAddress("")
     }
   }, [restaurantData, propLocation])
 

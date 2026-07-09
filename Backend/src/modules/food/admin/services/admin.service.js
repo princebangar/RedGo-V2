@@ -5589,8 +5589,10 @@ export async function getDeliveryWallets(query = {}) {
                 phone: p.phone || '',
                 deliveryIdString: partnerIdstr,
                 pocketBalance: 0,
+                totalCashLimit: globalLimit,
                 remainingCashLimit: globalLimit,
                 cashCollected: 0,
+                cashDeposited: 0,
                 totalEarning: 0,
                 bonus: 0,
                 totalWithdrawn: 0,
@@ -5616,8 +5618,10 @@ export async function getDeliveryWallets(query = {}) {
             phone: p.phone || '',
             deliveryIdString: partnerIdstr,
             pocketBalance,
+            totalCashLimit: globalLimit,
             remainingCashLimit: Math.max(0, globalLimit - cashInHand),
             cashCollected: grossCashCollected,
+            cashDeposited: totalDepositedCash,
             totalEarning: totalEarned,
             bonus: totalBonus,
             totalWithdrawn,
@@ -5643,12 +5647,30 @@ export async function getCashLimitSettlements(query = {}) {
     const limit = parseInt(query.limit, 10) || 20;
     const page = parseInt(query.page, 10) || 1;
     const skip = (page - 1) * limit;
+    const search = String(query.search || '').trim();
+    const statusFilter = String(query.status || '').trim();
 
     const filter = {};
-    if (query.search) {
-        // Search by razorpay ID or find partner IDs to search by partner
-        if (query.search.startsWith('pay_')) {
-            filter.razorpayPaymentId = query.search;
+    if (statusFilter && statusFilter.toLowerCase() !== 'all') {
+        filter.status = statusFilter;
+    }
+
+    if (search) {
+        if (search.startsWith('pay_') || search.startsWith('order_')) {
+            filter.$or = [
+                { razorpayPaymentId: search },
+                { razorpayOrderId: search },
+            ];
+        } else {
+            const partnerIds = await FoodDeliveryPartner.find({
+                $or: [
+                    { name: { $regex: search, $options: 'i' } },
+                    { phone: { $regex: search, $options: 'i' } },
+                ],
+            })
+                .select('_id')
+                .lean();
+            filter.deliveryPartnerId = { $in: partnerIds.map((p) => p._id) };
         }
     }
 
@@ -5667,10 +5689,13 @@ export async function getCashLimitSettlements(query = {}) {
         createdAt: d.createdAt,
         deliveryId: d.deliveryPartnerId?._id,
         deliveryName: d.deliveryPartnerId?.name || 'N/A',
+        deliveryPhone: d.deliveryPartnerId?.phone || 'N/A',
         deliveryIdString: d.deliveryPartnerId?.phone || 'N/A',
         amount: Number(d.amount || 0),
         status: d.status,
-        razorpayPaymentId: d.razorpayPaymentId || '-'
+        paymentMethod: d.paymentMethod || 'razorpay',
+        razorpayPaymentId: d.razorpayPaymentId || '-',
+        razorpayOrderId: d.razorpayOrderId || '-',
     }));
 
     return { 
