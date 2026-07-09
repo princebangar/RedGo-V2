@@ -6,6 +6,7 @@ import { clearModuleAuth } from "@food/utils/auth"
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from "@food/components/ui/dropdown-menu"
 import { exportRestaurantsToPDF } from "@food/components/admin/restaurants/restaurantsExportUtils"
 import { getGoogleMapsApiKey } from "@food/utils/googleMapsApiKey"
+import { formatRestaurantDisplayAddress, getRestaurantDisplayAddress } from "@food/utils/restaurantLocation"
 
 // Import icons from Dashboard-icons
 const debugLog = (...args) => {}
@@ -496,18 +497,7 @@ export default function RestaurantsList() {
   }
 
   const formatLocationAddress = (location = {}, fallback = "N/A") => {
-    if (!location || typeof location !== "object") return fallback
-    if (location.formattedAddress) return location.formattedAddress
-    if (location.address) return location.address
-    const parts = [
-      location.addressLine1,
-      location.addressLine2,
-      location.area,
-      location.city,
-      location.state,
-      location.pincode || location.zipCode || location.postalCode,
-    ].filter(Boolean)
-    return parts.length > 0 ? parts.join(", ") : fallback
+    return formatRestaurantDisplayAddress(location) || fallback
   }
 
   const normalizeLocationFormFromRestaurant = (restaurant) => {
@@ -1680,8 +1670,8 @@ export default function RestaurantsList() {
                 const detailsApprovalStatus = normalizeApprovalStatus(r)
                 const profileImgUrl = getPrimaryRestaurantImage(r)
                 const coverImages = Array.isArray(r?.coverImages) ? r.coverImages.map(normalizeImageUrl).filter(Boolean) : []
-                const hasFlatAddress = r?.addressLine1 || r?.area || r?.city || r?.state || r?.pincode
-                const flatAddress = [r?.addressLine1, r?.addressLine2, r?.area, r?.city, r?.state, r?.pincode, r?.landmark].filter(Boolean).join(", ")
+                const displayAddress = getRestaurantDisplayAddress(r)
+                const hasFlatAddress = Boolean(displayAddress)
                 const menuImages = Array.isArray(r?.menuImages) ? r.menuImages.map(normalizeImageUrl).filter(Boolean) : []
                 const cuisinesList =
                   (Array.isArray(r?.cuisines) && r.cuisines.length ? r.cuisines : null) ||
@@ -1846,13 +1836,13 @@ export default function RestaurantsList() {
                         ) : null}
                       </div>
                       <div className="space-y-3">
-                        {!isEditingLocation && (r?.location || hasFlatAddress) && (
+                        {!isEditingLocation && hasFlatAddress && (
                           <div className="flex items-start gap-3">
                             <MapPin className="w-5 h-5 text-slate-400 mt-0.5" />
                             <div>
                               <p className="text-xs text-slate-500">Address</p>
                               <p className="text-sm font-medium text-slate-900">
-                                {r?.location ? formatLocationAddress(r.location, selectedRestaurant?.zone) : flatAddress}
+                                {displayAddress}
                               </p>
                             </div>
                           </div>
@@ -2254,7 +2244,7 @@ export default function RestaurantsList() {
                   {hasFlatAddress && !r?.onboarding?.step1?.location && (
                     <div className="pt-6 border-t border-slate-200">
                       <h4 className="text-lg font-semibold text-slate-900 mb-4">Address (at registration)</h4>
-                      <p className="text-sm font-medium text-slate-900">{flatAddress}</p>
+                      <p className="text-sm font-medium text-slate-900">{displayAddress}</p>
                     </div>
                   )}
 

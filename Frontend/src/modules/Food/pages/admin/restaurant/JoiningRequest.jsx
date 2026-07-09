@@ -8,6 +8,7 @@ import { toast } from "sonner"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@food/components/ui/dialog"
 import { refreshSidebarBadges } from "@food/components/admin/AdminSidebar"
 import { useAdminBadgeListRefresh } from "@food/hooks/useAdminBadgeListRefresh"
+import { getRestaurantDisplayAddress } from "@food/utils/restaurantLocation"
 const debugLog = (...args) => {}
 const debugWarn = (...args) => {}
 const debugError = (...args) => {}
@@ -787,21 +788,6 @@ export default function JoiningRequest() {
                 const profileImgUrl =
                   getNormalizedImageUrl(restaurantPhotoList[0]) ||
                   (typeof r?.profileImage === "string" ? r.profileImage : (r?.profileImage?.url || r?.profileImageUrl?.url || r?.restaurantImage))
-                const addressParts = [
-                  r?.addressLine1,
-                  r?.addressLine2,
-                  r?.area,
-                  r?.city,
-                  r?.landmark,
-                  r?.location?.addressLine1,
-                  r?.location?.addressLine2,
-                  r?.location?.area,
-                  r?.location?.city,
-                  r?.onboarding?.step1?.location?.addressLine1,
-                  r?.onboarding?.step1?.location?.area,
-                  r?.onboarding?.step1?.location?.city
-                ].filter(Boolean)
-                const hasAddress = addressParts.length > 0 || r?.location || r?.onboarding?.step1?.location
                 const openingTime = r?.openingTime || r?.deliveryTimings?.openingTime || r?.onboarding?.step2?.deliveryTimings?.openingTime
                 const closingTime = r?.closingTime || r?.deliveryTimings?.closingTime || r?.onboarding?.step2?.deliveryTimings?.closingTime
                 const approvalStatus = String(r?.status || "").toLowerCase() || (r?.isActive !== false ? "approved" : "pending")
@@ -883,16 +869,7 @@ export default function JoiningRequest() {
                       <h4 className="text-lg font-semibold text-slate-900 mb-4">Location & Contact</h4>
                       <div className="space-y-3">
                         {(() => {
-                          const loc = r?.location || r?.onboarding?.step1?.location
-                          const fullAddress = [
-                            r?.addressLine1 || loc?.addressLine1,
-                            r?.addressLine2 || loc?.addressLine2,
-                            r?.area || loc?.area,
-                            r?.city || loc?.city,
-                            r?.state || loc?.state,
-                            r?.pincode || loc?.pincode,
-                            r?.landmark || loc?.landmark,
-                          ].filter(Boolean).join(", ") || loc?.formattedAddress || loc?.address || r?.zone || null
+                          const fullAddress = getRestaurantDisplayAddress(r) || r?.zone || null
                           return fullAddress ? (
                             <div className="flex items-start gap-3">
                               <MapPin className="w-5 h-5 text-slate-400 mt-0.5 shrink-0" />
