@@ -8,7 +8,7 @@ import {
 } from "lucide-react"
 import BottomPopup from "@delivery/components/BottomPopup"
 import { toast } from "sonner"
-import { openCamera, isFlutterBridgeAvailable } from "@food/utils/imageUploadUtils"
+import { openCamera, openGallery, isFlutterBridgeAvailable } from "@food/utils/imageUploadUtils"
 import { deliveryAPI } from "@food/api"
 import { motion, AnimatePresence } from "framer-motion"
 import useDeliveryBackNavigation from "../../hooks/useDeliveryBackNavigation"
@@ -251,8 +251,25 @@ export const ProfileDetailsV2 = () => {
   }
 
   const handlePickFromGallery = (target, ref) => {
-    setUploadTarget(target)
-    ref.current?.click()
+    if (target === "profilePhoto") {
+      setUploadTarget("profilePhoto")
+    }
+
+    openGallery({
+      onSelectFile: (file) => {
+        if (target === "profilePhoto") {
+          setUploadTarget("profilePhoto")
+          uploadProfileFile(file)
+          return
+        }
+
+        if (target === "upiQrCode") {
+          uploadUpiQrFile(file)
+        }
+      },
+      fileNamePrefix: `profile-${target}`,
+      fallbackInputRef: ref,
+    })
   }
 
 

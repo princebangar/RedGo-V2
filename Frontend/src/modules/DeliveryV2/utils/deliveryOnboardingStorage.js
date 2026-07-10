@@ -19,6 +19,8 @@ const DELIVERY_FILES_DB = "DeliveryOnboardingFiles"
 const DELIVERY_FILES_STORE = "files"
 const IDB_OPERATION_TIMEOUT_MS = 3000
 
+let deliveryFilesDbPromise = null
+
 const withTimeout = (promise, timeoutMs, timeoutValueFactory) =>
   new Promise((resolve, reject) => {
     const timeoutId = setTimeout(() => {
@@ -40,15 +42,21 @@ const withTimeout = (promise, timeoutMs, timeoutValueFactory) =>
       })
   })
 
-const openDeliveryFilesDB = () =>
-  new Promise((resolve, reject) => {
+const openDeliveryFilesDB = () => {
+  if (deliveryFilesDbPromise) {
+    return deliveryFilesDbPromise
+  }
+
+  deliveryFilesDbPromise = new Promise((resolve, reject) => {
     const timeout = setTimeout(() => {
+      deliveryFilesDbPromise = null
       reject(new Error("IndexedDB connection timeout"))
     }, IDB_OPERATION_TIMEOUT_MS)
 
     try {
       if (typeof indexedDB === "undefined") {
         clearTimeout(timeout)
+        deliveryFilesDbPromise = null
         reject(new Error("IndexedDB not supported"))
         return
       }
@@ -62,21 +70,32 @@ const openDeliveryFilesDB = () =>
       }
       request.onsuccess = (event) => {
         clearTimeout(timeout)
-        resolve(event.target.result)
+        const db = event.target.result
+        db.onversionchange = () => {
+          db.close()
+          deliveryFilesDbPromise = null
+        }
+        resolve(db)
       }
       request.onerror = (event) => {
         clearTimeout(timeout)
+        deliveryFilesDbPromise = null
         reject(event.target.error)
       }
       request.onblocked = () => {
         clearTimeout(timeout)
+        deliveryFilesDbPromise = null
         reject(new Error("IndexedDB blocked"))
       }
     } catch (error) {
       clearTimeout(timeout)
+      deliveryFilesDbPromise = null
       reject(error)
     }
   })
+
+  return deliveryFilesDbPromise
+}
 
 const isUploadableFile = (file) => file instanceof File || file instanceof Blob
 
@@ -149,24 +168,50 @@ export const saveSignupDocumentToDB = async (docType, file) => {
 export const getSignupDocumentFromDB = async (docType) => {
   if (!DELIVERY_SIGNUP_DOC_TYPES.includes(docType)) return null
 
+  const documents = await getAllSignupDocumentsFromDB()
+  return documents[docType] || null
+}
+
+export const getAllSignupDocumentsFromDB = async () => {
+  const emptyResult = DELIVERY_SIGNUP_DOC_TYPES.reduce((acc, docType) => {
+    acc[docType] = null
+    return acc
+  }, {})
+
   try {
     const db = await openDeliveryFilesDB()
     const tx = db.transaction(DELIVERY_FILES_STORE, "readonly")
-    const request = tx.objectStore(DELIVERY_FILES_STORE).get(docType)
+    const store = tx.objectStore(DELIVERY_FILES_STORE)
+
     return await withTimeout(
       new Promise((resolve) => {
-        request.onsuccess = () => {
-          const result = request.result
-          resolve(isUploadableFile(result) ? result : null)
+        const documents = { ...emptyResult }
+        let pending = DELIVERY_SIGNUP_DOC_TYPES.length
+
+        const finish = () => {
+          pending -= 1
+          if (pending <= 0) {
+            resolve(documents)
+          }
         }
-        request.onerror = () => resolve(null)
-        tx.onabort = () => resolve(null)
+
+        DELIVERY_SIGNUP_DOC_TYPES.forEach((docType) => {
+          const request = store.get(docType)
+          request.onsuccess = () => {
+            const result = request.result
+            documents[docType] = isUploadableFile(result) ? result : null
+            finish()
+          }
+          request.onerror = () => finish()
+        })
+
+        tx.onabort = () => resolve(documents)
       }),
       IDB_OPERATION_TIMEOUT_MS,
-      () => null,
+      () => emptyResult,
     )
   } catch {
-    return null
+    return emptyResult
   }
 }
 
@@ -236,10 +281,10 @@ const deserializeLegacySignupDocument = (stored) => {
 const migrateLegacySignupDocsToIndexedDB = async () => {
   if (typeof sessionStorage === "undefined") return
 
-  try {
-    const saved = sessionStorage.getItem("deliverySignupDocs")
-    if (!saved) return
+  const saved = sessionStorage.getItem("deliverySignupDocs")
+  if (!saved) return
 
+  try {
     const parsed = JSON.parse(saved)
     let migrated = false
 
@@ -263,10 +308,11 @@ const migrateLegacySignupDocsToIndexedDB = async () => {
 export const loadSignupDocumentPreviews = async () => {
   await migrateLegacySignupDocsToIndexedDB()
 
+  const documents = await getAllSignupDocumentsFromDB()
   const previews = {}
 
   for (const docType of DELIVERY_SIGNUP_DOC_TYPES) {
-    const file = await getSignupDocumentFromDB(docType)
+    const file = documents[docType]
     if (file) {
       previews[docType] = URL.createObjectURL(file)
     }
@@ -326,6 +372,7 @@ export async function clearDeliveryOnboardingData() {
     sessionStorage.removeItem("delivery_resend_expires_at")
   }
 
+  deliveryFilesDbPromise = null
   await clearSignupDocumentsFromDB()
   clearOnboardingFcmLocal("delivery")
   clearModuleAuth("delivery")

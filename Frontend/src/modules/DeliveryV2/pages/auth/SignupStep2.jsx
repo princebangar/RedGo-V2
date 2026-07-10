@@ -3,13 +3,13 @@ import { useNavigate } from "react-router-dom"
 import { ArrowLeft, Upload, X, Check, Camera, Image as ImageIcon } from "lucide-react"
 import { deliveryAPI } from "@food/api"
 import { toast } from "sonner"
-import { openCamera } from "@food/utils/imageUploadUtils"
+import { openCamera, openGallery } from "@food/utils/imageUploadUtils"
 import useDeliveryOnboardingExitGuard from "../../hooks/useDeliveryOnboardingExitGuard"
 import {
   DELIVERY_SIGNUP_DOC_TYPES,
   clearSignupDocumentsFromDB,
   deleteSignupDocumentFromDB,
-  getSignupDocumentFromDB,
+  getAllSignupDocumentsFromDB,
   loadSignupDocumentPreviews,
   prepareSignupDocumentFile,
   saveSignupDocumentToDB,
@@ -39,7 +39,6 @@ export default function SignupStep2() {
   })
   const previewUrlsRef = useRef(createEmptyPreviewState())
   const [previewUrls, setPreviewUrls] = useState(createEmptyPreviewState)
-  const [isHydrating, setIsHydrating] = useState(true)
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [uploading, setUploading] = useState({})
   const [isDummyMode, setIsDummyMode] = useState(false)
@@ -56,11 +55,6 @@ export default function SignupStep2() {
 
   useEffect(() => {
     let cancelled = false
-    const hydrationFailSafe = setTimeout(() => {
-      if (!cancelled) {
-        setIsHydrating(false)
-      }
-    }, 6000)
 
     const hydrateDocuments = async () => {
       try {
@@ -76,19 +70,13 @@ export default function SignupStep2() {
         setPreviewUrls(previews)
       } catch (error) {
         debugError("Failed to hydrate signup documents:", error)
-      } finally {
-        if (!cancelled) {
-          clearTimeout(hydrationFailSafe)
-          setIsHydrating(false)
-        }
       }
     }
 
-    hydrateDocuments()
+    void hydrateDocuments()
 
     return () => {
       cancelled = true
-      clearTimeout(hydrationFailSafe)
       Object.values(previewUrlsRef.current).forEach((url) => {
         if (url) {
           try {
@@ -107,7 +95,7 @@ export default function SignupStep2() {
   const hasUploadedDoc = (docType) => Boolean(getPreviewSrc(docType))
 
   const handleFileSelect = async (docType, file) => {
-    if (!file || isHydrating) return
+    if (!file) return
 
     if (!file.type.startsWith("image/")) {
       return
@@ -151,7 +139,11 @@ export default function SignupStep2() {
   }
 
   const handlePickFromGallery = (docType) => {
-    fileInputRefs.current[docType]?.click()
+    openGallery({
+      onSelectFile: (file) => handleFileSelect(docType, file),
+      fileNamePrefix: `signup-${docType}`,
+      fallbackInputRef: { current: fileInputRefs.current[docType] },
+    })
   }
 
   const handleRemove = async (docType) => {
@@ -175,10 +167,7 @@ export default function SignupStep2() {
   const handleSubmit = async (e) => {
     e.preventDefault()
 
-    const resolvedDocuments = {}
-    for (const docType of DELIVERY_SIGNUP_DOC_TYPES) {
-      resolvedDocuments[docType] = await getSignupDocumentFromDB(docType)
-    }
+    const resolvedDocuments = await getAllSignupDocumentsFromDB()
 
     const missingDocument = DELIVERY_SIGNUP_DOC_TYPES.find((docType) => !resolvedDocuments[docType])
     if (missingDocument) {
@@ -355,7 +344,7 @@ export default function SignupStep2() {
                 }
                 e.target.value = ""
               }}
-              disabled={isUploading || isHydrating}
+              disabled={isUploading}
             />
           </div>
         )}
@@ -364,27 +353,6 @@ export default function SignupStep2() {
   }
 
   const allDocumentsUploaded = DELIVERY_SIGNUP_DOC_TYPES.every((docType) => hasUploadedDoc(docType))
-
-  if (isHydrating) {
-    return (
-      <div className="min-h-screen bg-gray-100">
-        <div className="bg-white px-4 py-3 flex items-center gap-4 border-b border-gray-200">
-          <button
-            onClick={handleBack}
-            className="p-2 hover:bg-gray-100 rounded-full transition-colors"
-          >
-            <ArrowLeft className="w-5 h-5" />
-          </button>
-          <h1 className="text-lg font-medium">Upload Documents</h1>
-        </div>
-        <div className="px-4 py-6 space-y-4 animate-pulse">
-          {DELIVERY_SIGNUP_DOC_TYPES.map((docType) => (
-            <div key={docType} className="bg-white rounded-lg p-4 border border-gray-200 h-56" />
-          ))}
-        </div>
-      </div>
-    )
-  }
 
   return (
     <div className="min-h-screen bg-gray-100">

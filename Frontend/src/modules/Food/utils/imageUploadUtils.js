@@ -96,16 +96,58 @@ export const convertBase64ToFile = (
   }
 }
 
+const isSuccessfulFlutterImageResult = (result) =>
+  result?.success === true ||
+  Boolean(result?.base64 || result?.base64String || result?.data?.base64 || result?.file)
+
+const fileFromFlutterImageResult = (result, fileNamePrefix) => {
+  const base64Value = result?.base64 || result?.base64String || result?.data?.base64
+  const mimeType = result?.mimeType || result?.type || result?.data?.mimeType || "image/jpeg"
+  const originalFileName = result?.fileName || result?.name || result?.data?.fileName || ""
+
+  if (base64Value) {
+    return convertBase64ToFile(base64Value, mimeType, fileNamePrefix, originalFileName)
+  }
+
+  if (result?.file instanceof File) {
+    return result.file
+  }
+
+  if (result?.file instanceof Blob) {
+    const extension = mimeType.includes("png") ? "png" : mimeType.includes("webp") ? "webp" : "jpg"
+    return new File([result.file], `${fileNamePrefix}-${Date.now()}.${extension}`, { type: mimeType })
+  }
+
+  return null
+}
+
+const openBrowserGalleryFallback = (onSelectFile, fallbackInputRef = null) => {
+  if (fallbackInputRef?.current) {
+    fallbackInputRef.current.click()
+    return
+  }
+
+  openTransientImageInput({
+    onSelectFile,
+    accept: "image/*",
+  })
+}
+
 /**
  * Standard browser camera fallback
  */
-export const openBrowserCameraFallback = (onSelectFile) => {
+export const openBrowserCameraFallback = (onSelectFile, fallbackInputRef = null) => {
   if (!onSelectFile || typeof onSelectFile !== "function") {
     console.warn("openBrowserCameraFallback: onSelectFile callback not provided")
     return
   }
 
   try {
+    if (fallbackInputRef?.current) {
+      fallbackInputRef.current.click()
+      return
+    }
+
     openTransientImageInput({
       onSelectFile,
       accept: "image/*",
@@ -113,7 +155,6 @@ export const openBrowserCameraFallback = (onSelectFile) => {
     })
   } catch (error) {
     console.error("Browser camera fallback failed:", error)
-    // Only show toast for actual errors, not for user cancellation
     if (error?.message && !error.message.includes("canceled") && !error.message.includes("cancelled")) {
       toast.error("Could not open camera")
     }
@@ -131,101 +172,124 @@ export const isFlutterBridgeAvailable = () => {
   )
 }
 
-/**
- * Open camera via Flutter bridge or browser fallback
- */
-export const openCamera = async ({ onSelectFile, fileNamePrefix = "camera-photo", quality = 0.8 }) => {
-  if (!onSelectFile || typeof onSelectFile !== "function") {
-    console.warn("openCamera: onSelectFile callback not provided")
-    return
+const invokeFlutterImageHandler = async ({
+  handlerName,
+  onSelectFile,
+  fileNamePrefix,
+  quality = 0.8,
+  onCancel,
+}) => {
+  const handlerArgs =
+    handlerName === "openCamera"
+      ? {
+          source: "camera",
+          accept: "image/*",
+          multiple: false,
+          quality,
+        }
+      : undefined
+
+  const result = await window.flutter_inappwebview.callHandler(handlerName, handlerArgs)
+
+  if (!isSuccessfulFlutterImageResult(result)) {
+    if (typeof onCancel === "function") {
+      onCancel()
+    }
+    return false
   }
 
-  try {
-    if (!isFlutterBridgeAvailable()) {
-      try {
-        openBrowserCameraFallback(onSelectFile)
-      } catch (fallbackError) {
-        console.error("Browser camera fallback error:", fallbackError)
-        // Don't throw - user might have canceled
-      }
-      return
-    }
-
-    try {
-      const result = await window.flutter_inappwebview.callHandler("openCamera", {
-        source: "camera",
-        accept: "image/*",
-        multiple: false,
-        quality: quality,
-      })
-
-      const isSuccess = result?.success === true || Boolean(result?.base64 || result?.base64String || result?.data?.base64)
-      if (!result || !isSuccess) {
-        // User likely cancelled or camera unavailable - silent fail
-        return
-      }
-
-      let selectedFile = null
-      const base64Value = result?.base64 || result?.base64String || result?.data?.base64
-      const mimeType = result?.mimeType || result?.type || result?.data?.mimeType || "image/jpeg"
-      const originalFileName = result?.fileName || result?.name || result?.data?.fileName || ""
-
-      if (base64Value) {
-        selectedFile = convertBase64ToFile(
-          base64Value,
-          mimeType,
-          fileNamePrefix,
-          originalFileName,
-        )
-      } else if (result.file instanceof File || result.file instanceof Blob) {
-        selectedFile = result.file
-      }
-
-      if (!selectedFile || !String(selectedFile.type || "").startsWith("image/")) {
-        toast.error("Failed to capture image")
-        return
-      }
-
-      onSelectFile(selectedFile)
-    } catch (bridgeError) {
-      console.error("Bridge camera error:", bridgeError)
-      // Try browser fallback on bridge failure
-      try {
-        openBrowserCameraFallback(onSelectFile)
-      } catch (fallbackError) {
-        console.error("Fallback after bridge error:", fallbackError)
-        // Silent fail - user might have canceled
-      }
-    }
-  } catch (error) {
-    console.error("Camera capture outer error:", error)
-    // This should not reach here due to inner try-catches, but just in case
+  const selectedFile = fileFromFlutterImageResult(result, fileNamePrefix)
+  if (!selectedFile || !String(selectedFile.type || "").startsWith("image/")) {
+    toast.error(handlerName === "openCamera" ? "Failed to capture image" : "Failed to select image")
+    return false
   }
+
+  onSelectFile(selectedFile)
+  return true
 }
 
 /**
- * Open gallery via Flutter bridge or browser fallback
+ * Unified image picker for Flutter WebView and standard browsers.
  */
-export const openGallery = async ({ onSelectFile, fileNamePrefix = "gallery-photo" }) => {
+export const handleImageUpload = async ({
+  source = "gallery",
+  onSelectFile,
+  fallbackInputRef = null,
+  fileNamePrefix = "upload",
+  quality = 0.8,
+  onCancel,
+}) => {
   if (!onSelectFile || typeof onSelectFile !== "function") {
-    console.warn("openGallery: onSelectFile callback not provided")
+    console.warn("handleImageUpload: onSelectFile callback not provided")
     return
   }
 
-  try {
-    // For Gallery, we use the standard browser input.
-    // Why? Because the browser's native file picker on Android/iOS
-    // is highly reliable and provides direct gallery access.
-    // The bridge "openCamera" seems to force camera even for gallery source.
-    openTransientImageInput({
-      onSelectFile,
-      accept: "image/*",
-    })
-  } catch (error) {
-    console.error("Gallery pick failed:", error)
-    // Only show error if it's not just a user cancellation
-    if (error?.message && !error.message.includes("canceled") && !error.message.includes("cancelled")) {
-      toast.error("Failed to open gallery")
+  const isCamera = source === "camera"
+
+  if (isFlutterBridgeAvailable()) {
+    const handlerName = isCamera ? "openCamera" : "openGallery"
+
+    try {
+      await invokeFlutterImageHandler({
+        handlerName,
+        onSelectFile,
+        fileNamePrefix,
+        quality,
+        onCancel,
+      })
+    } catch (bridgeError) {
+      console.error(`Bridge ${handlerName} error:`, bridgeError)
+      if (isCamera) {
+        openBrowserCameraFallback(onSelectFile, fallbackInputRef)
+      } else {
+        openBrowserGalleryFallback(onSelectFile, fallbackInputRef)
+      }
     }
+    return
   }
+
+  if (isCamera) {
+    openBrowserCameraFallback(onSelectFile, fallbackInputRef)
+    return
+  }
+
+  openBrowserGalleryFallback(onSelectFile, fallbackInputRef)
+}
+
+/**
+ * Open camera via Flutter bridge or browser fallback
+ */
+export const openCamera = async ({
+  onSelectFile,
+  fileNamePrefix = "camera-photo",
+  quality = 0.8,
+  fallbackInputRef = null,
+  onCancel,
+}) => {
+  return handleImageUpload({
+    source: "camera",
+    onSelectFile,
+    fallbackInputRef,
+    fileNamePrefix,
+    quality,
+    onCancel,
+  })
+}
+
+/**
+ * Open gallery via Flutter bridge (compressed images) or browser fallback
+ */
+export const openGallery = async ({
+  onSelectFile,
+  fileNamePrefix = "gallery-photo",
+  fallbackInputRef = null,
+  onCancel,
+}) => {
+  return handleImageUpload({
+    source: "gallery",
+    onSelectFile,
+    fallbackInputRef,
+    fileNamePrefix,
+    onCancel,
+  })
 }
