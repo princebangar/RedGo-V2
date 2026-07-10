@@ -239,27 +239,28 @@ function emitOrderUpdate(order, deliveryPartnerId, options = {}) {
     let riderBody = '';
 
     const orderId = order._id.toString();
+    const displayOrderId = order.order_id || orderId;
 
     if (status === 'picked_up') {
       userTitle = 'Order on the way!';
       userBody = `Partner has picked up your order #${orderId} and is heading your way.`;
       riderTitle = 'Order picked up!';
-      riderBody = `You have picked up order #${orderId}. Proceed to the customer location.`;
+      riderBody = `You have picked up order #${displayOrderId}. Proceed to the customer location.`;
     } else if (status === 'reached_drop') {
       userTitle = 'Partner nearby!';
       userBody = `Your delivery partner has reached your location for order #${orderId}.`;
       riderTitle = 'Arrived at drop!';
-      riderBody = `You have reached the customer location for order #${orderId}.`;
+      riderBody = `You have reached the customer location for order #${displayOrderId}.`;
     } else if (status === 'delivered') {
       userTitle = `Order #${orderId} delivered!`;
       userBody = 'Hope you enjoyed your meal! Don\'t forget to rate your experience.';
       riderTitle = 'Delivery successful!';
-      riderBody = `Order #${orderId} has been successfully delivered.`;
+      riderBody = `Order #${displayOrderId} has been successfully delivered.`;
 
       if (order.payment?.method === 'cash' || order.paymentMethod === 'cash') {
         riderTitle = 'Payment collected!';
         const amt = order.pricing?.total || order.amounts?.totalCustomerPaid || 0;
-        riderBody = `You have collected Rs ${amt} cash for Order #${orderId}.`;
+        riderBody = `You have collected Rs ${amt} cash for Order #${displayOrderId}.`;
       }
     }
 
@@ -289,8 +290,10 @@ function emitOrderUpdate(order, deliveryPartnerId, options = {}) {
           dataOnly: true,
           data: {
             type: status === 'delivered' ? 'order_completed' : 'order_status_update',
-            orderId,
+            orderId: displayOrderId,
             orderMongoId: order._id?.toString?.() || '',
+            title: riderTitle,
+            body: riderBody,
             paymentMethod: order.payment?.method || order.paymentMethod,
             amountCollected: String(order.pricing?.total || order.amounts?.totalCustomerPaid || 0),
           },
