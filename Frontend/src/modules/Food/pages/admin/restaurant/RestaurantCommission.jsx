@@ -216,19 +216,14 @@ export default function RestaurantCommission() {
         setSelectedCommission(commissionData)
         setSelectedRestaurant(commissionData.restaurant)
         
-        // Handle restaurant ID - it can be an object with _id or just an ID string
+        // Handle restaurant ID - always use Mongo _id for API, display ID is separate
         let restaurantId = ""
         if (commissionData.restaurant) {
           if (typeof commissionData.restaurant === 'object' && commissionData.restaurant._id) {
             restaurantId = commissionData.restaurant._id
           } else if (typeof commissionData.restaurant === 'string') {
             restaurantId = commissionData.restaurant
-          } else {
-            restaurantId = commissionData.restaurantId || commissionData.restaurant?._id || ""
           }
-        } else {
-          // Fallback to restaurantId field if restaurant object is not populated
-          restaurantId = commissionData.restaurantId || commissionData.restaurant || ""
         }
         
         setFormData({
@@ -446,7 +441,9 @@ export default function RestaurantCommission() {
                         )}
                         {visibleColumns.restaurantId && (
                           <td className="px-6 py-4 whitespace-nowrap">
-                            <span className="text-sm text-slate-700">{commission.restaurantId || '-'}</span>
+                            <span className="text-sm text-slate-700">
+                              {commission.restaurantId || commission.restaurant?.restaurantId || '-'}
+                            </span>
                           </td>
                         )}
                         {visibleColumns.defaultCommission && (
@@ -562,7 +559,7 @@ export default function RestaurantCommission() {
             {selectedRestaurant && (
               <div className="p-3 bg-blue-50 rounded-lg border border-blue-100">
                 <p className="font-semibold text-sm text-slate-900">{selectedRestaurant.name}</p>
-                <p className="text-xs text-slate-600 mt-0.5">{selectedRestaurant.restaurantId}</p>
+                <p className="text-xs text-slate-600 mt-0.5">{selectedRestaurant.restaurantId || '-'}</p>
               </div>
             )}
 

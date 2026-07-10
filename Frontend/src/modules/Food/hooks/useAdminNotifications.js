@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { adminAPI } from "@food/api";
+import { adminAPI, supportAPI } from "@food/api";
 
-const STORAGE_KEY = "admin_notifications_dismissed_v1";
+const DISMISSED_STORAGE_KEY = "admin_notifications_dismissed_v1";
+const READ_STORAGE_KEY = "admin_notifications_read_v1";
 const UPDATE_EVENT = "adminNotificationsUpdated";
 
 const safeParse = (value, fallback) => {
@@ -12,16 +13,21 @@ const safeParse = (value, fallback) => {
   }
 };
 
-const getDismissedIds = () => {
+const getStoredIds = (key) => {
   if (typeof localStorage === "undefined") return [];
-  const parsed = safeParse(localStorage.getItem(STORAGE_KEY) || "[]", []);
+  const parsed = safeParse(localStorage.getItem(key) || "[]", []);
   return Array.isArray(parsed) ? parsed : [];
 };
 
-const saveDismissedIds = (ids) => {
+const saveStoredIds = (key, ids) => {
   if (typeof localStorage === "undefined") return;
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(Array.isArray(ids) ? ids : []));
+  localStorage.setItem(key, JSON.stringify(Array.isArray(ids) ? ids : []));
 };
+
+const getDismissedIds = () => getStoredIds(DISMISSED_STORAGE_KEY);
+const saveDismissedIds = (ids) => saveStoredIds(DISMISSED_STORAGE_KEY, ids);
+const getReadIds = () => getStoredIds(READ_STORAGE_KEY);
+const saveReadIds = (ids) => saveStoredIds(READ_STORAGE_KEY, ids);
 
 export const dispatchAdminNotificationsUpdated = () => {
   if (typeof window === "undefined") return;
@@ -57,21 +63,24 @@ const uniqueById = (items = []) => {
 const joinMeta = (...parts) => parts.filter(Boolean).join(" • ");
 
 const mapPendingRestaurants = (rows = []) =>
-  (Array.isArray(rows) ? rows : []).map((item) => ({
-    id: `approval-restaurant-${String(item?._id || item?.id || "")}`,
-    title: "Restaurant Approval Pending",
-    message: `${item?.restaurantName || "Restaurant"} submitted a restaurant approval request. Owner: ${item?.ownerName || "N/A"}. Contact: ${item?.ownerPhone || "N/A"}.`,
-    type: "approval",
-    category: "restaurant_approval",
-    path: "/admin/food/restaurants/joining-request",
-    createdAt: item?.createdAt || item?.updatedAt,
-    timeLabel: toDateLabel(item?.createdAt || item?.updatedAt),
-    metaLabel: joinMeta(item?.restaurantName, item?.ownerName, item?.ownerPhone),
-  }));
+  (Array.isArray(rows) ? rows : [])
+    .filter((item) => String(item?.status || "pending").toLowerCase() === "pending")
+    .map((item) => ({
+      id: `approval-restaurant-${String(item?._id || item?.id || "")}`,
+      title: "Restaurant Approval Pending",
+      message: `${item?.restaurantName || "Restaurant"} submitted a restaurant approval request. Owner: ${item?.ownerName || "N/A"}. Contact: ${item?.ownerPhone || "N/A"}.`,
+      type: "approval",
+      category: "restaurant_approval",
+      path: "/admin/food/restaurants/joining-request",
+      createdAt: item?.createdAt || item?.updatedAt,
+      timeLabel: toDateLabel(item?.createdAt || item?.updatedAt),
+      metaLabel: joinMeta(item?.restaurantName, item?.ownerName, item?.ownerPhone),
+    }));
 
 const mapDeliveryJoinRequests = (response) => {
   const payload = response?.data?.data;
   const rows =
+    payload?.requests ||
     payload?.partners ||
     payload?.data ||
     payload?.items ||
@@ -192,6 +201,30 @@ const mapExpiredFssai = (response) => {
   }));
 };
 
+const applyReadState = (items, readIds) =>
+  items.map((item) => ({
+    ...item,
+    read: readIds.has(item.id),
+  }));
+
+const sortNotifications = (items) =>
+  [...items].sort((a, b) => {
+    const unreadDiff = Number(a.read) - Number(b.read);
+    if (unreadDiff !== 0) return unreadDiff;
+    return toDateValue(b.createdAt) - toDateValue(a.createdAt);
+  });
+
+const syncItemsFromStorage = (currentItems = []) => {
+  const readIds = new Set(getReadIds());
+  const dismissed = new Set(getDismissedIds());
+  return sortNotifications(
+    applyReadState(
+      currentItems.filter((item) => !dismissed.has(item.id)),
+      readIds,
+    ),
+  );
+};
+
 export default function useAdminNotifications(options = {}) {
   const [items, setItems] = useState([]);
   const [loading, setLoading] = useState(Boolean(options?.autoload !== false));
@@ -200,7 +233,18 @@ export default function useAdminNotifications(options = {}) {
     try {
       setLoading(true);
       const dismissed = new Set(getDismissedIds());
+      const readIds = new Set(getReadIds());
 
+      const settled = await Promise.allSettled([
+        adminAPI.getPendingRestaurants(),
+        adminAPI.getDeliveryPartnerJoinRequests({ page: 1, limit: 50, status: "pending" }),
+        adminAPI.getPendingFoodApprovals({ page: 1, limit: 50 }),
+        supportAPI.getSupportTicketsAdmin({ page: 1, limit: 50, source: "all" }),
+        adminAPI.getDeliverySupportTickets({ page: 1, limit: 50 }),
+        adminAPI.getExpiredFssaiNotifications(),
+      ]);
+
+      const pick = (result) => (result.status === "fulfilled" ? result.value : null);
       const [
         restaurantsRes,
         deliveryJoinRes,
@@ -208,14 +252,7 @@ export default function useAdminNotifications(options = {}) {
         supportRes,
         deliverySupportRes,
         fssaiExpiredRes,
-      ] = await Promise.all([
-        adminAPI.getPendingRestaurants(),
-        adminAPI.getDeliveryPartnerJoinRequests({ page: 1, limit: 50 }),
-        adminAPI.getPendingFoodApprovals({ page: 1, limit: 50 }),
-        adminAPI.getSupportTicketsAdmin({ page: 1, limit: 50, source: "all" }),
-        adminAPI.getDeliverySupportTickets({ page: 1, limit: 50 }),
-        adminAPI.getExpiredFssaiNotifications(),
-      ]);
+      ] = settled.map(pick);
 
       const restaurantRows =
         restaurantsRes?.data?.data ||
@@ -229,11 +266,16 @@ export default function useAdminNotifications(options = {}) {
         ...mapUserRestaurantSupport(supportRes),
         ...mapDeliverySupport(deliverySupportRes),
         ...mapExpiredFssai(fssaiExpiredRes),
-      ])
-        .filter((item) => !dismissed.has(item.id))
-        .sort((a, b) => toDateValue(b.createdAt) - toDateValue(a.createdAt));
+      ]);
 
-      setItems(aggregated);
+      const sorted = sortNotifications(
+        applyReadState(
+          aggregated.filter((item) => !dismissed.has(item.id)),
+          readIds,
+        ),
+      );
+
+      setItems(sorted);
     } catch {
       setItems([]);
     } finally {
@@ -249,6 +291,7 @@ export default function useAdminNotifications(options = {}) {
   useEffect(() => {
     if (typeof window === "undefined") return undefined;
     const handler = () => {
+      setItems((prev) => syncItemsFromStorage(prev));
       loadNotifications();
     };
     window.addEventListener(UPDATE_EVENT, handler);
@@ -262,6 +305,27 @@ export default function useAdminNotifications(options = {}) {
     return () => window.clearInterval(timer);
   }, [loadNotifications]);
 
+  const markAsRead = useCallback((id) => {
+    if (!id) return;
+    const readIds = [...new Set([...getReadIds(), id])];
+    saveReadIds(readIds);
+    setItems((prev) =>
+      sortNotifications(
+        prev.map((item) => (item.id === id ? { ...item, read: true } : item)),
+      ),
+    );
+    dispatchAdminNotificationsUpdated();
+  }, []);
+
+  const markAllAsRead = useCallback(() => {
+    const ids = items.map((item) => item.id).filter(Boolean);
+    if (ids.length) {
+      saveReadIds([...new Set([...getReadIds(), ...ids])]);
+    }
+    setItems((prev) => prev.map((item) => ({ ...item, read: true })));
+    dispatchAdminNotificationsUpdated();
+  }, [items]);
+
   const dismissOne = useCallback((id) => {
     if (!id) return;
     const dismissed = [...new Set([...getDismissedIds(), id])];
@@ -272,20 +336,29 @@ export default function useAdminNotifications(options = {}) {
 
   const clearAll = useCallback(() => {
     const ids = items.map((item) => item.id).filter(Boolean);
-    saveDismissedIds([...new Set([...getDismissedIds(), ...ids])]);
+    if (ids.length) {
+      saveDismissedIds([...new Set([...getDismissedIds(), ...ids])]);
+    }
     setItems([]);
     dispatchAdminNotificationsUpdated();
   }, [items]);
+
+  const unreadCount = useMemo(
+    () => items.filter((item) => !item.read).length,
+    [items],
+  );
 
   return useMemo(
     () => ({
       items,
       loading,
-      unreadCount: items.length,
+      unreadCount,
       refresh: loadNotifications,
+      markAsRead,
+      markAllAsRead,
       dismissOne,
       clearAll,
     }),
-    [clearAll, dismissOne, items, loadNotifications, loading]
+    [clearAll, dismissOne, items, loadNotifications, loading, markAllAsRead, markAsRead, unreadCount],
   );
 }
