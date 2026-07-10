@@ -3,7 +3,7 @@ import { useNavigate } from "react-router-dom"
 import { ArrowLeft } from "lucide-react"
 import useDeliveryOnboardingExitGuard from "../../hooks/useDeliveryOnboardingExitGuard"
 import OnboardingExitModal from "@/shared/components/OnboardingExitModal"
-import { hasDeliveryStep1Progress } from "../../utils/deliveryOnboardingStorage"
+import { hasDeliveryStep1Progress, getAllSignupDocumentsFromDB } from "../../utils/deliveryOnboardingStorage"
 import { EMAIL_REGEX } from "@/shared/utils/emailValidation"
 import { prefetchModuleFcmToken } from "@food/utils/firebaseMessaging"
 const debugLog = (...args) => {}
@@ -55,6 +55,8 @@ export default function SignupStep1() {
 
   useEffect(() => {
     prefetchModuleFcmToken("delivery")
+    void import("./SignupStep2")
+    void getAllSignupDocumentsFromDB().catch(() => {})
   }, [])
 
   const sanitizeLocationValue = (value) =>
