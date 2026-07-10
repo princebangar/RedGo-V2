@@ -1220,16 +1220,14 @@ export async function updateOrderStatusRestaurant(
     ];
 
     const assignedRiderId = order.dispatch?.deliveryPartnerId;
-    if (assignedRiderId) {
-      notifyList.push({ ownerType: "DELIVERY_PARTNER", ownerId: assignedRiderId });
-    }
+    const displayOrderId = order.order_id || order._id.toString();
 
-    let riderTitle = `Order #${order.order_id || order._id} updated`;
+    let riderTitle = `Order #${displayOrderId} updated`;
     let riderBody = `The order status is now ${String(orderStatus).replace(/_/g, " ")}.`;
 
     if (String(orderStatus).includes("cancel")) {
       riderTitle = "Order Cancelled ❌";
-      riderBody = `Order #${order.order_id || order._id} has been cancelled. Please stop your current task.`;
+      riderBody = `Order #${displayOrderId} has been cancelled. Please stop your current task.`;
       
       // Sync transaction status
       try {
@@ -1260,6 +1258,26 @@ export async function updateOrderStatusRestaurant(
         },
       },
     );
+
+    if (assignedRiderId) {
+      await notifyOwnerSafely(
+        { ownerType: "DELIVERY_PARTNER", ownerId: assignedRiderId },
+        {
+          title: riderTitle,
+          body: riderBody,
+          image: "https://i.ibb.co/3m2Yh7r/Appzeto-Brand-Image.png",
+          data: {
+            type: "order_status_update",
+            orderId: displayOrderId,
+            orderMongoId: order._id?.toString?.() || "",
+            orderStatus: String(orderStatus || ""),
+            title: riderTitle,
+            body: riderBody,
+            link: "/food/delivery",
+          },
+        },
+      );
+    }
   } catch (err) {
     console.error("[DEBUG] Error emitting status update to restaurant:", err);
   }
