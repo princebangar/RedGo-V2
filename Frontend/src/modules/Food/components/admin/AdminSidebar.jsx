@@ -55,6 +55,7 @@ import { Input } from "@food/components/ui/input"
 import { adminSidebarMenu } from "@food/utils/adminSidebarMenu"
 import { getCachedSettings, loadBusinessSettings } from "@food/utils/businessSettings"
 import { adminAPI } from "@food/api"
+import { dispatchAdminNotificationsUpdated } from "@food/hooks/useAdminNotifications"
 import quickSpicyLogo from "@food/assets/quicky-spicy-logo.png"
 const debugLog = (...args) => {}
 const debugWarn = (...args) => {}
@@ -153,6 +154,7 @@ export function refreshSidebarBadges(decrement) {
       detail: decrement ? { decrement } : undefined,
     }),
   )
+  dispatchAdminNotificationsUpdated()
 }
 
 function dispatchAdminListRefresh(counts, changedKeys) {

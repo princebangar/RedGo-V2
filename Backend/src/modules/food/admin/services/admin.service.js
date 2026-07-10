@@ -1765,22 +1765,37 @@ export async function updateSupportTicket(id, body = {}) {
 }
 
 // ----- Restaurant Commission (admin) -----
+const toRestaurantDisplayId = (mongoId) => {
+    const s = String(mongoId || '');
+    if (!s) return '';
+    return `REST${s.slice(-6).padStart(6, '0')}`;
+};
+
 export async function getRestaurantCommissions() {
     const list = await FoodRestaurantCommission.find({})
         .sort({ createdAt: -1 })
         .populate({ path: 'restaurantId', select: 'restaurantName' })
         .lean();
 
-    const commissions = list.map((c, index) => ({
+    const commissions = list.map((c, index) => {
+        const mongoRestaurantId = c.restaurantId?._id ? String(c.restaurantId._id) : String(c.restaurantId || '');
+        return {
         _id: c._id,
         sl: index + 1,
-        restaurantId: c.restaurantId?._id ? String(c.restaurantId._id) : String(c.restaurantId),
+        restaurantId: toRestaurantDisplayId(mongoRestaurantId),
         restaurantName: c.restaurantId?.restaurantName || '',
-        restaurant: c.restaurantId?._id ? { _id: c.restaurantId._id, name: c.restaurantId.restaurantName } : null,
+        restaurant: mongoRestaurantId
+            ? {
+                _id: mongoRestaurantId,
+                name: c.restaurantId?.restaurantName || '',
+                restaurantId: toRestaurantDisplayId(mongoRestaurantId),
+            }
+            : null,
         defaultCommission: c.defaultCommission || { type: 'percentage', value: 0 },
         notes: c.notes || '',
         status: c.status !== false
-    }));
+    };
+    });
 
     return { commissions };
 }
@@ -1792,13 +1807,15 @@ export async function getRestaurantCommissionBootstrap() {
     ]);
 
     const commissionByRestaurantId = new Set(
-        (commissionsData.commissions || []).map((c) => String(c.restaurantId))
+        (commissionsData.commissions || [])
+            .map((c) => String(c.restaurant?._id || ''))
+            .filter(Boolean)
     );
 
     const restaurants = (restaurantsData.restaurants || []).map((r) => ({
         _id: r._id,
         name: r.restaurantName || r.name || '',
-        restaurantId: r._id ? `REST${r._id.toString().slice(-6).padStart(6, '0')}` : '',
+        restaurantId: toRestaurantDisplayId(r._id),
         ownerName: r.ownerName || '',
         hasCommissionSetup: commissionByRestaurantId.has(String(r._id))
     }));
@@ -1812,10 +1829,17 @@ export async function getRestaurantCommissionById(id) {
         .populate({ path: 'restaurantId', select: 'restaurantName' })
         .lean();
     if (!doc) return null;
+    const mongoRestaurantId = doc.restaurantId?._id ? String(doc.restaurantId._id) : String(doc.restaurantId || '');
     return {
         _id: doc._id,
-        restaurantId: doc.restaurantId?._id ? String(doc.restaurantId._id) : String(doc.restaurantId),
-        restaurant: doc.restaurantId?._id ? { _id: doc.restaurantId._id, name: doc.restaurantId.restaurantName } : null,
+        restaurantId: toRestaurantDisplayId(mongoRestaurantId),
+        restaurant: mongoRestaurantId
+            ? {
+                _id: mongoRestaurantId,
+                name: doc.restaurantId?.restaurantName || '',
+                restaurantId: toRestaurantDisplayId(mongoRestaurantId),
+            }
+            : null,
         restaurantName: doc.restaurantId?.restaurantName || '',
         defaultCommission: doc.defaultCommission || { type: 'percentage', value: 0 },
         notes: doc.notes || '',
