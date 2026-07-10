@@ -1,16 +1,56 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import { Search, TrendingUp, TrendingDown, DollarSign, ShoppingCart, XCircle, Star, Calendar, BarChart3, Users, Award, Package } from 'lucide-react'
 import { adminAPI } from '@food/api'
 const debugLog = (...args) => {}
 const debugWarn = (...args) => {}
 const debugError = (...args) => {}
 
+const formatRestaurantDisplayId = (mongoId) => {
+  const s = String(mongoId || '').trim()
+  if (!s) return ''
+  if (/^REST\d{6}$/i.test(s)) return s.toUpperCase()
+  return `REST${s.slice(-6).padStart(6, '0')}`
+}
+
+const POS_SELECTION_STORAGE_KEY = 'admin_pos_restaurant_selection'
+
+const readSavedPosSelection = () => {
+  if (typeof sessionStorage === 'undefined') return null
+  try {
+    const raw = sessionStorage.getItem(POS_SELECTION_STORAGE_KEY)
+    return raw ? JSON.parse(raw) : null
+  } catch {
+    return null
+  }
+}
+
+const writeSavedPosSelection = (id, name) => {
+  if (typeof sessionStorage === 'undefined') return
+  if (!id) {
+    sessionStorage.removeItem(POS_SELECTION_STORAGE_KEY)
+    return
+  }
+  sessionStorage.setItem(
+    POS_SELECTION_STORAGE_KEY,
+    JSON.stringify({ id: String(id), name: String(name || '') }),
+  )
+}
 
 export default function PointOfSale() {
+  const [searchParams, setSearchParams] = useSearchParams()
+  const initialRestaurantId = searchParams.get('restaurantId') || ''
+  const savedSelection = readSavedPosSelection()
   const [restaurants, setRestaurants] = useState([])
-  const [selectedRestaurant, setSelectedRestaurant] = useState('')
-  const [searchQuery, setSearchQuery] = useState('')
-  const [loading, setLoading] = useState(false)
+  const [selectedRestaurant, setSelectedRestaurant] = useState(initialRestaurantId)
+  const [searchQuery, setSearchQuery] = useState(() => {
+    if (initialRestaurantId && savedSelection?.id === initialRestaurantId) {
+      return savedSelection.name || ''
+    }
+    return ''
+  })
+  const [listLoading, setListLoading] = useState(true)
+  const [analyticsLoading, setAnalyticsLoading] = useState(Boolean(initialRestaurantId))
   const [restaurantData, setRestaurantData] = useState(null)
   const [paymentSummary, setPaymentSummary] = useState(null)
   const [showSearchResults, setShowSearchResults] = useState(false)
@@ -25,13 +65,16 @@ export default function PointOfSale() {
   }
 
   const getRestaurantCode = (restaurant) => {
-    return String(
+    const existing = String(
       restaurant?.restaurantId ||
       restaurant?.restaurantCode ||
       restaurant?.restaurant?.restaurantId ||
-      restaurant?._id ||
       '',
     ).trim()
+    if (/^REST\d{6}$/i.test(existing)) return existing.toUpperCase()
+
+    const mongoId = restaurant?._id || restaurant?.id || restaurant?.restaurant?._id
+    return formatRestaurantDisplayId(mongoId)
   }
 
   const normalizeRestaurants = (rawList) => {
@@ -39,21 +82,20 @@ export default function PointOfSale() {
 
     return rawList
       .map((restaurant) => {
-        const id = String(
+        const mongoId = String(
           restaurant?._id ||
           restaurant?.id ||
           restaurant?.restaurant?._id ||
-          restaurant?.restaurantId ||
           '',
         ).trim()
-        if (!id) return null
+        if (!mongoId) return null
 
-        const resolvedName = getRestaurantName(restaurant) || `Restaurant ${id.slice(-6)}`
-        const resolvedCode = getRestaurantCode(restaurant)
+        const resolvedName = getRestaurantName(restaurant) || `Restaurant ${mongoId.slice(-6)}`
+        const resolvedCode = getRestaurantCode({ ...restaurant, _id: mongoId })
 
         return {
           ...restaurant,
-          _id: id,
+          _id: mongoId,
           name: resolvedName,
           restaurantId: resolvedCode,
         }
@@ -93,6 +135,38 @@ export default function PointOfSale() {
     fetchRestaurants()
   }, [])
 
+  const applyRestaurantSelection = useCallback((restaurantId, list = restaurants) => {
+    const id = String(restaurantId || '')
+    setSelectedRestaurant(id)
+
+    const selected = list.find((r) => r._id === id)
+    setSearchQuery(selected?.name || '')
+    setShowSearchResults(false)
+    writeSavedPosSelection(id, selected?.name || '')
+
+    const next = new URLSearchParams(searchParams)
+    if (id) {
+      next.set('restaurantId', id)
+    } else {
+      next.delete('restaurantId')
+    }
+    setSearchParams(next, { replace: true })
+  }, [restaurants, searchParams, setSearchParams])
+
+  // Sync search label once restaurants list is available
+  useEffect(() => {
+    if (!selectedRestaurant || restaurants.length === 0) return
+
+    const match = restaurants.find((r) => r._id === selectedRestaurant)
+    if (!match) {
+      applyRestaurantSelection('')
+      return
+    }
+
+    setSearchQuery(match.name)
+    writeSavedPosSelection(match._id, match.name)
+  }, [restaurants, selectedRestaurant, applyRestaurantSelection])
+
   // Fetch restaurant analytics when restaurant is selected
   useEffect(() => {
     if (selectedRestaurant) {
@@ -130,7 +204,7 @@ export default function PointOfSale() {
 
   const fetchRestaurants = async () => {
     try {
-      setLoading(true)
+      setListLoading(true)
       const response = await adminAPI.getRestaurants({ limit: 1000, isActive: true })
       if (response?.data?.success) {
         const rawRestaurants = response.data.data?.restaurants || response.data.data || []
@@ -139,13 +213,13 @@ export default function PointOfSale() {
     } catch (error) {
       debugError('Error fetching restaurants:', error)
     } finally {
-      setLoading(false)
+      setListLoading(false)
     }
   }
 
   const fetchRestaurantAnalytics = async (restaurantId) => {
     try {
-      setLoading(true)
+      setAnalyticsLoading(true)
       
       // Validate restaurantId
       if (!restaurantId) {
@@ -279,7 +353,7 @@ export default function PointOfSale() {
         completionRate: 0
       })
     } finally {
-      setLoading(false)
+      setAnalyticsLoading(false)
     }
   }
 
@@ -295,12 +369,7 @@ export default function PointOfSale() {
 
   // Handle restaurant selection from search
   const handleRestaurantSelect = (restaurantId) => {
-    setSelectedRestaurant(restaurantId)
-    const selected = restaurants.find(r => r._id === restaurantId)
-    if (selected) {
-      setSearchQuery(selected.name)
-    }
-    setShowSearchResults(false)
+    applyRestaurantSelection(restaurantId)
   }
 
   // Handle search input change
@@ -311,8 +380,7 @@ export default function PointOfSale() {
     
     // If search is cleared, clear selection
     if (!value.trim()) {
-      setSelectedRestaurant('')
-      setShowSearchResults(false)
+      applyRestaurantSelection('')
     }
   }
 
@@ -326,7 +394,7 @@ export default function PointOfSale() {
 
   const getSelectedRestaurantName = () => {
     const restaurant = restaurants.find(r => r._id === selectedRestaurant)
-    return restaurant?.name || 'Select Restaurant'
+    return restaurant?.name || searchQuery || 'Loading...'
   }
 
   return (
@@ -381,7 +449,7 @@ export default function PointOfSale() {
                         <div className="flex items-center justify-between">
                           <div>
                             <p className="text-sm font-medium text-[#334257]">{restaurant.name}</p>
-                            <p className="text-xs text-[#8a94aa]">ID: {restaurant.restaurantId || restaurant._id}</p>
+                            <p className="text-xs text-[#8a94aa]">ID: {restaurant.restaurantId}</p>
                           </div>
                           {selectedRestaurant === restaurant._id && (
                             <div className="w-2 h-2 bg-[#006fbd] rounded-full"></div>
@@ -414,13 +482,7 @@ export default function PointOfSale() {
                     <div className="relative">
                       <select 
                   value={selectedRestaurant}
-                  onChange={(e) => {
-                    setSelectedRestaurant(e.target.value)
-                    const selected = restaurants.find(r => r._id === e.target.value)
-                    if (selected) {
-                      setSearchQuery(selected.name)
-                    }
-                  }}
+                  onChange={(e) => applyRestaurantSelection(e.target.value)}
                         className="w-full h-11 rounded-md border border-[#e3e6ef] bg-white px-3 pr-10 text-sm text-[#4a5671] focus:outline-none focus:ring-1 focus:ring-[#006fbd]"
                       >
                   <option value="">Select Restaurant</option>
@@ -436,7 +498,13 @@ export default function PointOfSale() {
                 </div>
 
         {/* Analytics Dashboard */}
-        {selectedRestaurant && !loading ? (
+        {selectedRestaurant ? (
+          analyticsLoading || listLoading ? (
+          <div className="bg-white rounded-lg shadow-sm border border-[#e3e6ef] p-12 text-center">
+            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-[#006fbd] mx-auto mb-4"></div>
+            <p className="text-sm text-[#8a94aa]">Loading restaurant analytics...</p>
+          </div>
+        ) : (
           <div className="space-y-6">
             {/* Restaurant Header Info */}
             <div className="bg-white rounded-lg shadow-sm border border-[#e3e6ef] p-6">
@@ -444,7 +512,7 @@ export default function PointOfSale() {
                 <div>
                   <h2 className="text-xl font-bold text-[#334257] mb-1">{getSelectedRestaurantName()}</h2>
                   <p className="text-sm text-[#8a94aa]">
-                    Restaurant ID: {restaurants.find(r => r._id === selectedRestaurant)?.restaurantId || selectedRestaurant}
+                    Restaurant ID: {restaurants.find(r => r._id === selectedRestaurant)?.restaurantId || formatRestaurantDisplayId(selectedRestaurant)}
                   </p>
                 </div>
                 <div className={`px-4 py-2 rounded-full text-sm font-semibold ${
@@ -765,10 +833,11 @@ export default function PointOfSale() {
               </div>
             </div>
           </div>
-        ) : selectedRestaurant && loading ? (
+        )
+        ) : listLoading ? (
           <div className="bg-white rounded-lg shadow-sm border border-[#e3e6ef] p-12 text-center">
             <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-[#006fbd] mx-auto mb-4"></div>
-            <p className="text-sm text-[#8a94aa]">Loading restaurant analytics...</p>
+            <p className="text-sm text-[#8a94aa]">Loading restaurants...</p>
           </div>
         ) : (
           <div className="bg-white rounded-lg shadow-sm border border-[#e3e6ef] p-12 text-center">
