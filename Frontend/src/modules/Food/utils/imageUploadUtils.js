@@ -172,40 +172,92 @@ export const isFlutterBridgeAvailable = () => {
   )
 }
 
-const invokeFlutterImageHandler = async ({
-  handlerName,
+const CAMERA_BRIDGE_HANDLERS = ["openCamera", "takePhoto", "captureImage"]
+const GALLERY_BRIDGE_HANDLERS = [
+  "openGallery",
+  "pickImage",
+  "pickImageFromGallery",
+  "selectImageFromGallery",
+]
+
+const isFlutterImageSelectionCancelled = (result) => {
+  if (result == null) return true
+  if (result?.cancelled === true || result?.canceled === true) return true
+  if (result?.success === false && !result?.error) return true
+  return false
+}
+
+const buildFlutterImageHandlerArgs = (handlerName, { isCamera, quality }) => {
+  const source = isCamera ? "camera" : "gallery"
+  const baseArgs = {
+    source,
+    accept: "image/*",
+    multiple: false,
+    quality,
+    type: "image",
+  }
+
+  if (handlerName === "openCamera" || handlerName === "openGallery") {
+    return baseArgs
+  }
+
+  if (
+    handlerName === "pickImage" ||
+    handlerName === "pickImageFromGallery" ||
+    handlerName === "selectImageFromGallery"
+  ) {
+    return {
+      source,
+      quality,
+      mediaType: "photo",
+      allowMultiple: false,
+    }
+  }
+
+  return baseArgs
+}
+
+const invokeFlutterImageHandlers = async ({
+  isCamera,
   onSelectFile,
   fileNamePrefix,
   quality = 0.8,
   onCancel,
 }) => {
-  const handlerArgs =
-    handlerName === "openCamera"
-      ? {
-          source: "camera",
-          accept: "image/*",
-          multiple: false,
-          quality,
+  const handlerNames = isCamera ? CAMERA_BRIDGE_HANDLERS : GALLERY_BRIDGE_HANDLERS
+  let lastError = null
+
+  for (const handlerName of handlerNames) {
+    try {
+      const handlerArgs = buildFlutterImageHandlerArgs(handlerName, { isCamera, quality })
+      const result = await window.flutter_inappwebview.callHandler(handlerName, handlerArgs)
+
+      if (isFlutterImageSelectionCancelled(result)) {
+        if (typeof onCancel === "function") {
+          onCancel()
         }
-      : undefined
+        return { status: "cancelled" }
+      }
 
-  const result = await window.flutter_inappwebview.callHandler(handlerName, handlerArgs)
+      if (!isSuccessfulFlutterImageResult(result)) {
+        lastError = new Error(`Handler "${handlerName}" returned an unsuccessful result`)
+        continue
+      }
 
-  if (!isSuccessfulFlutterImageResult(result)) {
-    if (typeof onCancel === "function") {
-      onCancel()
+      const selectedFile = fileFromFlutterImageResult(result, fileNamePrefix)
+      if (!selectedFile || !String(selectedFile.type || "").startsWith("image/")) {
+        lastError = new Error(`Handler "${handlerName}" returned invalid image data`)
+        continue
+      }
+
+      onSelectFile(selectedFile)
+      return { status: "success", handlerName }
+    } catch (error) {
+      lastError = error
     }
-    return false
   }
 
-  const selectedFile = fileFromFlutterImageResult(result, fileNamePrefix)
-  if (!selectedFile || !String(selectedFile.type || "").startsWith("image/")) {
-    toast.error(handlerName === "openCamera" ? "Failed to capture image" : "Failed to select image")
-    return false
-  }
-
-  onSelectFile(selectedFile)
-  return true
+  return { status: "failed", lastError }
 }
 
 /**
@@ -227,24 +279,28 @@ export const handleImageUpload = async ({
   const isCamera = source === "camera"
 
   if (isFlutterBridgeAvailable()) {
-    const handlerName = isCamera ? "openCamera" : "openGallery"
+    const outcome = await invokeFlutterImageHandlers({
+      isCamera,
+      onSelectFile,
+      fileNamePrefix,
+      quality,
+      onCancel,
+    })
 
-    try {
-      await invokeFlutterImageHandler({
-        handlerName,
-        onSelectFile,
-        fileNamePrefix,
-        quality,
-        onCancel,
-      })
-    } catch (bridgeError) {
-      console.error(`Bridge ${handlerName} error:`, bridgeError)
-      if (isCamera) {
-        openBrowserCameraFallback(onSelectFile, fallbackInputRef)
-      } else {
-        openBrowserGalleryFallback(onSelectFile, fallbackInputRef)
-      }
+    if (outcome.status === "failed") {
+      console.error(
+        `Flutter ${isCamera ? "camera" : "gallery"} bridge failed:`,
+        outcome.lastError,
+      )
+      toast.error(
+        isCamera
+          ? "Could not open camera. Please try again."
+          : "Could not open gallery. Please try again.",
+      )
     }
+
+    // Never fall back to the browser file input inside the Flutter shell.
+    // That path shows Android's generic Photos/Files chooser instead of the native gallery.
     return
   }
 
