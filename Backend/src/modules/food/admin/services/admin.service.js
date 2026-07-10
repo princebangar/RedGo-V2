@@ -63,6 +63,13 @@ const toFiniteNumber = (value) => {
     return Number.isFinite(num) ? num : null;
 };
 
+const toRestaurantDisplayId = (mongoId) => {
+    const s = String(mongoId || '');
+    if (!s) return '';
+    if (/^REST\d{6}$/i.test(s)) return s.toUpperCase();
+    return `REST${s.slice(-6).padStart(6, '0')}`;
+};
+
 const normalizeRestaurantTime = (value) => {
     const raw = String(value || '').trim();
     if (!raw) return '';
@@ -374,7 +381,12 @@ export async function getRestaurants(query) {
             .lean(),
         FoodRestaurant.countDocuments(filter)
     ]);
-    return { restaurants, total, page, limit };
+    return {
+        restaurants: restaurants.map((r) => ({ ...r, restaurantId: toRestaurantDisplayId(r._id) })),
+        total,
+        page,
+        limit,
+    };
 }
 
 
@@ -1765,12 +1777,6 @@ export async function updateSupportTicket(id, body = {}) {
 }
 
 // ----- Restaurant Commission (admin) -----
-const toRestaurantDisplayId = (mongoId) => {
-    const s = String(mongoId || '');
-    if (!s) return '';
-    return `REST${s.slice(-6).padStart(6, '0')}`;
-};
-
 export async function getRestaurantCommissions() {
     const list = await FoodRestaurantCommission.find({})
         .sort({ createdAt: -1 })
@@ -2652,7 +2658,14 @@ export async function getRestaurantAnalytics(restaurantId) {
         platformNetProfit: sum(completedTx, (tx) => tx?.amounts?.platformNetProfit),
     };
 
-    return { restaurant, analytics, paymentSummary };
+    return {
+        restaurant: {
+            ...restaurant,
+            restaurantId: toRestaurantDisplayId(restaurant._id),
+        },
+        analytics,
+        paymentSummary,
+    };
 }
 
 export async function getRestaurantMenuById(id) {
