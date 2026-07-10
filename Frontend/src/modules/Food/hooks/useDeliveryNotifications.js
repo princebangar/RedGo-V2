@@ -8,6 +8,10 @@ import { dispatchNotificationInboxRefresh } from '@food/hooks/useNotificationInb
 import { useDeliveryStore, resolveOrderKey, ordersShareIdentity } from '@/modules/DeliveryV2/store/useDeliveryStore';
 import { mapOrderLocations } from '@/modules/DeliveryV2/utils/orderMapping';
 import { sanitizeOrderDispatchMetrics } from '@/modules/DeliveryV2/utils/pickupMetrics';
+import {
+  isNativeAppWebView,
+  shouldSkipDuplicateOsNotification,
+} from '@food/utils/firebaseMessaging';
 
 const shouldLogDeliverySocket = () => {
   if (typeof window === 'undefined') return import.meta.env.DEV;
@@ -132,6 +136,8 @@ const buildDeliveryOrderNotification = (orderData = {}) => {
 }
 
 const triggerWebViewNativeNotification = async (orderData = {}) => {
+  if (isNativeAppWebView()) return false;
+
   if (typeof window === 'undefined') return false;
 
   const bridgePayload = {
@@ -482,6 +488,20 @@ export const useDeliveryNotifications = () => {
   }, [stopAlertLoop]);
 
   const showBackgroundOrderNotification = useCallback(async (orderData = {}) => {
+    if (isNativeAppWebView()) {
+      return;
+    }
+
+    if (
+      shouldSkipDuplicateOsNotification({
+        orderMongoId: orderData?.orderMongoId || orderData?._id,
+        orderId: orderData?.orderId || orderData?.order_id,
+        orderStatus: orderData?.status || orderData?.orderStatus || 'new',
+      })
+    ) {
+      return;
+    }
+
     if (!shouldShowBrowserNotification(orderData)) {
       return;
     }
@@ -499,7 +519,7 @@ export const useDeliveryNotifications = () => {
           await registration.showNotification(notificationOptions.title, {
             body: notificationOptions.body,
             tag: notificationOptions.tag,
-            renotify: true,
+            renotify: false,
             requireInteraction: true,
             silent: false,
             vibrate: [200, 100, 200, 100, 300],

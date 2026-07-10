@@ -5,16 +5,71 @@ importScripts("https://www.gstatic.com/firebasejs/10.13.2/firebase-messaging-com
 const sanitize = (value) => String(value || "").trim().replace(/^['"]|['"]$/g, "");
 const PUSH_DEBUG_PREFIX = "[push-sw]";
 const pushDebugLog = () => {};
-const getNotificationKey = (payload) =>
-  payload?.data?.notificationId ||
-  payload?.data?.messageId ||
-  payload?.messageId ||
-  [
-    payload?.notification?.title || payload?.data?.title || "",
-    payload?.notification?.body || payload?.data?.body || "",
-    payload?.data?.orderId || "",
-    payload?.data?.targetUrl || payload?.data?.link || "",
-  ].join("::");
+const OS_NOTIFICATION_DEDUP_STORAGE_KEY = "os_notification_dedup_v1";
+const notificationDedupWindowMs = 30000;
+const getNotificationKey = (payload) => {
+  const data = payload?.data || {};
+  if (data.notificationId || data.messageId || payload?.messageId) {
+    return data.notificationId || data.messageId || payload.messageId;
+  }
+
+  const orderMongoId = String(data.orderMongoId || "").trim();
+  const orderId = String(data.orderId || "").trim();
+  const orderStatus = String(data.orderStatus || "").trim();
+
+  if (orderMongoId || orderId) {
+    return [orderMongoId || orderId, orderStatus || "update"].join("::");
+  }
+
+  return [
+    data.type || "",
+    data.title || payload?.notification?.title || "",
+    data.targetUrl || data.link || "",
+  ]
+    .map((value) => String(value || "").trim())
+    .filter(Boolean)
+    .join("::");
+};
+
+function readSharedOsNotificationDedup() {
+  try {
+    const raw = sessionStorage.getItem(OS_NOTIFICATION_DEDUP_STORAGE_KEY);
+    if (!raw) return {};
+    const parsed = JSON.parse(raw);
+    return parsed && typeof parsed === "object" ? parsed : {};
+  } catch {
+    return {};
+  }
+}
+
+function writeSharedOsNotificationDedup(map) {
+  try {
+    sessionStorage.setItem(OS_NOTIFICATION_DEDUP_STORAGE_KEY, JSON.stringify(map));
+  } catch {
+    // ignore
+  }
+}
+
+function shouldSkipDuplicateOsNotification(notificationKey) {
+  if (!notificationKey) return false;
+  const now = Date.now();
+  const shared = readSharedOsNotificationDedup();
+
+  for (const [key, timestamp] of Object.entries(shared)) {
+    if (now - Number(timestamp) > notificationDedupWindowMs) {
+      delete shared[key];
+    }
+  }
+
+  const sharedTimestamp = Number(shared[notificationKey] || 0);
+  if (sharedTimestamp && now - sharedTimestamp < notificationDedupWindowMs) {
+    return true;
+  }
+
+  shared[notificationKey] = now;
+  writeSharedOsNotificationDedup(shared);
+  return false;
+}
 
 async function notifyOpenClients(payload) {
   pushDebugLog(PUSH_DEBUG_PREFIX, "Broadcasting push to open clients", { payload });
@@ -147,6 +202,11 @@ async function loadFirebaseWebConfig() {
         payload?.data?.imageUrl ||
         undefined;
       const notificationKey = getNotificationKey(payload);
+
+      if (shouldSkipDuplicateOsNotification(notificationKey)) {
+        await notifyOpenClients(payload);
+        return;
+      }
       
       pushDebugLog(PUSH_DEBUG_PREFIX, "Showing service worker notification", {
         title,

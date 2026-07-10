@@ -26,7 +26,8 @@ let pushSoundAudio = null;
 let pushSoundUnlocked = false;
 let pushSoundContext = null;
 const PUSH_DEBUG_PREFIX = "[push-debug]";
-const notificationDedupWindowMs = 8000;
+const notificationDedupWindowMs = 30000;
+const OS_NOTIFICATION_DEDUP_STORAGE_KEY = "os_notification_dedup_v1";
 const pushDebugLog = (prefix, message, data = {}) => {
   if (typeof window !== "undefined" && localStorage.getItem("push_debug") === "true") {
     console.log(`${prefix} ${message}`, data);
@@ -560,18 +561,69 @@ function sanitize(value) {
   return String(value || "").trim().replace(/^['"]|['"]$/g, "");
 }
 
+function buildOsNotificationDedupeKey(source = {}) {
+  const data = isRecord(source?.data) ? source.data : source;
+
+  if (data?.notificationId || data?.messageId || source?.messageId) {
+    return data?.notificationId || data?.messageId || source?.messageId;
+  }
+
+  const orderMongoId = String(
+    data?.orderMongoId || source?.orderMongoId || data?._id || source?._id || "",
+  ).trim();
+  const orderId = String(
+    data?.orderId || source?.orderId || source?.order_id || "",
+  ).trim();
+  const orderStatus = String(
+    data?.orderStatus || source?.orderStatus || source?.status || "",
+  ).trim();
+
+  // Same order event from socket + FCM should collapse to one OS notification.
+  if (orderMongoId || orderId) {
+    return [orderMongoId || orderId, orderStatus || "update"].join("::");
+  }
+
+  return [
+    String(data?.type || source?.type || ""),
+    String(data?.title || source?.title || source?.notification?.title || ""),
+    String(data?.targetUrl || data?.link || source?.targetUrl || ""),
+  ]
+    .filter(Boolean)
+    .join("::");
+}
+
 function getNotificationKey(payload = {}) {
-  return (
-    payload?.data?.notificationId ||
-    payload?.data?.messageId ||
-    payload?.messageId ||
-    [
-      payload?.notification?.title || "",
-      payload?.notification?.body || "",
-      payload?.data?.orderId || "",
-      payload?.data?.targetUrl || "",
-    ].join("::")
-  );
+  return buildOsNotificationDedupeKey(payload);
+}
+
+/**
+ * Returns true when the same OS notification was already handled recently
+ * (shared by FCM foreground/background handlers and socket fallbacks).
+ */
+export function shouldSkipDuplicateOsNotification(source = {}) {
+  const notificationKey = buildOsNotificationDedupeKey(source);
+  return wasRecentlyHandled(notificationKey);
+}
+
+function readSharedOsNotificationDedup() {
+  if (typeof window === "undefined") return {};
+  try {
+    const raw = sessionStorage.getItem(OS_NOTIFICATION_DEDUP_STORAGE_KEY);
+    if (!raw) return {};
+    const parsed = JSON.parse(raw);
+    return parsed && typeof parsed === "object" ? parsed : {};
+  } catch {
+    return {};
+  }
+}
+
+function writeSharedOsNotificationDedup(map) {
+  if (typeof window === "undefined") return;
+  try {
+    sessionStorage.setItem(OS_NOTIFICATION_DEDUP_STORAGE_KEY, JSON.stringify(map));
+  } catch {
+    // ignore quota / private mode
+  }
 }
 
 function wasRecentlyHandled(notificationKey) {
@@ -584,12 +636,27 @@ function wasRecentlyHandled(notificationKey) {
     }
   }
 
+  const shared = readSharedOsNotificationDedup();
+  for (const [key, timestamp] of Object.entries(shared)) {
+    if (now - Number(timestamp) > notificationDedupWindowMs) {
+      delete shared[key];
+    }
+  }
+
+  const sharedTimestamp = Number(shared[notificationKey] || 0);
+  if (sharedTimestamp && now - sharedTimestamp < notificationDedupWindowMs) {
+    pushDebugLog(PUSH_DEBUG_PREFIX, "Duplicate notification skipped (shared)", { notificationKey });
+    return true;
+  }
+
   if (recentForegroundNotifications.has(notificationKey)) {
     pushDebugLog(PUSH_DEBUG_PREFIX, "Duplicate notification skipped", { notificationKey });
     return true;
   }
 
   recentForegroundNotifications.set(notificationKey, now);
+  shared[notificationKey] = now;
+  writeSharedOsNotificationDedup(shared);
   return false;
 }
 
@@ -677,6 +744,9 @@ export function isPushSoundEnabled() {
 }
 
 async function triggerWebViewNativeNotification(payload = {}) {
+  // Flutter shell already displays FCM alerts natively — avoid a second OS notification.
+  if (isFlutterWebView()) return false;
+
   if (typeof window === "undefined") return false;
 
   const bridgePayload = {
@@ -1003,6 +1073,19 @@ function showForegroundNotification(payload = {}) {
     pushDebugWarn(PUSH_DEBUG_PREFIX, "Ignoring malformed foreground notification payload", { payload });
     return;
   }
+
+  // In the Flutter-wrapped app, native FCM handlers own all OS notifications.
+  if (isFlutterWebView()) {
+    const notificationType = String(payload?.data?.type || "").toLowerCase();
+    if (
+      notificationType === "cash_deposit" ||
+      notificationType === "cash_deposit_rejected"
+    ) {
+      window.dispatchEvent(new CustomEvent("delivery-wallet-refresh"));
+    }
+    return;
+  }
+
   const notificationKey = getNotificationKey(payload);
   pushDebugLog(PUSH_DEBUG_PREFIX, "showForegroundNotification received", { notificationKey, payload });
   if (wasRecentlyHandled(notificationKey)) {
@@ -1024,8 +1107,6 @@ function showForegroundNotification(payload = {}) {
     payload?.data?.imageUrl ||
     undefined;
 
-  playPushSound(payload);
-
   const notificationType = String(payload?.data?.type || "").toLowerCase();
   if (
     notificationType === "cash_deposit" ||
@@ -1034,7 +1115,23 @@ function showForegroundNotification(payload = {}) {
     window.dispatchEvent(new CustomEvent("delivery-wallet-refresh"));
   }
 
-  // Force system notification even when the tab is in focus
+  const isTabVisible =
+    typeof document !== "undefined" && document.visibilityState === "visible";
+
+  // Foreground: in-app toast + sound only (no duplicate OS banner while tab is open).
+  if (isTabVisible) {
+    playPushSound(payload);
+    if (body) {
+      toast.success(`${title}: ${body}`);
+    } else {
+      toast.success(title);
+    }
+    return;
+  }
+
+  // Background tab: OS notification via service worker; sound optional.
+  playPushSound(payload);
+
   if (typeof Notification !== "undefined" && Notification.permission === "granted") {
     try {
       pushDebugLog(PUSH_DEBUG_PREFIX, "Showing browser notification from page", {
@@ -1043,18 +1140,18 @@ function showForegroundNotification(payload = {}) {
         image,
         notificationKey,
       });
-      // Use service worker to show native system notification to ensure it bypasses focus checks
-      if ('serviceWorker' in navigator) {
-        navigator.serviceWorker.getRegistration().then(registration => {
+      if ("serviceWorker" in navigator) {
+        navigator.serviceWorker.getRegistration().then((registration) => {
           if (registration) {
             registration.showNotification(title, {
               body,
               icon: "/favicon.ico",
               image,
               tag: notificationKey || undefined,
+              renotify: false,
               data: payload?.data || {},
               requireInteraction: true,
-              vibrate: [200, 100, 200, 100, 300]
+              vibrate: [200, 100, 200, 100, 300],
             });
           } else {
             new Notification(title, {
@@ -1062,7 +1159,7 @@ function showForegroundNotification(payload = {}) {
               icon: "/favicon.ico",
               image,
               tag: notificationKey || undefined,
-              requireInteraction: true
+              requireInteraction: true,
             });
           }
         }).catch(() => {
@@ -1085,15 +1182,6 @@ function showForegroundNotification(payload = {}) {
       pushDebugWarn(PUSH_DEBUG_PREFIX, "Browser notification creation failed", {
         error: error?.message || error,
       });
-    }
-  }
-
-  // Still show in-app toast for immediate context if we are in focus
-  if (typeof document !== "undefined" && document.visibilityState === "visible") {
-    if (body) {
-      toast.success(`${title}: ${body}`);
-    } else {
-      toast.success(title);
     }
   }
 }

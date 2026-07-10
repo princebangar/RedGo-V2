@@ -4,6 +4,10 @@ import { toast } from 'sonner';
 import { API_BASE_URL } from '@food/api/config';
 import { restaurantAPI } from '@food/api';
 import { dispatchNotificationInboxRefresh } from '@food/hooks/useNotificationInbox';
+import {
+  isNativeAppWebView,
+  shouldSkipDuplicateOsNotification,
+} from '@food/utils/firebaseMessaging';
 
 const alertSound = '/restaurant_alert.mp3';
 const debugLog = (...args) => {};
@@ -57,6 +61,8 @@ const buildRestaurantOrderNotification = (orderData = {}) => {
 };
 
 const triggerWebViewNativeNotification = async (orderData = {}) => {
+  if (isNativeAppWebView()) return false;
+
   if (typeof window === 'undefined') return false;
 
   const bridgePayload = {
@@ -387,6 +393,20 @@ const shouldShowBrowserNotification = (orderData = {}) => {
 };
 
 const showBackgroundOrderNotification = async (orderData) => {
+  if (isNativeAppWebView()) {
+    return;
+  }
+
+  if (
+    shouldSkipDuplicateOsNotification({
+      orderMongoId: orderData?.orderMongoId || orderData?._id,
+      orderId: orderData?.orderId || orderData?.order_id,
+      orderStatus: orderData?.status || orderData?.orderStatus || 'new',
+    })
+  ) {
+    return;
+  }
+
   if (!shouldShowBrowserNotification(orderData)) {
     return;
   }
@@ -404,7 +424,7 @@ const showBackgroundOrderNotification = async (orderData) => {
         await registration.showNotification(notificationOptions.title, {
           body: notificationOptions.body,
           tag: notificationOptions.tag,
-          renotify: true,
+          renotify: false,
           requireInteraction: true,
           silent: false,
           vibrate: [200, 100, 200, 100, 300],
