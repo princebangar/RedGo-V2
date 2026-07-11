@@ -2582,12 +2582,7 @@ export default function Home() {
             }
           }
           .home-red-banner-bg {
-            background-color: #C8102E;
-            background-image:
-              radial-gradient(ellipse 120% 80% at 0% 100%, #98001A 0%, transparent 55%),
-              radial-gradient(ellipse 120% 80% at 100% 100%, #98001A 0%, transparent 55%),
-              radial-gradient(ellipse 100% 60% at 50% 0%, #D91F3A 0%, transparent 50%),
-              linear-gradient(180deg, #D91F3A 0%, #C8102E 45%, #98001A 100%);
+            background-color: #D91F3A;
           }
         `}</style>
         </div>
