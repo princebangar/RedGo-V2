@@ -16,6 +16,16 @@ export default function BottomNavigation() {
   const accumulatedScrollDownRef = useRef(0)
   const isVisibleRef = useRef(true)
 
+  const showNavAtTop = () => {
+    accumulatedScrollDownRef.current = 0
+    accumulatedScrollUpRef.current = 0
+    lastScrollYRef.current = window.scrollY
+    if (!isVisibleRef.current) {
+      isVisibleRef.current = true
+      setIsVisible(true)
+    }
+  }
+
   // Fetch landing settings to get dynamic price limit
   useEffect(() => {
     let cancelled = false
@@ -43,14 +53,8 @@ export default function BottomNavigation() {
       const lastScrollY = lastScrollYRef.current
 
       // If we are at the top of the page, always show the footer
-      if (currentScrollY < 50) {
-        accumulatedScrollDownRef.current = 0
-        accumulatedScrollUpRef.current = 0
-        lastScrollYRef.current = currentScrollY
-        if (!isVisibleRef.current) {
-          isVisibleRef.current = true
-          setIsVisible(true)
-        }
+      if (currentScrollY <= 50) {
+        showNavAtTop()
         return
       }
 
@@ -86,6 +90,31 @@ export default function BottomNavigation() {
     window.addEventListener('scroll', controlNavbar, { passive: true })
     return () => window.removeEventListener('scroll', controlNavbar)
   }, []) // Empty deps — listener registers only ONCE, no re-add on every scroll
+
+  // Recover stale hidden state when already at top (e.g. home content height shrinks
+  // after filters, or scroll resets without firing a scroll event).
+  useEffect(() => {
+    const reconcileHiddenAtTop = () => {
+      if (typeof window === 'undefined') return
+      if (window.scrollY <= 50 && !isVisibleRef.current) {
+        showNavAtTop()
+      }
+    }
+
+    reconcileHiddenAtTop()
+    window.addEventListener('resize', reconcileHiddenAtTop, { passive: true })
+
+    const t1 = window.setTimeout(reconcileHiddenAtTop, 0)
+    const t2 = window.setTimeout(reconcileHiddenAtTop, 150)
+    const t3 = window.setTimeout(reconcileHiddenAtTop, 500)
+
+    return () => {
+      window.removeEventListener('resize', reconcileHiddenAtTop)
+      window.clearTimeout(t1)
+      window.clearTimeout(t2)
+      window.clearTimeout(t3)
+    }
+  }, [pathname, isVisible])
 
   // Normalize pathname by removing trailing slash for consistent comparison
   const normalizedPath = pathname.replace(/\/$/, "") || "/";
