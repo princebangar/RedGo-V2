@@ -540,7 +540,7 @@ export default function Dining() {
       `}</style>
       
       {/* Premium Sticky Header - High Z-Index & Optimized Blur */}
-      <div className="sticky top-0 z-[100] w-full bg-gradient-to-b from-[#cb202d] to-[#990c19] dark:bg-[#0a0a0a] md:hidden rounded-b-[2rem] border-b-2 border-white/20 antialiased">
+      <div className="sticky top-0 z-[100] w-full bg-[#D91F3A] dark:bg-[#0a0a0a] md:hidden rounded-b-[2rem] border-b-2 border-white/20 antialiased">
         {/* Navbar Section - Custom Takeaway Style */}
         <div className="relative z-20 pt-3 pb-3.5 px-4">
           <div className="flex items-center justify-between">

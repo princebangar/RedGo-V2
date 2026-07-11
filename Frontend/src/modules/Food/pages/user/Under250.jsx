@@ -873,7 +873,7 @@ export default function Under250() {
     <div className={`relative min-h-screen bg-white dark:bg-[#0a0a0a] ${shouldShowGrayscale ? 'grayscale opacity-75' : ''}`}>
       <div
         ref={stickyHeaderRef}
-        className="fixed top-0 left-0 right-0 z-40 w-full px-4 py-2 sm:py-3 rounded-b-[2rem] shadow-lg bg-gradient-to-b from-[#cb202d] to-[#990c19]"
+        className="fixed top-0 left-0 right-0 z-40 w-full px-4 py-2 sm:py-3 rounded-b-[2rem] shadow-lg bg-[#D91F3A]"
       >
         <div className="relative z-10 max-w-7xl mx-auto flex items-center justify-between">
           {/* Left: Location Selector */}
