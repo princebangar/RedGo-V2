@@ -3,10 +3,26 @@ import { useNavigate } from "react-router-dom"
 import { X, Search, Clock, Loader2, Mic } from "lucide-react"
 import { Button } from "@food/components/ui/button"
 import { Input } from "@food/components/ui/input"
-import { restaurantAPI } from "@food/api"
+import { searchAPI } from "@/services/api"
 import { useVoiceSearch } from "@food/hooks/useVoiceSearch"
 
 const SEARCH_HISTORY_KEY = "user_recent_searches_v1"
+
+const getImageUrl = (value) => {
+  if (!value) return ""
+  if (typeof value === "string") return value
+  if (typeof value === "object") {
+    return (
+      value.url ||
+      value.secure_url ||
+      value.imageUrl ||
+      value.image ||
+      value.src ||
+      ""
+    )
+  }
+  return ""
+}
 
 export default function SearchOverlay({ isOpen, onClose, searchValue, onSearchChange, autoStartVoice = false }) {
   const navigate = useNavigate()
@@ -49,50 +65,45 @@ export default function SearchOverlay({ isOpen, onClose, searchValue, onSearchCh
       setRecentSuggestions([])
     }
 
-    const getImageUrl = (value) => {
-      if (!value) return ""
-      if (typeof value === "string") return value
-      if (typeof value === "object") {
-        return (
-          value.url ||
-          value.secure_url ||
-          value.imageUrl ||
-          value.image ||
-          value.src ||
-          ""
-        )
-      }
-      return ""
+    loadRecentSuggestions()
+  }, [isOpen])
+
+  useEffect(() => {
+    if (!isOpen) return
+
+    const term = searchValue.trim()
+    if (!term) {
+      setAllFoods([])
+      setFilteredFoods([])
+      setLoadingFoods(false)
+      return
     }
 
-    const fetchDishesFromDB = async () => {
+    const timer = setTimeout(async () => {
       setLoadingFoods(true)
       try {
-        const dishesRes = await restaurantAPI.getPublicDishes({ limit: 800 })
-        const dishes =
-          dishesRes?.data?.data?.dishes ||
-          dishesRes?.data?.dishes ||
-          []
-
-        const normalized = (Array.isArray(dishes) ? dishes : [])
-          .filter((dish) => dish?.name)
-          .map((dish, index) => ({
-            id: dish?.id || dish?._id || `dish-${index}`,
-            name: String(dish.name).trim(),
-            image: getImageUrl(dish?.image),
+        const res = await searchAPI.unifiedSearch({ q: term, limit: 40 })
+        const results = res.data?.data?.restaurants || []
+        const normalized = results
+          .filter((item) => item?.matchedDish || item?.matchType === "food")
+          .map((item, index) => ({
+            id: item.matchedDishId || item._id || `dish-${index}`,
+            name: item.matchedDish || item.restaurantName || item.name,
+            image: getImageUrl(item.matchedDishImage || item.profileImage || item.image),
           }))
 
         setAllFoods(normalized)
+        setFilteredFoods(normalized)
       } catch {
         setAllFoods([])
+        setFilteredFoods([])
       } finally {
         setLoadingFoods(false)
       }
-    }
+    }, 400)
 
-    loadRecentSuggestions()
-    fetchDishesFromDB()
-  }, [isOpen])
+    return () => clearTimeout(timer)
+  }, [isOpen, searchValue])
 
   useEffect(() => {
     const handleEscape = (e) => {
@@ -143,7 +154,7 @@ export default function SearchOverlay({ isOpen, onClose, searchValue, onSearchCh
     e.preventDefault()
     if (searchValue.trim()) {
       saveRecentSearch(searchValue)
-      navigate(`/user/search?q=${encodeURIComponent(searchValue.trim())}`)
+      navigate(`/food/user/search?q=${encodeURIComponent(searchValue.trim())}&mode=delivery`)
       onClose()
       onSearchChange("")
     }
@@ -151,7 +162,7 @@ export default function SearchOverlay({ isOpen, onClose, searchValue, onSearchCh
 
   const handleFoodClick = (food) => {
     saveRecentSearch(food.name)
-    navigate(`/user/search?q=${encodeURIComponent(food.name)}`)
+    navigate(`/food/user/search?q=${encodeURIComponent(food.name)}&mode=delivery`)
     onClose()
     onSearchChange("")
   }
@@ -248,7 +259,7 @@ export default function SearchOverlay({ isOpen, onClose, searchValue, onSearchCh
           }}
         >
           <h3 className="text-lg sm:text-xl font-bold text-gray-900 dark:text-white mb-4 sm:mb-6">
-            {searchValue.trim() === "" ? "All Dishes" : `Search Results (${filteredFoods.length})`}
+            {searchValue.trim() === "" ? "Start typing to search dishes" : `Search Results (${filteredFoods.length})`}
           </h3>
           {filteredFoods.length > 0 ? (
             <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 gap-3 sm:gap-4 md:gap-5 lg:gap-6">
@@ -297,7 +308,7 @@ export default function SearchOverlay({ isOpen, onClose, searchValue, onSearchCh
                     {searchValue.trim() ? `No results found for "${searchValue}"` : "No dishes found in database"}
                   </p>
                   <p className="text-sm sm:text-base text-gray-500 dark:text-gray-500 mt-2">
-                    {searchValue.trim() ? "Try a different search term" : "Add menu items in restaurant menus to show here"}
+                    {searchValue.trim() ? "Try a different search term" : "Type a dish name to see matching results"}
                   </p>
                 </>
               )}

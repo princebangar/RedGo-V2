@@ -253,7 +253,7 @@ export default function HomeHeader({
             onClose={() => setIsVoiceOverlayOpen(false)}
             onSearchResult={(transcript) => {
               // Navigate to search with the transcript
-              navigate(`/food/user/search?q=${encodeURIComponent(transcript)}`);
+              navigate(`/food/user/search?q=${encodeURIComponent(transcript)}&mode=delivery`);
             }}
           />
 

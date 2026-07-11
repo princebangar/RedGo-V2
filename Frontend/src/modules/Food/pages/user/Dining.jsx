@@ -8,12 +8,12 @@ import { Badge } from "@food/components/ui/badge"
 import { Card, CardContent } from "@food/components/ui/card"
 import { Avatar, AvatarFallback, AvatarImage } from "@food/components/ui/avatar";
 import AnimatedPage from "@food/components/user/AnimatedPage"
-import { useSearchOverlay, useLocationSelector } from "@food/components/user/UserLayout"
 import { useLocation as useLocationHook } from "@food/hooks/useLocation"
 import { useZone } from "@food/hooks/useZone"
 import { useProfile } from "@food/context/ProfileContext"
 import { diningAPI } from "@food/api"
 import OptimizedImage from "@food/components/OptimizedImage"
+import { HeroBannerSkeleton } from "@food/components/ui/loading-skeletons"
 import { isModuleAuthenticated } from "@food/utils/auth"
 const debugLog = (...args) => {}
 const debugWarn = (...args) => {}
@@ -70,13 +70,24 @@ const shimmerClassName =
 const loadingCategoryCards = Array.from({ length: 6 }, (_, index) => `category-skeleton-${index}`)
 const loadingRestaurantCards = Array.from({ length: 6 }, (_, index) => `restaurant-skeleton-${index}`)
 
+function DiningSectionHeaderSkeleton() {
+  return (
+    <div className="mb-6 px-1">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+        <div className="flex items-center gap-3">
+          <div className={`h-8 w-1 rounded-full bg-[#f0dcca] ${shimmerClassName} relative overflow-hidden`} />
+          <div className={`h-7 w-56 max-w-[70vw] rounded-full bg-[#ead8c8] ${shimmerClassName} relative overflow-hidden`} />
+        </div>
+        <div className={`h-7 w-32 rounded-full bg-[#f5e8ef] ${shimmerClassName} relative overflow-hidden`} />
+      </div>
+    </div>
+  )
+}
+
 function DiningCategorySkeleton({ index }) {
   return (
-    <motion.div
+    <div
       className={`relative h-[114px] sm:h-[148px] md:h-[160px] overflow-hidden rounded-[22px] border border-[#efe2d3] bg-[linear-gradient(180deg,#fdfafc_0%,#f9f3f7_100%)] shadow-[0_1px_2px_rgba(60,15,61,0.05)] ${shimmerClassName}`}
-      initial={{ opacity: 0, y: 14 }}
-      animate={{ opacity: 1, y: 0 }}
-      transition={{ duration: 0.35, delay: index * 0.04 }}
     >
       <div className="absolute inset-x-0 top-0 z-10 px-3 pt-3 sm:px-4 sm:pt-4">
         <div className="h-3 w-16 rounded-full bg-[#f0dcca]" />
@@ -86,18 +97,13 @@ function DiningCategorySkeleton({ index }) {
       <div className="absolute inset-x-0 bottom-0 h-[64%] rounded-b-[18px] bg-[radial-gradient(circle_at_25%_20%,rgba(126,56,102,0.1),transparent_30%),linear-gradient(180deg,#fcf4f9_0%,#f5e8f1_100%)]">
         <div className="absolute bottom-3 left-3 h-14 w-14 rounded-full bg-white/45 blur-md" />
       </div>
-    </motion.div>
+    </div>
   )
 }
 
 function DiningRestaurantSkeleton({ index }) {
   return (
-    <motion.div
-      className="h-full"
-      initial={{ opacity: 0, y: 18 }}
-      animate={{ opacity: 1, y: 0 }}
-      transition={{ duration: 0.4, delay: index * 0.06 }}
-    >
+    <div className="h-full">
       <div className="h-full overflow-hidden rounded-2xl bg-white shadow-md ring-1 ring-[#efe2d3]">
         <div className={`relative h-48 overflow-hidden bg-[radial-gradient(circle_at_top_left,rgba(126,56,102,0.12),transparent_28%),linear-gradient(135deg,#fcf6fa_0%,#f9edf5_100%)] sm:h-56 md:h-60 lg:h-64 xl:h-72 ${shimmerClassName}`}>
           <div className="absolute left-4 top-4 h-8 w-28 rounded-lg bg-black/10" />
@@ -127,13 +133,14 @@ function DiningRestaurantSkeleton({ index }) {
           <div className="h-4 w-48 rounded-full bg-[#f0e1d3]" />
         </div>
       </div>
-    </motion.div>
+    </div>
   )
 }
 
 export default function Dining() {
   const navigate = useNavigate()
   const [heroSearch, setHeroSearch] = useState("")
+  const [diningSearchOpen, setDiningSearchOpen] = useState(false)
   const [activeFilters, setActiveFilters] = useState(new Set())
   const [isFilterOpen, setIsFilterOpen] = useState(false)
   const [activeFilterTab, setActiveFilterTab] = useState('sort')
@@ -142,8 +149,7 @@ export default function Dining() {
   const filterSectionRefs = useRef({})
   const rightContentRef = useRef(null)
   const { location } = useLocationHook()
-  const { zoneId } = useZone(location)
-  const { openSearch, closeSearch, setSearchValue } = useSearchOverlay()
+  const { zoneId, loading: zoneLoading } = useZone(location)
   const { addFavorite, removeFavorite, isFavorite } = useProfile()
   const { userProfile } = useProfile();
 
@@ -197,9 +203,18 @@ export default function Dining() {
 
         const restaurantParams = {}
         if (city) restaurantParams.city = city
+        if (zoneId) restaurantParams.zoneId = zoneId
         if (Number.isFinite(lat) && Number.isFinite(lng)) {
           restaurantParams.lat = lat
           restaurantParams.lng = lng
+        }
+
+        if (!zoneId) {
+          setDiningHeroBanners([])
+          setCategories([])
+          setRestaurantList([])
+          setLoading(false)
+          return
         }
 
         const [bannerResponse, cats, rests] = await Promise.all([
@@ -381,7 +396,9 @@ export default function Dining() {
   }
 
   const filteredRestaurants = useMemo(() => {
-    let filtered = [...nearbyPopularRestaurants]
+    let filtered = nearbyPopularRestaurants.filter(
+      (restaurant) => restaurant?.diningSettings?.isEnabled === true,
+    )
 
     if (activeFilters.has('delivery-under-30')) {
       filtered = filtered.filter(r => {
@@ -418,13 +435,11 @@ export default function Dining() {
       filtered = filtered.filter(r => r.cuisine.toLowerCase().includes(selectedCuisine.toLowerCase()))
     }
 
-    // Apply search query
+    // Apply search query (restaurant name only)
     if (heroSearch.trim()) {
       const q = heroSearch.trim().toLowerCase()
       filtered = filtered.filter(r =>
-        String(r.name || r.restaurantName || '').toLowerCase().includes(q) ||
-        String(r.cuisine || '').toLowerCase().includes(q) ||
-        String(r.location || '').toLowerCase().includes(q)
+        String(r.name || r.restaurantName || '').toLowerCase().includes(q)
       )
     }
 
@@ -437,6 +452,17 @@ export default function Dining() {
 
     return filtered
   }, [nearbyPopularRestaurants, activeFilters, selectedCuisine, sortBy, heroSearch])
+
+  const diningSearchQuery = heroSearch.trim()
+  const isDiningSearching = diningSearchQuery.length > 0
+  const showPageSkeleton = (loading || zoneLoading) && !isDiningSearching
+  const showDiningSearchEmpty =
+    isDiningSearching && !loading && filteredRestaurants.length === 0
+
+  useEffect(() => {
+    if (!isDiningSearching) return
+    window.scrollTo({ top: 0, behavior: "smooth" })
+  }, [isDiningSearching, diningSearchQuery])
 
   useEffect(() => {
     setCurrentBannerIndex((prev) => {
@@ -522,13 +548,6 @@ export default function Dining() {
   }, [diningHeroBanners.length, resetBannerAutoSlide])
 
 
-  const handleSearchFocus = useCallback(() => {
-    if (heroSearch) {
-      setSearchValue(heroSearch)
-    }
-    openSearch()
-  }, [heroSearch, openSearch, setSearchValue])
-
   return (
     <AnimatedPage className="bg-white dark:bg-[#0a0a0a] min-h-screen relative pb-40">
       <style>{`
@@ -596,6 +615,14 @@ export default function Dining() {
             </Link>
 
             <div className="flex items-center gap-3">
+              <button
+                type="button"
+                onClick={() => setDiningSearchOpen(true)}
+                className={`p-2.5 backdrop-blur-md rounded-full active:scale-95 transition-all duration-200 ${diningSearchOpen ? "bg-white text-[#DC2626]" : "bg-white/10 border border-white/20"}`}
+                aria-label="Search dining restaurants"
+              >
+                <Search className={`h-5 w-5 ${diningSearchOpen ? "text-[#DC2626]" : "text-white"}`} strokeWidth={2.5} />
+              </button>
               <Link
                 to="/food/user/wallet"
                 state={{ from: '/food/user' }}
@@ -633,42 +660,91 @@ export default function Dining() {
               </Link>
             </div>
           </div>
-        </div>
 
-        {/* Search Bar Section */}
-        <section
-          className="relative z-10 w-full px-4 pb-3"
-          onClick={(e) => e.stopPropagation()}
-        >
-          {/* Enhanced Search Bar (Matching Home Style) */}
-          <div className="relative bg-gray-50 dark:bg-[#1a1a1a] rounded-xl border border-gray-200 dark:border-gray-800 p-2 flex items-center shadow-inner group">
-            <Search className="h-4 w-4 text-[#DC2626] ml-2 shrink-0" strokeWidth={2.5} />
-            <div className="flex-1 px-3">
-              <Input
-                value={heroSearch}
-                onChange={(e) => setHeroSearch(e.target.value)}
-                onKeyDown={(e) => { if (e.key === 'Escape') setHeroSearch("") }}
-                className="h-6 w-full bg-transparent border-0 text-[13px] font-bold text-gray-700 dark:text-white focus-visible:ring-0 focus-visible:ring-offset-0 p-0 leading-none placeholder:text-gray-400"
-                placeholder="Search dining restaurants..."
-              />
-            </div>
-            {heroSearch && (
-              <button onClick={() => setHeroSearch("")} className="mr-2 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300">
-                <X className="h-4 w-4" />
-              </button>
+          <AnimatePresence initial={false}>
+            {diningSearchOpen && (
+              <motion.section
+                key="dining-search-bar"
+                initial={{ height: 0, opacity: 0 }}
+                animate={{ height: "auto", opacity: 1 }}
+                exit={{ height: 0, opacity: 0 }}
+                transition={{
+                  height: { type: "spring", stiffness: 380, damping: 32, mass: 0.82 },
+                  opacity: { duration: 0.24, ease: [0.22, 1, 0.36, 1] },
+                }}
+                className="overflow-hidden origin-top"
+                onClick={(e) => e.stopPropagation()}
+              >
+                <motion.div
+                  initial={{ y: -8, opacity: 0, scale: 0.97 }}
+                  animate={{ y: 0, opacity: 1, scale: 1 }}
+                  exit={{ y: -6, opacity: 0, scale: 0.98 }}
+                  transition={{
+                    type: "spring",
+                    stiffness: 460,
+                    damping: 30,
+                    mass: 0.72,
+                  }}
+                  className="relative bg-gray-50 dark:bg-[#1a1a1a] rounded-xl border border-gray-200 dark:border-gray-800 p-2 flex items-center shadow-inner group mt-3"
+                >
+                  <Search className="h-4 w-4 text-[#DC2626] ml-2 shrink-0" strokeWidth={2.5} />
+                  <div className="flex-1 px-3">
+                    <Input
+                      autoFocus
+                      value={heroSearch}
+                      onChange={(e) => setHeroSearch(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === "Escape") {
+                          setHeroSearch("");
+                          setDiningSearchOpen(false);
+                        }
+                      }}
+                      className="h-6 w-full bg-transparent border-0 text-[13px] font-bold text-gray-700 dark:text-white focus-visible:ring-0 focus-visible:ring-offset-0 p-0 leading-none placeholder:text-gray-400"
+                      placeholder="Search dining restaurants..."
+                    />
+                  </div>
+                  <div className="flex items-center gap-1.5 shrink-0">
+                    {heroSearch && (
+                      <button
+                        type="button"
+                        onClick={() => setHeroSearch("")}
+                        className="flex h-7 w-7 items-center justify-center rounded-full bg-gray-200/90 text-gray-500 hover:bg-gray-300 hover:text-gray-700 dark:bg-gray-700 dark:text-gray-300 dark:hover:bg-gray-600 transition-colors"
+                        aria-label="Clear search"
+                      >
+                        <X className="h-3.5 w-3.5" strokeWidth={2.5} />
+                      </button>
+                    )}
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setHeroSearch("");
+                        setDiningSearchOpen(false);
+                      }}
+                      className="flex h-7 w-7 items-center justify-center rounded-full bg-[#DC2626]/10 text-[#DC2626] hover:bg-[#DC2626]/20 transition-colors"
+                      aria-label="Close search"
+                    >
+                      <X className="h-4 w-4" strokeWidth={2.5} />
+                    </button>
+                  </div>
+                </motion.div>
+              </motion.section>
             )}
-          </div>
-        </section>
+          </AnimatePresence>
+        </div>
       </div>
 
       {/* Banner Section */}
+      {!isDiningSearching && (
       <div
         className="relative w-full px-3 sm:px-4 md:px-6 lg:px-8 pt-5 pb-3 sm:pb-5"
       >
+        {showPageSkeleton ? (
+          <HeroBannerSkeleton className="h-[24vh] sm:h-[32vh] lg:h-[40vh] rounded-[22px] shadow-lg" />
+        ) : (
         <motion.div
-          initial={{ opacity: 0, y: 24, scale: 0.98 }}
-          animate={{ opacity: 1, y: 0, scale: 1 }}
-          transition={{ duration: 0.6, ease: "easeOut" }}
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          transition={{ duration: 0.28, ease: "easeOut" }}
           className="relative w-full h-[24vh] sm:h-[32vh] lg:h-[40vh] rounded-[22px] overflow-hidden shadow-lg"
         >
           {diningHeroBanners.length > 0 ? (
@@ -730,50 +806,76 @@ export default function Dining() {
               )}
             </div>
           ) : (
-            <div className={`relative h-full w-full bg-[radial-gradient(circle_at_top_left,_rgba(235,89,14,0.22),_transparent_35%),linear-gradient(135deg,#fff5e8_0%,#fffdf9_55%,#ffe3cf_100%)] ${shimmerClassName}`}>
-              <div className="absolute inset-0 bg-[linear-gradient(120deg,transparent_0%,rgba(235,89,14,0.05)_35%,transparent_70%)]" />
+            <div className={`relative h-full w-full bg-[radial-gradient(circle_at_top_left,_rgba(235,89,14,0.22),_transparent_35%),linear-gradient(135deg,#fff5e8_0%,#fffdf9_55%,#ffe3cf_100%)]`}>
               <div className="absolute bottom-6 left-6 max-w-[70%]">
                 <p className="text-[11px] font-semibold uppercase tracking-[0.34em] text-[#b46f37]">Dining</p>
                 <h2 className="mt-2 text-2xl font-black text-[#2e1d11] sm:text-3xl">
-                  {loading ? "Curating dining picks near you" : "Fresh dining picks near you"}
+                  Fresh dining picks near you
                 </h2>
                 <p className="mt-2 text-sm font-medium text-[#6d5744]">
-                  {loading
-                    ? "Hold tight while we load categories, offers, and the best tables around you."
-                    : "Banner will appear here as soon as a dining hero banner is available from the new API."}
+                  Banner will appear here as soon as a dining hero banner is available.
                 </p>
               </div>
-              {loading && (
-                <div className="absolute right-5 top-5 rounded-full border border-white/50 bg-white/55 px-3 py-1.5 text-[11px] font-semibold tracking-[0.18em] text-[#8d5324] backdrop-blur-sm">
-                  Loading
-                </div>
-              )}
             </div>
           )}
         </motion.div>
+        )}
       </div>
+      )}
 
       {/* Content */}
-      <div className="max-w-7xl mx-auto px-3 sm:px-6 md:px-8 lg:px-10 xl:px-12 pt-3 sm:pt-6 md:pt-8 lg:pt-10 pb-4 md:pb-6 lg:pb-8">
+      <div className={`max-w-7xl mx-auto px-3 sm:px-6 md:px-8 lg:px-10 xl:px-12 ${isDiningSearching ? "pt-2" : "pt-3 sm:pt-6 md:pt-8 lg:pt-10"} pb-4 md:pb-6 lg:pb-8`}>
+        {showPageSkeleton ? (
+          <>
+            {!isDiningSearching && (
+              <div className="mb-0">
+                <div className="grid grid-cols-3 gap-2.5 sm:gap-3 md:gap-4">
+                  {loadingCategoryCards.map((key, index) => (
+                    <DiningCategorySkeleton key={key} index={index} />
+                  ))}
+                </div>
+              </div>
+            )}
+
+            <div className={`mb-4 ${isDiningSearching ? "mt-0" : "mt-4 sm:mt-6"}`}>
+              {!isDiningSearching && <DiningSectionHeaderSkeleton />}
+
+              <section className="mb-4 py-1">
+                <div className="flex items-center gap-2 overflow-hidden pb-1">
+                  {Array.from({ length: 6 }, (_, index) => (
+                    <div
+                      key={`filter-skeleton-${index}`}
+                      className={`relative h-8 rounded-md border border-[#efe3d7] bg-[#fff7f1] ${shimmerClassName}`}
+                      style={{ width: index === 0 ? 90 : index % 2 === 0 ? 122 : 108 }}
+                    />
+                  ))}
+                </div>
+              </section>
+
+              <div className="grid grid-cols-1 gap-4 sm:gap-5 md:grid-cols-2 md:gap-6 lg:grid-cols-3 lg:gap-8">
+                {loadingRestaurantCards.map((key, index) => (
+                  <DiningRestaurantSkeleton key={key} index={index} />
+                ))}
+              </div>
+            </div>
+          </>
+        ) : (
+        <motion.div
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          transition={{ duration: 0.28, ease: "easeOut" }}
+        >
         {/* Categories Section */}
+        {!isDiningSearching && (
         <div className="mb-0">
           <div className="grid grid-cols-3 gap-2.5 sm:gap-3 md:gap-4">
-            {loading
-              ? loadingCategoryCards.map((key, index) => (
-                <DiningCategorySkeleton key={key} index={index} />
-              ))
-              : filteredCategories.map((category, index) => (
+            {filteredCategories.map((category, index) => (
               <Link
                 key={category._id || category.id}
                 to={`/user/dining/${category.slug}`}
               >
-                <motion.div
+                <div
                   className="relative h-[114px] sm:h-[148px] md:h-[160px] overflow-hidden rounded-[22px] border border-[#ece5dc] bg-[#fdfaf8] cursor-pointer group"
-                  initial={{ opacity: 0, y: 20 }}
-                  whileInView={{ opacity: 1, y: 0 }}
-                  viewport={{ once: true, margin: "-50px" }}
-                  transition={{ duration: 0.4, delay: index * 0.05 }}
-                  whileHover={{ y: -2, boxShadow: "0 8px 20px -12px rgba(63, 38, 18, 0.2)" }}
                 >
                   <div className="h-full flex flex-col p-2.5 sm:p-3.5">
                     <p className="font-['Poppins',_'Nunito_Sans',sans-serif] text-[12px] sm:text-[14px] md:text-[15px] font-bold leading-tight tracking-tight text-[#2d2722] mb-1">
@@ -798,22 +900,25 @@ export default function Dining() {
                       )}
                     </div>
                   </div>
-                </motion.div>
+                </div>
               </Link>
               ))}
           </div>
         </div>
+        )}
 
         {/* Popular Restaurants Around You Section */}
-        <div className="mb-4 mt-4 sm:mt-6">
+        <div className={`mb-4 ${isDiningSearching ? "mt-0" : "mt-4 sm:mt-6"}`}>
+          {!showDiningSearchEmpty && (
           <div className="mb-6">
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 px-1">
               <div className="flex items-center gap-3">
                 <div className="h-8 w-1 bg-[#ef4f5f] rounded-full shadow-[0_0_10px_rgba(239,79,95,0.4)]" />
                 <h3 className="text-xl sm:text-2xl font-black text-gray-900 dark:text-white tracking-tight whitespace-nowrap">
-                  Popular Restaurants Within 10km
+                  {isDiningSearching ? "Search Results" : "Popular Restaurants Within 10km"}
                 </h3>
               </div>
+              {!isDiningSearching && (
               <div className="flex items-center">
                 <div className="px-3 py-1 bg-red-50 dark:bg-red-950/30 border border-red-100 dark:border-red-900/50 rounded-full shadow-sm">
                   <p className="text-[10px] sm:text-xs font-black text-[#ef4f5f] uppercase tracking-widest">
@@ -821,22 +926,21 @@ export default function Dining() {
                   </p>
                 </div>
               </div>
+              )}
+              {isDiningSearching && filteredRestaurants.length > 0 && (
+              <div className="flex items-center">
+                <div className="px-3 py-1 bg-red-50 dark:bg-red-950/30 border border-red-100 dark:border-red-900/50 rounded-full shadow-sm">
+                  <p className="text-[10px] sm:text-xs font-black text-[#ef4f5f] uppercase tracking-widest">
+                    {filteredRestaurants.length} RESULT{filteredRestaurants.length === 1 ? "" : "S"}
+                  </p>
+                </div>
+              </div>
+              )}
             </div>
           </div>
+          )}
 
-          {loading ? (
-            <section className="mb-4 py-1">
-              <div className="flex items-center gap-2 overflow-hidden pb-1">
-                {Array.from({ length: 6 }, (_, index) => (
-                  <div
-                    key={`filter-skeleton-${index}`}
-                    className={`relative h-8 rounded-md border border-[#efe3d7] bg-[#fff7f1] ${shimmerClassName}`}
-                    style={{ width: index === 0 ? 90 : index % 2 === 0 ? 122 : 108 }}
-                  />
-                ))}
-              </div>
-            </section>
-          ) : (
+          {!isDiningSearching ? (
             <section className="py-1 mb-4">
               <div
                 className="relative z-10 flex items-center gap-1.5 sm:gap-2 overflow-x-auto overflow-y-visible scrollbar-hide py-1 [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden"
@@ -884,14 +988,20 @@ export default function Dining() {
                 })}
               </div>
             </section>
-          )}
+          ) : null}
 
           {/* Restaurant Cards */}
-          {loading ? (
-            <div className="grid grid-cols-1 gap-4 sm:gap-5 md:grid-cols-2 md:gap-6 lg:grid-cols-3 lg:gap-8">
-              {loadingRestaurantCards.map((key, index) => (
-                <DiningRestaurantSkeleton key={key} index={index} />
-              ))}
+          {showDiningSearchEmpty ? (
+            <div className="flex flex-col items-center justify-center py-16 px-6 text-center">
+              <div className="w-16 h-16 rounded-full bg-gray-100 dark:bg-gray-800 flex items-center justify-center mb-4">
+                <Search className="h-7 w-7 text-gray-300 dark:text-gray-500" />
+              </div>
+              <p className="text-base font-bold text-gray-800 dark:text-gray-200">
+                No dining restaurants found for &quot;{diningSearchQuery}&quot;
+              </p>
+              <p className="text-sm text-gray-500 dark:text-gray-400 mt-1.5 max-w-xs">
+                Search by restaurant name only
+              </p>
             </div>
           ) : filteredRestaurants.length === 0 ? (
             <div className="rounded-2xl border border-dashed border-[#eadfce] bg-[#fffaf4] px-6 py-12 text-center text-sm font-medium text-gray-500">
@@ -1354,6 +1464,8 @@ export default function Dining() {
           </div>
           )}
         </div>
+        </motion.div>
+        )}
       </div>
 
       {/* Filter Modal */}
