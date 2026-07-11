@@ -90,7 +90,6 @@ import {
 import { useLocation } from "@food/hooks/useLocation";
 import { useZone } from "@food/hooks/useZone";
 import quickSpicyLogo from "@food/assets/quicky-spicy-logo.png";
-import homeBannerRed from "@food/assets/home-banner-red-clean.png";
 import offerImage from "@food/assets/offerimage.png";
 import api, { publicGetOnce, restaurantAPI, adminAPI } from "@food/api";
 import { API_BASE_URL } from "@food/api/config";
@@ -559,21 +558,6 @@ const RestaurantCardOfferCarousel = React.memo(({ coupons }) => {
 });
 
 export default function Home() {
-  // Preload the hero banner only while the Home page is actually mounted, so other
-  // pages (e.g. admin) don't trigger an "preloaded but not used" console warning.
-  useEffect(() => {
-    if (typeof window === 'undefined') return;
-    const link = document.createElement('link');
-    link.rel = 'preload';
-    link.as = 'image';
-    link.href = homeBannerRed;
-    link.fetchPriority = 'high';
-    document.head.appendChild(link);
-    return () => {
-      try { document.head.removeChild(link); } catch { /* already removed */ }
-    };
-  }, []);
-
   const HERO_BANNER_AUTO_SLIDE_MS = 3500;
   const BACKEND_ORIGIN = API_BASE_URL.replace(/\/api\/?$/, "");
   const navigate = useNavigate();
@@ -2597,30 +2581,20 @@ export default function Home() {
               transform: translateY(0);
             }
           }
-          .red-header-bg {
-            background-color: #ef4f5f;
-            background-image: linear-gradient(180deg, #ef4f5f 0%, #e03546 100%);
+          .home-red-banner-bg {
+            background-color: #C8102E;
+            background-image:
+              radial-gradient(ellipse 120% 80% at 0% 100%, #98001A 0%, transparent 55%),
+              radial-gradient(ellipse 120% 80% at 100% 100%, #98001A 0%, transparent 55%),
+              radial-gradient(ellipse 100% 60% at 50% 0%, #D91F3A 0%, transparent 50%),
+              linear-gradient(180deg, #D91F3A 0%, #C8102E 45%, #98001A 100%);
           }
         `}</style>
         </div>
 
         <div className="md:hidden relative overflow-x-clip bg-white dark:bg-[#0a0a0a]">
           {/* Brand Top Section (Red Theme) */}
-          <div className="relative overflow-hidden rounded-b-[2rem] shadow-lg mb-2 bg-[#ef4f5f]">
-            {/* Background Image */}
-            <div className="absolute inset-0 z-0">
-              <img
-                src={homeBannerRed}
-                alt="Banner Background"
-                className="w-full h-full object-cover"
-                loading="eager"
-                fetchPriority="high"
-                decoding="sync"
-              />
-              {/* Optional overlay to ensure text readability if needed */}
-              <div className="absolute inset-0 bg-black/10" />
-            </div>
-
+          <div className="relative overflow-hidden rounded-b-[2rem] shadow-lg mb-2 home-red-banner-bg">
             {festVideoActive && (
               <div className="absolute inset-0 z-0">
                 <video
