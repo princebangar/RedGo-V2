@@ -564,6 +564,7 @@ export default function Home() {
   const [searchParams] = useSearchParams();
   const query = searchParams.get("q") || "";
   const [heroSearch, setHeroSearch] = useState("");
+  const [takeawaySearchOpen, setTakeawaySearchOpen] = useState(false);
   const { openSearch, closeSearch, searchValue, setSearchValue } =
     useSearchOverlay();
   const { openLocationSelector } = useLocationSelector();
@@ -591,6 +592,13 @@ export default function Home() {
       }
     }
   }, [isTakeawayPage, routerLocation.pathname, orderType, setOrderType]);
+
+  useEffect(() => {
+    if (!isTakeawayPage) {
+      setTakeawaySearchOpen(false);
+      setHeroSearch("");
+    }
+  }, [isTakeawayPage]);
 
   const [prevVegMode, setPrevVegMode] = useState(vegMode);
   const [showVegModePopup, setShowVegModePopup] = useState(false);
@@ -1627,9 +1635,15 @@ export default function Home() {
   // Fetch restaurants from API with filters
   const fetchRestaurants = useCallback(
     async (filters = {}) => {
-      if (zoneLoading || effectiveZoneLoading) return;
+        if (zoneLoading || effectiveZoneLoading) return;
 
-      const requestSeq = ++restaurantsRequestSeqRef.current;
+        if (!effectiveZoneId) {
+          setRestaurantsData([]);
+          setLoadingRestaurants(false);
+          return;
+        }
+
+        const requestSeq = ++restaurantsRequestSeqRef.current;
       try {
         const isCacheEmpty = !HOME_RESTAURANTS_CACHE || (Array.isArray(HOME_RESTAURANTS_CACHE) && HOME_RESTAURANTS_CACHE.length === 0);
         if (isCacheEmpty || filters.activeFilters || filters.sortBy || filters.selectedCuisine || orderType) {
@@ -1713,6 +1727,10 @@ export default function Home() {
 
         if (effectiveZoneId) {
           params.zoneId = effectiveZoneId;
+        } else {
+          setRestaurantsData([]);
+          setLoadingRestaurants(false);
+          return;
         }
 
         const normalizedUserCity = String(effectiveLocation?.city || "")
@@ -1785,13 +1803,11 @@ export default function Home() {
 
           const transformedRestaurants = strictCityRestaurants
             .filter((restaurant) => {
-              // Apply Takeaway filter if orderType is takeaway
               if (orderType === "takeaway" || isTakeawayPage) {
                 if (!restaurant.takeawaySettings?.isEnabled && !restaurant.takeawayAvailable) {
                   return false;
                 }
               }
-              const name = (restaurant.restaurantName || restaurant.name || "").toLowerCase()
               return true
             })
             .map((restaurant, index) => {
@@ -2145,17 +2161,77 @@ export default function Home() {
     [vegMode, vegModeOption],
   );
 
+  const matchesTakeawayName = useCallback((restaurant, q) => {
+    const name = String(restaurant?.name || restaurant?.restaurantName || "")
+      .trim()
+      .toLowerCase();
+    const slug = String(restaurant?.slug || "")
+      .trim()
+      .toLowerCase()
+      .replace(/-/g, " ");
+    return name.includes(q) || slug.includes(q);
+  }, []);
+
   // Filter restaurants and foods based on active filters
   const filteredRestaurants = useMemo(() => {
-    // Rely on API data which is already filtered and sorted by the backend.
-    // We only apply client-side Veg Mode filtering here.
-    return (restaurantsData || []).filter(matchesVegMode);
-  }, [restaurantsData, matchesVegMode]);
+    let result = (restaurantsData || []).filter(matchesVegMode);
+
+    if (orderType === "takeaway" || isTakeawayPage) {
+      result = result.filter(
+        (restaurant) =>
+          restaurant?.takeawaySettings?.isEnabled === true ||
+          restaurant?.takeawayAvailable === true,
+      );
+
+      if (heroSearch.trim()) {
+        const q = heroSearch.trim().toLowerCase();
+        result = result.filter((restaurant) => matchesTakeawayName(restaurant, q));
+      }
+    }
+
+    return result;
+  }, [restaurantsData, matchesVegMode, orderType, isTakeawayPage, heroSearch, matchesTakeawayName]);
 
   const restaurantLazyLoadResetKey = useMemo(() => {
     const activeFilterKey = Array.from(activeFilters).sort().join("|");
-    return `${restaurantsData.length}:${activeFilterKey}:${selectedCuisine || ""}:${sortBy || ""}:${vegMode ? "1" : "0"}`;
-  }, [activeFilters, restaurantsData.length, selectedCuisine, sortBy, vegMode]);
+    return `${restaurantsData.length}:${activeFilterKey}:${selectedCuisine || ""}:${sortBy || ""}:${vegMode ? "1" : "0"}:${heroSearch || ""}`;
+  }, [activeFilters, restaurantsData.length, selectedCuisine, sortBy, vegMode, heroSearch]);
+
+  const isTakeawayActive = orderType === "takeaway" || isTakeawayPage;
+  const takeawaySearchQuery = isTakeawayActive ? heroSearch.trim() : "";
+  const isTakeawaySearching = takeawaySearchQuery.length > 0;
+  const showTakeawaySearchEmpty =
+    isTakeawayActive &&
+    isTakeawaySearching &&
+    !loadingRestaurants &&
+    !showRestaurantSkeleton &&
+    filteredRestaurants.length === 0;
+
+  const takeawaySectionSubtitle = useMemo(() => {
+    if (loadingRestaurants) return "Finding Restaurants For You";
+    if (!isTakeawayActive) {
+      return `${filteredRestaurants.length} Restaurants Delivering to You`;
+    }
+    if (isTakeawaySearching) {
+      if (filteredRestaurants.length === 0) return null;
+      return filteredRestaurants.length === 1
+        ? `1 result for "${takeawaySearchQuery}"`
+        : `${filteredRestaurants.length} results for "${takeawaySearchQuery}"`;
+    }
+    return `${filteredRestaurants.length} Restaurant${filteredRestaurants.length === 1 ? "" : "s"} near you`;
+  }, [
+    loadingRestaurants,
+    isTakeawayActive,
+    isTakeawaySearching,
+    filteredRestaurants.length,
+    takeawaySearchQuery,
+  ]);
+
+  const takeawaySectionTitle = useMemo(() => {
+    if (!isTakeawayActive) return "Featured Restaurants";
+    if (isTakeawaySearching) return "Search Results";
+    return "Takeaway Restaurants";
+  }, [isTakeawayActive, isTakeawaySearching]);
 
   const visibleRestaurants = useMemo(
     () => filteredRestaurants.slice(0, visibleRestaurantCount),
@@ -2302,8 +2378,12 @@ export default function Home() {
   }, [openLocationSelector]);
 
   const handleSearchFocus = useCallback(() => {
-    navigate("/food/user/search");
-  }, [navigate]);
+    if (orderType === "takeaway" || isTakeawayPage) {
+      setTakeawaySearchOpen(true);
+      return;
+    }
+    navigate("/food/user/search?mode=delivery");
+  }, [navigate, orderType, isTakeawayPage]);
 
   const handleSearchClose = useCallback(() => {
     closeSearch();
@@ -2631,10 +2711,13 @@ export default function Home() {
                     </div>
                     <div className="flex items-center gap-3">
                       <button
-                        onClick={handleSearchFocus}
-                        className="p-2.5 bg-white/20 dark:bg-black/20 backdrop-blur-md rounded-full active:scale-95 transition-all"
+                        onClick={() => {
+                          setTakeawaySearchOpen(true);
+                        }}
+                        className={`p-2.5 backdrop-blur-md rounded-full active:scale-95 transition-all duration-200 ${takeawaySearchOpen ? "bg-white text-[#DC2626]" : "bg-white/20 dark:bg-black/20"}`}
+                        aria-label="Search takeaway restaurants"
                       >
-                        <Search className="h-5 w-5 text-white" strokeWidth={2.5} />
+                        <Search className={`h-5 w-5 ${takeawaySearchOpen ? "text-[#DC2626]" : "text-white"}`} strokeWidth={2.5} />
                       </button>
                       <Link
                         to="/food/user/cart"
@@ -2672,6 +2755,76 @@ export default function Home() {
                       </Link>
                     </div>
                   </div>
+
+                  <AnimatePresence initial={false}>
+                    {takeawaySearchOpen && (
+                      <motion.section
+                        key="takeaway-search-bar"
+                        initial={{ height: 0, opacity: 0 }}
+                        animate={{ height: "auto", opacity: 1 }}
+                        exit={{ height: 0, opacity: 0 }}
+                        transition={{
+                          height: { type: "spring", stiffness: 380, damping: 32, mass: 0.82 },
+                          opacity: { duration: 0.24, ease: [0.22, 1, 0.36, 1] },
+                        }}
+                        className="overflow-hidden origin-top"
+                        onClick={(e) => e.stopPropagation()}
+                      >
+                        <motion.div
+                          initial={{ y: -8, opacity: 0, scale: 0.97 }}
+                          animate={{ y: 0, opacity: 1, scale: 1 }}
+                          exit={{ y: -6, opacity: 0, scale: 0.98 }}
+                          transition={{
+                            type: "spring",
+                            stiffness: 460,
+                            damping: 30,
+                            mass: 0.72,
+                          }}
+                          className="relative bg-gray-50 dark:bg-[#1a1a1a] rounded-xl border border-gray-200 dark:border-gray-800 p-2 flex items-center shadow-inner group mt-3"
+                        >
+                          <Search className="h-4 w-4 text-[#DC2626] ml-2 shrink-0" strokeWidth={2.5} />
+                          <div className="flex-1 px-3">
+                            <Input
+                              autoFocus
+                              value={heroSearch}
+                              onChange={(e) => setHeroSearch(e.target.value)}
+                              onKeyDown={(e) => {
+                                if (e.key === "Escape") {
+                                  setHeroSearch("");
+                                  setTakeawaySearchOpen(false);
+                                }
+                              }}
+                              className="h-6 w-full bg-transparent border-0 text-[13px] font-bold text-gray-700 dark:text-white focus-visible:ring-0 focus-visible:ring-offset-0 p-0 leading-none placeholder:text-gray-400"
+                              placeholder="Search takeaway restaurants..."
+                            />
+                          </div>
+                          <div className="flex items-center gap-1.5 shrink-0">
+                            {heroSearch && (
+                              <button
+                                type="button"
+                                onClick={() => setHeroSearch("")}
+                                className="flex h-7 w-7 items-center justify-center rounded-full bg-gray-200/90 text-gray-500 hover:bg-gray-300 hover:text-gray-700 dark:bg-gray-700 dark:text-gray-300 dark:hover:bg-gray-600 transition-colors"
+                                aria-label="Clear search"
+                              >
+                                <X className="h-3.5 w-3.5" strokeWidth={2.5} />
+                              </button>
+                            )}
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setHeroSearch("");
+                                setTakeawaySearchOpen(false);
+                              }}
+                              className="flex h-7 w-7 items-center justify-center rounded-full bg-[#DC2626]/10 text-[#DC2626] hover:bg-[#DC2626]/20 transition-colors"
+                              aria-label="Close search"
+                            >
+                              <X className="h-4 w-4" strokeWidth={2.5} />
+                            </button>
+                          </div>
+                        </motion.div>
+                      </motion.section>
+                    )}
+                  </AnimatePresence>
                 </div>
               )}
 
@@ -3076,18 +3229,18 @@ export default function Home() {
           initial={false}
           animate={{ opacity: 1 }}>
           <div className="px-4 mb-3 lg:mb-4">
-            <div className="flex flex-col gap-1 antialiased">
-              <h2 className="text-[11px] sm:text-xs font-semibold text-[#5d80a3] tracking-[0.15em] uppercase">
-                {loadingRestaurants
-                  ? "Finding Restaurants For You"
-                  : orderType === "takeaway"
-                    ? `${filteredRestaurants.length} Restaurants near you`
-                    : `${filteredRestaurants.length} Restaurants Delivering to You`}
-              </h2>
-              <h3 className="text-lg sm:text-xl font-bold text-[#364d66] dark:text-gray-200 tracking-tight">
-                {orderType === "takeaway" ? "Takeaway Restaurants" : "Featured Restaurants"}
-              </h3>
-            </div>
+            {!showTakeawaySearchEmpty && (
+              <div className="flex flex-col gap-1 antialiased">
+                {takeawaySectionSubtitle && (
+                  <h2 className="text-[11px] sm:text-xs font-semibold text-[#5d80a3] tracking-[0.15em] uppercase">
+                    {takeawaySectionSubtitle}
+                  </h2>
+                )}
+                <h3 className="text-lg sm:text-xl font-bold text-[#364d66] dark:text-gray-200 tracking-tight">
+                  {takeawaySectionTitle}
+                </h3>
+              </div>
+            )}
           </div>
           <div
             className={`relative ${showRestaurantSkeleton ? "min-h-[360px] sm:min-h-[420px]" : ""}`}>
@@ -3331,6 +3484,21 @@ export default function Home() {
                   </div>
                 );
               })}
+              {!showRestaurantSkeleton &&
+                showTakeawaySearchEmpty &&
+                visibleRestaurants.length === 0 && (
+                  <div className="col-span-full flex flex-col items-center justify-center py-14 px-6 text-center">
+                    <div className="w-16 h-16 rounded-full bg-gray-100 dark:bg-gray-800 flex items-center justify-center mb-4">
+                      <Search className="h-7 w-7 text-gray-300 dark:text-gray-500" />
+                    </div>
+                    <p className="text-base font-bold text-gray-800 dark:text-gray-200">
+                      No takeaway restaurants found for &quot;{takeawaySearchQuery}&quot;
+                    </p>
+                    <p className="text-sm text-gray-500 dark:text-gray-400 mt-1.5 max-w-xs">
+                      Search by restaurant name only
+                    </p>
+                  </div>
+                )}
             </div>
           </div>
           <div className="flex flex-col items-center pt-2 sm:pt-3 gap-2 px-4">
@@ -3355,7 +3523,7 @@ export default function Home() {
         isOpen={isVoiceOverlayOpen}
         onClose={() => setIsVoiceOverlayOpen(false)}
         onSearchResult={(transcript) => {
-          navigate(`/food/user/search?q=${encodeURIComponent(transcript)}`);
+          navigate(`/food/user/search?q=${encodeURIComponent(transcript)}&mode=delivery`);
         }}
       />
 
