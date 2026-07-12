@@ -30,10 +30,8 @@ const preloadAudio = async () => {
   return alertSound;
 };
 
-// Start preloading immediately on import
-if (typeof window !== 'undefined') {
-  preloadAudio();
-}
+// Do NOT preload on import — this hook is imported from shared Food routes,
+// and eager fetch() would load restaurant_alert.mp3 on user/delivery pages too.
 
 const resolveAudioSource = (source) => {
   return cachedAudioBlobUrl || source;

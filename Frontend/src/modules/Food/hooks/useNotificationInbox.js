@@ -15,53 +15,115 @@ const normalizeInboxItems = (rows = []) =>
   }));
 
 const REFRESH_EVENT = "foodNotificationInboxRefresh";
+const INBOX_MIN_FETCH_MS = 60_000;
+
+/** Shared across hook instances to avoid duplicate inbox API calls. */
+const inboxSharedCache = new Map();
+const inboxInflight = new Map();
+
+const buildInboxCacheKey = (module, limit) => `${module}:${limit || 50}`;
 
 export const dispatchNotificationInboxRefresh = () => {
   if (typeof window === "undefined") return;
+  inboxSharedCache.clear();
   window.dispatchEvent(new CustomEvent(REFRESH_EVENT));
 };
 
 export default function useNotificationInbox(module, options = {}) {
-  const [items, setItems] = useState([]);
-  const [unreadCount, setUnreadCount] = useState(0);
-  const [loading, setLoading] = useState(Boolean(options?.autoload !== false));
+  const enabled = options?.enabled !== false;
+  const limit = options?.limit || 50;
+  const cacheKey = buildInboxCacheKey(module, limit);
 
-  const fetchInbox = useCallback(async () => {
-    if (!module) return;
+  const [items, setItems] = useState(() => inboxSharedCache.get(cacheKey)?.items || []);
+  const [unreadCount, setUnreadCount] = useState(
+    () => inboxSharedCache.get(cacheKey)?.unreadCount || 0,
+  );
+  const [loading, setLoading] = useState(
+    () => enabled && options?.autoload !== false && !inboxSharedCache.has(cacheKey),
+  );
 
-    if (!isModuleAuthenticated(module)) {
-      setItems([]);
-      setUnreadCount(0);
-      setLoading(false);
-      return;
-    }
+  const fetchInbox = useCallback(
+    async ({ force = false } = {}) => {
+      if (!module || !enabled) {
+        setItems([]);
+        setUnreadCount(0);
+        setLoading(false);
+        return;
+      }
 
-    try {
-      setLoading(true);
-      const response = await notificationAPI.getInbox(
-        { page: 1, limit: options?.limit || 50 },
-        { contextModule: module }
-      );
-      const payload = response?.data?.data || {};
-      setItems(normalizeInboxItems(payload?.items));
-      setUnreadCount(Number(payload?.unreadCount || 0));
-    } catch {
-      setItems([]);
-      setUnreadCount(0);
-    } finally {
-      setLoading(false);
-    }
-  }, [module, options?.limit]);
+      if (!isModuleAuthenticated(module)) {
+        setItems([]);
+        setUnreadCount(0);
+        setLoading(false);
+        return;
+      }
+
+      const cached = inboxSharedCache.get(cacheKey);
+      const isFresh =
+        cached && Date.now() - (cached.fetchedAt || 0) < INBOX_MIN_FETCH_MS;
+
+      if (!force && isFresh) {
+        setItems(cached.items || []);
+        setUnreadCount(Number(cached.unreadCount || 0));
+        setLoading(false);
+        return;
+      }
+
+      if (!force && inboxInflight.has(cacheKey)) {
+        try {
+          const payload = await inboxInflight.get(cacheKey);
+          setItems(payload.items || []);
+          setUnreadCount(Number(payload.unreadCount || 0));
+        } catch {
+          /* ignore */
+        } finally {
+          setLoading(false);
+        }
+        return;
+      }
+
+      try {
+        if (!isFresh) setLoading(true);
+
+        const request = notificationAPI
+          .getInbox({ page: 1, limit }, { contextModule: module })
+          .then((response) => {
+            const payload = response?.data?.data || {};
+            const normalized = {
+              items: normalizeInboxItems(payload?.items),
+              unreadCount: Number(payload?.unreadCount || 0),
+              fetchedAt: Date.now(),
+            };
+            inboxSharedCache.set(cacheKey, normalized);
+            return normalized;
+          })
+          .finally(() => {
+            inboxInflight.delete(cacheKey);
+          });
+
+        inboxInflight.set(cacheKey, request);
+        const payload = await request;
+        setItems(payload.items);
+        setUnreadCount(payload.unreadCount);
+      } catch {
+        setItems([]);
+        setUnreadCount(0);
+      } finally {
+        setLoading(false);
+      }
+    },
+    [cacheKey, enabled, limit, module],
+  );
 
   useEffect(() => {
-    if (options?.autoload === false || !module) return;
+    if (!enabled || options?.autoload === false || !module) return;
     fetchInbox();
-  }, [fetchInbox, module, options?.autoload]);
+  }, [enabled, fetchInbox, module, options?.autoload]);
 
   useEffect(() => {
     if (typeof window === "undefined") return undefined;
     const handler = () => {
-      fetchInbox();
+      fetchInbox({ force: true });
     };
     window.addEventListener(REFRESH_EVENT, handler);
     return () => window.removeEventListener(REFRESH_EVENT, handler);
@@ -69,27 +131,37 @@ export default function useNotificationInbox(module, options = {}) {
 
   useEffect(() => {
     const pollMs = Number(options?.pollMs || 0);
-    if (!pollMs || pollMs < 1000 || !module) return undefined;
+    if (!enabled || !pollMs || pollMs < 1000 || !module) return undefined;
     const timer = window.setInterval(() => {
       fetchInbox();
     }, pollMs);
     return () => window.clearInterval(timer);
-  }, [fetchInbox, module, options?.pollMs]);
+  }, [enabled, fetchInbox, module, options?.pollMs]);
 
   const markAsRead = useCallback(
     async (id) => {
       if (!id || !module) return;
       setItems((prev) =>
-        prev.map((item) => (item.id === id ? { ...item, read: true } : item))
+        prev.map((item) => (item.id === id ? { ...item, read: true } : item)),
       );
       setUnreadCount((prev) => Math.max(0, prev - 1));
       try {
         await notificationAPI.markAsRead(id, { contextModule: module });
+        const cached = inboxSharedCache.get(cacheKey);
+        if (cached) {
+          inboxSharedCache.set(cacheKey, {
+            ...cached,
+            items: cached.items.map((item) =>
+              item.id === id ? { ...item, read: true } : item,
+            ),
+            unreadCount: Math.max(0, Number(cached.unreadCount || 0) - 1),
+          });
+        }
       } catch {
-        fetchInbox();
+        fetchInbox({ force: true });
       }
     },
-    [fetchInbox, module]
+    [cacheKey, fetchInbox, module],
   );
 
   const dismiss = useCallback(
@@ -102,11 +174,12 @@ export default function useNotificationInbox(module, options = {}) {
       }
       try {
         await notificationAPI.dismiss(id, { contextModule: module });
+        fetchInbox({ force: true });
       } catch {
-        fetchInbox();
+        fetchInbox({ force: true });
       }
     },
-    [fetchInbox, items, module]
+    [fetchInbox, items, module],
   );
 
   const dismissAll = useCallback(async () => {
@@ -115,21 +188,22 @@ export default function useNotificationInbox(module, options = {}) {
     setUnreadCount(0);
     try {
       await notificationAPI.dismissAll({ contextModule: module });
+      inboxSharedCache.delete(cacheKey);
     } catch {
-      fetchInbox();
+      fetchInbox({ force: true });
     }
-  }, [fetchInbox, module]);
+  }, [cacheKey, fetchInbox, module]);
 
   return useMemo(
     () => ({
       items,
       unreadCount,
       loading,
-      refresh: fetchInbox,
+      refresh: () => fetchInbox({ force: true }),
       markAsRead,
       dismiss,
       dismissAll,
     }),
-    [dismiss, dismissAll, fetchInbox, items, loading, markAsRead, unreadCount]
+    [dismiss, dismissAll, fetchInbox, items, loading, markAsRead, unreadCount],
   );
 }

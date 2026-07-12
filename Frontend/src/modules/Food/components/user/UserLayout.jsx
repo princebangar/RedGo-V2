@@ -22,6 +22,9 @@ import OutOfZoneScreen from "./OutOfZoneScreen"
 import { isModuleAuthenticated } from "../../utils/auth"
 import { AppShellSkeleton } from "@food/components/ui/loading-skeletons"
 import LoginRequiredModal from "./LoginRequiredModal"
+import MainTabKeepAlive from "./MainTabKeepAlive"
+import { getMainTabFromPath, isExactMainTabPath, rememberMainTabBeforeProfile } from "@food/utils/mainTabRoutes"
+import { registerFoodPageCacheLifecycle } from "@food/utils/foodPageCache"
 
 // Sync orderType with route
 function RouteSyncHandler() {
@@ -293,8 +296,6 @@ function UserLayoutContent() {
     }
 
     if (isZoneLoading || isGeoLoading || isProfileLoading) {
-      const hasLocationData = activeLocation?.latitude && activeLocation?.longitude;
-      const hasZoneData = zoneStatus && zoneStatus !== "loading";
       // ONLY show global overlay for truly manual location updates (user explicitly changed location)
       // Never block the page for silent background GPS refreshes
       const isManualUpdate = sessionStorage.getItem("manual_location_update") === "true";
@@ -328,26 +329,31 @@ function UserLayoutContent() {
   }, []);
 
   useEffect(() => {
+    registerFoodPageCacheLifecycle();
+  }, []);
+
+  const activeMainTab = getMainTabFromPath(location.pathname);
+
+  useEffect(() => {
+    if (activeMainTab && activeMainTab !== "profile") {
+      rememberMainTabBeforeProfile(activeMainTab);
+    }
+  }, [activeMainTab]);
+
+  useEffect(() => {
     const rootPaths = ["/", "/user", "/food", "/dining", "/user/dining", "/takeaway", "/user/takeaway"];
     const isAtRoot = rootPaths.includes(location.pathname);
-    
+
+    // Main tab switches restore scroll via MainTabKeepAlive — don't reset here.
+    if (isExactMainTabPath(location.pathname)) return;
+
     if (navigationType !== 'POP' && !isAtRoot && !location.pathname.includes('/search')) {
       window.scrollTo({ top: 0, left: 0, behavior: 'instant' });
     }
   }, [location.pathname, location.search, location.hash, navigationType]);
 
-  const isProfileRoot = normalizedPath === "/profile" || normalizedPath === "/user/profile"
-
-  const showBottomNav = !isInitialChecking && (normalizedPath === "/" ||
-    normalizedPath === "/user" ||
-    normalizedPath === "/dining" ||
-    normalizedPath === "/user/dining" ||
-    normalizedPath === "/takeaway" ||
-    normalizedPath === "/user/takeaway" ||
-    normalizedPath === "/under-250" ||
-    normalizedPath === "/user/under-250" ||
-    isProfileRoot ||
-    normalizedPath === "")
+  // Exact main tabs only (includes /home + /user/home). Do not broaden beyond mainTabRoutes.
+  const showBottomNav = !isInitialChecking && isExactMainTabPath(location.pathname)
 
   const isUnder250 = normalizedPath === "/under-250" || normalizedPath === "/user/under-250"
   const lastOutOfZoneRef = useRef(isOutOfZone)
@@ -427,7 +433,11 @@ function UserLayoutContent() {
         />
       ) : (
         <main className={`${showBottomNav ? "md:pt-40" : ""} min-h-screen flex flex-col`}>
-          <Outlet />
+          {activeMainTab ? (
+            <MainTabKeepAlive activeTab={activeMainTab} />
+          ) : (
+            <Outlet />
+          )}
         </main>
       )}
 

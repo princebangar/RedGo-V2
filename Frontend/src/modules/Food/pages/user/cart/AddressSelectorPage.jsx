@@ -107,7 +107,7 @@ const showAddressRemovedBrandedToast = () => {
 export default function AddressSelectorPage() {
   const navigate = useNavigate()
   const goBack = useAppBackNavigation()
-  const { location, loading, requestLocation } = useGeoLocation()
+  const { location, loading, requestLocation, requestLocationFast } = useGeoLocation()
   const { addresses = [], addAddress, updateAddress, deleteAddress, setDefaultAddress, userProfile, isAuthenticated, loading: profileLoading } = useProfile()
   const [showAddressForm, setShowAddressForm] = useState(false)
   const [editingAddressId, setEditingAddressId] = useState(null)
@@ -251,26 +251,27 @@ export default function AddressSelectorPage() {
     return () => { cancelled = true }
   }, [])
 
-  // Refresh GPS + subtitle when address selector opens (once per visit)
+  // Instant: reuse location Home already has. Do NOT call requestLocation() on open
+  // (that clears cache + force-fresh GPS and feels slow). Explicit "Use current location" still refreshes.
   useEffect(() => {
-    let cancelled = false
-    ;(async () => {
-      try {
-        const loc = await requestLocation()
-        if (!cancelled && loc) {
-          const formatted = loc.formattedAddress || loc.address || ""
-          if (formatted) setCurrentAddress(formatted)
-          if (Number.isFinite(loc.latitude) && Number.isFinite(loc.longitude)) {
-            const coords = [loc.latitude, loc.longitude]
-            setMapPosition(coords)
-            initialMapCenterRef.current = coords
-          }
-        }
-      } catch {
-        // Keep showing last known address if GPS fails
+    const applyLoc = (loc) => {
+      if (!loc) return
+      const formatted = loc.formattedAddress || loc.address || ""
+      if (formatted) setCurrentAddress(formatted)
+      if (Number.isFinite(Number(loc.latitude)) && Number.isFinite(Number(loc.longitude))) {
+        const coords = [Number(loc.latitude), Number(loc.longitude)]
+        setMapPosition(coords)
+        initialMapCenterRef.current = coords
       }
-    })()
-    return () => { cancelled = true }
+    }
+
+    applyLoc(location)
+    try {
+      const stored = localStorage.getItem("userLocation")
+      if (stored) applyLoc(JSON.parse(stored))
+    } catch {
+      /* ignore */
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
@@ -418,15 +419,17 @@ export default function AddressSelectorPage() {
   const handleUseCurrentLocation = async () => {
     try {
       setIsFetchingLocationState(true)
-      
-      // Fetch fresh location via requestLocation (which now dispatches userLocationUpdated on success)
-      const loc = await requestLocation()
-      
+
+      // Fast GPS + single geocode (no cache clear / no global loader)
+      const loc =
+        typeof requestLocationFast === "function"
+          ? await requestLocationFast()
+          : await requestLocation()
+
       if (loc) {
         sessionStorage.setItem("manual_location_update", "true")
         localStorage.setItem("deliveryAddressMode", "current")
         window.dispatchEvent(new CustomEvent("userLocationUpdated"))
-        // Go back instantly after successful location lock!
         handleBack()
       } else {
         setIsFetchingLocationState(false)

@@ -1,7 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Utensils, Soup, Leaf, Sparkles } from 'lucide-react';
-import quickSpicyLogo from "@food/assets/quicky-spicy-logo.png";
+import { Utensils, Soup } from 'lucide-react';
 
 // Images for different modes - Extended pool for rotation
 const images = {
@@ -21,10 +20,26 @@ const images = {
   ]
 };
 
+const preloadedFestPools = new Set();
+function preloadFestPool(pool, poolKey) {
+  if (!pool?.length || preloadedFestPools.has(poolKey)) return;
+  preloadedFestPools.add(poolKey);
+  pool.forEach((src) => {
+    const img = new Image();
+    img.decoding = "async";
+    img.src = src;
+  });
+}
+
 export default function FestBanner({ isVegMode, videoUrl = "", hideFoodImages = false }) {
   const [imgIndex, setImgIndex] = useState(0);
   const currentPool = isVegMode ? images.veg : images.nonVeg;
+  const poolKey = isVegMode ? "veg" : "nonVeg";
   const hasVideo = typeof videoUrl === "string" && videoUrl.trim().length > 0;
+
+  useEffect(() => {
+    preloadFestPool(currentPool, poolKey);
+  }, [currentPool, poolKey]);
   
   // Dynamic rotation
   useEffect(() => {
@@ -128,6 +143,15 @@ export default function FestBanner({ isVegMode, videoUrl = "", hideFoodImages = 
           <div className="h-28 sm:h-36" />
         ) : (
           <div className="flex items-end justify-center gap-5 sm:gap-8 pt-10 relative w-full mb-2">
+            <div
+              aria-hidden
+              className="pointer-events-none absolute w-px h-px overflow-hidden opacity-0"
+            >
+              {currentPool.map((src) => (
+                <img key={src} src={src} alt="" decoding="async" />
+              ))}
+            </div>
+
             <div className={`absolute bottom-4 left-1/2 -translate-x-1/2 w-56 h-12 blur-[45px] rounded-full transition-colors duration-700 ${isVegMode ? 'bg-emerald-500/40' : 'bg-yellow-400/40'}`} />
             
             <AnimatePresence mode="popLayout" initial={false}>
@@ -149,7 +173,7 @@ export default function FestBanner({ isVegMode, videoUrl = "", hideFoodImages = 
                 }}
                 style={{ willChange: 'transform, opacity', backfaceVisibility: 'hidden', transform: 'translateZ(0)' }}
               >
-                <img src={displayImages[0]} alt="food" className="w-full h-full object-cover rounded-2xl border-[3px] border-white shadow-2xl rotate-12" />
+                <img src={displayImages[0]} alt="food" decoding="async" loading="eager" className="w-full h-full object-cover rounded-2xl border-[3px] border-white shadow-2xl rotate-12" />
               </motion.div>
 
               <motion.div 
@@ -171,7 +195,7 @@ export default function FestBanner({ isVegMode, videoUrl = "", hideFoodImages = 
               >
                 <div className="relative h-full w-full">
                   <div className={`absolute -inset-2.5 blur-3xl rounded-full animate-pulse transition-colors duration-700 ${isVegMode ? 'bg-white/40' : 'bg-yellow-400/40'}`} />
-                  <img src={displayImages[1]} alt="food" className="relative w-full h-full object-cover rounded-[2.5rem] border-[4px] border-white shadow-[0_22px_55px_rgba(0,0,0,0.4)]" />
+                  <img src={displayImages[1]} alt="food" decoding="async" loading="eager" className="relative w-full h-full object-cover rounded-[2.5rem] border-[4px] border-white shadow-[0_22px_55px_rgba(0,0,0,0.4)]" />
                 </div>
               </motion.div>
 
@@ -193,7 +217,7 @@ export default function FestBanner({ isVegMode, videoUrl = "", hideFoodImages = 
                 }}
                 style={{ willChange: 'transform, opacity', backfaceVisibility: 'hidden', transform: 'translateZ(0)' }}
               >
-                <img src={displayImages[2]} alt="food" className="w-full h-full object-cover rounded-2xl border-[3px] border-white shadow-2xl -rotate-12 bg-white" />
+                <img src={displayImages[2]} alt="food" decoding="async" loading="eager" className="w-full h-full object-cover rounded-2xl border-[3px] border-white shadow-2xl -rotate-12 bg-white" />
               </motion.div>
             </AnimatePresence>
           </div>

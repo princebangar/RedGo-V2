@@ -63,7 +63,7 @@ export default function ShowIdCardV2() {
   const getProfileImageUrl = () => {
     if (profileData?.profileImage?.url) return profileData.profileImage.url;
     if (profileData?.documents?.photo) return profileData.documents.photo;
-    return "/profile_avatar.png";
+    return "/profile_avatar.webp";
   };
 
   // Get vehicle display text
@@ -131,7 +131,7 @@ export default function ShowIdCardV2() {
                 alt={idCardData.name}
                 className="w-36 h-36 rounded-full object-cover border-4 border-gray-100"
                 onError={(e) => {
-                  e.target.src = "/profile_avatar.png";
+                  e.target.src = "/profile_avatar.webp";
                 }}
               />
             </div>

@@ -2330,6 +2330,23 @@ export const zoneAPI = {
   getPublicZones: (params = {}, config = {}) =>
     apiClient.get("/food/zones/public", { params: params ?? {}, ...config }),
 };
+
+/** Public geocode proxies — Google API key stays on the backend. */
+export const geocodeAPI = {
+  reverse: (lat, lng, params = {}, config = {}) =>
+    apiClient.get("/food/geocode/reverse", {
+      params: { lat, lng, ...params },
+      ...config,
+    }),
+  place: (placeId, config = {}) =>
+    apiClient.get("/food/geocode/place", {
+      params: { place_id: placeId },
+      ...config,
+    }),
+  nearby: (body, config = {}) => apiClient.post("/food/geocode/nearby", body, config),
+  textSearch: (body, config = {}) =>
+    apiClient.post("/food/geocode/text-search", body, config),
+};
 export const uploadAPI = {
   /**
    * Upload a single image file to the backend (Cloudinary-backed).

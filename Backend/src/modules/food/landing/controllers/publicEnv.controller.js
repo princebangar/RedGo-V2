@@ -8,15 +8,13 @@ const sanitize = (value) => (value ? String(value).trim().replace(/^['"]|['"]$/g
  */
 export const getPublicEnvController = async (_req, res, next) => {
     try {
-        const googleMapsKey =
-            sanitize(process.env.VITE_GOOGLE_MAPS_API_KEY) ||
-            sanitize(process.env.GOOGLE_MAPS_API_KEY);
-
+        // Do NOT expose Google Maps server/geocode key here.
+        // Maps JS (browser) still uses VITE_GOOGLE_MAPS_API_KEY from frontend env + HTTP referrer restrictions.
         return res.status(200).json({
             success: true,
             message: 'Public environment variables fetched',
             data: {
-                VITE_GOOGLE_MAPS_API_KEY: googleMapsKey || '',
+                VITE_GOOGLE_MAPS_API_KEY: '',
                 VITE_FIREBASE_API_KEY: sanitize(process.env.VITE_FIREBASE_API_KEY) || '',
                 VITE_FIREBASE_AUTH_DOMAIN: sanitize(process.env.VITE_FIREBASE_AUTH_DOMAIN) || '',
                 VITE_FIREBASE_PROJECT_ID: sanitize(process.env.VITE_FIREBASE_PROJECT_ID) || '',

@@ -16,12 +16,19 @@ export default function DeliverySignIn() {
 
   // Step 1 States
   const [phone, setPhone] = useState(() => {
-    const stored = sessionStorage.getItem("deliveryAuthData")
-    if (stored) {
-      try {
+    try {
+      if (sessionStorage.getItem("deliveryClearLoginPhone") === "1") {
+        sessionStorage.removeItem("deliveryClearLoginPhone")
+        sessionStorage.removeItem("deliveryAuthData")
+        return ""
+      }
+      const stored = sessionStorage.getItem("deliveryAuthData")
+      if (stored) {
         const data = JSON.parse(stored)
         return data.phone ? data.phone.replace("+91", "").trim() : ""
-      } catch (e) { return "" }
+      }
+    } catch (e) {
+      return ""
     }
     return ""
   })
@@ -54,6 +61,16 @@ export default function DeliverySignIn() {
   const focusKeeperRef = useRef(null)
   const keyboardPrimedRef = useRef(false)
   const [instantAuthTransition, setInstantAuthTransition] = useState(false)
+
+  const clearPersistedLoginPhone = () => {
+    try {
+      sessionStorage.removeItem("deliveryAuthData")
+      sessionStorage.setItem("deliveryClearLoginPhone", "1")
+    } catch {
+      // ignore
+    }
+    setPhone("")
+  }
 
   const getBlockKey = (phoneStr) => {
     const clean = phoneStr?.replace(/\D/g, "") || ""
@@ -992,11 +1009,32 @@ export default function DeliverySignIn() {
             <div className="mt-8 text-center">
               <p className="text-[11px] text-gray-400/80 font-medium leading-relaxed max-w-[320px] mx-auto">
                 By continuing, you agree to our <br />
-                <Link to="/food/delivery/terms" className="text-gray-400 hover:text-[#0E4B9C] transition-colors uppercase tracking-wider font-semibold">TERMS</Link>
+                <Link
+                  to="/food/delivery/terms"
+                  state={{ from: "/food/delivery/login" }}
+                  onClick={clearPersistedLoginPhone}
+                  className="text-gray-400 hover:text-[#0E4B9C] transition-colors uppercase tracking-wider font-semibold"
+                >
+                  TERMS
+                </Link>
                 <span className="mx-2 text-gray-400/80 font-bold">•</span>
-                <Link to="/food/delivery/privacy" className="text-gray-400 hover:text-[#0E4B9C] transition-colors uppercase tracking-wider font-semibold">PRIVACY</Link>
+                <Link
+                  to="/food/delivery/privacy"
+                  state={{ from: "/food/delivery/login" }}
+                  onClick={clearPersistedLoginPhone}
+                  className="text-gray-400 hover:text-[#0E4B9C] transition-colors uppercase tracking-wider font-semibold"
+                >
+                  PRIVACY
+                </Link>
                 <span className="mx-2 text-gray-400/80 font-bold">•</span>
-                <Link to="/food/delivery/help/content" className="text-gray-400 hover:text-[#0E4B9C] transition-colors uppercase tracking-wider font-semibold">SUPPORT</Link>
+                <Link
+                  to="/food/delivery/help/content"
+                  state={{ from: "/food/delivery/login" }}
+                  onClick={clearPersistedLoginPhone}
+                  className="text-gray-400 hover:text-[#0E4B9C] transition-colors uppercase tracking-wider font-semibold"
+                >
+                  SUPPORT
+                </Link>
               </p>
             </div>
           )}

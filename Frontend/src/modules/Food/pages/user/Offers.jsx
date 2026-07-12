@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react"
+import { useState, useEffect, useMemo } from "react"
 import { Link, useNavigate } from "react-router-dom"
 import { ArrowLeft, Star, Clock } from "lucide-react"
 import { Button } from "@food/components/ui/button"
@@ -8,6 +8,11 @@ import useAppBackNavigation from "@food/hooks/useAppBackNavigation"
 import { toast } from "sonner"
 import { RestaurantGridSkeleton } from "@food/components/ui/loading-skeletons"
 import { useDelayedLoading } from "@food/hooks/useDelayedLoading"
+import { useProfile } from "@food/context/ProfileContext"
+import {
+  filterDishesForVegMode,
+  matchesVegRestaurantFilter,
+} from "@food/utils/vegMode"
 
 // Import banner image
 import offerBanner from "../../assets/offerpagebanner.svg"
@@ -24,6 +29,28 @@ export default function Offers() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
   const showOffersSkeleton = useDelayedLoading(loading)
+  const { vegMode, vegModeOption } = useProfile()
+
+  const visibleGroupedOffers = useMemo(() => {
+    const entries = Object.entries(groupedOffers || {})
+    if (!vegMode) return entries
+
+    return entries
+      .map(([offerText, dishes]) => {
+        const filtered = filterDishesForVegMode(dishes || [], vegMode).filter((dish) =>
+          matchesVegRestaurantFilter(
+            {
+              pureVegRestaurant: dish?.pureVegRestaurant,
+              hasNonVegMenu: dish?.hasNonVegMenu,
+              isPureVeg: dish?.isPureVeg,
+            },
+            { vegMode, vegModeOption },
+          ),
+        )
+        return [offerText, filtered]
+      })
+      .filter(([, dishes]) => dishes.length > 0)
+  }, [groupedOffers, vegMode, vegModeOption])
 
   // Fetch offers from API
   useEffect(() => {
@@ -92,7 +119,7 @@ export default function Offers() {
         {!showOffersSkeleton && !error && (
           <>
             {/* Grouped Offers Sections */}
-            {Object.keys(groupedOffers).length > 0 && Object.entries(groupedOffers).map(([offerText, dishes]) => (
+            {visibleGroupedOffers.length > 0 && visibleGroupedOffers.map(([offerText, dishes]) => (
               <section key={offerText}>
                 <h2 className="text-2xl sm:text-3xl font-black text-red-500 dark:text-red-400 text-center mb-4 tracking-wide">
                   {offerText}
@@ -149,7 +176,7 @@ export default function Offers() {
             ))}
 
             {/* Coupon-style offers (admin created) */}
-            {Object.keys(groupedOffers).length === 0 && offers.length > 0 && (
+            {visibleGroupedOffers.length === 0 && offers.length > 0 && (
               <section className="space-y-4">
                 <h2 className="text-xl sm:text-2xl font-bold text-gray-900 dark:text-gray-100">
                   Available Coupons

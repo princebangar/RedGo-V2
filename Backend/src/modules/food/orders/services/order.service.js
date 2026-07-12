@@ -392,11 +392,10 @@ export async function createOrder(userId, dto) {
     await notifyOwnersSafely([{ ownerType: "USER", ownerId: userId }], {
       title: isAwaitingOnlinePayment
         ? "Complete Payment to Confirm Order"
-        : "Order Confirmed! 🍔",
+        : "Order Confirmed!",
       body: isAwaitingOnlinePayment
         ? `Order #${order.order_id || order._id} is created. Please complete payment to send it to ${restaurant.restaurantName || "the restaurant"}.`
         : `Your order #${order.order_id || order._id} from ${restaurant.restaurantName || "the restaurant"} has been placed successfully.`,
-      image: "https://i.ibb.co/3m2Yh7r/Appzeto-Brand-Image.png",
       data: {
         type: isAwaitingOnlinePayment
           ? "order_created_pending_payment"
@@ -501,13 +500,13 @@ export async function verifyPayment(userId, dto) {
 
   // Notify Customer about payment success
   await notifyOwnersSafely([{ ownerType: "USER", ownerId: userId }], {
-    title: "Payment Successful! ✅",
+    title: "Payment Successful",
     body: `We have received your payment of ₹${order.payment.amountDue} for Order #${order._id.toString()}.`,
-    image: "https://i.ibb.co/3m2Yh7r/Appzeto-Brand-Image.png",
     data: {
       type: "payment_success",
       orderId: String(order._id.toString()),
       orderMongoId: String(order._id),
+      link: `/food/user/orders/${order._id?.toString?.() || ""}`,
     },
   });
 
@@ -936,13 +935,13 @@ export async function cancelOrder(orderId, userId, reason, refundDestination = "
       { ownerType: "RESTAURANT", ownerId: order.restaurantId },
     ],
     {
-      title: "Order Cancelled ❌",
+      title: "Order Cancelled",
       body: `Order #${order.order_id || order._id} has been cancelled successfully.${refundDetail}`,
-      image: "https://i.ibb.co/3m2Yh7r/Appzeto-Brand-Image.png",
       data: {
         type: "order_cancelled",
         orderId: String(order._id.toString()),
         orderMongoId: String(order._id),
+        link: `/food/user/orders/${order._id?.toString?.() || ""}`,
       },
     },
   );
@@ -1153,33 +1152,33 @@ export async function updateOrderStatusRestaurant(
 
   if (orderStatus === "confirmed") {
     if (isTakeawayOrder) {
-      title = "Order Accepted! ✅ Get Ready to Pick Up";
-      body = `Great news! ${restaurantNameStr} has accepted your takeaway order #${orderDisplayId}. Your food will be ready for pickup in approximately 20–30 minutes. We'll notify you the moment it's ready! 🍱`;
+      title = "Order Accepted — Get Ready to Pick Up";
+      body = `Great news! ${restaurantNameStr} has accepted your takeaway order #${orderDisplayId}. Your food will be ready for pickup in approximately 20–30 minutes. We'll notify you the moment it's ready.`;
     } else {
-      title = "Order Accepted! 🧑‍🍳";
+      title = "Order Accepted!";
       body = `${restaurantNameStr} has accepted your order #${orderDisplayId} and is starting to prepare it. Estimated delivery time: 30–45 minutes.`;
     }
   } else if (orderStatus === "preparing") {
     if (isTakeawayOrder) {
-      title = "Your Food is Being Prepared! 🍳";
-      body = `${restaurantNameStr} is now preparing your takeaway order #${orderDisplayId}. We'll ping you as soon as it's ready for pickup!`;
+      title = "Your Food is Being Prepared";
+      body = `${restaurantNameStr} is now preparing your takeaway order #${orderDisplayId}. We'll ping you as soon as it's ready for pickup.`;
     } else {
-      title = "Food is being prepared! 🍳";
+      title = "Food is being prepared";
       body = "Your food is currently being prepared by the restaurant.";
     }
   } else if (orderStatus === "ready_for_pickup") {
     if (isTakeawayOrder) {
-      title = "🎉 Your Order is Ready for Pickup!";
-      body = `Your takeaway order #${orderDisplayId} from ${restaurantNameStr} is ready! Please head to the restaurant and show your Order ID at the counter. Fresh food awaits you — don't keep it waiting! 🍽️`;
+      title = "Your Order is Ready for Pickup";
+      body = `Your takeaway order #${orderDisplayId} from ${restaurantNameStr} is ready! Please head to the restaurant and show your Order ID at the counter.`;
     } else {
-      title = "Food is ready! 🛍️";
-      body = `Your order #${orderDisplayId} is packed and ready. Your delivery partner will pick it up shortly!`;
+      title = "Food is ready";
+      body = `Your order #${orderDisplayId} is packed and ready. Your delivery partner will pick it up shortly.`;
     }
   } else if (String(orderStatus).includes("cancel")) {
     const isOnlinePaid = order.payment.method === "razorpay" && (order.payment.status === "paid" || order.payment.status === "refunded");
     const refundDetail = isOnlinePaid ? ` Your refund of ₹${order.pricing.total} is being processed and will be credited to your original payment method within 5-7 working days.` : "";
     
-    title = "Order Cancelled ❌";
+    title = "Order Cancelled";
     body = `Unfortunately, your order has been cancelled by the restaurant.${refundDetail}`;
   }
 
@@ -1248,7 +1247,6 @@ export async function updateOrderStatusRestaurant(
       {
         title: title,
         body: body,
-        image: "https://i.ibb.co/3m2Yh7r/Appzeto-Brand-Image.png",
         data: {
           type: "order_status_update",
           orderId: order._id.toString(),
@@ -1813,7 +1811,7 @@ export async function completeTakeawayOrderRestaurant(orderId, restaurantId, otp
         orderMongoId: order._id?.toString?.(),
         orderId: order.order_id || order._id.toString(),
         orderStatus: "delivered",
-        title: "Takeaway Order Picked Up! 🎉",
+        title: "Takeaway Order Picked Up",
         message: "You have picked up your order successfully. Enjoy your meal!",
       };
       io.to(rooms.restaurant(restaurantId)).emit("order_status_update", payload);
@@ -1826,9 +1824,8 @@ export async function completeTakeawayOrderRestaurant(orderId, restaurantId, otp
         { ownerType: "RESTAURANT", ownerId: restaurantId },
       ],
       {
-        title: "Takeaway Order Picked Up! 🎉",
+        title: "Takeaway Order Picked Up",
         body: "Your order has been picked up and marked as completed.",
-        image: "https://i.ibb.co/3m2Yh7r/Appzeto-Brand-Image.png",
         data: {
           type: "order_status_update",
           orderId: order._id.toString(),
@@ -1905,7 +1902,7 @@ export async function acceptOrderAdmin(orderId, adminId) {
         _id: order._id.toString(),
         orderStatus: order.orderStatus,
         status: order.orderStatus,
-        title: "Order Confirmed! 🍔",
+        title: "Order Confirmed!",
         message: `Your order has been confirmed and is being prepared.`,
       };
       io.to(rooms.restaurant(order.restaurantId)).emit("order_status_update", restaurantPayload);

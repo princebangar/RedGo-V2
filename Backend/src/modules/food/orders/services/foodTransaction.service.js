@@ -3,6 +3,8 @@ import { FoodRestaurantCommission } from '../../admin/models/restaurantCommissio
 import mongoose from 'mongoose';
 
 const RESTAURANT_COMMISSION_CACHE_MS = 60 * 1000;
+/** Platform fallback when a restaurant has no commission rule configured */
+export const DEFAULT_RESTAURANT_COMMISSION_PERCENT = 18;
 let restaurantCommissionRulesCache = null;
 let restaurantCommissionRulesLoadedAt = 0;
 
@@ -56,7 +58,7 @@ export async function getRestaurantCommissionSnapshot(orderDoc) {
     return {
       commissionAmount: 0,
       commissionType: 'percentage',
-      commissionValue: 0,
+      commissionValue: DEFAULT_RESTAURANT_COMMISSION_PERCENT,
       baseAmount,
     };
   }
@@ -69,12 +71,12 @@ export async function getRestaurantCommissionSnapshot(orderDoc) {
     null;
 
   if (!rule) {
-    return {
-      commissionAmount: 0,
-      commissionType: 'percentage',
-      commissionValue: 0,
-      baseAmount,
-    };
+    return computeRestaurantCommissionAmount(baseAmount, {
+      defaultCommission: {
+        type: 'percentage',
+        value: DEFAULT_RESTAURANT_COMMISSION_PERCENT,
+      },
+    });
   }
 
   return computeRestaurantCommissionAmount(baseAmount, rule);

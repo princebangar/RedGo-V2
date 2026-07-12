@@ -376,7 +376,7 @@ export async function getRestaurants(query) {
             .sort({ createdAt: -1 })
             .skip(skip)
             .limit(limit)
-            .select('restaurantName location area city profileImage coverImages status ownerName ownerPhone zoneId rating totalRatings')
+            .select('restaurantName location area city profileImage coverImages status ownerName ownerPhone zoneId rating totalRatings pureVegRestaurant')
             .populate('zoneId', 'name zoneName')
             .lean(),
         FoodRestaurant.countDocuments(filter)
@@ -1797,7 +1797,7 @@ export async function getRestaurantCommissions() {
                 restaurantId: toRestaurantDisplayId(mongoRestaurantId),
             }
             : null,
-        defaultCommission: c.defaultCommission || { type: 'percentage', value: 0 },
+        defaultCommission: c.defaultCommission || { type: 'percentage', value: 18 },
         notes: c.notes || '',
         status: c.status !== false
     };
@@ -1847,7 +1847,7 @@ export async function getRestaurantCommissionById(id) {
             }
             : null,
         restaurantName: doc.restaurantId?.restaurantName || '',
-        defaultCommission: doc.defaultCommission || { type: 'percentage', value: 0 },
+        defaultCommission: doc.defaultCommission || { type: 'percentage', value: 18 },
         notes: doc.notes || '',
         status: doc.status !== false
     };
@@ -1860,7 +1860,7 @@ export async function createRestaurantCommission(body) {
     }
     const created = await FoodRestaurantCommission.create({
         restaurantId: body.restaurantId,
-        defaultCommission: body.defaultCommission,
+        defaultCommission: body.defaultCommission || { type: 'percentage', value: 18 },
         notes: body.notes || '',
         status: true
     });
@@ -3531,6 +3531,8 @@ export async function createFood(body) {
         throw new ValidationError('Pure veg restaurants can only use veg foods');
     }
     const { price, variants } = getAdminFoodCreatePricing(body);
+    const image = typeof body.image === 'string' ? body.image.trim() : '';
+    if (!image) throw new ValidationError('Food image is required');
 
     let categoryName = typeof body.categoryName === 'string' ? body.categoryName.trim() : '';
     if (!categoryName && typeof body.category === 'string') categoryName = body.category.trim();
@@ -3553,7 +3555,7 @@ export async function createFood(body) {
             ? Number(body.otherPlatformGst)
             : null,
         variants,
-        image: typeof body.image === 'string' ? body.image.trim() : '',
+        image,
         foodType,
         isAvailable: body.isAvailable !== false,
         isRecommended: body.isRecommended === true,
@@ -3589,7 +3591,13 @@ export async function updateFood(id, body) {
             ? Number(body.otherPlatformGst)
             : null;
     }
-    if (body.image !== undefined) doc.image = String(body.image || '').trim();
+    if (body.image !== undefined) {
+        const image = String(body.image || '').trim();
+        if (!image) throw new ValidationError('Food image is required');
+        doc.image = image;
+    } else if (!String(doc.image || '').trim()) {
+        throw new ValidationError('Food image is required');
+    }
     if (body.foodType !== undefined) doc.foodType = targetFoodType;
     if (body.isAvailable !== undefined) doc.isAvailable = body.isAvailable !== false;
     if (body.isRecommended !== undefined) doc.isRecommended = body.isRecommended === true;

@@ -23,12 +23,6 @@ const OWNER_TOKEN_FIELDS = {
     web: 'fcmTokens',
     mobile: 'fcmTokenMobile'
 };
-const OWNER_APP_PREFIXES = {
-    USER: '👤 [User]',
-    RESTAURANT: '🏪 [Shop]',
-    DELIVERY_PARTNER: '🛵 [Rider]',
-    ADMIN: '🛡️ [Admin]'
-};
 
 let cachedAccessToken = null;
 let cachedAccessTokenExpiryMs = 0;
@@ -141,21 +135,35 @@ const normalizeDataMap = (data = {}) => {
     return result;
 };
 
+const stripOwnerTitlePrefix = (title = '') =>
+    sanitizeString(title)
+        .replace(/^[👤🏪🛵🛡️]\s*/, '')
+        .replace(/^\[(User|Shop|Rider|Admin)\]\s*/i, '')
+        .trim();
+
 const buildMessagePayload = (payload = {}, token) => {
     const notification = {
-        title: sanitizeString(payload.title || payload.notification?.title || 'New notification'),
+        title:
+            stripOwnerTitlePrefix(payload.title || payload.notification?.title) ||
+            'New notification',
         body: sanitizeString(payload.body || payload.notification?.body || '')
     };
-    const data = normalizeDataMap(payload.data || {});
+    const data = normalizeDataMap({
+        ...(payload.data || {}),
+        // Always mirror title/body in data so native/web handlers can show tray UI if needed
+        title: notification.title,
+        body: notification.body,
+    });
     const image =
         sanitizeString(payload.icon || payload.notification?.image || payload.notification?.icon || data.image || data.imageUrl);
 
-    // If payload.dataOnly is true, we omit the 'notification' block.
-    // This prevents FCM from auto-displaying while allowing app code to show a 'Local Notification'.
+    // dataOnly: omit system notification blocks so only an awake client can render local UI.
+    // For killed-app delivery (Android/iOS), callers must NOT set dataOnly.
     const message = { token };
+    const isDataOnly = payload.dataOnly === true;
 
-    if (!payload.dataOnly) {
-        message.notification = notification;
+    if (!isDataOnly) {
+        message.notification = { ...notification };
         if (image) {
             message.notification.image = image;
         }
@@ -167,39 +175,53 @@ const buildMessagePayload = (payload = {}, token) => {
 
     message.android = {
         priority: 'high',
-        notification: {
-            channel_id: 'default',
-            sound: 'default',
-            default_vibrate_timings: true,
-            default_light_settings: true
-        }
+        ...(isDataOnly
+            ? {}
+            : {
+                notification: {
+                    channel_id: 'default',
+                    sound: 'default',
+                    default_vibrate_timings: true,
+                    default_light_settings: true,
+                    ...(image ? { image } : {}),
+                },
+            }),
     };
 
     message.apns = {
         headers: {
-            'apns-priority': '10'
+            'apns-priority': isDataOnly ? '5' : '10',
+            ...(isDataOnly ? { 'apns-push-type': 'background' } : { 'apns-push-type': 'alert' }),
         },
         payload: {
-            aps: {
-                alert: {
-                    title: notification.title,
-                    body: notification.body
+            aps: isDataOnly
+                ? {
+                    'content-available': 1,
+                }
+                : {
+                    alert: {
+                        title: notification.title,
+                        body: notification.body,
+                    },
+                    sound: 'default',
+                    'content-available': 1,
                 },
-                sound: 'default'
-            }
-        }
+        },
     };
 
-    message.webpush = {
-        headers: {
-            Urgency: 'high'
-        },
-        notification: {
-            title: notification.title,
-            body: notification.body,
-            icon: image || payload.icon || '/favicon.ico'
-        }
-    };
+    if (!isDataOnly) {
+        message.webpush = {
+            headers: {
+                Urgency: 'high',
+            },
+            notification: {
+                title: notification.title,
+                body: notification.body,
+                icon: '/favicon.ico',
+                ...(image ? { image } : {}),
+            },
+        };
+    }
 
     return message;
 };
@@ -387,38 +409,39 @@ export const sendPushNotification = async (tokens, payload = {}) => {
 };
 
 export const sendNotificationToOwner = async ({ ownerType, ownerId, payload, platform } = {}) => {
-    // 💡 Clone the payload to avoid side-effects (e.g. adding multiple prefixes to the same object during broadcasting)
+    // Clone payload so broadcast loops don't mutate a shared object
     const enrichedPayload = { ...payload };
 
-    // 🏷️ Add Highlighter Prefix to the Title
-    if (enrichedPayload && !enrichedPayload.skipHighlighter) {
-        const typeKey = String(ownerType || '').toUpperCase();
-        const prefix = OWNER_APP_PREFIXES[typeKey] || '';
-
-        if (prefix) {
-            // Get original title from any potential field
-            let originalTitle = enrichedPayload.title || enrichedPayload.notification?.title || 'New notification';
-
-            // Safety: Ensure we don't ADD the prefix if it's already there (defensive check)
-            if (!originalTitle.includes(prefix)) {
-                enrichedPayload.title = `${prefix} ${originalTitle}`.trim();
-            } else {
-                enrichedPayload.title = originalTitle;
-            }
+    // Prefer latest token per platform so closed-app mobile still gets push
+    // even if a newer web token exists (and vice versa).
+    let targetTokens = [];
+    if (platform) {
+        const tokens = await listOwnerTokens({ ownerType, ownerId, platform });
+        targetTokens =
+            payload?.sendToAllDevices === true
+                ? normalizeTokenList(tokens)
+                : pickLatestTokenOnly(tokens);
+    } else {
+        const [webTokens, mobileTokens] = await Promise.all([
+            listOwnerTokens({ ownerType, ownerId, platform: 'web' }),
+            listOwnerTokens({ ownerType, ownerId, platform: 'mobile' }),
+        ]);
+        if (payload?.sendToAllDevices === true) {
+            targetTokens = normalizeTokenList([...webTokens, ...mobileTokens]);
+        } else {
+            targetTokens = normalizeTokenList([
+                ...pickLatestTokenOnly(webTokens),
+                ...pickLatestTokenOnly(mobileTokens),
+            ]);
         }
     }
 
-    const tokens = await listOwnerTokens({ ownerType, ownerId, platform });
-    // Default behavior: send to latest active token only to avoid duplicate pushes
-    // from stale token history on the same device/account.
-    const shouldFanoutAllDevices = payload?.sendToAllDevices === true;
-    const targetTokens = shouldFanoutAllDevices ? normalizeTokenList(tokens) : pickLatestTokenOnly(tokens);
     if (!targetTokens.length) {
         logger.warn(`[FCM] No device tokens for ${ownerType}:${ownerId} — push skipped`);
         return { successCount: 0, failureCount: 0, results: [] };
     }
     try {
-        console.log(`[FCM] Sending to ${ownerType}:${ownerId}. Title: "${enrichedPayload.title || 'Data Only'}"`);
+        console.log(`[FCM] Sending to ${ownerType}:${ownerId}. Title: "${enrichedPayload.title || 'Data Only'}" tokens=${targetTokens.length}`);
         const response = await sendPushNotification(targetTokens, enrichedPayload);
         const invalidTokens = (response.results || [])
 
@@ -439,7 +462,7 @@ export const sendNotificationToOwner = async ({ ownerType, ownerId, payload, pla
             }
         }
         logger.info(
-            `FCM push sent to ${ownerType}:${ownerId} (${platform || 'all'}). Success=${response.successCount}, Failure=${response.failureCount}`
+            `FCM push sent to ${ownerType}:${ownerId} (${platform || 'web+mobile'}). Success=${response.successCount}, Failure=${response.failureCount}`
         );
         return response;
     } catch (error) {

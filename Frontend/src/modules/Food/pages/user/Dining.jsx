@@ -1,20 +1,21 @@
 import { useState, useCallback, useEffect, useMemo, useRef } from "react"
 import { Link, useNavigate } from "react-router-dom"
 import { motion, AnimatePresence } from "framer-motion"
-import { MapPin, Search, SlidersHorizontal, Star, X, ArrowDownUp, Timer, IndianRupee, Clock, Bookmark, UtensilsCrossed, ChevronDown, Wallet } from "lucide-react"
+import { MapPin, Search, SlidersHorizontal, Star, X, ArrowDownUp, Timer, IndianRupee, Clock, Bookmark, UtensilsCrossed, Wallet } from "lucide-react"
 import { Button } from "@food/components/ui/button"
 import { Input } from "@food/components/ui/input"
 import { Badge } from "@food/components/ui/badge"
 import { Card, CardContent } from "@food/components/ui/card"
 import { Avatar, AvatarFallback, AvatarImage } from "@food/components/ui/avatar";
 import AnimatedPage from "@food/components/user/AnimatedPage"
-import { useLocation as useLocationHook } from "@food/hooks/useLocation"
+import { useLocation as useLocationHook, resolveServiceCity } from "@food/hooks/useLocation"
 import { useZone } from "@food/hooks/useZone"
 import { useProfile } from "@food/context/ProfileContext"
 import { diningAPI } from "@food/api"
 import OptimizedImage from "@food/components/OptimizedImage"
 import { HeroBannerSkeleton } from "@food/components/ui/loading-skeletons"
 import { isModuleAuthenticated } from "@food/utils/auth"
+import { filterCategoriesForVegMode } from "@food/utils/vegMode"
 const debugLog = (...args) => {}
 const debugWarn = (...args) => {}
 const debugError = (...args) => {}
@@ -137,7 +138,7 @@ function DiningRestaurantSkeleton({ index }) {
   )
 }
 
-export default function Dining() {
+export default function Dining({ isTabActive = true }) {
   const navigate = useNavigate()
   const [heroSearch, setHeroSearch] = useState("")
   const [diningSearchOpen, setDiningSearchOpen] = useState(false)
@@ -150,8 +151,7 @@ export default function Dining() {
   const rightContentRef = useRef(null)
   const { location } = useLocationHook()
   const { zoneId, loading: zoneLoading } = useZone(location)
-  const { addFavorite, removeFavorite, isFavorite } = useProfile()
-  const { userProfile } = useProfile();
+  const { addFavorite, removeFavorite, isFavorite, vegMode, vegModeOption, userProfile } = useProfile()
 
   const initials = useMemo(() => {
     if (!userProfile) return "";
@@ -198,8 +198,14 @@ export default function Dining() {
         const activeLocation = resolveLocationForDining()
         const lat = Number(activeLocation?.latitude)
         const lng = Number(activeLocation?.longitude)
-        const cityRaw = String(activeLocation?.city || "").trim()
-        const city = cityRaw && cityRaw.toLowerCase() !== "current location" ? cityRaw : ""
+        const cityRaw = resolveServiceCity({
+          locality: activeLocation?.city || "",
+          formattedAddress:
+            activeLocation?.formattedAddress || activeLocation?.address || "",
+          fallback: String(activeLocation?.city || "").trim(),
+        })
+        const city =
+          cityRaw && cityRaw.toLowerCase() !== "current location" ? cityRaw : ""
 
         const restaurantParams = {}
         if (city) restaurantParams.city = city
@@ -316,6 +322,20 @@ export default function Dining() {
             (restaurant?.estimatedDeliveryTimeMinutes ? `${restaurant.estimatedDeliveryTimeMinutes} mins` : "30-40 mins")
           ).trim(),
           distanceValue: distanceKm,
+          pureVegRestaurant:
+            restaurant?.pureVegRestaurant === true ||
+            restaurant?.diningSettings?.pureVegRestaurant === true,
+          hasNonVegMenu:
+            restaurant?.hasNonVegMenu === true
+              ? true
+              : restaurant?.hasNonVegMenu === false
+                ? false
+                : undefined,
+          isPureVeg:
+            restaurant?.hasNonVegMenu === true
+              ? false
+              : restaurant?.isPureVeg === true ||
+                restaurant?.hasNonVegMenu === false,
           diningType: (() => {
             const rawType = restaurant?.diningSettings?.diningType
             let types = []
@@ -373,7 +393,10 @@ export default function Dining() {
     return keySet
   }, [normalizedRestaurantList])
 
-  const filteredCategories = safeCategories
+  const filteredCategories = useMemo(
+    () => filterCategoriesForVegMode(safeCategories, vegMode),
+    [safeCategories, vegMode],
+  )
 
   const nearbyPopularRestaurants = useMemo(() => {
     const within10Km = normalizedRestaurantList
@@ -399,6 +422,19 @@ export default function Dining() {
     let filtered = nearbyPopularRestaurants.filter(
       (restaurant) => restaurant?.diningSettings?.isEnabled === true,
     )
+
+    // Pure veg mode: only restaurants with no non-veg menu (full menu scan from API)
+    if (vegMode && vegModeOption === "pure-veg") {
+      filtered = filtered.filter((restaurant) => {
+        if (restaurant?.hasNonVegMenu === true) return false
+        if (restaurant?.isPureVeg === true) return true
+        if (restaurant?.hasNonVegMenu === false) return true
+        return (
+          restaurant?.pureVegRestaurant === true ||
+          restaurant?.diningSettings?.pureVegRestaurant === true
+        )
+      })
+    }
 
     if (activeFilters.has('delivery-under-30')) {
       filtered = filtered.filter(r => {
@@ -451,7 +487,7 @@ export default function Dining() {
     }
 
     return filtered
-  }, [nearbyPopularRestaurants, activeFilters, selectedCuisine, sortBy, heroSearch])
+  }, [nearbyPopularRestaurants, activeFilters, selectedCuisine, sortBy, heroSearch, vegMode, vegModeOption])
 
   const diningSearchQuery = heroSearch.trim()
   const isDiningSearching = diningSearchQuery.length > 0
@@ -563,56 +599,15 @@ export default function Dining() {
         {/* Navbar Section - Custom Takeaway Style */}
         <div className="relative z-20 pt-3 pb-3.5 px-4">
           <div className="flex items-center justify-between">
-            {/* Left: Location Selection (Takeaway Style) */}
-            <Link
-              to="/food/user/address-selector"
-              state={{ from: window.location.pathname }}
-              onClick={(e) => {
-                if (!isModuleAuthenticated('user')) {
-                  e.preventDefault();
-                  window.dispatchEvent(new CustomEvent('show-login-required'));
-                }
-              }}
-              className="flex flex-col min-w-0"
-            >
-              <div className="flex items-center gap-1">
-                <span className="text-[10px] font-bold text-gray-200 uppercase tracking-[0.2em] drop-shadow-md">Dining</span>
-              </div>
-              <h1 className="text-xl font-bold text-white flex items-center gap-1.5 drop-shadow-md">
-                <span className="truncate max-w-[180px]">
-                  {(() => {
-                    const loc = resolveLocationForDining();
-                    const area = loc?.area || loc?.subLocality || loc?.mainTitle || loc?.neighborhood;
-                    const city = (loc?.city || "").toLowerCase();
-                    const state = (loc?.state || "").toLowerCase();
-
-                    if (area && !/^-?\d+(\.\d+)?$/.test(area.trim())) {
-                      const areaLower = area.toLowerCase();
-                      if (areaLower !== city && areaLower !== state) {
-                        return area;
-                      }
-                    }
-
-                    if (loc?.address && loc.address !== "Select location") {
-                      const parts = loc.address.split(',').map(p => p.trim());
-                      for (const part of parts) {
-                        const partLower = part.toLowerCase();
-                        if (partLower &&
-                          partLower !== city &&
-                          partLower !== state &&
-                          !/^-?\d/.test(part) &&
-                          part.length > 2) {
-                          return part;
-                        }
-                      }
-                    }
-
-                    return loc?.area || loc?.city || "Select Location";
-                  })()}
-                </span>
-                <ChevronDown className="h-4 w-4 text-white/80" />
+            {/* Left: Takeaway-style heading (location only changeable from Delivery home) */}
+            <div className="flex flex-col min-w-0">
+              <span className="text-[10px] font-bold text-gray-200 uppercase tracking-[0.2em] drop-shadow-md">
+                Table Booking
+              </span>
+              <h1 className="text-xl font-bold text-white flex items-center gap-2 drop-shadow-md">
+                Dining
               </h1>
-            </Link>
+            </div>
 
             <div className="flex items-center gap-3">
               <button
@@ -639,6 +634,7 @@ export default function Dining() {
               
               <Link 
                 to="/food/user/profile" 
+                state={{ from: "/food/user/dining" }}
                 onClick={(e) => {
                   if (!isModuleAuthenticated('user')) {
                     e.preventDefault();
@@ -649,12 +645,12 @@ export default function Dining() {
               >
                 <Avatar className="h-full w-full bg-[#FFF5E6]">
                   <AvatarImage 
-                    src={userProfile?.profileImage || "/profile_avatar.png"} 
+                    src={userProfile?.profileImage || "/profile_avatar.webp"} 
                     alt="Profile" 
                     className="object-cover"
                   />
                   <AvatarFallback className="bg-[#FFF5E6] text-[20px] font-black text-[#DC2626] leading-none tracking-tighter antialiased">
-                    <img src="/profile_avatar.png" alt="Profile" className="object-cover w-full h-full" />
+                    <img src="/profile_avatar.webp" alt="Profile" className="object-cover w-full h-full" />
                   </AvatarFallback>
                 </Avatar>
               </Link>
@@ -1683,7 +1679,10 @@ export default function Dining() {
                   <div className="space-y-4 mb-8">
                     <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">Cuisine</h3>
                     <div className="grid grid-cols-2 gap-3">
-                      {['Continental', 'Italian', 'Asian', 'Indian', 'Chinese', 'American', 'Seafood', 'Cafe'].map((cuisine) => (
+                      {(vegMode
+                        ? ['Continental', 'Italian', 'Asian', 'Indian', 'Chinese', 'American', 'Cafe']
+                        : ['Continental', 'Italian', 'Asian', 'Indian', 'Chinese', 'American', 'Seafood', 'Cafe']
+                      ).map((cuisine) => (
                         <button
                           key={cuisine}
                           onClick={() => setSelectedCuisine(selectedCuisine === cuisine ? null : cuisine)}
