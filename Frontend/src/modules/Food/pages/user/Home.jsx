@@ -46,13 +46,13 @@ import StickyCartCard from "@food/components/user/StickyCartCard";
 import OrderTrackingCard from "@food/components/user/OrderTrackingCard";
 import {
   CategoryChipRowSkeleton,
-  ExploreGridSkeleton,
   HeroBannerSkeleton,
   LoadingSkeletonRegion,
   RestaurantGridSkeleton,
 } from "@food/components/ui/loading-skeletons";
 import { useProfile } from "@food/context/ProfileContext";
 import { isModuleAuthenticated } from "@food/utils/auth";
+import { isVegMenuItem, isNonVegCategoryScope } from "@food/utils/vegMode";
 import { useCart } from "@food/context/CartContext";
 import { HorizontalCarousel } from "@food/components/ui/horizontal-carousel";
 import { DotPattern } from "@food/components/ui/dot-pattern";
@@ -87,7 +87,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@food/components/ui/dropdown-menu";
-import { useLocation } from "@food/hooks/useLocation";
+import { useLocation, resolveServiceCity } from "@food/hooks/useLocation";
 import { useZone } from "@food/hooks/useZone";
 import quickSpicyLogo from "@food/assets/quicky-spicy-logo.png";
 import offerImage from "@food/assets/offerimage.png";
@@ -95,6 +95,12 @@ import api, { publicGetOnce, restaurantAPI, adminAPI } from "@food/api";
 import { API_BASE_URL } from "@food/api/config";
 import OptimizedImage from "@food/components/OptimizedImage";
 import { getRestaurantAvailabilityStatus } from "@food/utils/restaurantAvailability";
+import {
+  getCachedExploreIcons,
+  setCachedExploreIcons,
+  isExploreIconsCacheFresh,
+  preloadImageUrls,
+} from "@food/utils/foodPageCache";
 import HomeHeader from "@food/components/user/home/HomeHeader";
 import QuickSection from "@food/components/user/home/QuickSection";
 import PromoRow from "@food/components/user/home/PromoRow";
@@ -123,6 +129,104 @@ import exploreOffers from "@food/assets/explore more icons/offers.png";
 import exploreGourmet from "@food/assets/explore more icons/gourmet.png";
 import exploreTop10 from "@food/assets/explore more icons/top 10.png";
 import exploreCollection from "@food/assets/explore more icons/collection.png";
+
+// Bundled Explore logos — warm browser cache as soon as Home module loads
+preloadImageUrls([exploreOffers, exploreGourmet, exploreTop10, exploreCollection]);
+
+const CACHED_EXPLORE_BOOT = (() => {
+  try {
+    const cached = getCachedExploreIcons();
+    if (!cached || !isExploreIconsCacheFresh()) return null;
+    preloadImageUrls(
+      (cached.items || [])
+        .map((it) => it.imageUrl || it.image)
+        .filter(Boolean)
+        .map(toExploreIconThumbUrl),
+    );
+    return cached;
+  } catch {
+    return null;
+  }
+})();
+
+/** Tiny Cloudinary thumb for Explore icons (full-size admin uploads are slow on mobile). */
+function toExploreIconThumbUrl(url) {
+  if (!url || typeof url !== "string") return url;
+  if (!/res\.cloudinary\.com/i.test(url) || !/\/image\/upload\//i.test(url)) {
+    return url;
+  }
+  if (/\/image\/upload\/(?:f_|q_|w_|h_|c_|dpr_|g_)/i.test(url)) {
+    return url.replace(
+      /\/image\/upload\/[^/]+\//,
+      "/image/upload/f_auto,q_auto,w_200,c_limit/",
+    );
+  }
+  return url.replace(
+    "/image/upload/",
+    "/image/upload/f_auto,q_auto,w_200,c_limit/",
+  );
+}
+
+/** Explore icons: skeleton until logo paints — never show alt/label text in the icon box. */
+function ExploreIconImage({ src, fallbackSrc, className }) {
+  const localSrc = fallbackSrc || "";
+  const remoteSrc = src && src !== localSrc ? src : "";
+  const targetSrc = remoteSrc || localSrc || src || "";
+  const [shownSrc, setShownSrc] = useState(targetSrc);
+  const [isLoaded, setIsLoaded] = useState(false);
+  const imgRef = useRef(null);
+
+  useEffect(() => {
+    const preferred = remoteSrc || localSrc || "";
+    setIsLoaded(false);
+    setShownSrc(preferred);
+  }, [remoteSrc, localSrc]);
+
+  // Cached images often skip onLoad — mark loaded if already complete
+  useEffect(() => {
+    const el = imgRef.current;
+    if (el?.complete && el.naturalWidth > 0) {
+      setIsLoaded(true);
+    }
+  }, [shownSrc]);
+
+  return (
+    <div className={`relative w-full h-full ${className || ""}`}>
+      {!isLoaded && (
+        <div
+          className="absolute inset-0 z-20 rounded-xl bg-gradient-to-r from-gray-200 via-gray-100 to-gray-200 animate-pulse dark:from-gray-700 dark:via-gray-600 dark:to-gray-700"
+          aria-hidden="true"
+        />
+      )}
+      {shownSrc ? (
+        <img
+          ref={imgRef}
+          src={shownSrc}
+          alt=""
+          aria-hidden="true"
+          className={`relative z-10 w-full h-full object-contain transition-opacity duration-150 ${
+            isLoaded ? "opacity-100" : "opacity-0"
+          }`}
+          loading="eager"
+          decoding="async"
+          fetchPriority="high"
+          draggable={false}
+          onLoad={() => setIsLoaded(true)}
+          onError={() => {
+            if (localSrc && shownSrc !== localSrc) {
+              setIsLoaded(false);
+              setShownSrc(localSrc);
+              return;
+            }
+            // Keep skeleton rather than broken-image alt text
+            setIsLoaded(false);
+            setShownSrc("");
+          }}
+        />
+      ) : null}
+    </div>
+  );
+}
 
 // Banner images for hero carousel - will be fetched from API
 
@@ -214,6 +318,7 @@ const RestaurantImageCarousel = React.memo(
       let items = [];
       if (Array.isArray(restaurant.recommendedDishes) && restaurant.recommendedDishes.length > 0) {
         restaurant.recommendedDishes.forEach((dish, idx) => {
+          if (vegMode && !isVegMenuItem(dish)) return;
           if (dish.image) items.push({ id: dish.id || idx, src: withCacheBuster(dish.image), dish });
         });
       }
@@ -229,15 +334,15 @@ const RestaurantImageCarousel = React.memo(
         }
       }
       return items;
-    }, [restaurant.recommendedDishes, restaurant.images, restaurant.image, withCacheBuster]);
+    }, [restaurant.recommendedDishes, restaurant.images, restaurant.image, withCacheBuster, vegMode]);
 
     const [currentIndex, setCurrentIndex] = useState(0);
-    const [loadedBySrc, setLoadedBySrc] = useState({});
     const [isImageUnavailable, setIsImageUnavailable] = useState(false);
     const [loadedIndices, setLoadedIndices] = useState(new Set([0]));
     const touchStartX = useRef(0);
     const touchEndX = useRef(0);
     const isSwiping = useRef(false);
+    const preloadedSrcsRef = useRef(new Set());
 
     const [isTransitioning, setIsTransitioning] = useState(true);
     const [displayIndex, setDisplayIndex] = useState(0);
@@ -260,15 +365,14 @@ const RestaurantImageCarousel = React.memo(
       setCurrentIndex(prev => (prev - 1 + infiniteSlides.length) % infiniteSlides.length);
     }, [slideItems.length, infiniteSlides.length]);
 
-    // Auto Swipe logic
+    // Auto Swipe — keep interval stable (do NOT restart on every currentIndex change)
     useEffect(() => {
-      if (slideItems.length > 1) {
-        const timer = setInterval(() => {
-          handleNext();
-        }, 3000);
-        return () => clearInterval(timer);
-      }
-    }, [slideItems.length, currentIndex]);
+      if (slideItems.length <= 1) return undefined;
+      const timer = setInterval(() => {
+        handleNext();
+      }, 3000);
+      return () => clearInterval(timer);
+    }, [slideItems.length, handleNext]);
 
     // Magic loop cleanup: Handle jump from clone back to real first item
     useEffect(() => {
@@ -289,28 +393,34 @@ const RestaurantImageCarousel = React.memo(
       }
     }, [currentIndex, slideItems.length]);
 
-    // Reset transient image state when restaurant or source list changes.
+    // Preload every dish image once + keep all slides mounted so Cloudinary is not hit again on each slide
     useEffect(() => {
-      setCurrentIndex(0);
-      setLoadedIndices(new Set([0]));
-      setIsTransitioning(true);
-      setIsImageUnavailable(slideItems.length === 0);
-    }, [restaurant?.id, restaurant?.slug, restaurant?.updatedAt, slideItems.length]);
+      if (slideItems.length === 0) {
+        setIsImageUnavailable(true);
+        return;
+      }
 
-    // Tracks loaded indices for lazy loading
-    useEffect(() => {
-      if (infiniteSlides.length === 0) return;
-      setLoadedIndices((prev) => {
-        const next = new Set(prev);
-        const adjacent = [
-          (currentIndex - 1 + infiniteSlides.length) % infiniteSlides.length,
-          currentIndex,
-          (currentIndex + 1) % infiniteSlides.length,
-        ];
-        adjacent.forEach((idx) => next.add(idx));
-        return next;
+      setCurrentIndex(0);
+      setIsTransitioning(true);
+      setIsImageUnavailable(false);
+
+      const uniqueSrcs = [
+        ...new Set(slideItems.map((item) => item.src).filter(Boolean)),
+      ];
+
+      uniqueSrcs.forEach((src) => {
+        if (preloadedSrcsRef.current.has(src)) return;
+        preloadedSrcsRef.current.add(src);
+        const img = new Image();
+        img.decoding = "async";
+        img.src = src;
       });
-    }, [currentIndex, infiniteSlides.length]);
+
+      // Mount all slide <img>s immediately (including clone) — one fetch per unique URL
+      setLoadedIndices(
+        new Set(Array.from({ length: Math.max(slideItems.length + (slideItems.length > 1 ? 1 : 0), 1) }, (_, i) => i)),
+      );
+    }, [restaurant?.id, restaurant?.slug, restaurant?.updatedAt, slideItems]);
 
     // Handle touch events for swipe
     const handleTouchStart = (e) => {
@@ -362,10 +472,6 @@ const RestaurantImageCarousel = React.memo(
         >
           {infiniteSlides.map((item, idx) => {
             const shouldLoad = loadedIndices.has(idx);
-            const isVisible =
-              Math.abs(idx - currentIndex) <= 1 ||
-              (currentIndex === 0 && idx === infiniteSlides.length - 1) ||
-              (currentIndex === infiniteSlides.length - 1 && idx === 0);
 
             return (
               <div key={`${item.id}-${idx}`} className="w-full h-full flex-shrink-0 relative">
@@ -375,10 +481,11 @@ const RestaurantImageCarousel = React.memo(
                     alt={`${restaurant.name} - Image ${idx + 1}`}
                     className="w-full h-full"
                     objectFit="cover"
-                    priority={priority && isVisible}
-                    onLoad={() => {
-                      setLoadedBySrc((prev) => ({ ...prev, [item.src]: true }));
-                    }}
+                    // Single Cloudinary URL — no srcset storm on every slide
+                    responsive={false}
+                    // Keep mounted; don't flip priority per slide (avoids re-fetch)
+                    priority={priority && idx === 0}
+                    placeholder="empty"
                     onError={() => {
                       if (idx === currentIndex && slideItems.length === 1) setIsImageUnavailable(true);
                     }}
@@ -557,7 +664,7 @@ const RestaurantCardOfferCarousel = React.memo(({ coupons }) => {
   );
 });
 
-export default function Home() {
+export default function Home({ homeMode = null, isTabActive = true }) {
   const HERO_BANNER_AUTO_SLIDE_MS = 3500;
   const BACKEND_ORIGIN = API_BASE_URL.replace(/\/api\/?$/, "");
   const navigate = useNavigate();
@@ -568,13 +675,25 @@ export default function Home() {
   const { openSearch, closeSearch, searchValue, setSearchValue } =
     useSearchOverlay();
   const { openLocationSelector } = useLocationSelector();
-  const { userProfile, vegMode, setVegMode: setVegModeContext, orderType, setOrderType } = useProfile();
+  const { userProfile, vegMode, setVegMode: setVegModeContext, vegModeOption, setVegModeOption, orderType, setOrderType } = useProfile();
   const routerLocation = useRouterLocation();
-  const isTakeawayPage = routerLocation.pathname === "/food/takeaway" ||
-    routerLocation.pathname.startsWith("/food/takeaway/") ||
-    routerLocation.pathname.startsWith("/food/user/takeaway");
+  // homeMode lets MainTabKeepAlive mount Delivery + Takeaway Home side-by-side
+  // without both instances fighting over global orderType / pathname.
+  const isTakeawayPage =
+    homeMode === "takeaway" ||
+    (!homeMode &&
+      (routerLocation.pathname === "/food/takeaway" ||
+        routerLocation.pathname.startsWith("/food/takeaway/") ||
+        routerLocation.pathname.startsWith("/food/user/takeaway")));
+  const effectiveOrderType =
+    homeMode === "takeaway" || homeMode === "delivery"
+      ? homeMode
+      : isTakeawayPage
+        ? "takeaway"
+        : orderType;
 
   useEffect(() => {
+    if (homeMode) return;
     if (isTakeawayPage) {
       if (orderType !== "takeaway") setOrderType("takeaway");
     } else if (routerLocation.pathname.includes("/dining")) {
@@ -591,7 +710,7 @@ export default function Home() {
         setOrderType("delivery");
       }
     }
-  }, [isTakeawayPage, routerLocation.pathname, orderType, setOrderType]);
+  }, [homeMode, isTakeawayPage, routerLocation.pathname, orderType, setOrderType]);
 
   useEffect(() => {
     if (!isTakeawayPage) {
@@ -603,7 +722,6 @@ export default function Home() {
   const [prevVegMode, setPrevVegMode] = useState(vegMode);
   const [showVegModePopup, setShowVegModePopup] = useState(false);
   const [showSwitchOffPopup, setShowSwitchOffPopup] = useState(false);
-  const [vegModeOption, setVegModeOption] = useState("all"); // "all" or "pure-veg"
   const [isApplyingVegMode, setIsApplyingVegMode] = useState(false);
   const [isSwitchingOffVegMode, setIsSwitchingOffVegMode] = useState(false);
   const [popupPosition, setPopupPosition] = useState({ top: 0, left: 0, triangleLeft: 0 });
@@ -665,8 +783,12 @@ export default function Home() {
   const [loadingBanners, setLoadingBanners] = useState(true);
   const [hasScrolledPastBanner, setHasScrolledPastBanner] = useState(false);
   const [landingCategories, setLandingCategories] = useState([]);
-  const [landingExploreMore, setLandingExploreMore] = useState([]);
-  const [exploreMoreHeading, setExploreMoreHeading] = useState("Explore More");
+  const [landingExploreMore, setLandingExploreMore] = useState(
+    () => CACHED_EXPLORE_BOOT?.items || [],
+  );
+  const [exploreMoreHeading, setExploreMoreHeading] = useState(
+    () => CACHED_EXPLORE_BOOT?.heading || "Explore More",
+  );
   const [festBannerVideoUrl, setFestBannerVideoUrl] = useState("");
   const [recommendedRestaurantIds, setRecommendedRestaurantIds] = useState([]);
   const [under250PriceLimit, setUnder250PriceLimit] = useState(250);
@@ -674,14 +796,13 @@ export default function Home() {
     recommendedRestaurantsFromSettings,
     setRecommendedRestaurantsFromSettings,
   ] = useState([]);
-  const [loadingLandingConfig, setLoadingLandingConfig] = useState(true);
   const [restaurantsData, setRestaurantsData] = useState(HOME_RESTAURANTS_CACHE || []);
   const [loadingRestaurants, setLoadingRestaurants] = useState(!HOME_RESTAURANTS_CACHE || (Array.isArray(HOME_RESTAURANTS_CACHE) && HOME_RESTAURANTS_CACHE.length === 0));
   const [realCategories, setRealCategories] = useState(HOME_CATEGORIES_CACHE || []);
   const [loadingRealCategories, setLoadingRealCategories] = useState(!HOME_CATEGORIES_CACHE);
   const [menuCategories, setMenuCategories] = useState([]);
   const [loadingMenuCategories, setLoadingMenuCategories] = useState(false);
-  const [, setRestaurantDietMeta] = useState({});
+  const [restaurantDietMeta, setRestaurantDietMeta] = useState({});
   const [showAllCategoriesModal, setShowAllCategoriesModal] = useState(false);
   const [availabilityTick, setAvailabilityTick] = useState(Date.now());
   const RESTAURANTS_BATCH_SIZE = 9;
@@ -926,25 +1047,30 @@ export default function Home() {
       {
         id: "under-250",
         label: "Under 250",
-        image: exploreOffers, // Fallback image until admin uploads one
+        // Local asset always used for first paint; remote admin icon swaps in when ready
+        image: exploreOffers,
+        fallbackImage: exploreOffers,
         href: "/food/user/under-250",
       },
       {
         id: "offers",
         label: "Offers",
         image: exploreOffers,
+        fallbackImage: exploreOffers,
         href: "/food/user/offers",
       },
       {
         id: "gourmet",
         label: "Gourmet",
         image: exploreGourmet,
+        fallbackImage: exploreGourmet,
         href: "/food/user/gourmet",
       },
       {
         id: "collection",
         label: "Collections",
         image: exploreCollection,
+        fallbackImage: exploreCollection,
         href: "/food/user/profile/favorites",
       },
     ];
@@ -952,26 +1078,49 @@ export default function Home() {
     if (!landingExploreMore || landingExploreMore.length === 0) return fallback;
 
     return fallback.map((item) => {
-      const apiItem = landingExploreMore.find(
-        (ai) => ai.label?.toLowerCase() === item.label?.toLowerCase(),
-      );
+      const itemLabel = item.label.toLowerCase();
+      const apiItem = landingExploreMore.find((ai) => {
+        const label = String(ai.label || ai.name || "").toLowerCase().trim();
+        const linkType = String(ai.linkType || "").toLowerCase().trim();
+        const link = String(ai.link || ai.targetPath || "").toLowerCase();
+        return (
+          label === itemLabel ||
+          linkType === item.id ||
+          link.includes(item.id) ||
+          (item.id === "under-250" &&
+            (label.includes("under 250") ||
+              label.includes("under-250") ||
+              label.includes("under ₹250") ||
+              label.includes("under rs")))
+        );
+      });
       if (apiItem) {
         const href = apiItem.link
           ? apiItem.link.startsWith("/")
             ? apiItem.link
             : `/${apiItem.link}`
           : item.href;
+        const remote =
+          toExploreIconThumbUrl(
+            normalizeImageUrl(apiItem.imageUrl || apiItem.iconUrl || apiItem.image || "") ||
+              "",
+          ) || "";
         return {
           ...item,
-          image:
-            normalizeImageUrl(apiItem.imageUrl || apiItem.image || "") ||
-            item.image,
+          // Keep bundled PNG as fallbackImage forever; remote only via image when different
+          image: remote || item.image,
+          fallbackImage: item.fallbackImage,
           href,
         };
       }
       return item;
     });
   }, [landingExploreMore, normalizeImageUrl]);
+
+  // Warm Explore thumbs as soon as URLs are known
+  useEffect(() => {
+    preloadImageUrls(finalExploreItems.map((item) => item.image).filter(Boolean));
+  }, [finalExploreItems]);
 
   const normalizedLandingCategories = useMemo(() => {
     return (landingCategories || []).map((category, index) => ({
@@ -990,15 +1139,21 @@ export default function Home() {
   const displayCategories = useMemo(() => {
     const filterByVeg = (cats) => {
       if (!vegMode) return cats;
-      return cats.filter((cat) => {
-        const scope = String(cat.foodTypeScope || cat.type || '').toLowerCase().trim();
-        return scope !== 'non-veg' && scope !== 'nonveg' && scope !== 'non veg';
-      });
+      return cats.filter((cat) => !isNonVegCategoryScope(cat));
     };
     if (realCategories.length > 0) return filterByVeg(realCategories);
     if (menuCategories.length > 0) return filterByVeg(menuCategories);
     return filterByVeg(normalizedLandingCategories);
   }, [menuCategories, realCategories, normalizedLandingCategories, vegMode]);
+
+  useEffect(() => {
+    preloadImageUrls(
+      (displayCategories || [])
+        .slice(0, 12)
+        .map((cat) => cat.image)
+        .filter(Boolean),
+    );
+  }, [displayCategories]);
 
   // Swipe functionality for hero banner carousel
   const touchStartX = useRef(0);
@@ -1020,7 +1175,6 @@ export default function Home() {
     setPrevVegMode(vegMode);
     setShowVegModePopup(false);
     setShowSwitchOffPopup(false);
-    setVegModeOption("all");
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -1151,7 +1305,6 @@ export default function Home() {
   // Fetch explore icons and landing settings from public APIs
   useEffect(() => {
     let cancelled = false;
-    setLoadingLandingConfig(true);
     Promise.all([
       publicGetOnce("/food/explore-icons/public")
         .catch(() => ({ data: { data: {} } })),
@@ -1166,21 +1319,27 @@ export default function Home() {
           : Array.isArray(exploreData)
             ? exploreData
             : [];
-        setLandingExploreMore(
-          items.map((it) => ({
-            ...it,
-            imageUrl: it.imageUrl || it.iconUrl,
-            label: it.label || it.name,
-          })),
-        );
+        const mappedItems = items.map((it) => ({
+          ...it,
+          imageUrl: it.imageUrl || it.iconUrl,
+          label: it.label || it.name,
+        }));
+        setLandingExploreMore(mappedItems);
         const settings = settingsRes?.data?.data || {};
-        setExploreMoreHeading(settings.exploreMoreHeading || "Explore More");
+        const heading = settings.exploreMoreHeading || "Explore More";
+        setExploreMoreHeading(heading);
         setRecommendedRestaurantIds(settings.recommendedRestaurantIds || []);
         setUnder250PriceLimit(Number(settings.under250PriceLimit) || 250);
         setRecommendedRestaurantsFromSettings(
           settings.recommendedRestaurants || [],
         );
         setFestBannerVideoUrl(typeof settings.festBannerVideoUrl === "string" ? settings.festBannerVideoUrl : "");
+        setCachedExploreIcons({ items: mappedItems, heading });
+        preloadImageUrls(
+          mappedItems
+            .map((it) => toExploreIconThumbUrl(it.imageUrl || it.image))
+            .filter(Boolean),
+        );
       })
       .catch(() => {
         if (!cancelled) {
@@ -1189,9 +1348,6 @@ export default function Home() {
           setRecommendedRestaurantsFromSettings([]);
           setFestBannerVideoUrl("");
         }
-      })
-      .finally(() => {
-        if (!cancelled) setLoadingLandingConfig(false);
       });
     return () => {
       cancelled = true;
@@ -1350,7 +1506,6 @@ export default function Home() {
   const gsapAnimationsRef = useRef([]);
   // Show skeletons immediately while loading — delayed toggles caused visible layout swap (CLS).
   const showBannerSkeleton = loadingBanners;
-  const showExploreSkeleton = loadingLandingConfig;
   // Safely get profile context - handle case when ProfileProvider is not available
   let profileContext = null;
   try {
@@ -1646,7 +1801,7 @@ export default function Home() {
         const requestSeq = ++restaurantsRequestSeqRef.current;
       try {
         const isCacheEmpty = !HOME_RESTAURANTS_CACHE || (Array.isArray(HOME_RESTAURANTS_CACHE) && HOME_RESTAURANTS_CACHE.length === 0);
-        if (isCacheEmpty || filters.activeFilters || filters.sortBy || filters.selectedCuisine || orderType) {
+        if (isCacheEmpty || filters.activeFilters || filters.sortBy || filters.selectedCuisine || effectiveOrderType) {
           setLoadingRestaurants(true);
         }
 
@@ -1674,8 +1829,8 @@ export default function Home() {
         }
 
         // Order Type (Takeaway/Delivery)
-        if (orderType) {
-          params.orderType = orderType;
+        if (effectiveOrderType) {
+          params.orderType = effectiveOrderType;
         }
 
         // Cuisine
@@ -1733,7 +1888,15 @@ export default function Home() {
           return;
         }
 
-        const normalizedUserCity = String(effectiveLocation?.city || "")
+        const resolvedCity = resolveServiceCity({
+          locality: effectiveLocation?.city || "",
+          formattedAddress:
+            effectiveLocation?.formattedAddress ||
+            effectiveLocation?.address ||
+            "",
+          fallback: "",
+        });
+        const normalizedUserCity = String(resolvedCity || effectiveLocation?.city || "")
           .trim()
           .toLowerCase();
         const hasUsableUserCity =
@@ -1742,7 +1905,7 @@ export default function Home() {
           normalizedUserCity !== "unknown city" &&
           normalizedUserCity !== "select location";
         if (hasUsableUserCity) {
-          params.city = String(effectiveLocation.city).trim();
+          params.city = resolvedCity || String(effectiveLocation.city).trim();
         }
 
         debugLog("Fetching restaurants with params:", params);
@@ -1797,13 +1960,13 @@ export default function Home() {
 
             if (!restaurantCity) return false;
 
-            const userCity = normalizeCityValue(effectiveLocation?.city);
+            const userCity = normalizeCityValue(params.city || effectiveLocation?.city);
             return restaurantCity === userCity;
           });
 
           const transformedRestaurants = strictCityRestaurants
             .filter((restaurant) => {
-              if (orderType === "takeaway" || isTakeawayPage) {
+              if (effectiveOrderType === "takeaway" || isTakeawayPage) {
                 if (!restaurant.takeawaySettings?.isEnabled && !restaurant.takeawayAvailable) {
                   return false;
                 }
@@ -1865,7 +2028,7 @@ export default function Home() {
                 rating: Number(restaurant.rating) || 0,
                 totalRatings: Number(restaurant.totalRatings) || 0,
                 deliveryTime:
-                  (orderType === "takeaway" || isTakeawayPage)
+                  (effectiveOrderType === "takeaway" || isTakeawayPage)
                     ? (restaurant.preparationTime || "20-25 mins")
                     : (restaurant.deliveryTime ||
                       restaurant.estimatedDeliveryTime ||
@@ -1936,7 +2099,7 @@ export default function Home() {
       effectiveLocation?.latitude,
       effectiveLocation?.longitude,
       effectiveZoneId,
-      orderType,
+      effectiveOrderType,
       isTakeawayPage,
       zoneLoading,
       effectiveZoneLoading,
@@ -1975,7 +2138,7 @@ export default function Home() {
       fetchRestaurants(appliedFilters);
     }, 100);
     return () => clearTimeout(timer);
-  }, [appliedFilters, fetchRestaurants, orderType]);
+  }, [appliedFilters, fetchRestaurants, effectiveOrderType]);
 
 
 
@@ -2037,6 +2200,26 @@ export default function Home() {
         menuResponses.forEach(({ id, menu }) => {
           let hasVeg = false;
           let hasNonVeg = false;
+          const markItemDiet = (item) => {
+            const foodType = String(item?.foodType || "")
+              .trim()
+              .toLowerCase();
+            if (foodType === "veg" || item?.isVeg === true) {
+              hasVeg = true;
+              return "veg";
+            }
+            if (
+              foodType === "non-veg" ||
+              foodType === "non veg" ||
+              foodType === "nonveg" ||
+              foodType.includes("non") ||
+              item?.isVeg === false
+            ) {
+              hasNonVeg = true;
+              return "non-veg";
+            }
+            return "unknown";
+          };
           const sections = Array.isArray(menu?.sections) ? menu.sections : [];
           sections.forEach((section) => {
             const sectionItems = Array.isArray(section?.items)
@@ -2044,16 +2227,7 @@ export default function Home() {
               : [];
             let sectionHasVeg = false;
             sectionItems.forEach((item) => {
-              const foodType = String(item?.foodType || "")
-                .trim()
-                .toLowerCase();
-              if (foodType === "veg") { hasVeg = true; sectionHasVeg = true; }
-              if (
-                foodType === "non-veg" ||
-                foodType === "non veg" ||
-                foodType === "nonveg"
-              )
-                hasNonVeg = true;
+              if (markItemDiet(item) === "veg") sectionHasVeg = true;
             });
 
             const subsections = Array.isArray(section?.subsections)
@@ -2064,16 +2238,7 @@ export default function Home() {
                 ? subsection.items
                 : [];
               subsectionItems.forEach((item) => {
-                const foodType = String(item?.foodType || "")
-                  .trim()
-                  .toLowerCase();
-                if (foodType === "veg") { hasVeg = true; sectionHasVeg = true; }
-                if (
-                  foodType === "non-veg" ||
-                  foodType === "non veg" ||
-                  foodType === "nonveg"
-                )
-                  hasNonVeg = true;
+                if (markItemDiet(item) === "veg") sectionHasVeg = true;
               });
             });
 
@@ -2155,10 +2320,25 @@ export default function Home() {
   const matchesVegMode = useCallback(
     (restaurant) => {
       if (!vegMode) return true;
-      if (vegModeOption === "pure-veg") return restaurant?.pureVegRestaurant === true;
-      return true; // "all" option: show all restaurants, non-veg dishes hidden inside by RestaurantDetails
+      if (vegModeOption !== "pure-veg") return true; // "all": show all restaurants; dishes filtered elsewhere
+
+      const id = String(
+        restaurant?.id || restaurant?.restaurantId || restaurant?.mongoId || "",
+      );
+      const meta = id ? restaurantDietMeta?.[id] : null;
+
+      // Menu scan available — evidence wins over the restaurant flag
+      if (meta) {
+        if (meta.hasNonVeg === true) return false;
+        if (meta.isPureVeg === true) return true;
+        if (meta.hasVeg === true && meta.hasNonVeg === false) return true;
+        return false;
+      }
+
+      // Meta not loaded yet — provisional trust of admin pure-veg flag
+      return restaurant?.pureVegRestaurant === true;
     },
-    [vegMode, vegModeOption],
+    [vegMode, vegModeOption, restaurantDietMeta],
   );
 
   const matchesTakeawayName = useCallback((restaurant, q) => {
@@ -2176,7 +2356,7 @@ export default function Home() {
   const filteredRestaurants = useMemo(() => {
     let result = (restaurantsData || []).filter(matchesVegMode);
 
-    if (orderType === "takeaway" || isTakeawayPage) {
+    if (effectiveOrderType === "takeaway" || isTakeawayPage) {
       result = result.filter(
         (restaurant) =>
           restaurant?.takeawaySettings?.isEnabled === true ||
@@ -2190,14 +2370,14 @@ export default function Home() {
     }
 
     return result;
-  }, [restaurantsData, matchesVegMode, orderType, isTakeawayPage, heroSearch, matchesTakeawayName]);
+  }, [restaurantsData, matchesVegMode, effectiveOrderType, isTakeawayPage, heroSearch, matchesTakeawayName]);
 
   const restaurantLazyLoadResetKey = useMemo(() => {
     const activeFilterKey = Array.from(activeFilters).sort().join("|");
-    return `${restaurantsData.length}:${activeFilterKey}:${selectedCuisine || ""}:${sortBy || ""}:${vegMode ? "1" : "0"}:${heroSearch || ""}`;
-  }, [activeFilters, restaurantsData.length, selectedCuisine, sortBy, vegMode, heroSearch]);
+    return `${restaurantsData.length}:${activeFilterKey}:${selectedCuisine || ""}:${sortBy || ""}:${vegMode ? "1" : "0"}:${vegModeOption}:${heroSearch || ""}`;
+  }, [activeFilters, restaurantsData.length, selectedCuisine, sortBy, vegMode, vegModeOption, heroSearch]);
 
-  const isTakeawayActive = orderType === "takeaway" || isTakeawayPage;
+  const isTakeawayActive = effectiveOrderType === "takeaway" || isTakeawayPage;
   const takeawaySearchQuery = isTakeawayActive ? heroSearch.trim() : "";
   const isTakeawaySearching = takeawaySearchQuery.length > 0;
   const showTakeawaySearchEmpty =
@@ -2378,7 +2558,7 @@ export default function Home() {
   }, [openLocationSelector]);
 
   const handleSearchFocus = useCallback(() => {
-    if (orderType === "takeaway" || isTakeawayPage) {
+    if (effectiveOrderType === "takeaway" || isTakeawayPage) {
       setTakeawaySearchOpen(true);
       return;
     }
@@ -2518,7 +2698,6 @@ export default function Home() {
                 key={category.id || index}
                 to={`/food/user/category/${category.slug || category.name.toLowerCase().replace(/\s+/g, "-")}`}
                 className="flex-shrink-0 flex flex-col items-center gap-2 group transition-all duration-300 hover:-translate-y-1"
-                style={{ animation: `fade-in-up 0.5s ease-out forwards ${index * 0.05}s`, opacity: 0 }}
               >
                 <div className="w-16 h-16 sm:w-20 sm:h-20 rounded-full overflow-hidden shadow-sm border border-gray-100 dark:border-gray-800 group-hover:border-[#DC2626] transition-colors">
                   <OptimizedImage
@@ -2526,6 +2705,9 @@ export default function Home() {
                     alt={category.name}
                     className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500"
                     sizes="80px"
+                    priority={index < 6}
+                    responsive={false}
+                    placeholder="empty"
                   />
                 </div>
                 <span className="text-xs sm:text-sm font-medium text-gray-700 dark:text-gray-300 text-center truncate max-w-[72px]">
@@ -2684,7 +2866,7 @@ export default function Home() {
               </div>
             )}
             <div className="relative z-10">
-              {orderType !== "takeaway" && !isTakeawayPage ? (
+              {effectiveOrderType !== "takeaway" && !isTakeawayPage ? (
                 <HomeHeader
                   activeTab={activeTab}
                   setActiveTab={setActiveTab}
@@ -2696,7 +2878,7 @@ export default function Home() {
                   handleVegModeChange={handleVegModeChange}
                   vegModeToggleRef={vegModeToggleRef}
                   // Pass Banner Props to Unified Component
-                  showBanner={activeTab === "food" && orderType !== "takeaway" && !isTakeawayPage}
+                  showBanner={activeTab === "food" && effectiveOrderType !== "takeaway" && !isTakeawayPage}
                   videoUrl={festVideoActive ? "" : festBannerVideoUrl}
                   hideFoodImages={festVideoActive}
                 />
@@ -2734,6 +2916,7 @@ export default function Home() {
                       </Link>
                       <Link
                         to="/food/user/profile"
+                        state={{ from: routerLocation.pathname }}
                         onClick={(e) => {
                           if (!isModuleAuthenticated('user')) {
                             e.preventDefault();
@@ -2744,12 +2927,12 @@ export default function Home() {
                       >
                         <Avatar className="h-full w-full bg-[#FFF5E6]">
                           <AvatarImage
-                            src={userProfile?.profileImage || "/profile_avatar.png"}
+                            src={userProfile?.profileImage || "/profile_avatar.webp"}
                             alt="Profile"
                             className="object-cover"
                           />
                           <AvatarFallback className="bg-[#FFF5E6] text-[20px] font-black text-[#DC2626] leading-none tracking-tighter antialiased">
-                            <img src="/profile_avatar.png" alt="Profile" className="object-cover w-full h-full" />
+                            <img src="/profile_avatar.webp" alt="Profile" className="object-cover w-full h-full" />
                           </AvatarFallback>
                         </Avatar>
                       </Link>
@@ -2841,7 +3024,7 @@ export default function Home() {
                 transition={{ duration: 0.3 }}
                 className="bg-transparent dark:bg-transparent"
               >
-                {(orderType === "takeaway" || isTakeawayPage) && (
+                {(effectiveOrderType === "takeaway" || isTakeawayPage) && (
                   <div className="px-4 pt-3 pb-1 bg-white dark:bg-[#0a0a0a]">
                     <div className="flex flex-col gap-1">
                       <h1 className="text-lg sm:text-xl font-bold text-gray-900 dark:text-white flex items-center gap-2">
@@ -2859,7 +3042,7 @@ export default function Home() {
                   </div>
                 )}
                 {/* "What's on your mind today?" Section */}
-                {orderType !== "takeaway" && !isTakeawayPage && (
+                {effectiveOrderType !== "takeaway" && !isTakeawayPage && (
                   <div
                     id="categories-section"
                     className="px-4 py-2.5 space-y-3 bg-white dark:bg-[#0a0a0a]"
@@ -2896,6 +3079,10 @@ export default function Home() {
                               src={category.image}
                               alt={category.name}
                               className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-700"
+                              sizes="96px"
+                              priority={index < 6}
+                              responsive={false}
+                              placeholder="empty"
                             />
                           </div>
                           <span className="text-[10px] font-bold text-gray-600 dark:text-gray-300 text-center leading-tight line-clamp-1 w-full px-0.5">
@@ -2997,6 +3184,10 @@ export default function Home() {
                                 src={category.image}
                                 alt={category.name}
                                 className="w-full h-full object-cover"
+                                sizes="72px"
+                                priority={index < 6}
+                                responsive={false}
+                                placeholder="empty"
                               />
                             </div>
                             <span className="text-[9px] font-bold text-gray-700 dark:text-gray-300 text-center truncate w-full uppercase tracking-tighter">
@@ -3031,7 +3222,7 @@ export default function Home() {
                 {HeroBannerSection}
 
                 {/* Filters Sticky Sidebar Header - Hidden for takeaway as per request */}
-                {orderType !== "takeaway" && !isTakeawayPage && (
+                {effectiveOrderType !== "takeaway" && !isTakeawayPage && (
                   <section className="py-2.5 px-4 bg-white/95 dark:bg-[#0a0a0a]/95 backdrop-blur-md sticky top-0 md:top-[140px] z-[40] -mx-4 w-[calc(100%+2rem)] border-b border-gray-100 dark:border-white/5 shadow-sm transition-colors duration-300">
                     <div
                       className="flex items-center gap-2 overflow-x-auto scrollbar-hide px-4"
@@ -3112,7 +3303,7 @@ export default function Home() {
           </AnimatePresence>
         </div>
 
-        {orderType !== "takeaway" && !isTakeawayPage && recommendedForYouRestaurants.length > 0 && (
+        {effectiveOrderType !== "takeaway" && !isTakeawayPage && recommendedForYouRestaurants.length > 0 && (
           <motion.section
             className="content-auto pt-1 sm:pt-2"
             initial={false}
@@ -3164,7 +3355,7 @@ export default function Home() {
         )}
 
         {/* Explore More Section */}
-        {orderType !== "takeaway" && !isTakeawayPage && (
+        {effectiveOrderType !== "takeaway" && !isTakeawayPage && (
           <motion.section
             className="content-auto pt-2 sm:pt-3 lg:pt-4"
             initial={false}
@@ -3177,35 +3368,27 @@ export default function Home() {
             </div>
             <div className="px-4.5 pb-4 lg:pb-6">
               <div className="grid grid-cols-4 gap-1.5 sm:gap-4">
-                {showExploreSkeleton ? (
-                  <ExploreGridSkeleton count={4} noWrapper />
-                ) : (
-                  finalExploreItems.slice(0, 4).map((item, index) => (
+                  {finalExploreItems.slice(0, 4).map((item, index) => (
                     <motion.div
                       key={item.id}
-                      initial={{ opacity: 0, y: 10 }}
-                      whileInView={{ opacity: 1, y: 0 }}
-                      viewport={{ once: true }}
-                      transition={{
-                        duration: 0.4,
-                        delay: index * 0.08,
-                      }}
+                      initial={false}
+                      animate={{ opacity: 1, y: 0 }}
                       whileTap={{ scale: 0.95 }}
                       className="w-full">
                       <Link
                         to={item.href}
                         state={{ from: '/food/user' }}
+                        aria-label={item.label}
                         className="block">
                         <div className="flex flex-col items-center gap-1.5 group">
                           <div className="relative aspect-square w-full rounded-2xl sm:rounded-[24px] bg-white dark:bg-[#1a1a1a] flex items-center justify-center shadow-sm hover:shadow-md transition-all duration-500 overflow-hidden border border-gray-100 dark:border-gray-800 p-1 group-hover:border-[#DC2626]/40">
                             {/* Colorful Glow Background */}
                             <div className={`absolute inset-0 opacity-0 group-hover:opacity-10 transition-opacity duration-500 bg-gradient-to-br ${index % 3 === 0 ? 'from-[#DC2626] to-rose-500' : index % 3 === 1 ? 'from-indigo-500 to-purple-500' : 'from-teal-500 to-emerald-500'} z-20 pointer-events-none`} />
 
-                            <OptimizedImage
+                            <ExploreIconImage
                               src={item.image}
-                              alt={item.label}
-                              style={{ objectFit: 'contain' }}
-                              className="w-full h-full relative z-10 transition-transform duration-500 group-hover:scale-110 drop-shadow-sm rounded-xl"
+                              fallbackSrc={item.fallbackImage || exploreOffers}
+                              className="relative z-10 transition-transform duration-500 group-hover:scale-110 drop-shadow-sm rounded-xl"
                             />
                           </div>
                           <span className="text-[9px] sm:text-[10px] font-bold text-gray-500 dark:text-gray-400 group-hover:text-[#DC2626] transition-colors text-center tracking-tighter leading-tight uppercase truncate w-full px-0.5">
@@ -3214,8 +3397,7 @@ export default function Home() {
                         </div>
                       </Link>
                     </motion.div>
-                  ))
-                )}
+                  ))}
               </div>
             </div>
           </motion.section>
@@ -3225,7 +3407,7 @@ export default function Home() {
 
         {/* Restaurants - Enhanced with Animations */}
         <motion.section
-          className={`content-auto space-y-0 pb-8 md:pb-10 ${(orderType === "takeaway" || isTakeawayPage) ? "pt-1 sm:pt-2 lg:pt-3" : "pt-3 sm:pt-4 lg:pt-6"}`}
+          className={`content-auto space-y-0 pb-8 md:pb-10 ${(effectiveOrderType === "takeaway" || isTakeawayPage) ? "pt-1 sm:pt-2 lg:pt-3" : "pt-3 sm:pt-4 lg:pt-6"}`}
           initial={false}
           animate={{ opacity: 1 }}>
           <div className="px-4 mb-3 lg:mb-4">
@@ -3303,7 +3485,7 @@ export default function Home() {
                   }
 
                   // 2. Order/Tab Type check (couponType: 'delivery', 'takeaway', 'all')
-                  const isTakeawayActive = orderType === "takeaway" || isTakeawayPage;
+                  const isTakeawayActive = effectiveOrderType === "takeaway" || isTakeawayPage;
                   const cType = String(o.couponType || "all").trim().toLowerCase();
 
                   if (isTakeawayActive) {
@@ -3657,7 +3839,7 @@ export default function Home() {
                     data-section-id="time"
                     className="space-y-4 mb-8">
                     <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">
-                      {(orderType === "takeaway" || isTakeawayPage) ? "Estimated Readiness" : "Estimated Time"}
+                      {(effectiveOrderType === "takeaway" || isTakeawayPage) ? "Estimated Readiness" : "Estimated Time"}
                     </h3>
                     <div className="grid grid-cols-2 gap-3">
                       <button
@@ -3672,7 +3854,7 @@ export default function Home() {
                         />
                         <span
                           className={`text-sm font-medium ${activeFilters.has("delivery-under-30") ? "text-[#DC2626]" : "text-gray-700 dark:text-gray-300"}`}>
-                          {(orderType === "takeaway" || isTakeawayPage) ? "Within 30 mins" : "Under 30 mins"}
+                          {(effectiveOrderType === "takeaway" || isTakeawayPage) ? "Within 30 mins" : "Under 30 mins"}
                         </span>
                       </button>
                       <button
@@ -3687,7 +3869,7 @@ export default function Home() {
                         />
                         <span
                           className={`text-sm font-medium ${activeFilters.has("delivery-under-45") ? "text-[#DC2626]" : "text-gray-700 dark:text-gray-300"}`}>
-                          {(orderType === "takeaway" || isTakeawayPage) ? "Within 45 mins" : "Under 45 mins"}
+                          {(effectiveOrderType === "takeaway" || isTakeawayPage) ? "Within 45 mins" : "Under 45 mins"}
                         </span>
                       </button>
                     </div>
@@ -4217,7 +4399,9 @@ export default function Home() {
                                 className="w-full h-full bg-white rounded-full"
                                 sizes="(max-width: 640px) 80px, (max-width: 768px) 96px, 112px"
                                 objectFit="cover"
-                                placeholder="blur"
+                                responsive={false}
+                                placeholder="empty"
+                                priority={index < 8}
                                 onError={() => { }}
                               />
                             </div>

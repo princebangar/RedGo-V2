@@ -62,6 +62,7 @@ import {
 } from "@food/utils/foodVariants"
 import { RestaurantDetailSkeleton } from "@food/components/ui/loading-skeletons"
 import OptimizedImage from "@food/components/OptimizedImage"
+import { isVegMenuItem } from "@food/utils/vegMode"
 
 const fssaiLogo = "/fssai.png?v=3"
 
@@ -129,6 +130,14 @@ function RestaurantDetailsContent() {
   const targetDishId = useMemo(() => String(searchParams.get('dish') || '').trim(), [searchParams])
   const { addToCart, updateQuantity, removeFromCart, getCartItem, cart, itemCount } = useCart()
   const { vegMode, addDishFavorite, removeDishFavorite, isDishFavorite, getDishFavorites, getFavorites, addFavorite, removeFavorite, isFavorite, orderType } = useProfile()
+
+  // Veg mode ON: never keep a Non-veg chip selected
+  useEffect(() => {
+    if (!vegMode) return
+    setFilters((prev) =>
+      prev.vegNonVeg === "non-veg" ? { ...prev, vegNonVeg: null } : prev,
+    )
+  }, [vegMode])
   const { location: userLocation } = useLocation() // Get user's current location
   const { zoneId, zone, loading: loadingZone, isOutOfService } = useZone(userLocation) // Get user's zone for zone-based filtering
   const [currentImageIndex, setCurrentImageIndex] = useState(0)
@@ -1503,7 +1512,7 @@ function RestaurantDetailsContent() {
         const countVisibleItems = (items) =>
           toRenderableArray(items).filter((item) => {
             if (item?.isAvailable === false) return false
-            if (vegMode && item?.foodType !== 'Veg') return false
+            if (vegMode && !isVegMenuItem(item)) return false
             return true
           }).length
 
@@ -1878,17 +1887,15 @@ function RestaurantDetailsContent() {
       // VegMode filter - when vegMode is ON, show only Veg items
       // When vegMode is false/null/undefined, show all items (Veg and Non-Veg)
       if (vegMode === true) {
-        if (item.foodType !== "Veg") return false
+        if (!isVegMenuItem(item)) return false
       }
 
-      // Veg/Non-veg filter (local filter override)
+      // Veg/Non-veg filter (local filter override) — Non-veg chip disabled while vegMode is ON
       if (filters.vegNonVeg === "veg") {
-        // Show only veg items
-        if (item.foodType !== "Veg") return false
+        if (!isVegMenuItem(item)) return false
       }
-      if (filters.vegNonVeg === "non-veg") {
-        // Show only non-veg items
-        if (item.foodType !== "Non-Veg") return false
+      if (!vegMode && filters.vegNonVeg === "non-veg") {
+        if (isVegMenuItem(item)) return false
       }
 
       if (filters.highlyReordered && !isRecommendedItem(item)) return false
@@ -2663,6 +2670,7 @@ function RestaurantDetailsContent() {
                       <X className="h-3 w-3 text-gray-600 dark:text-gray-400" />
                     )}
                   </Button>
+                  {!vegMode && (
                   <Button
                     variant="outline"
                     size="sm"
@@ -2681,6 +2689,7 @@ function RestaurantDetailsContent() {
                       <X className="h-3 w-3 text-gray-600 dark:text-gray-400" />
                     )}
                   </Button>
+                  )}
                 </div>
 
                 {menuCategories.length > 0 && (
@@ -3576,6 +3585,7 @@ function RestaurantDetailsContent() {
                           <div className="h-4 w-4 rounded-full bg-green-600 dark:bg-green-500" />
                           <span className="font-medium">Veg</span>
                         </button>
+                        {!vegMode && (
                         <button
                           onClick={() =>
                             setFilters((prev) => ({
@@ -3591,6 +3601,7 @@ function RestaurantDetailsContent() {
                           <div className="h-4 w-4 rounded-full bg-red-600" />
                           <span className="font-medium">Non-veg</span>
                         </button>
+                        )}
                       </div>
                     </div>
 

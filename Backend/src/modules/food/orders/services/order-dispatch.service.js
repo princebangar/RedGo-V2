@@ -6,7 +6,6 @@ import { FoodDeliveryCashDeposit } from '../../delivery/models/foodDeliveryCashD
 import { FoodDeliveryCashLimit } from '../../admin/models/deliveryCashLimit.model.js';
 import { ValidationError, NotFoundError } from '../../../../core/auth/errors.js';
 import { logger } from '../../../../utils/logger.js';
-import { config } from '../../../../config/env.js';
 import { getIO, rooms } from '../../../../config/socket.js';
 import { addOrderJob } from '../../../../queues/producers/order.producer.js';
 import {
@@ -16,6 +15,10 @@ import {
   notifyOwnerSafely,
   notifyOwnersSafely,
 } from './order.helpers.js';
+import {
+  getActiveZoneById,
+  isPartnerInsideZone,
+} from '../../utils/zoneGeo.js';
 
 async function filterPartnersByCashLimit(partners = [], options = {}) {
   if (!Array.isArray(partners) || partners.length === 0) return [];
@@ -123,93 +126,98 @@ async function filterPartnersByCashLimit(partners = [], options = {}) {
 
 async function listNearbyOnlineDeliveryPartners(
   restaurantId,
-  { maxKm = 15, limit = 25, requiredAmount = 0, allowOverLimitFallback = true } = {},
+  {
+    maxKm = 15,
+    limit = 25,
+    requiredAmount = 0,
+    allowOverLimitFallback = true,
+    zoneId = null,
+  } = {},
 ) {
   const rId = (restaurantId?._id || restaurantId).toString();
   const restaurant = await FoodRestaurant.findById(rId)
-    .select("location")
+    .select('location zoneId')
     .lean();
 
-  if (!restaurant?.location?.coordinates?.length) {
-    const partners = await FoodDeliveryPartner.find({
-      status: "approved",
-      availabilityStatus: "online",
-    })
-      .select("_id status name")
-      .limit(Math.max(1, limit))
-      .lean();
+  const resolvedZoneId = String(zoneId || restaurant?.zoneId || '').trim() || null;
+  const zoneDoc = resolvedZoneId ? await getActiveZoneById(resolvedZoneId) : null;
 
-    const cashEligiblePartners = await filterPartnersByCashLimit(
-      partners.map((p) => ({ partnerId: p._id, ...p })),
-      { requiredAmount, allowOverLimitFallback },
+  // Without a service zone we must not broadcast globally (cross-city leak).
+  if (!zoneDoc) {
+    logger.warn(
+      `listNearbyOnlineDeliveryPartners: no zone for restaurant ${rId}; skipping partner search`,
     );
-    return {
-      restaurant: null,
-      partners: cashEligiblePartners.map((p) => ({ partnerId: p.partnerId || p._id, distanceKm: null })),
-    };
+    return { restaurant: restaurant || null, partners: [] };
   }
 
-  const [rLng, rLat] = restaurant.location.coordinates;
-  const allOnline = await FoodDeliveryPartner.find({
-    availabilityStatus: "online",
-  })
-    .select("_id status lastLat lastLng lastLocationAt name")
-    .lean();
-
-  const scored = [];
-  const allowedStatuses = process.env.NODE_ENV === 'production' ? ['approved'] : ['approved', 'pending'];
+  const allowedStatuses =
+    process.env.NODE_ENV === 'production' ? ['approved'] : ['approved', 'pending'];
   const STALE_GPS_MS = 10 * 60 * 1000;
 
-  for (const p of allOnline) {
-    if (!allowedStatuses.includes(p.status)) continue;
+  const allOnline = await FoodDeliveryPartner.find({
+    availabilityStatus: 'online',
+    status: { $in: allowedStatuses },
+  })
+    .select('_id status lastLat lastLng lastLocationAt name')
+    .lean();
 
-    const isStale = !p.lastLocationAt || (Date.now() - new Date(p.lastLocationAt).getTime()) > STALE_GPS_MS;
-    if (p.lastLat == null || p.lastLng == null || isStale) {
-      scored.push({ partnerId: p._id, distanceKm: 999, status: p.status });
-      continue;
-    }
+  // Zone-first: only partners currently inside the order/restaurant zone.
+  const inZonePartners = (allOnline || []).filter((p) => {
+    if (p.lastLat == null || p.lastLng == null || !p.lastLocationAt) return false;
+    const ageMs = Date.now() - new Date(p.lastLocationAt).getTime();
+    if (!Number.isFinite(ageMs) || ageMs > STALE_GPS_MS) return false;
+    return isPartnerInsideZone(p, zoneDoc);
+  });
 
-    const d = haversineKm(rLat, rLng, p.lastLat, p.lastLng);
-    if (Number.isFinite(d) && d <= maxKm) {
-      scored.push({ partnerId: p._id, distanceKm: d, status: p.status });
-    }
+  if (inZonePartners.length === 0) {
+    return { restaurant: restaurant || null, partners: [] };
   }
 
-  scored.sort((a, b) => a.distanceKm - b.distanceKm);
-  const picked = scored.slice(0, Math.max(1, limit));
+  const [rLng, rLat] = restaurant?.location?.coordinates?.length === 2
+    ? restaurant.location.coordinates
+    : [null, null];
 
-  if (picked.length === 0) {
-    const anyOnline = await FoodDeliveryPartner.find({
-      status: { $in: allowedStatuses },
-      availabilityStatus: "online",
-    })
-      .select("_id status name")
-      .limit(Math.max(1, limit))
-      .lean();
-
-    const fallbackPartners = anyOnline.map((p) => ({
+  let scored = [];
+  if (rLat != null && rLng != null) {
+    for (const p of inZonePartners) {
+      const d = haversineKm(rLat, rLng, p.lastLat, p.lastLng);
+      if (Number.isFinite(d) && d <= maxKm) {
+        scored.push({ partnerId: p._id, distanceKm: d, status: p.status });
+      }
+    }
+    scored.sort((a, b) => a.distanceKm - b.distanceKm);
+  } else {
+    // Restaurant GPS missing — still only zone partners (no global fallback).
+    scored = inZonePartners.map((p) => ({
       partnerId: p._id,
       distanceKm: null,
       status: p.status,
     }));
-    const cashEligibleFallback = await filterPartnersByCashLimit(fallbackPartners, {
-      requiredAmount,
-      allowOverLimitFallback,
-    });
-    return {
-      partners: cashEligibleFallback,
-    };
   }
 
-  const final = (config.env === 'production')
-    ? picked.filter(p => p.status === 'approved')
-    : picked;
+  // If nobody within radius, keep zone partners (sorted by distance if available)
+  // instead of offering to other cities.
+  if (scored.length === 0 && rLat != null && rLng != null) {
+    scored = inZonePartners
+      .map((p) => ({
+        partnerId: p._id,
+        distanceKm: haversineKm(rLat, rLng, p.lastLat, p.lastLng),
+        status: p.status,
+      }))
+      .filter((p) => Number.isFinite(p.distanceKm))
+      .sort((a, b) => a.distanceKm - b.distanceKm);
+  }
 
-  const cashEligibleFinal = await filterPartnersByCashLimit(final, {
+  const picked = scored.slice(0, Math.max(1, limit));
+  if (picked.length === 0) {
+    return { restaurant: restaurant || null, partners: [] };
+  }
+
+  const cashEligibleFinal = await filterPartnersByCashLimit(picked, {
     requiredAmount,
     allowOverLimitFallback,
   });
-  return { partners: cashEligibleFinal };
+  return { restaurant: restaurant || null, partners: cashEligibleFinal };
 }
 
 export async function getDispatchSettings() {
@@ -286,8 +294,49 @@ export async function tryAutoAssign(orderId, options = {}) {
       limit: 15,
       requiredAmount,
       allowOverLimitFallback: true,
+      zoneId: order.zoneId || order.restaurantId?.zoneId || null,
     };
-    const { partners } = await listNearbyOnlineDeliveryPartners(order.restaurantId, searchOptions);
+    const { partners: nearbyPartners } = await listNearbyOnlineDeliveryPartners(
+      order.restaurantId,
+      searchOptions,
+    );
+
+    // Multi-order: skip riders already at concurrent capacity (one query).
+    const limitDoc = await FoodDeliveryCashLimit.findOne({ isActive: true })
+      .sort({ createdAt: -1 })
+      .select('maxConcurrentOrders')
+      .lean();
+    const maxConcurrent = Math.min(
+      5,
+      Math.max(1, Number(limitDoc?.maxConcurrentOrders ?? 1)),
+    );
+    const nearbyIds = (nearbyPartners || [])
+      .map((p) => p.partnerId || p._id)
+      .filter(Boolean)
+      .map((id) => new mongoose.Types.ObjectId(String(id)));
+
+    let activeByPartner = new Map();
+    if (nearbyIds.length > 0) {
+      const activeAgg = await FoodOrder.aggregate([
+        {
+          $match: {
+            'dispatch.deliveryPartnerId': { $in: nearbyIds },
+            'dispatch.status': 'accepted',
+            orderStatus: { $in: ['preparing', 'ready_for_pickup', 'picked_up'] },
+          },
+        },
+        { $group: { _id: '$dispatch.deliveryPartnerId', count: { $sum: 1 } } },
+      ]);
+      activeByPartner = new Map(
+        (activeAgg || []).map((row) => [String(row._id), Number(row.count || 0)]),
+      );
+    }
+
+    const partners = (nearbyPartners || []).filter((p) => {
+      const id = String(p.partnerId || p._id || '');
+      const active = activeByPartner.get(id) || 0;
+      return active < maxConcurrent;
+    });
     
     // TIERED ALERT LOGIC
     // Phase 2: Broadcast to all (Attempt 3+)

@@ -15,6 +15,7 @@ const DEFAULT_FIREBASE_CONFIG = {
 };
 
 const tokenCachePrefix = "fcm_web_registered_token_";
+const fcmBackendSyncedPrefix = "fcm_backend_synced_";
 const pushSoundEnabledStorageKey = "push_sound_enabled";
 let publicEnvPromise = null;
 let foregroundListenerAttached = false;
@@ -1049,19 +1050,62 @@ async function resolveWebFcmToken(moduleName, options = {}) {
   return null;
 }
 
+function getBackendSyncedToken(moduleName) {
+  if (typeof sessionStorage === "undefined") return "";
+  try {
+    return sessionStorage.getItem(`${fcmBackendSyncedPrefix}${moduleName}`) || "";
+  } catch {
+    return "";
+  }
+}
+
+function markBackendSyncedToken(moduleName, token) {
+  if (typeof sessionStorage === "undefined" || !token) return;
+  try {
+    sessionStorage.setItem(`${fcmBackendSyncedPrefix}${moduleName}`, token);
+  } catch {
+    /* ignore */
+  }
+}
+
+export function clearFcmBackendSyncRecord(moduleName) {
+  if (typeof sessionStorage === "undefined" || !moduleName) return;
+  try {
+    sessionStorage.removeItem(`${fcmBackendSyncedPrefix}${moduleName}`);
+  } catch {
+    /* ignore */
+  }
+}
+
 async function saveTokenByModule(moduleName, token, platform = "web") {
-  pushDebugLog(PUSH_DEBUG_PREFIX, "saveTokenByModule starting", { moduleName, platform, tokenPreview: `${token?.slice(0, 10)}...` });
+  const normalizedToken = String(token || "").trim();
+  if (!normalizedToken) return;
+
+  if (getBackendSyncedToken(moduleName) === normalizedToken) {
+    pushDebugLog(PUSH_DEBUG_PREFIX, "FCM token unchanged — skip backend save", {
+      moduleName,
+      platform,
+    });
+    return;
+  }
+
+  pushDebugLog(PUSH_DEBUG_PREFIX, "saveTokenByModule starting", {
+    moduleName,
+    platform,
+    tokenPreview: `${normalizedToken.slice(0, 10)}...`,
+  });
+
   if (moduleName === "restaurant") {
-    await restaurantAPI.saveFcmToken(token, platform);
+    await restaurantAPI.saveFcmToken(normalizedToken, platform);
+  } else if (moduleName === "delivery") {
+    await deliveryAPI.saveFcmToken(normalizedToken, platform);
+  } else if (moduleName === "user") {
+    await userAPI.saveFcmToken(normalizedToken, { platform });
+  } else {
     return;
   }
-  if (moduleName === "delivery") {
-    await deliveryAPI.saveFcmToken(token, platform);
-    return;
-  }
-  if (moduleName === "user") {
-    await userAPI.saveFcmToken(token, { platform });
-  }
+
+  markBackendSyncedToken(moduleName, normalizedToken);
 }
 
 async function registerNativeWebViewFcmToken(moduleName) {
@@ -1373,6 +1417,14 @@ export async function registerWebPushForCurrentModule(pathname = window.location
   if (moduleName === "admin") return;
 
   initPushNotificationClient();
+
+  const cachedToken = getSavedToken(moduleName);
+  if (cachedToken && getBackendSyncedToken(moduleName) === cachedToken) {
+    pushDebugLog(PUSH_DEBUG_PREFIX, "FCM already synced this session — skip registration", {
+      moduleName,
+    });
+    return;
+  }
 
   if (isFlutterWebView()) {
     await persistModuleFcmToken(moduleName, { maxAttempts: 6, delayMs: 350 });

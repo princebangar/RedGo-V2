@@ -10,6 +10,7 @@ import { useZone } from "@food/hooks/useZone";
 import useAppBackNavigation from "@food/hooks/useAppBackNavigation";
 import { API_BASE_URL } from "@food/api/config";
 import { useProfile } from "@food/context/ProfileContext";
+import { isNonVegCategoryScope } from "@food/utils/vegMode";
 
 export default function Categories() {
   const navigate = useNavigate();
@@ -72,10 +73,7 @@ export default function Categories() {
   }, [zoneId, BACKEND_ORIGIN]);
 
   const filteredCategories = categories.filter((cat) => {
-    if (vegMode) {
-      const scope = String(cat.foodTypeScope || "").toLowerCase().trim();
-      if (scope === "non-veg" || scope === "nonveg" || scope === "non veg") return false;
-    }
+    if (vegMode && isNonVegCategoryScope(cat)) return false;
     return (cat.name || "").toLowerCase().includes(searchQuery.toLowerCase());
   });
 

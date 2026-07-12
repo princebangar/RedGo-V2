@@ -1,4 +1,4 @@
-import { getGoogleMapsApiKey } from "./googleMapsApiKey"
+import { geocodeAPI } from "@food/api"
 
 /**
  * Read fresh GPS coordinates from the device (no cache).
@@ -88,58 +88,34 @@ function extractPlaceNameFromResults(results = []) {
   return ""
 }
 
-async function fetchGeocodeResults(latitude, longitude, apiKey, extraParams = "") {
+async function fetchGeocodeResults(latitude, longitude, extraParams = {}) {
   const controller = new AbortController()
   const timeoutId = setTimeout(() => controller.abort(), 8000)
 
   try {
-    const query = extraParams ? `&${extraParams}` : ""
-    const response = await fetch(
-      `https://maps.googleapis.com/maps/api/geocode/json?latlng=${latitude},${longitude}&key=${apiKey}&language=en&region=in${query}`,
-      { signal: controller.signal }
-    )
-    const data = await response.json()
-
-    if (data.status !== "OK" || !Array.isArray(data.results) || data.results.length === 0) {
+    const response = await geocodeAPI.reverse(latitude, longitude, extraParams, {
+      signal: controller.signal,
+    })
+    const data = response?.data?.data
+    if (data?.status !== "OK" || !Array.isArray(data.results) || data.results.length === 0) {
       return []
     }
-
     return data.results
   } finally {
     clearTimeout(timeoutId)
   }
 }
 
-async function fetchNearbyPlaceDetails(latitude, longitude, apiKey) {
-  const controller = new AbortController()
-  const timeoutId = setTimeout(() => controller.abort(), 6000)
-
+async function fetchNearbyPlaceDetails(latitude, longitude) {
   try {
-    const response = await fetch("https://places.googleapis.com/v1/places:searchNearby", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "X-Goog-Api-Key": apiKey,
-        "X-Goog-FieldMask":
-          "places.displayName,places.formattedAddress,places.addressComponents,places.location,places.types",
-      },
-      signal: controller.signal,
-      body: JSON.stringify({
-        locationRestriction: {
-          circle: {
-            center: { latitude, longitude },
-            radius: 60,
-          },
-        },
-        maxResultCount: 5,
-        rankPreference: "DISTANCE",
-      }),
+    const response = await geocodeAPI.nearby({
+      latitude,
+      longitude,
+      radius: 60,
+      maxResultCount: 5,
     })
-
-    if (!response.ok) return null
-
-    const data = await response.json()
-    const places = Array.isArray(data.places) ? data.places : []
+    const data = response?.data?.data
+    const places = Array.isArray(data?.places) ? data.places : []
     if (places.length === 0) return null
 
     const nearest = places[0]
@@ -165,8 +141,6 @@ async function fetchNearbyPlaceDetails(latitude, longitude, apiKey) {
     }
   } catch {
     return null
-  } finally {
-    clearTimeout(timeoutId)
   }
 }
 
@@ -218,8 +192,24 @@ export function parseGoogleGeocodeResult(result, options = {}) {
   const sublocality =
     getComponent(components, ["sublocality_level_1"]) || getComponent(components, ["sublocality"])
   const neighborhood = getComponent(components, ["neighborhood"])
+  const locality = getComponent(components, ["locality"])
+  const adminArea2 = getComponent(components, ["administrative_area_level_2"])
+  const formattedAddressRaw = result?.formatted_address || ""
+  const knownCityMatch = String(formattedAddressRaw).match(
+    /\b(Indore|Bhopal|Ujjain|Dewas|Mhow|Pithampur|Rau)\b/i,
+  )
   const city =
-    getComponent(components, ["locality"]) || getComponent(components, ["administrative_area_level_2"])
+    (knownCityMatch
+      ? knownCityMatch[1].replace(/^[a-z]/, (c) => c.toUpperCase())
+      : "") ||
+    (["indore", "bhopal", "ujjain", "dewas", "mhow", "pithampur", "rau"].includes(
+      String(locality).toLowerCase(),
+    )
+      ? locality
+      : "") ||
+    (adminArea2.match(/\b(Indore|Bhopal|Ujjain|Dewas)\b/i)?.[1] || "") ||
+    locality ||
+    adminArea2
   const state = getComponent(components, ["administrative_area_level_1"])
   const country = getComponent(components, ["country"])
   const pincode = getComponent(components, ["postal_code"])
@@ -231,22 +221,20 @@ export function parseGoogleGeocodeResult(result, options = {}) {
       ? getPlaceNameFromFormattedAddress(result?.formatted_address)
       : "")
 
-  const area = sublocality || neighborhood || ""
+  let area = sublocality || neighborhood || ""
+  if (!area && locality && locality.toLowerCase() !== String(city).toLowerCase()) {
+    area = locality
+  }
 
   const streetLine =
     streetNumber && route ? `${streetNumber}, ${route}` : route || ""
 
   const addressParts = []
   if (placeName) addressParts.push(placeName)
-  else if (premise && premise !== area) addressParts.push(premise)
-  if (streetLine && !addressParts.includes(streetLine)) addressParts.push(streetLine)
-  if (area && !addressParts.includes(area)) addressParts.push(area)
+  if (streetLine && streetLine !== placeName) addressParts.push(streetLine)
+  if (area) addressParts.push(area)
 
-  const displayAddress =
-    addressParts.join(", ") ||
-    getPlaceNameFromFormattedAddress(result?.formatted_address) ||
-    area ||
-    city
+  const displayAddress = addressParts.join(", ") || result?.formatted_address?.split(",")[0] || ""
 
   const formattedAddress = result?.formatted_address || displayAddress
 
@@ -268,33 +256,23 @@ export function parseGoogleGeocodeResult(result, options = {}) {
 }
 
 /**
- * Reverse geocode lat/lng using Google Geocoding API (client-side).
- * Prefers establishment / POI names (e.g. Radisson Blu) over generic locality labels.
+ * Reverse geocode lat/lng via backend proxy (Google key never hits the browser).
+ * Single geocode call (fast) — nearby Places skipped to keep map / selector snappy.
  */
 export async function reverseGeocodeWithGoogle(latitude, longitude) {
-  const apiKey = await getGoogleMapsApiKey()
-  if (!apiKey) {
-    throw new Error("Google Maps API key is not configured")
-  }
-
-  const [generalResults, poiResults, nearbyPlace] = await Promise.all([
-    fetchGeocodeResults(latitude, longitude, apiKey),
-    fetchGeocodeResults(
-      latitude,
-      longitude,
-      apiKey,
-      "result_type=establishment|point_of_interest|premise|subpremise|street_address"
-    ).catch(() => []),
-    fetchNearbyPlaceDetails(latitude, longitude, apiKey).catch(() => null),
+  const [generalResults, poiResults] = await Promise.all([
+    fetchGeocodeResults(latitude, longitude),
+    fetchGeocodeResults(latitude, longitude, {
+      result_type: "establishment|point_of_interest|premise|subpremise|street_address",
+    }).catch(() => []),
   ])
 
   const combinedResults = [...poiResults, ...generalResults]
-  if (combinedResults.length === 0 && !nearbyPlace) {
+  if (combinedResults.length === 0) {
     throw new Error("Google reverse geocode failed")
   }
 
   const placeName =
-    nearbyPlace?.displayName ||
     extractPlaceNameFromResults(poiResults) ||
     extractPlaceNameFromResults(generalResults)
 
@@ -307,49 +285,27 @@ export async function reverseGeocodeWithGoogle(latitude, longitude) {
         area: "",
         pincode: "",
         placeName: placeName || "",
-        formattedAddress: nearbyPlace?.formattedAddress || "",
+        formattedAddress: "",
         premise: placeName || "",
         streetNumber: "",
         route: "",
       }
 
-  if (nearbyPlace?.addressComponents?.length) {
-    const nearbyArea =
-      getComponent(nearbyPlace.addressComponents, ["sublocality_level_1", "sublocality"]) ||
-      getComponent(nearbyPlace.addressComponents, ["neighborhood"])
-    const nearbyCity =
-      getComponent(nearbyPlace.addressComponents, ["locality"]) ||
-      getComponent(nearbyPlace.addressComponents, ["administrative_area_level_2"])
-    const nearbyPincode = getComponent(nearbyPlace.addressComponents, ["postal_code"])
-    const nearbyState = getComponent(nearbyPlace.addressComponents, ["administrative_area_level_1"])
-
-    if (nearbyArea) parsed.area = nearbyArea
-    if (nearbyCity) parsed.city = nearbyCity
-    if (nearbyPincode) parsed.pincode = nearbyPincode
-    if (nearbyState) parsed.state = nearbyState
-    if (nearbyPlace.formattedAddress) parsed.formattedAddress = nearbyPlace.formattedAddress
-  }
-
   return {
     ...parsed,
     placeName: placeName || parsed.placeName || "",
-    locationFields: buildLocationFromGeocode(parsed, latitude, longitude, nearbyPlace),
+    locationFields: buildLocationFromGeocode(parsed, latitude, longitude, null),
   }
 }
 
 /**
- * Forward geocode a place_id from Google Places.
+ * Forward geocode a place_id via backend proxy.
  */
 export async function geocodeGooglePlaceId(placeId) {
-  const apiKey = await getGoogleMapsApiKey()
-  if (!apiKey) throw new Error("Google Maps API key is not configured")
-
-  const response = await fetch(
-    `https://maps.googleapis.com/maps/api/geocode/json?place_id=${encodeURIComponent(placeId)}&key=${apiKey}&language=en&region=in`
-  )
-  const data = await response.json()
-  if (data.status !== "OK" || !data.results?.[0]) {
-    throw new Error(data.status || "Place geocode failed")
+  const response = await geocodeAPI.place(placeId)
+  const data = response?.data?.data
+  if (data?.status !== "OK" || !data.results?.[0]) {
+    throw new Error(data?.status || "Place geocode failed")
   }
 
   const result = data.results[0]

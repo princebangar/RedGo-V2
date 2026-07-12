@@ -26,7 +26,18 @@ export default function RestaurantLogin() {
 
   // Step 1 States
   const phoneInputRef = useRef(null)
-  const [phone, setPhone] = useState(() => sessionStorage.getItem("restaurantLoginPhone") || "")
+  const [phone, setPhone] = useState(() => {
+    try {
+      if (sessionStorage.getItem("restaurantClearLoginPhone") === "1") {
+        sessionStorage.removeItem("restaurantClearLoginPhone")
+        sessionStorage.removeItem("restaurantLoginPhone")
+        return ""
+      }
+      return sessionStorage.getItem("restaurantLoginPhone") || ""
+    } catch {
+      return ""
+    }
+  })
   const [loading, setLoading] = useState(false)
   const submitting = useRef(false)
 
@@ -48,6 +59,16 @@ export default function RestaurantLogin() {
   // they mount (focus transfer keeps the keyboard up on iOS).
   const focusKeeperRef = useRef(null)
   const keyboardPrimedRef = useRef(false)
+
+  const clearPersistedLoginPhone = () => {
+    try {
+      sessionStorage.removeItem("restaurantLoginPhone")
+      sessionStorage.setItem("restaurantClearLoginPhone", "1")
+    } catch {
+      // ignore
+    }
+    setPhone("")
+  }
 
   const getBlockKey = (phoneStr) => {
     const clean = phoneStr?.replace(/\D/g, "") || ""
@@ -767,11 +788,32 @@ export default function RestaurantLogin() {
             <div className="mt-8 text-center">
               <p className="text-[11px] text-gray-400/80 font-medium leading-relaxed max-w-[320px] mx-auto">
                 By continuing, you agree to our <br />
-                <Link to="/food/restaurant/terms" className="text-gray-400 hover:text-[#B80B3D] transition-colors uppercase tracking-wider font-semibold">TERMS</Link>
+                <Link
+                  to="/food/restaurant/terms"
+                  state={{ from: "/food/restaurant/login" }}
+                  onClick={clearPersistedLoginPhone}
+                  className="text-gray-400 hover:text-[#B80B3D] transition-colors uppercase tracking-wider font-semibold"
+                >
+                  TERMS
+                </Link>
                 <span className="mx-2 text-gray-400/80 font-bold">•</span>
-                <Link to="/food/restaurant/privacy" className="text-gray-400 hover:text-[#B80B3D] transition-colors uppercase tracking-wider font-semibold">PRIVACY</Link>
+                <Link
+                  to="/food/restaurant/privacy"
+                  state={{ from: "/food/restaurant/login" }}
+                  onClick={clearPersistedLoginPhone}
+                  className="text-gray-400 hover:text-[#B80B3D] transition-colors uppercase tracking-wider font-semibold"
+                >
+                  PRIVACY
+                </Link>
                 <span className="mx-2 text-gray-400/80 font-bold">•</span>
-                <Link to="/food/restaurant/help-content" className="text-gray-400 hover:text-[#B80B3D] transition-colors uppercase tracking-wider font-semibold">SUPPORT</Link>
+                <Link
+                  to="/food/restaurant/help-content"
+                  state={{ from: "/food/restaurant/login" }}
+                  onClick={clearPersistedLoginPhone}
+                  className="text-gray-400 hover:text-[#B80B3D] transition-colors uppercase tracking-wider font-semibold"
+                >
+                  SUPPORT
+                </Link>
               </p>
             </div>
           )}

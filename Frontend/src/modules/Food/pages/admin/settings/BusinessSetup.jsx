@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, useMemo } from "react";
 import { Info, Phone, Upload, X, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import { adminAPI } from "@food/api";
@@ -8,6 +8,27 @@ const debugLog = (...args) => {}
 const debugWarn = (...args) => {}
 const debugError = (...args) => {}
 
+const emptyForm = {
+  companyName: "",
+  email: "",
+  phoneCountryCode: "+91",
+  phoneNumber: "",
+  address: "",
+  state: "",
+  pincode: "",
+  region: "",
+};
+
+const settingsToForm = (settings) => ({
+  companyName: settings?.companyName || "",
+  email: settings?.email || "",
+  phoneCountryCode: settings?.phone?.countryCode || "+91",
+  phoneNumber: settings?.phone?.number || "",
+  address: settings?.address || "",
+  state: settings?.state || "",
+  pincode: settings?.pincode || "",
+  region: settings?.region || "India",
+});
 
 export default function BusinessSetup() {
   const [loading, setLoading] = useState(true);
@@ -16,24 +37,57 @@ export default function BusinessSetup() {
   const [faviconPreview, setFaviconPreview] = useState(null);
   const [logoFile, setLogoFile] = useState(null);
   const [faviconFile, setFaviconFile] = useState(null);
+  const [removeLogo, setRemoveLogo] = useState(false);
+  const [removeFavicon, setRemoveFavicon] = useState(false);
+  const [savedForm, setSavedForm] = useState(emptyForm);
+  const [savedLogoUrl, setSavedLogoUrl] = useState(null);
+  const [savedFaviconUrl, setSavedFaviconUrl] = useState(null);
   const logoInputRef = useRef(null);
   const faviconInputRef = useRef(null);
 
-  const [formData, setFormData] = useState({
-    companyName: "",
-    email: "",
-    phoneCountryCode: "+91",
-    phoneNumber: "",
-    address: "",
-    state: "",
-    pincode: "",
-    region: "",
-  });
+  const [formData, setFormData] = useState(emptyForm);
+
+  const hasChanges = useMemo(() => {
+    const formDirty = Object.keys(emptyForm).some(
+      (key) => String(formData[key] ?? "") !== String(savedForm[key] ?? ""),
+    );
+    const logoDirty = Boolean(logoFile) || (removeLogo && Boolean(savedLogoUrl));
+    const faviconDirty =
+      Boolean(faviconFile) || (removeFavicon && Boolean(savedFaviconUrl));
+    return formDirty || logoDirty || faviconDirty;
+  }, [
+    formData,
+    savedForm,
+    logoFile,
+    faviconFile,
+    removeLogo,
+    removeFavicon,
+    savedLogoUrl,
+    savedFaviconUrl,
+  ]);
 
   // Fetch business settings on mount
   useEffect(() => {
     fetchBusinessSettings();
   }, []);
+
+  const applySettingsToState = (settings) => {
+    const nextForm = settingsToForm(settings);
+    const nextLogo = settings?.logo?.url || null;
+    const nextFavicon = settings?.favicon?.url || null;
+    setFormData(nextForm);
+    setSavedForm(nextForm);
+    setLogoPreview(nextLogo);
+    setFaviconPreview(nextFavicon);
+    setSavedLogoUrl(nextLogo);
+    setSavedFaviconUrl(nextFavicon);
+    setRemoveLogo(false);
+    setRemoveFavicon(false);
+    setLogoFile(null);
+    setFaviconFile(null);
+    if (logoInputRef.current) logoInputRef.current.value = "";
+    if (faviconInputRef.current) faviconInputRef.current.value = "";
+  };
 
   const fetchBusinessSettings = async () => {
     try {
@@ -42,24 +96,7 @@ export default function BusinessSetup() {
       const settings = response?.data?.data || response?.data;
 
       if (settings) {
-        setFormData({
-          companyName: settings.companyName || "",
-          email: settings.email || "",
-          phoneCountryCode: settings.phone?.countryCode || "+91",
-          phoneNumber: settings.phone?.number || "",
-          address: settings.address || "",
-          state: settings.state || "",
-          pincode: settings.pincode || "",
-          region: settings.region || "India",
-        });
-
-        // Set logo and favicon previews if they exist
-        if (settings.logo?.url) {
-          setLogoPreview(settings.logo.url);
-        }
-        if (settings.favicon?.url) {
-          setFaviconPreview(settings.favicon.url);
-        }
+        applySettingsToState(settings);
       }
     } catch (error) {
       debugError("Error fetching business settings:", error);
@@ -124,6 +161,8 @@ export default function BusinessSetup() {
         state: formData.state.trim(),
         pincode: formData.pincode.trim(),
         region: formData.region,
+        removeLogo: removeLogo && !logoFile,
+        removeFavicon: removeFavicon && !faviconFile,
       };
 
       // Prepare files
@@ -141,15 +180,11 @@ export default function BusinessSetup() {
       if (updatedSettings) {
         // Update global cache immediately
         setCachedSettings(updatedSettings);
+        applySettingsToState(updatedSettings);
 
-        // Update previews with new URLs if files were uploaded
-        if (updatedSettings.logo?.url) {
-          setLogoPreview(updatedSettings.logo.url);
-          setLogoFile(null);
-        }
-        if (updatedSettings.favicon?.url) {
-          setFaviconPreview(updatedSettings.favicon.url);
-          setFaviconFile(null);
+        // Restore default site favicon when admin favicon was removed
+        if (!updatedSettings.favicon?.url) {
+          updateFavicon(null);
         }
       }
 
@@ -166,9 +201,14 @@ export default function BusinessSetup() {
   };
 
   const handleReset = () => {
-    fetchBusinessSettings();
+    if (!hasChanges) return;
+    setFormData(savedForm);
+    setLogoPreview(savedLogoUrl);
+    setFaviconPreview(savedFaviconUrl);
     setLogoFile(null);
     setFaviconFile(null);
+    setRemoveLogo(false);
+    setRemoveFavicon(false);
     if (logoInputRef.current) {
       logoInputRef.current.value = "";
     }
@@ -368,6 +408,7 @@ export default function BusinessSetup() {
                     }
 
                     setLogoFile(file);
+                    setRemoveLogo(false);
                     const reader = new FileReader();
                     reader.onloadend = () => {
                       setLogoPreview(reader.result);
@@ -393,6 +434,7 @@ export default function BusinessSetup() {
                           e.stopPropagation();
                           setLogoPreview(null);
                           setLogoFile(null);
+                          setRemoveLogo(true);
                           if (logoInputRef.current) {
                             logoInputRef.current.value = "";
                           }
@@ -435,6 +477,7 @@ export default function BusinessSetup() {
                     }
 
                     setFaviconFile(file);
+                    setRemoveFavicon(false);
                     const reader = new FileReader();
                     reader.onloadend = () => {
                       setFaviconPreview(reader.result);
@@ -460,6 +503,7 @@ export default function BusinessSetup() {
                           e.stopPropagation();
                           setFaviconPreview(null);
                           setFaviconFile(null);
+                          setRemoveFavicon(true);
                           if (faviconInputRef.current) {
                             faviconInputRef.current.value = "";
                           }
@@ -490,7 +534,7 @@ export default function BusinessSetup() {
                 <button
                   type="button"
                   onClick={handleReset}
-                  disabled={saving}
+                  disabled={saving || !hasChanges}
                   className="px-4 py-2 text-xs font-semibold rounded-lg border border-slate-300 text-slate-700 hover:bg-slate-100 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   Reset
@@ -498,7 +542,7 @@ export default function BusinessSetup() {
                 <button
                   type="button"
                   onClick={handleSave}
-                  disabled={saving}
+                  disabled={saving || !hasChanges}
                   className="px-4 py-2 text-xs font-semibold rounded-lg bg-blue-600 text-white hover:bg-blue-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
                 >
                   {saving ? (
