@@ -99,6 +99,9 @@ export function computePickupMetrics(order, riderLocation) {
       resLng,
     );
     const km = distM / 1000;
+    if (km > MAX_TRUSTED_DISTANCE_KM) {
+      return buildLocatingMetrics();
+    }
     const mins = Math.max(1, Math.ceil(distM / RIDER_SPEED_M_PER_MIN) + prepBuffer);
     return buildReadyMetrics(PICKUP_METRICS_SOURCE.GPS, Number(km.toFixed(1)), mins);
   }

@@ -28,6 +28,12 @@ import { FoodAddon } from '../../restaurant/models/foodAddon.model.js';
 import { FoodSupportTicket } from '../../user/models/supportTicket.model.js';
 import { FoodRestaurantSupportTicket } from '../../restaurant/models/supportTicket.model.js';
 import { FoodOrder } from '../../orders/models/order.model.js';
+import {
+    toStartOfDayInTimeZone,
+    toEndOfDayInTimeZone,
+    getWeekRangeInTimeZone,
+    getMonthRangeInTimeZone,
+} from '../../../../utils/timezone.js';
 import { FoodTransaction } from '../../orders/models/foodTransaction.model.js';
 import { FoodRestaurantWithdrawal } from '../../restaurant/models/foodRestaurantWithdrawal.model.js';
 import { FoodDeliveryWithdrawal } from '../../delivery/models/foodDeliveryWithdrawal.model.js';
@@ -395,51 +401,40 @@ const PENDING_ORDER_STATUSES = ['created', 'confirmed', 'preparing', 'ready_for_
 const DASHBOARD_PENDING_ORDER_STATUSES = ['created', 'confirmed'];
 const DASHBOARD_PROCESSING_ORDER_STATUSES = ['preparing', 'ready_for_pickup'];
 const DELIVERED_ORDER_STATUS_EXPR = { $eq: ['$orderStatus', 'delivered'] };
-const DASHBOARD_DERIVED_PLATFORM_FEE_EXPR = {
-    $max: [
-        0,
-        {
-            $subtract: [
-                {
-                    $subtract: [
-                        {
-                            $subtract: [
-                                {
-                                    $subtract: [
-                                        { $ifNull: ['$pricing.total', 0] },
-                                        { $ifNull: ['$pricing.subtotal', 0] }
-                                    ]
-                                },
-                                { $ifNull: ['$pricing.packagingFee', 0] }
-                            ]
-                        },
-                        { $ifNull: ['$pricing.deliveryFee', 0] }
-                    ]
-                },
-                {
-                    $subtract: [
-                        { $ifNull: ['$pricing.tax', 0] },
-                        { $ifNull: ['$pricing.discount', 0] }
-                    ]
-                }
-            ]
-        }
+const IS_CASH_COD_METHOD_EXPR = {
+    $in: [
+        { $toLower: { $ifNull: ['$payment.method', ''] } },
+        ['cash', 'cod', 'cash on delivery']
     ]
 };
-const DASHBOARD_PLATFORM_FEE_EXPR = {
-    $ifNull: ['$pricing.platformFee', DASHBOARD_DERIVED_PLATFORM_FEE_EXPR]
-};
-const DASHBOARD_DELIVERY_FEE_EXPR = {
+const COD_AMOUNT_EXPR = {
     $ifNull: [
-        '$pricing.deliveryFee',
         {
-            $ifNull: [
-                '$deliveryPartnerSettlement',
-                { $ifNull: ['$riderEarning', 0] }
+            $cond: [
+                { $gt: [{ $ifNull: ['$payment.amountDue', 0] }, 0] },
+                '$payment.amountDue',
+                null
             ]
-        }
+        },
+        { $ifNull: ['$pricing.total', 0] }
     ]
 };
+const OPEN_COD_ORDER_EXPR = {
+    $and: [
+        IS_CASH_COD_METHOD_EXPR,
+        { $ne: ['$orderStatus', 'delivered'] },
+        { $not: { $in: ['$orderStatus', CANCELLED_ORDER_STATUSES] } }
+    ]
+};
+const COLLECTED_COD_ORDER_EXPR = {
+    $and: [
+        IS_CASH_COD_METHOD_EXPR,
+        DELIVERED_ORDER_STATUS_EXPR
+    ]
+};
+const DASHBOARD_PLATFORM_FEE_EXPR = { $ifNull: ['$pricing.platformFee', 0] };
+const DASHBOARD_DELIVERY_FEE_EXPR = { $ifNull: ['$pricing.deliveryFee', 0] };
+const DASHBOARD_RIDER_EARNING_EXPR = { $ifNull: ['$riderEarning', 0] };
 
 const getDateRangeByPeriod = (periodRaw) => {
     const period = String(periodRaw || 'overall').trim().toLowerCase();
@@ -488,13 +483,9 @@ export async function getDashboardStats(query = {}) {
         ? new mongoose.Types.ObjectId(query.zoneId)
         : null;
 
-    const orderMatch = {
-        $or: [
-            { "payment.method": { $in: ["cash", "wallet"] } },
-            { "payment.status": { $in: ["paid", "authorized", "captured", "settled", "refunded"] } },
-            { "orderStatus": { $in: CANCELLED_ORDER_STATUSES } }
-        ],
-    };
+    // Include ALL orders in the period/zone — money metrics already gate on delivered.
+    // Old payment $or filter dropped some delivered rows and also hid open COD from counts.
+    const orderMatch = {};
     if (periodRange) {
         orderMatch.createdAt = { $gte: periodRange.start, $lte: periodRange.end };
     }
@@ -578,6 +569,11 @@ export async function getDashboardStats(query = {}) {
                             $cond: [DELIVERED_ORDER_STATUS_EXPR, DASHBOARD_DELIVERY_FEE_EXPR, 0] 
                         } 
                     },
+                    riderEarningTotal: {
+                        $sum: {
+                            $cond: [DELIVERED_ORDER_STATUS_EXPR, DASHBOARD_RIDER_EARNING_EXPR, 0]
+                        }
+                    },
                     gstTotal: { 
                         $sum: { 
                             $cond: [DELIVERED_ORDER_STATUS_EXPR, { $ifNull: ['$pricing.tax', 0] }, 0] 
@@ -587,6 +583,22 @@ export async function getDashboardStats(query = {}) {
                         $sum: { 
                             $cond: [DELIVERED_ORDER_STATUS_EXPR, { $ifNull: ['$platformProfit', 0] }, 0] 
                         } 
+                    },
+                    // COD pipeline: include pending/processing cash orders (not only delivered)
+                    codCollectedTotal: {
+                        $sum: {
+                            $cond: [COLLECTED_COD_ORDER_EXPR, COD_AMOUNT_EXPR, 0]
+                        }
+                    },
+                    codOpenTotal: {
+                        $sum: {
+                            $cond: [OPEN_COD_ORDER_EXPR, COD_AMOUNT_EXPR, 0]
+                        }
+                    },
+                    codOpenOrders: {
+                        $sum: {
+                            $cond: [OPEN_COD_ORDER_EXPR, 1, 0]
+                        }
                     }
                 }
             }
@@ -617,7 +629,7 @@ export async function getDashboardStats(query = {}) {
                         $sum: {
                             $cond: [
                                 { $eq: ['$orderStatus', 'delivered'] },
-                                { $ifNull: ['$platformProfit', { $ifNull: ['$pricing.platformFee', 0] }] },
+                                { $ifNull: ['$pricing.restaurantCommission', 0] },
                                 0
                             ]
                         }
@@ -747,115 +759,17 @@ export async function getDashboardStats(query = {}) {
 
     let totals = orderTotalsAgg?.[0] || {};
 
-    // Use the ledger (FoodTransaction) as the absolute authority for financial metrics
-    // and merge with FoodOrder's active counts for high reliability
-    const txMatch = {};
-    if (periodRange) {
-        txMatch.createdAt = { $gte: periodRange.start, $lte: periodRange.end };
-    }
-    if (zoneId) {
-        txMatch.restaurantId = { $in: zoneRestaurantIds || [] };
-    }
+    // IMPORTANT:
+    // Gross revenue / fees must come from FoodOrder delivered rows (pricing.total, etc.).
+    // Overwriting with FoodTransaction caused undercount (e.g. delivered GMV 5441 vs
+    // ledger "captured" sum 4714) because:
+    //  - COD txs can remain status "pending" if not synced on delivery
+    //  - ledger enum has no "settled"; wrong fields were used for fee cards
+    //    (platformFee mapped to platformNetProfit, deliveryFee to riderShare)
+    // FoodOrder is what ops manually verify against delivered order totals.
 
-    const txAgg = await FoodTransaction.aggregate([
-        { $match: txMatch },
-        {
-            $group: {
-                _id: null,
-                totalOrders: { $sum: 1 },
-                delivered: { $sum: { $cond: [{ $in: ['$status', ['captured', 'settled']] }, 1, 0] } },
-                cancelled: { $sum: { $cond: [{ $eq: ['$status', 'failed'] }, 1, 0] } },
-                pending: { $sum: { $cond: [{ $eq: ['$status', 'pending'] }, 1, 0] } },
-                
-                revenueTotal: {
-                    $sum: {
-                        $cond: [{ $in: ['$status', ['captured', 'settled']] }, { $ifNull: ['$amounts.totalCustomerPaid', 0] }, 0]
-                    }
-                },
-                commissionTotal: {
-                    $sum: {
-                        $cond: [{ $in: ['$status', ['captured', 'settled']] }, { $ifNull: ['$amounts.restaurantCommission', 0] }, 0]
-                    }
-                },
-                platformFeeTotal: {
-                    $sum: {
-                        $cond: [{ $in: ['$status', ['captured', 'settled']] }, { $ifNull: ['$amounts.platformNetProfit', 0] }, 0]
-                    }
-                },
-                deliveryFeeTotal: {
-                    $sum: {
-                        $cond: [{ $in: ['$status', ['captured', 'settled']] }, { $ifNull: ['$amounts.riderShare', 0] }, 0]
-                    }
-                },
-                gstTotal: {
-                    $sum: {
-                        $cond: [{ $in: ['$status', ['captured', 'settled']] }, { $ifNull: ['$amounts.taxAmount', 0] }, 0]
-                    }
-                },
-                adminNetProfit: {
-                    $sum: {
-                        $cond: [{ $in: ['$status', ['captured', 'settled']] }, { $ifNull: ['$amounts.platformNetProfit', 0] }, 0]
-                    }
-                }
-            }
-        }
-    ]);
-
-    if (txAgg && txAgg.length > 0) {
-        totals = {
-            ...totals,
-            // Keep order status counts strictly from the actual food_orders collection
-            totalOrders: totals.totalOrders || 0,
-            delivered: totals.delivered || 0,
-            cancelled: totals.cancelled || 0,
-            pending: totals.pending || 0,
-            dashboardPending: totals.dashboardPending || 0,
-            
-            revenueTotal: txAgg[0].revenueTotal || totals.revenueTotal || 0,
-            commissionTotal: txAgg[0].commissionTotal || totals.commissionTotal || 0,
-            platformFeeTotal: txAgg[0].platformFeeTotal || totals.platformFeeTotal || 0,
-            deliveryFeeTotal: txAgg[0].deliveryFeeTotal || totals.deliveryFeeTotal || 0,
-            gstTotal: txAgg[0].gstTotal || totals.gstTotal || 0,
-            adminNetProfit: txAgg[0].adminNetProfit || totals.adminNetProfit || 0
-        };
-    }
-
-    // Robust Monthly Trajectory Chart (strictly driven by ledger)
-    const txMonthlyMatch = {
-        createdAt: {
-            $gte: new Date(new Date().getFullYear(), new Date().getMonth() - 11, 1),
-            $lte: new Date()
-        }
-    };
-    if (zoneId) {
-        txMonthlyMatch.restaurantId = { $in: zoneRestaurantIds || [] };
-    }
-    
-    const txMonthly = await FoodTransaction.aggregate([
-        { $match: txMonthlyMatch },
-        {
-            $group: {
-                _id: {
-                    year: { $year: '$createdAt' },
-                    month: { $month: '$createdAt' }
-                },
-                orders: { $sum: 1 },
-                revenue: {
-                    $sum: {
-                        $cond: [{ $in: ['$status', ['captured', 'settled']] }, { $ifNull: ['$amounts.totalCustomerPaid', 0] }, 0]
-                    }
-                },
-                commission: {
-                    $sum: {
-                        $cond: [{ $in: ['$status', ['captured', 'settled']] }, { $ifNull: ['$amounts.platformNetProfit', 0] }, 0]
-                    }
-                }
-            }
-        },
-        { $sort: { '_id.year': 1, '_id.month': 1 } }
-    ]);
-
-    const finalMonthlyAgg = txMonthly && txMonthly.length > 0 ? txMonthly : (monthlyAgg || []);
+    // Monthly chart: use FoodOrder delivered sums (same source as Gross revenue)
+    const finalMonthlyAgg = monthlyAgg || [];
 
     const now = new Date();
     const monthlyMap = new Map(
@@ -880,6 +794,17 @@ export async function getDashboardStats(query = {}) {
         });
     }
 
+    const commissionTotal = Number(totals.commissionTotal || 0);
+    const platformFeeTotal = Number(totals.platformFeeTotal || 0);
+    const deliveryFeeTotal = Number(totals.deliveryFeeTotal || 0);
+    const riderEarningTotal = Number(totals.riderEarningTotal || 0);
+    const gstTotal = Number(totals.gstTotal || 0);
+    // Delivery fee kept by platform after paying riders
+    const deliveryProfit = Math.max(0, deliveryFeeTotal - riderEarningTotal);
+    // Platform Total = Comm + Platform fee + Delivery net + GST (matches dashboard helper)
+    const totalAdminEarnings =
+        Math.round((commissionTotal + platformFeeTotal + deliveryProfit + gstTotal) * 100) / 100;
+
     return {
         orders: {
             total: Number(totals.totalOrders || 0),
@@ -890,12 +815,19 @@ export async function getDashboardStats(query = {}) {
             }
         },
         revenue: { total: Number(totals.revenueTotal || 0) },
-        commission: { total: Number(totals.commissionTotal || 0) },
-        platformFee: { total: Number(totals.platformFeeTotal || 0) },
-        deliveryFee: { total: Number(totals.deliveryFeeTotal || 0) },
-        gst: { total: Number(totals.gstTotal || 0) },
-        totalAdminEarnings: Number(totals.adminNetProfit || 0) + Number(totals.gstTotal || 0),
-        deliveryProfit: Number(totals.adminNetProfit || 0) - Number(totals.commissionTotal || 0) - Number(totals.platformFeeTotal || 0),
+        cod: {
+            collected: Number(totals.codCollectedTotal || 0),
+            open: Number(totals.codOpenTotal || 0),
+            total: Number(totals.codCollectedTotal || 0) + Number(totals.codOpenTotal || 0),
+            openOrders: Number(totals.codOpenOrders || 0)
+        },
+        commission: { total: commissionTotal },
+        platformFee: { total: platformFeeTotal },
+        deliveryFee: { total: deliveryFeeTotal },
+        riderEarnings: { total: riderEarningTotal },
+        gst: { total: gstTotal },
+        totalAdminEarnings,
+        deliveryProfit,
         restaurants: {
             total: Number(restaurantsTotal || 0),
             pendingRequests: Number(restaurantsPending || 0)
@@ -935,30 +867,37 @@ function formatTimeAgo(date) {
 
 
 export async function getTransactionReport(query = {}) {
-    const { fromDate, toDate, zone, restaurant, search } = query;
+    const { fromDate, toDate, zone, restaurant, search, time } = query;
+    const limit = Math.min(Math.max(parseInt(query.limit, 10) || 1000, 1), 5000);
     const match = {};
 
+    // Prefer explicit ISO range from client; else compute Asia/Kolkata ranges from `time`
+    const timeLabel = String(time || '').trim().toLowerCase();
     if (fromDate && toDate) {
         match.createdAt = { $gte: new Date(fromDate), $lte: new Date(toDate) };
+    } else if (timeLabel && timeLabel !== 'all time' && timeLabel !== 'all') {
+        const now = new Date();
+        if (timeLabel === 'today') {
+            match.createdAt = {
+                $gte: toStartOfDayInTimeZone(now),
+                $lte: toEndOfDayInTimeZone(now),
+            };
+        } else if (timeLabel === 'this week') {
+            const range = getWeekRangeInTimeZone(now);
+            match.createdAt = { $gte: range.start, $lte: range.end };
+        } else if (timeLabel === 'this month') {
+            const range = getMonthRangeInTimeZone(now);
+            match.createdAt = { $gte: range.start, $lte: range.end };
+        }
     }
 
     if (search) {
-        const searchRegex = new RegExp(String(search).trim(), "i");
-        const matchingOrders = await FoodOrder.find({ orderId: { $regex: searchRegex } })
-            .select('_id')
-            .lean();
-
-        match.$or = [
-            { orderReadableId: { $regex: searchRegex } },
-            { orderId: { $in: matchingOrders.map((order) => order._id) } }
-        ];
+        match.orderId = { $regex: new RegExp(String(search).trim(), 'i') };
     }
 
-    let restaurantIds = null;
-    if (zone || restaurant) {
+    if ((zone && zone !== 'All Zones') || (restaurant && restaurant !== 'All restaurants')) {
         const restFilter = {};
-        
-        // Robust Zone Handling (supports both Name string and ObjectId)
+
         if (zone && zone !== 'All Zones') {
             if (mongoose.Types.ObjectId.isValid(zone)) {
                 restFilter.zoneId = new mongoose.Types.ObjectId(zone);
@@ -971,13 +910,11 @@ export async function getTransactionReport(query = {}) {
                 if (matchedZone?._id) {
                     restFilter.zoneId = matchedZone._id;
                 } else {
-                    // Force empty result if zone name is not found
                     restFilter.zoneId = new mongoose.Types.ObjectId();
                 }
             }
         }
 
-        // Robust Restaurant Handling (supports both Name string and ObjectId)
         if (restaurant && restaurant !== 'All restaurants') {
             if (mongoose.Types.ObjectId.isValid(restaurant)) {
                 restFilter._id = new mongoose.Types.ObjectId(restaurant);
@@ -988,63 +925,105 @@ export async function getTransactionReport(query = {}) {
                 if (restDoc) {
                     restFilter._id = restDoc._id;
                 } else {
-                    // Force empty result if restaurant name is not found
                     restFilter._id = new mongoose.Types.ObjectId();
                 }
             }
         }
-        
+
         const restaurantsList = await FoodRestaurant.find(restFilter).select('_id').lean();
-        restaurantIds = restaurantsList.map(r => r._id);
-        match.restaurantId = { $in: restaurantIds };
+        match.restaurantId = { $in: restaurantsList.map((r) => r._id) };
     }
 
-    // Include only resolved transactions for reports (or all to match orders)
-    // We will query the FoodTransaction table directly as it is the ledger
-    const transactionRows = await FoodTransaction.find(match)
-        .populate('orderId')
+    // Source of truth = FoodOrder (same as dashboard GMV). Ledger alone undercounted / drifted.
+    const orders = await FoodOrder.find(match)
         .populate('userId', 'name')
         .populate('restaurantId', 'restaurantName')
         .sort({ createdAt: -1 })
+        .limit(limit)
         .lean();
 
-    const transactions = transactionRows.map((tx) => {
-        const order = tx.orderId || {};
-        const pricing = order.pricing || {};
-        const subtotal = Number(pricing.subtotal || 0) || 0;
-        const packagingFee = Number(pricing.packagingFee || 0) || 0;
-        const deliveryFee = Number(pricing.deliveryFee || 0) || 0;
-        const tax = Number(pricing.tax || 0) || 0;
-        const discount = Number(pricing.discount || 0) || 0;
-        const total = Number(pricing.total || 0) || 0;
+    const orderIds = orders.map((o) => o._id).filter(Boolean);
+    const txRows = orderIds.length
+        ? await FoodTransaction.find({ orderId: { $in: orderIds } })
+            .select('orderId status amounts payment')
+            .lean()
+        : [];
+    const txByOrderId = new Map(txRows.map((t) => [String(t.orderId), t]));
 
-        // "Platform fee" should come from pricing.platformFee when available.
-        // For older orders where pricing.platformFee isn't stored, derive it from the pricing equation:
-        // total = subtotal + packagingFee + deliveryFee + platformFee + tax - discount
-        const platformFeeDerived = Math.max(
-            0,
-            total - subtotal - packagingFee - deliveryFee - tax + discount
-        );
+    const toNum = (v) => {
+        const n = Number(v);
+        return Number.isFinite(n) ? n : 0;
+    };
+
+    const resolveDisplayStatus = (order, tx) => {
+        const os = String(order?.orderStatus || '').toLowerCase();
+        const pay = String(order?.payment?.status || tx?.payment?.status || '').toLowerCase();
+        const txStatus = String(tx?.status || '').toLowerCase();
+
+        // UI never shows ledger jargon like "captured" / "settled"
+        if (pay === 'refunded' || txStatus === 'refunded') return 'Refunded';
+        if (os === 'delivered') return 'Delivered';
+        if (os.startsWith('cancelled')) return 'Cancelled';
+        if (['preparing', 'ready_for_pickup', 'picked_up', 'out_for_delivery'].includes(os)) {
+            return 'Processing';
+        }
+        if (['confirmed', 'accepted'].includes(os)) return 'Confirmed';
+        if (
+            pay === 'cod_pending' ||
+            pay === 'created' ||
+            pay === 'pending' ||
+            txStatus === 'pending' ||
+            os === 'created' ||
+            os === 'pending'
+        ) {
+            return 'Pending';
+        }
+        // Paid online / wallet but not delivered yet — still in progress
+        if (pay === 'paid' || pay === 'authorized' || txStatus === 'captured' || txStatus === 'settled') {
+            return 'Processing';
+        }
+        if (os) {
+            return os
+                .split('_')
+                .map((w) => (w ? w.charAt(0).toUpperCase() + w.slice(1) : w))
+                .join(' ');
+        }
+        return 'Pending';
+    };
+
+    const transactions = orders.map((order) => {
+        const pricing = order.pricing || {};
+        const tx = txByOrderId.get(String(order._id));
+        const subtotal = toNum(pricing.subtotal);
+        const packagingFee = toNum(pricing.packagingFee);
+        const deliveryFee = toNum(pricing.deliveryFee);
+        const tax = toNum(pricing.tax);
+        const discount = toNum(pricing.discount);
+        const total = toNum(pricing.total);
+        const platformFeeStored = pricing.platformFee;
         const platformFee =
-            pricing.platformFee !== undefined && pricing.platformFee !== null
-                ? Number(pricing.platformFee || 0) || 0
-                : platformFeeDerived;
+            platformFeeStored !== undefined && platformFeeStored !== null
+                ? toNum(platformFeeStored)
+                : Math.max(0, total - subtotal - packagingFee - deliveryFee - tax + discount);
+
         return {
-            id: tx._id,
-            orderId: tx.orderReadableId || order.orderId || 'N/A',
-            restaurant: tx.restaurantId?.restaurantName || 'N/A',
-            customerName: tx.userId?.name || 'Guest',
+            id: order._id,
+            orderId: order.orderId || 'N/A',
+            restaurant: order.restaurantId?.restaurantName || 'N/A',
+            customerName: order.userId?.name || order.customerName || 'Guest',
             totalItemAmount: subtotal,
-            itemDiscount: pricing.discount || 0,
-            couponDiscount: Number(pricing.discount || 0) || 0,
-            couponCode: pricing.couponCode || null,
-            referralDiscount: 0, // Placeholder
-            discountedAmount: Math.max(0, (pricing.subtotal || 0) - (pricing.discount || 0)),
-            vatTax: tx.amounts?.taxAmount || pricing.tax || 0,
-            deliveryCharge: pricing.deliveryFee || 0,
+            itemDiscount: discount,
+            couponDiscount: discount,
+            couponCode: pricing.couponCode || order.couponCode || null,
+            referralDiscount: toNum(pricing.referralDiscount || order.referralDiscount),
+            discountedAmount: Math.max(0, subtotal - discount),
+            vatTax: tax,
+            deliveryCharge: deliveryFee,
             platformFee,
-            orderAmount: tx.amounts?.totalCustomerPaid || pricing.total || 0,
-            status: tx.status
+            orderAmount: total,
+            status: resolveDisplayStatus(order, tx),
+            orderStatus: order.orderStatus || null,
+            createdAt: order.createdAt || null,
         };
     });
 
@@ -1054,29 +1033,58 @@ export async function getTransactionReport(query = {}) {
     let restaurantEarning = 0;
     let deliverymanEarning = 0;
 
-    for (const tx of transactionRows) {
-        // Calculate Summary
-        if (tx.status === 'captured' || tx.status === 'settled' || (tx.orderId && tx.orderId.orderStatus === 'delivered')) {
-            completedTransaction += tx.amounts?.totalCustomerPaid || 0;
-            adminEarning += tx.amounts?.platformNetProfit || 0;
-            restaurantEarning += tx.amounts?.restaurantShare || 0;
-            deliverymanEarning += tx.amounts?.riderShare || 0;
+    for (const order of orders) {
+        const pricing = order.pricing || {};
+        const total = toNum(pricing.total);
+        const commission = toNum(pricing.restaurantCommission);
+        const platformFee = toNum(pricing.platformFee);
+        const deliveryFee = toNum(pricing.deliveryFee);
+        const tax = toNum(pricing.tax);
+        const rider = toNum(order.riderEarning);
+        const subtotal = toNum(pricing.subtotal);
+        const packaging = toNum(pricing.packagingFee);
+        const os = String(order.orderStatus || '').toLowerCase();
+        const tx = txByOrderId.get(String(order._id));
+        const pay = String(order?.payment?.status || tx?.payment?.status || '').toLowerCase();
+        const txStatus = String(tx?.status || '').toLowerCase();
+        const deliveryNet = Math.max(0, deliveryFee - rider);
+
+        if (os === 'delivered') {
+            completedTransaction += total;
+            // Align with dashboard Platform Total components
+            adminEarning += commission + platformFee + deliveryNet + tax;
+            restaurantEarning += Math.max(0, subtotal + packaging - commission);
+            deliverymanEarning += rider;
         }
-        if (tx.status === 'refunded' || (tx.orderId && tx.orderId.orderStatus === 'cancelled_by_admin')) {
-            // Count number of refunded transactions according to old logic or sum them
-            refundedTransaction += tx.amounts?.totalCustomerPaid || 0;
+
+        const method = String(order?.payment?.method || tx?.paymentMethod || '').toLowerCase();
+        const isCashCod =
+            method === 'cash' ||
+            method === 'cod' ||
+            method === 'cash on delivery';
+        // Real money refunds only (online/wallet). Never count COD cancels.
+        const isActuallyRefunded =
+            !isCashCod &&
+            (pay === 'refunded' || txStatus === 'refunded');
+        if (isActuallyRefunded) {
+            refundedTransaction += total;
         }
     }
 
-    const summary = {
-        completedTransaction,
-        refundedTransaction, // Returning amount instead of count for consistency, frontend might expect count though
-        adminEarning,
-        restaurantEarning,
-        deliverymanEarning,
+    return {
+        transactions,
+        summary: {
+            completedTransaction: Math.round(completedTransaction * 100) / 100,
+            refundedTransaction: Math.round(refundedTransaction * 100) / 100,
+            adminEarning: Math.round(adminEarning * 100) / 100,
+            restaurantEarning: Math.round(restaurantEarning * 100) / 100,
+            deliverymanEarning: Math.round(deliverymanEarning * 100) / 100,
+        },
+        meta: {
+            orderCount: orders.length,
+            source: 'food_orders',
+        },
     };
-
-    return { transactions, summary };
 }
 
 export async function getRestaurantReport(query = {}) {
@@ -5574,7 +5582,7 @@ export async function getDeliveryWallets(query = {}) {
                     $match: {
                         'dispatch.deliveryPartnerId': { $in: partnerIds },
                         orderStatus: 'delivered',
-                        'payment.method': 'cash'
+                        'payment.method': { $in: ['cash', 'cod'] }
                     }
                 },
                 { $group: { _id: '$dispatch.deliveryPartnerId', cashCollected: { $sum: { $ifNull: ['$pricing.total', 0] } } } }

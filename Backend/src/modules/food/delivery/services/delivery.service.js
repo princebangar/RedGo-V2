@@ -8,6 +8,13 @@ import { uploadImageBuffer } from '../../../../services/cloudinary.service.js';
 import { ValidationError } from '../../../../core/auth/errors.js';
 import { getDeliveryCashLimitSettings } from '../../admin/services/admin.service.js';
 import { logger } from '../../../../utils/logger.js';
+import {
+  toStartOfDayInTimeZone,
+  toEndOfDayInTimeZone,
+  getWeekRangeInTimeZone,
+  getMonthRangeInTimeZone,
+  APP_TIMEZONE,
+} from '../../../../utils/timezone.js';
 
 export const normalizeDeliveryPhone = (phone) => {
     const digits = String(phone || '').replace(/\D/g, '');
@@ -609,10 +616,35 @@ export const getDeliveryPartnerEarnings = async (deliveryPartnerId, query = {}) 
         orderStatus: 'delivered',
     };
     if (range) {
-        match['deliveryState.deliveredAt'] = { $gte: range.start, $lte: range.end };
+        // Prefer deliveredAt, but don't drop delivered orders that only have createdAt/updatedAt
+        match.$or = [
+            { 'deliveryState.deliveredAt': { $gte: range.start, $lte: range.end } },
+            {
+                $and: [
+                    {
+                        $or: [
+                            { 'deliveryState.deliveredAt': { $exists: false } },
+                            { 'deliveryState.deliveredAt': null },
+                        ],
+                    },
+                    { updatedAt: { $gte: range.start, $lte: range.end } },
+                ],
+            },
+            {
+                $and: [
+                    {
+                        $or: [
+                            { 'deliveryState.deliveredAt': { $exists: false } },
+                            { 'deliveryState.deliveredAt': null },
+                        ],
+                    },
+                    { createdAt: { $gte: range.start, $lte: range.end } },
+                ],
+            },
+        ];
     }
 
-    const [totalOrders, agg] = await Promise.all([
+    const [totalOrders, agg, bonusAgg] = await Promise.all([
         FoodOrder.countDocuments(match),
         FoodOrder.aggregate([
             { $match: match },
@@ -622,20 +654,36 @@ export const getDeliveryPartnerEarnings = async (deliveryPartnerId, query = {}) 
                     totalEarnings: { $sum: { $ifNull: ['$riderEarning', 0] } }
                 }
             }
-        ])
+        ]),
+        range
+            ? DeliveryBonusTransaction.aggregate([
+                {
+                    $match: {
+                        deliveryPartnerId: partnerId,
+                        createdAt: { $gte: range.start, $lte: range.end },
+                    },
+                },
+                { $group: { _id: null, total: { $sum: { $ifNull: ['$amount', 0] } } } },
+            ])
+            : DeliveryBonusTransaction.aggregate([
+                { $match: { deliveryPartnerId: partnerId } },
+                { $group: { _id: null, total: { $sum: { $ifNull: ['$amount', 0] } } } },
+            ]),
     ]);
 
     const totalEarnings = Number(agg?.[0]?.totalEarnings) || 0;
+    const totalBonus = Number(bonusAgg?.[0]?.total) || 0;
 
-    // Frontend only strongly relies on totalEarnings + totalOrders.
+    // Weekly "Earnings" card = order earnings only.
+    // Admin/referral/addon bonuses stay in pocket balance (not mixed into this card).
     const summary = {
         totalEarnings,
         totalOrders,
         totalHours: 0,
         totalMinutes: 0,
         orderEarning: totalEarnings,
-        incentive: 0,
-        otherEarnings: 0
+        incentive: totalBonus,
+        otherEarnings: totalBonus,
     };
 
     return {
@@ -654,95 +702,93 @@ const normalizeStatusFilter = (status) => {
     return s;
 };
 
-const toStartOfDay = (d) => {
-    const x = new Date(d);
-    x.setHours(0, 0, 0, 0);
-    return x;
-};
+const toStartOfDay = (d) => toStartOfDayInTimeZone(d);
+const toEndOfDay = (d) => toEndOfDayInTimeZone(d);
+const getWeekRange = (anchorDate) => getWeekRangeInTimeZone(anchorDate);
+const getMonthRange = (anchorDate) => getMonthRangeInTimeZone(anchorDate);
 
-const toEndOfDay = (d) => {
-    const x = new Date(d);
-    x.setHours(23, 59, 59, 999);
-    return x;
-};
-
-const getWeekRange = (anchorDate) => {
-    const d = new Date(anchorDate);
-    const start = toStartOfDay(d);
-    start.setDate(start.getDate() - start.getDay()); // Sunday
-    const end = toEndOfDay(start);
-    end.setDate(start.getDate() + 6);
-    return { start, end };
-};
-
-const getMonthRange = (anchorDate) => {
-    const d = new Date(anchorDate);
-    const start = new Date(d.getFullYear(), d.getMonth(), 1);
-    start.setHours(0, 0, 0, 0);
-    const end = new Date(d.getFullYear(), d.getMonth() + 1, 0);
-    end.setHours(23, 59, 59, 999);
-    return { start, end };
+const formatTripTimeIST = (value) => {
+  if (!value) return '';
+  const d = value instanceof Date ? value : new Date(value);
+  if (Number.isNaN(d.getTime())) return '';
+  // Always Asia/Kolkata — never depend on server OS timezone
+  return d.toLocaleTimeString('en-IN', {
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: true,
+    timeZone: APP_TIMEZONE,
+  });
 };
 
 const computeRange = (period, date) => {
-    const p = String(period || 'daily').toLowerCase();
-    const anchor = date instanceof Date && !Number.isNaN(date.getTime()) ? date : new Date();
-    if (p === 'weekly' || p === 'week') return getWeekRange(anchor);
-    if (p === 'monthly' || p === 'month') return getMonthRange(anchor);
-    // daily
-    return { start: toStartOfDay(anchor), end: toEndOfDay(anchor) };
+  const p = String(period || 'daily').toLowerCase();
+  const anchor = date instanceof Date && !Number.isNaN(date.getTime()) ? date : new Date();
+  if (p === 'weekly' || p === 'week') return getWeekRange(anchor);
+  if (p === 'monthly' || p === 'month') return getMonthRange(anchor);
+  // daily
+  return { start: toStartOfDay(anchor), end: toEndOfDay(anchor) };
 };
 
 const toTripDto = (order) => {
-    const createdAt = order?.createdAt || null;
-    const deliveredAt = order?.deliveryState?.deliveredAt || order?.deliveredAt || order?.completedAt || null;
-    const dateForUi = deliveredAt || createdAt || order?.updatedAt || null;
+  const createdAt = order?.createdAt || null;
+  const deliveredAt = order?.deliveryState?.deliveredAt || order?.deliveredAt || order?.completedAt || null;
+  // Match admin "ORDER DATE" semantics for the Time column: order placed time.
+  // (Delivered time is still exposed separately as deliveredAt for clients that need it.)
+  const dateForUi = createdAt || deliveredAt || order?.updatedAt || null;
 
-    const time = dateForUi
-        ? new Date(dateForUi).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })
-        : '';
+  const time = formatTripTimeIST(dateForUi);
 
-    const orderStatus = String(order?.orderStatus || order?.status || '').toLowerCase();
-    const isDelivered = orderStatus === 'delivered' || String(order?.deliveryState?.currentPhase || '').toLowerCase() === 'delivered';
-    const isCancelled = orderStatus.startsWith('cancelled') || String(order?.deliveryState?.status || '').toLowerCase().includes('cancel');
+  const orderStatus = String(order?.orderStatus || order?.status || '').toLowerCase();
+  const isDelivered = orderStatus === 'delivered' || String(order?.deliveryState?.currentPhase || '').toLowerCase() === 'delivered';
+  const isCancelled = orderStatus.startsWith('cancelled') || String(order?.deliveryState?.status || '').toLowerCase().includes('cancel');
 
-    const status = isDelivered ? 'Completed' : isCancelled ? 'Cancelled' : 'Pending';
+  const status = isDelivered ? 'Completed' : isCancelled ? 'Cancelled' : 'Pending';
 
-    const restaurantName =
-        order?.restaurantId?.restaurantName ||
-        order?.restaurantName ||
-        order?.restaurant?.restaurantName ||
-        '';
+  const restaurantName =
+    order?.restaurantId?.restaurantName ||
+    order?.restaurantName ||
+    order?.restaurant?.restaurantName ||
+    '';
 
-    const paymentMethod = order?.payment?.method || order?.paymentMethod || '';
-    const pricingTotal = Number(order?.pricing?.total) || Number(order?.totalAmount) || 0;
+  const paymentMethod = String(order?.payment?.method || order?.paymentMethod || '').toLowerCase();
+  const pricingTotal = Number(order?.pricing?.total) || Number(order?.totalAmount) || 0;
 
-    const earningAmount = Number(order?.riderEarning ?? order?.deliveryEarning ?? 0) || 0;
-    const codAmount = paymentMethod === 'cash' ? Number(order?.payment?.amountDue) || 0 : 0;
-    const codCollectedAmount = paymentMethod === 'cash' && order?.payment?.status === 'paid' ? codAmount : 0;
-    return {
-        id: order?._id,
-        _id: order?._id,
-        orderId: order?.orderId || order?._id,
-        status,
-        restaurantName,
-        restaurant: restaurantName,
-        items: order?.items || order?.orderItems || [],
-        orderItems: order?.orderItems || order?.items || [],
-        paymentMethod,
-        totalAmount: pricingTotal,
-        orderTotal: pricingTotal,
-        codAmount: codAmount,
-        codCollectedAmount,
-        deliveryEarning: earningAmount,
-        earningAmount: earningAmount,
-        amount: earningAmount, // legacy fallback
-        createdAt: order?.createdAt,
-        deliveredAt: deliveredAt,
-        completedAt: deliveredAt,
-        date: dateForUi,
-        time
-    };
+  const earningAmount = Number(order?.riderEarning ?? order?.deliveryEarning ?? 0) || 0;
+  const isCashCod =
+    paymentMethod === 'cash' ||
+    paymentMethod === 'cod' ||
+    paymentMethod === 'cash on delivery';
+  const amountDue = Number(order?.payment?.amountDue);
+  const codAmount = isCashCod
+    ? (Number.isFinite(amountDue) && amountDue > 0 ? amountDue : pricingTotal)
+    : 0;
+  const paymentStatus = String(order?.payment?.status || '').toLowerCase();
+  const codCollectedAmount =
+    isCashCod && (paymentStatus === 'paid' || isDelivered) ? codAmount : 0;
+  return {
+    id: order?._id,
+    _id: order?._id,
+    orderId: order?.orderId || order?._id,
+    status,
+    restaurantName,
+    restaurant: restaurantName,
+    items: order?.items || order?.orderItems || [],
+    orderItems: order?.orderItems || order?.items || [],
+    paymentMethod,
+    totalAmount: pricingTotal,
+    orderTotal: pricingTotal,
+    codAmount: codAmount,
+    codCollectedAmount,
+    deliveryEarning: earningAmount,
+    earningAmount: earningAmount,
+    amount: earningAmount, // legacy fallback
+    createdAt: order?.createdAt,
+    deliveredAt: deliveredAt,
+    completedAt: deliveredAt,
+    date: dateForUi,
+    time,
+    timeZone: APP_TIMEZONE,
+  };
 };
 
 export const getDeliveryPartnerTripHistory = async (deliveryPartnerId, query = {}) => {
@@ -761,8 +807,11 @@ export const getDeliveryPartnerTripHistory = async (deliveryPartnerId, query = {
 
     const sf = String(statusFilter || '').toLowerCase();
     if (sf === 'completed') {
+        // Same day axis as ALL TRIPS (order placed / createdAt) so Completed ⊆ ALL
+        // for that day. Using deliveredAt here dropped orders placed yesterday but
+        // delivered next day (or missing deliveredAt), which made COD/earnings smaller.
         match.orderStatus = 'delivered';
-        match['deliveryState.deliveredAt'] = { $gte: start, $lte: end };
+        match.createdAt = { $gte: start, $lte: end };
     } else if (sf === 'cancelled') {
         match.orderStatus = { $regex: '^cancelled', $options: 'i' };
         match.createdAt = { $gte: start, $lte: end };
@@ -774,7 +823,7 @@ export const getDeliveryPartnerTripHistory = async (deliveryPartnerId, query = {
             { orderStatus: { $not: { $regex: '^cancelled', $options: 'i' } } },
         ];
     } else {
-        // ALL TRIPS: show anything created in range, and compute earnings only for delivered orders.
+        // ALL TRIPS: show anything created in range
         match.createdAt = { $gte: start, $lte: end };
     }
 

@@ -3,6 +3,11 @@ import { useNavigate } from "react-router-dom"
 import { ArrowLeft, Upload, X, Check, Camera, Image as ImageIcon } from "lucide-react"
 import { deliveryAPI } from "@food/api"
 import { toast } from "sonner"
+import {
+  getUserFacingApiError,
+  isAlreadyExistsError,
+  showUserFacingApiError,
+} from "@/shared/utils/apiError"
 import { openCamera, openGallery } from "@food/utils/imageUploadUtils"
 import useDeliveryOnboardingExitGuard from "../../hooks/useDeliveryOnboardingExitGuard"
 import {
@@ -259,8 +264,18 @@ export default function SignupStep2() {
       }
     } catch (error) {
       debugError("Error submitting registration:", error)
-      const errorMsg = error?.response?.data?.message || error?.response?.data?.error || error?.message || "Registration failed. Please try again."
-      toast.error(errorMsg)
+      const errorMsg = getUserFacingApiError(
+        error,
+        "Registration failed. Please try again.",
+      )
+      // Already registered / pending — send user to verification screen instead of raw API error.
+      if (isAlreadyExistsError(errorMsg) || isAlreadyExistsError(error)) {
+        const phone = String(details.phone || "").replace(/\D/g, "").slice(-10)
+        sessionStorage.removeItem("deliveryNeedsRegistration")
+        finalizeDeliveryPendingSubmission(navigate, phone, { fcmToken, platform })
+        return
+      }
+      showUserFacingApiError(error, "Registration failed. Please try again.")
     } finally {
       setIsSubmitting(false)
     }

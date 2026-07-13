@@ -6,7 +6,7 @@ import { toast } from "sonner"
 import { deliveryAPI } from "@food/api"
 import { setAuthData as storeAuthData, clearModuleAuth } from "@food/utils/auth"
 import { collectFcmTokenFast, persistModuleFcmToken, finalizeDeliveryPendingSubmission, prefetchModuleFcmToken } from "@food/utils/firebaseMessaging"
-import { getUserFacingApiError } from "@/shared/utils/apiError"
+import { getUserFacingApiError, showUserFacingApiError } from "@/shared/utils/apiError"
 
 const DEFAULT_COUNTRY_CODE = "+91"
 
@@ -263,7 +263,7 @@ export default function DeliverySignIn() {
         navigate("/food/delivery/otp", { state: { initialBlockMins: totalMins } })
         return
       }
-      toast.error(msg)
+      showUserFacingApiError(err, "Failed to send OTP. Please try again.")
     } finally {
       setLoading(false)
       submitting.current = false
@@ -418,10 +418,10 @@ export default function DeliverySignIn() {
         setError("")
       } else if (/invalid/i.test(message)) {
         setError("Invalid OTP")
-        toast.error("Invalid OTP")
+        toast.error("Invalid OTP", { id: "user-facing-api-error" })
       } else {
         setError(message)
-        toast.error(message)
+        showUserFacingApiError(err, message)
       }
       setLoading(false)
     }
@@ -497,7 +497,7 @@ export default function DeliverySignIn() {
     } catch (err) {
       const message = getUserFacingApiError(err, "Failed to complete registration. Please try again.")
       setError(message)
-      toast.error(message)
+      showUserFacingApiError(err, "Failed to complete registration. Please try again.")
     } finally {
       setLoading(false)
     }
@@ -554,7 +554,7 @@ export default function DeliverySignIn() {
         setError("")
       } else {
         setError(message)
-        toast.error(message)
+        showUserFacingApiError(err, "Failed to resend OTP. Please try again.")
       }
     } finally {
       setLoading(false)

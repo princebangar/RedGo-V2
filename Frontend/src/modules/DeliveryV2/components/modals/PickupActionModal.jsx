@@ -8,6 +8,8 @@ import {
 import { ActionSlider } from '@/modules/DeliveryV2/components/ui/ActionSlider';
 import { uploadAPI } from '@food/api';
 import { toast } from 'sonner';
+import { showUserFacingApiError } from '@/shared/utils/apiError';
+import { formatTripDistanceKm } from '@/modules/DeliveryV2/hooks/useProximityCheck';
 import { openCamera, openGallery } from "@food/utils/imageUploadUtils";
 
 /**
@@ -51,7 +53,7 @@ export const PickupActionModal = ({
         throw new Error('Upload failed');
       }
     } catch (err) {
-      toast.error('Failed to upload bill image');
+      showUserFacingApiError(err, 'Failed to upload bill image');
       setBillImageUploaded(false);
       setBillImageUrl(null);
     } finally {
@@ -171,7 +173,9 @@ export const PickupActionModal = ({
                   <span className="text-green-600">Reached Location √</span>
                 ) : (
                   <span className="text-orange-500">
-                    {(distanceToTarget / 1000).toFixed(1)} km • {eta || '--'} min to Store
+                    {formatTripDistanceKm(distanceToTarget) === '--'
+                      ? 'Locating restaurant…'
+                      : `${formatTripDistanceKm(distanceToTarget)} km • ${eta || '--'} min to Store`}
                   </span>
                 )}
               </p>

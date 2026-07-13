@@ -360,7 +360,7 @@ export function useOrdersManagement(orders, statusKey, title) {
       const paymentStatus = formatDisplayText(
         order.paymentStatus
           || order.paymentCollectionStatus
-          || (paymentType === "Cash on Delivery" ? "Not Collected" : null),
+          || (paymentType === "Cash on Delivery" ? "COD Pending" : null),
       )
       const customerName = formatDisplayText(order.customerName)
       const customerPhone = formatDisplayText(order.customerPhone)
@@ -620,6 +620,7 @@ export function useOrdersManagement(orders, statusKey, title) {
     isViewOrderOpen,
     setIsViewOrderOpen,
     selectedOrder,
+    setSelectedOrder,
     filters,
     setFilters,
     visibleColumns,

@@ -1,4 +1,46 @@
 /**
+ * Normalize mixed location shapes (lat/lng, latitude/longitude, GeoJSON Point)
+ * into { lat, lng }. Corrects common India lat/lng swaps. Returns null if invalid.
+ */
+export function parseLatLng(raw) {
+  if (!raw || typeof raw !== "object") return null;
+
+  let lat = parseFloat(raw.lat ?? raw.latitude);
+  let lng = parseFloat(raw.lng ?? raw.longitude);
+
+  if (
+    (!Number.isFinite(lat) || !Number.isFinite(lng)) &&
+    Array.isArray(raw.coordinates) &&
+    raw.coordinates.length >= 2
+  ) {
+    lng = parseFloat(raw.coordinates[0]);
+    lat = parseFloat(raw.coordinates[1]);
+  }
+
+  if (
+    (!Number.isFinite(lat) || !Number.isFinite(lng)) &&
+    Array.isArray(raw.location?.coordinates) &&
+    raw.location.coordinates.length >= 2
+  ) {
+    lng = parseFloat(raw.location.coordinates[0]);
+    lat = parseFloat(raw.location.coordinates[1]);
+  }
+
+  if (!Number.isFinite(lat) || !Number.isFinite(lng)) return null;
+
+  // Swap if values look inverted for Indian bounding box (lat 6–37, lng 68–98)
+  if (lng >= 6 && lng <= 37 && lat >= 68 && lat <= 98) {
+    const swap = lat;
+    lat = lng;
+    lng = swap;
+  }
+
+  if (Math.abs(lat) > 90 || Math.abs(lng) > 180) return null;
+
+  return { lat, lng };
+}
+
+/**
  * Haversine formula to calculate the distance between two points in meters.
  * @param {number} lat1 
  * @param {number} lon1 

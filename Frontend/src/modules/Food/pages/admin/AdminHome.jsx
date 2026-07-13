@@ -23,7 +23,7 @@ import {
   XAxis,
   YAxis,
 } from "recharts"
-import { Activity, ArrowUpRight, ShoppingBag, CreditCard, Truck, Receipt, DollarSign, Store, UserCheck, Package, UserCircle, Clock, CheckCircle, Plus, XCircle } from "lucide-react"
+import { Activity, ArrowUpRight, ShoppingBag, CreditCard, Truck, Receipt, DollarSign, Store, UserCheck, Package, UserCircle, Clock, CheckCircle, Plus, XCircle, IndianRupee } from "lucide-react"
 import { adminAPI } from "@food/api"
 const debugLog = () => {}
 const debugError = () => {}
@@ -131,6 +131,10 @@ export default function AdminHome() {
 
   // Calculate totals from real data
   const revenueTotal = dashboardData?.revenue?.total || 0
+  const codCollectedTotal = dashboardData?.cod?.collected || 0
+  const codOpenTotal = dashboardData?.cod?.open || 0
+  const codTotal = dashboardData?.cod?.total || (codCollectedTotal + codOpenTotal)
+  const codOpenOrders = dashboardData?.cod?.openOrders || 0
   const commissionTotal = dashboardData?.commission?.total || 0
   const ordersTotal = dashboardData?.orders?.total || 0
   const platformFeeTotal = dashboardData?.platformFee?.total || 0
@@ -227,10 +231,11 @@ export default function AdminHome() {
             <MetricCard
               title="Gross revenue"
               value={formatCurrency(revenueTotal)}
-              helper={`${periodLabel} transaction volume`}
+              helper={`${periodLabel} delivered order totals (GMV)`}
               icon={<ShoppingBag className="h-5 w-5 text-emerald-600" />}
               accent="bg-emerald-200/40"
               path="/admin/food/transaction-report"
+              loading={isLoading}
             />
             <MetricCard
               title="Commission earned"
@@ -239,6 +244,7 @@ export default function AdminHome() {
               icon={<ArrowUpRight className="h-5 w-5 text-indigo-600" />}
               accent="bg-indigo-200/40"
               path="/admin/food/restaurants/commission"
+              loading={isLoading}
             />
             <MetricCard
               title="Orders processed"
@@ -247,6 +253,7 @@ export default function AdminHome() {
               icon={<Activity className="h-5 w-5 text-amber-600" />}
               accent="bg-amber-200/40"
               path="/admin/food/orders/processing"
+              loading={isLoading}
             />
             <MetricCard
               title="Platform fee"
@@ -255,6 +262,7 @@ export default function AdminHome() {
               icon={<CreditCard className="h-5 w-5 text-purple-600" />}
               accent="bg-purple-200/40"
               path="/admin/food/fee-settings"
+              loading={isLoading}
             />
             <MetricCard
               title="Delivery fee"
@@ -263,6 +271,7 @@ export default function AdminHome() {
               icon={<Truck className="h-5 w-5 text-blue-600" />}
               accent="bg-blue-200/40"
               path="/admin/food/transaction-report"
+              loading={isLoading}
             />
             <MetricCard
               title="GST"
@@ -271,6 +280,7 @@ export default function AdminHome() {
               icon={<Receipt className="h-5 w-5 text-orange-600" />}
               accent="bg-orange-200/40"
               path="/admin/food/tax-report"
+              loading={isLoading}
             />
             <MetricCard
               title="Platform Total"
@@ -279,6 +289,7 @@ export default function AdminHome() {
               icon={<DollarSign className="h-5 w-5 text-green-600" />}
               accent="bg-green-200/40"
               path="/admin/food/transaction-report"
+              loading={isLoading}
             />
             <MetricCard
               title="Total restaurants"
@@ -337,12 +348,22 @@ export default function AdminHome() {
               path="/admin/food/customers"
             />
             <MetricCard
+              title="Total orders"
+              value={ordersTotal.toLocaleString("en-IN")}
+              helper={`${periodLabel} all orders`}
+              icon={<Package className="h-5 w-5 text-slate-600" />}
+              accent="bg-slate-200/40"
+              path="/admin/food/orders/all"
+              loading={isLoading}
+            />
+            <MetricCard
               title="Pending orders"
               value={pendingOrders.toLocaleString("en-IN")}
               helper="Orders awaiting processing"
               icon={<Clock className="h-5 w-5 text-red-600" />}
               accent="bg-red-200/40"
               path="/admin/food/orders/pending"
+              loading={isLoading}
             />
             <MetricCard
               title="Completed orders"
@@ -351,6 +372,16 @@ export default function AdminHome() {
               icon={<CheckCircle className="h-5 w-5 text-emerald-600" />}
               accent="bg-emerald-200/40"
               path="/admin/food/orders/delivered"
+              loading={isLoading}
+            />
+            <MetricCard
+              title="COD total"
+              value={formatCurrency(codCollectedTotal)}
+              helper="Cash collected from delivered COD orders"
+              icon={<IndianRupee className="h-5 w-5 text-teal-600" />}
+              accent="bg-teal-200/40"
+              path="/admin/food/orders/delivered"
+              loading={isLoading}
             />
           </div>
 
@@ -620,7 +651,7 @@ export default function AdminHome() {
   )
 }
 
-function MetricCard({ title, value, helper, icon, accent, path }) {
+function MetricCard({ title, value, helper, icon, accent, path, loading = false }) {
   const navigate = useNavigate()
   return (
     <Card
@@ -632,8 +663,20 @@ function MetricCard({ title, value, helper, icon, accent, path }) {
         <div className="relative flex items-center justify-between z-10">
           <div className="flex-1 min-w-0 mr-2">
             <p className="text-[10px] uppercase tracking-[0.18em] text-neutral-500 font-bold mb-1 truncate">{title}</p>
-            <p className="text-xl font-bold text-neutral-900 leading-tight mb-1">{value}</p>
-            <p className="text-[10px] text-neutral-500 font-medium line-clamp-1">{helper}</p>
+            <div className="text-xl font-bold text-neutral-900 leading-tight mb-1 min-h-[1.75rem] flex items-center">
+              {loading ? (
+                <span className="inline-block h-6 w-24 rounded-md bg-neutral-200 animate-pulse" />
+              ) : (
+                value
+              )}
+            </div>
+            <p className="text-[10px] text-neutral-500 font-medium line-clamp-2 leading-snug break-words">
+              {loading ? (
+                <span className="inline-block h-3 w-32 rounded bg-neutral-100 animate-pulse" />
+              ) : (
+                helper
+              )}
+            </p>
           </div>
           <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-white/90 ring-1 ring-neutral-200 shadow-sm transition-all duration-300 group-hover:scale-110 group-hover:rotate-6 group-hover:shadow-md">
             {icon}

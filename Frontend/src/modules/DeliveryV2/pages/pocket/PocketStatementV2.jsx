@@ -10,6 +10,7 @@ import WeekSelector from '@delivery/components/WeekSelector';
 import { deliveryAPI } from '@food/api';
 import { toast } from 'sonner';
 import useDeliveryBackNavigation from '../../hooks/useDeliveryBackNavigation';
+import { Skeleton } from '@food/components/ui/skeleton';
 
 /**
  * PocketStatementV2 - 1:1 Match with Old PocketStatement UI.
@@ -146,20 +147,20 @@ export const PocketStatementV2 = () => {
              <div className="grid grid-cols-3 gap-4 text-center">
                 <div className="text-left">
                    <p className="text-[10px] text-gray-400 font-bold uppercase mb-1">Orders</p>
-                   <p className="text-base font-bold text-black leading-none">
-                      ₹{summary.totalEarning.toFixed(0)}
+                   <p className="text-base font-bold text-black leading-none min-h-[1.25rem]">
+                      {loading ? <Skeleton className="h-4 w-14" /> : `₹${summary.totalEarning.toFixed(0)}`}
                    </p>
                 </div>
                 <div>
                    <p className="text-[10px] text-gray-400 font-bold uppercase mb-1">Bonus</p>
-                   <p className="text-base font-bold text-black leading-none">
-                      ₹{summary.totalBonus.toFixed(0)}
+                   <p className="text-base font-bold text-black leading-none min-h-[1.25rem] flex justify-center">
+                      {loading ? <Skeleton className="h-4 w-14" /> : `₹${summary.totalBonus.toFixed(0)}`}
                    </p>
                 </div>
                 <div className="text-right">
                    <p className="text-[10px] text-gray-400 font-bold uppercase mb-1">Total</p>
-                   <p className="text-base font-bold text-[#ff8100] leading-none">
-                      ₹{summary.grandTotal.toFixed(0)}
+                   <p className="text-base font-bold text-[#ff8100] leading-none min-h-[1.25rem] flex justify-end">
+                      {loading ? <Skeleton className="h-4 w-14" /> : `₹${summary.grandTotal.toFixed(0)}`}
                    </p>
                 </div>
              </div>

@@ -37,6 +37,8 @@ export function useRiderLocationSync() {
     };
 
     const applyFallback = () => {
+      // Indore fallback is DEV-only — fake GPS caused 700–800 km distance on live trips.
+      if (!import.meta.env.DEV) return;
       if (!useDeliveryStore.getState().riderLocation) {
         setRiderLocation(LAPTOP_TEST_FALLBACK);
       }

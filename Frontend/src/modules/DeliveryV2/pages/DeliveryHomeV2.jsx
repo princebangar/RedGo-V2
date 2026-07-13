@@ -1,7 +1,7 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
 import { useDeliveryStore, resolveOrderKey, mapDeliveryPhaseToTripStatus } from '@/modules/DeliveryV2/store/useDeliveryStore';
-import { useProximityCheck } from '@/modules/DeliveryV2/hooks/useProximityCheck';
+import { useProximityCheck, formatTripDistanceKm } from '@/modules/DeliveryV2/hooks/useProximityCheck';
 import { useOrderManager } from '@/modules/DeliveryV2/hooks/useOrderManager';
 import { useDeliveryNotificationsContext } from '@/modules/DeliveryV2/components/DeliveryRealtimeShell';
 import { writeOrderTracking } from '@food/realtimeTracking';
@@ -466,15 +466,22 @@ export default function DeliveryHomeV2({ tab = 'feed' }) {
         }
       }
     }, () => {
-      // IF GPS FAILS/DENIED: Use Indore as a fallback for testing
-      console.warn('GPS Denied - Falling back to Indore for testing');
-      const fallbackPos = { lat: 22.7196, lng: 75.8577, heading: 0 };
-      if (!riderLocation) {
-        setRiderLocation(fallbackPos);
+      // Never use a fake city (Indore) in production — that made Distance/Arrival show 800+ km.
+      if (import.meta.env.DEV) {
+        console.warn('GPS Denied - Falling back to Indore for local testing only');
+        const fallbackPos = { lat: 22.7196, lng: 75.8577, heading: 0 };
+        if (!useDeliveryStore.getState().riderLocation) {
+          setRiderLocation(fallbackPos);
+        }
       }
       if (!gpsBlockedToastShown.current) {
         gpsBlockedToastShown.current = true;
-        toast.error('GPS Blocked!', { description: 'Showing test location in Indore.' });
+        toast.error('Location unavailable', {
+          id: 'gps-blocked',
+          description: import.meta.env.DEV
+            ? 'Dev: using Indore test location.'
+            : 'Enable GPS for accurate distance and navigation.',
+        });
       }
     }, { 
       enableHighAccuracy: true,
@@ -723,7 +730,7 @@ export default function DeliveryHomeV2({ tab = 'feed' }) {
                       <span className="text-[9px] text-white/70 font-black uppercase tracking-[0.15em] mb-1">Distance</span>
                       <div className="flex items-end gap-1">
                         <span className="text-2xl font-black text-white leading-none tracking-tighter">
-                          {distanceToTarget && distanceToTarget !== Infinity ? (distanceToTarget / 1000).toFixed(1) : '--'}
+                          {formatTripDistanceKm(distanceToTarget)}
                         </span>
                         <span className="text-[11px] text-white/80 font-bold mb-0.5">KM</span>
                       </div>
@@ -976,7 +983,11 @@ export default function DeliveryHomeV2({ tab = 'feed' }) {
                                  ) : null;
                                })()}
                                <p className={`text-[10px] font-bold uppercase tracking-[0.2em] mt-1.5 ${isWithinRange ? 'text-green-600' : 'text-orange-500'}`}>
-                                 {isWithinRange ? 'Ready - Swipe to Arrive √' : `${(distanceToTarget / 1000).toFixed(1)} km • ${eta || '--'} min Arrival`}
+                                 {isWithinRange
+                                   ? 'Ready - Swipe to Arrive √'
+                                   : formatTripDistanceKm(distanceToTarget) === '--'
+                                     ? 'Locating customer…'
+                                     : `${formatTripDistanceKm(distanceToTarget)} km • ${eta || '--'} min Arrival`}
                                </p>
                             </div>
                           </div>

@@ -15,6 +15,7 @@ import WeekSelector from "@delivery/components/WeekSelector";
 import { deliveryAPI } from "@food/api";
 import { motion, AnimatePresence } from "framer-motion";
 import useDeliveryBackNavigation from "../../hooks/useDeliveryBackNavigation";
+import { Skeleton } from "@food/components/ui/skeleton";
 
 export const PocketDetailsV2 = () => {
   const goBack = useDeliveryBackNavigation();
@@ -131,7 +132,13 @@ export const PocketDetailsV2 = () => {
               <div className="flex justify-between items-center mb-6">
                  <div>
                     <p className="text-[10px] font-bold text-gray-400 dark:text-gray-400 uppercase tracking-[0.2em] mb-1">Total Payout</p>
-                    <h2 className="text-4xl font-black text-gray-950 dark:text-white tracking-tighter">{formatCurrency(summary.grandTotal)}</h2>
+                    <h2 className="text-4xl font-black text-gray-950 dark:text-white tracking-tighter min-h-[2.5rem] flex items-center">
+                      {loading ? (
+                        <Skeleton className="h-9 w-36" />
+                      ) : (
+                        formatCurrency(summary.grandTotal)
+                      )}
+                    </h2>
                  </div>
                  <div className="w-12 h-12 bg-gray-100 dark:bg-white/10 rounded-2xl flex items-center justify-center border border-gray-200 dark:border-white/5 backdrop-blur-md">
                     <TrendingUp className="w-6 h-6 text-[#ff8100]" />
@@ -140,11 +147,15 @@ export const PocketDetailsV2 = () => {
               <div className="grid grid-cols-2 gap-4">
                  <div className="bg-gray-50 dark:bg-white/5 p-4 rounded-2xl border border-gray-100 dark:border-white/5">
                     <p className="text-[9px] font-bold text-gray-400 uppercase tracking-widest mb-1">Trip Earnings</p>
-                    <p className="text-lg font-black text-gray-950 dark:text-white">{formatCurrency(summary.totalEarning)}</p>
+                    <p className="text-lg font-black text-gray-950 dark:text-white min-h-[1.5rem]">
+                      {loading ? <Skeleton className="h-5 w-20" /> : formatCurrency(summary.totalEarning)}
+                    </p>
                  </div>
                  <div className="bg-gray-50 dark:bg-white/5 p-4 rounded-2xl border border-gray-100 dark:border-white/5">
                     <p className="text-[9px] font-bold text-gray-400 uppercase tracking-widest mb-1">Weekly Bonus</p>
-                    <p className="text-lg font-black text-green-500">+{formatCurrency(summary.totalBonus)}</p>
+                    <p className="text-lg font-black text-green-500 min-h-[1.5rem]">
+                      {loading ? <Skeleton className="h-5 w-20" /> : `+${formatCurrency(summary.totalBonus)}`}
+                    </p>
                  </div>
               </div>
            </div>

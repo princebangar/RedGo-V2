@@ -6,7 +6,7 @@ import { toast } from "sonner"
 import { deliveryAPI } from "@food/api"
 import { setAuthData as storeAuthData } from "@food/utils/auth"
 import { collectFcmTokenFast, persistModuleFcmToken, finalizeDeliveryPendingSubmission, prefetchModuleFcmToken } from "@food/utils/firebaseMessaging"
-import { getUserFacingApiError } from "@/shared/utils/apiError"
+import { getUserFacingApiError, showUserFacingApiError } from "@/shared/utils/apiError"
 
 const debugLog = (...args) => {}
 const debugWarn = (...args) => {}
@@ -387,10 +387,10 @@ export default function DeliveryOTP() {
         setError("")
       } else if (/invalid/i.test(message)) {
         setError("Invalid OTP")
-        toast.error("Invalid OTP")
+        toast.error("Invalid OTP", { id: "user-facing-api-error" })
       } else {
         setError(message)
-        toast.error(message)
+        showUserFacingApiError(err, message)
       }
       setIsLoading(false)
     }
@@ -465,7 +465,7 @@ export default function DeliveryOTP() {
     } catch (err) {
       const message = getUserFacingApiError(err, "Failed to complete registration. Please try again.")
       setError(message)
-      toast.error(message)
+      showUserFacingApiError(err, "Failed to complete registration. Please try again.")
     } finally {
       setIsLoading(false)
     }
@@ -522,7 +522,7 @@ export default function DeliveryOTP() {
         setError("")
       } else {
         setError(message)
-        toast.error(message)
+        showUserFacingApiError(err, "Failed to resend OTP. Please try again.")
       }
     } finally {
       setIsLoading(false)
