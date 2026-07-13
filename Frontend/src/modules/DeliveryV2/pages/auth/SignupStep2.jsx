@@ -96,7 +96,7 @@ export default function SignupStep2() {
   const handleFileSelect = async (docType, file) => {
     if (!file) return
 
-    if (!file.type.startsWith("image/")) {
+    if (!String(file.type || "").startsWith("image/")) {
       return
     }
     if (file.size > 5 * 1024 * 1024) {
@@ -104,6 +104,14 @@ export default function SignupStep2() {
     }
 
     setUploading((prev) => ({ ...prev, [docType]: true }))
+
+    // Failsafe: never leave the UI stuck on "Uploading..." if compression/IDB hangs.
+    let finished = false
+    const failSafeId = setTimeout(() => {
+      if (!finished) {
+        setUploading((prev) => ({ ...prev, [docType]: false }))
+      }
+    }, 12000)
 
     try {
       const preparedFile = await prepareSignupDocumentFile(file)
@@ -125,7 +133,10 @@ export default function SignupStep2() {
       }))
     } catch (error) {
       debugError("Failed to store document preview:", error)
+      toast.error("Could not process image. Please try another photo.")
     } finally {
+      finished = true
+      clearTimeout(failSafeId)
       setUploading((prev) => ({ ...prev, [docType]: false }))
     }
   }
