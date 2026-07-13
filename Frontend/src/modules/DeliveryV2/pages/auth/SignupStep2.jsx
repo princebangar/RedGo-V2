@@ -41,7 +41,6 @@ export default function SignupStep2() {
   const [previewUrls, setPreviewUrls] = useState(createEmptyPreviewState)
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [uploading, setUploading] = useState({})
-  const [isDummyMode, setIsDummyMode] = useState(false)
 
   useEffect(() => {
     prefetchModuleFcmToken("delivery")
@@ -224,7 +223,6 @@ export default function SignupStep2() {
       Boolean(localStorage.getItem("delivery_accessToken"))
 
     const shouldRegister =
-      isDummyMode ||
       sessionStorage.getItem("deliveryNeedsRegistration") === "true" ||
       !hasDeliveryAuth
 
@@ -367,41 +365,9 @@ export default function SignupStep2() {
       </div>
 
       <div className="px-4 py-6">
-        <div className="mb-6 flex justify-between items-start">
-          <div>
-            <h2 className="text-xl font-bold text-gray-900 mb-2">Document Verification</h2>
-            <p className="text-sm text-gray-600">Please upload clear photos of your documents</p>
-          </div>
-          <button
-            type="button"
-            onClick={async () => {
-              const base64Png = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg=="
-              const binaryString = atob(base64Png)
-              const bytes = new Uint8Array(binaryString.length)
-              for (let index = 0; index < binaryString.length; index += 1) {
-                bytes[index] = binaryString.charCodeAt(index)
-              }
-              const dummyBlob = new Blob([bytes], { type: "image/png" })
-              const dummyFile = new File([dummyBlob], "dummy_doc.png", { type: "image/png" })
-
-              for (const docType of DELIVERY_SIGNUP_DOC_TYPES) {
-                await saveSignupDocumentToDB(docType, dummyFile)
-                const nextPreviewUrl = URL.createObjectURL(dummyFile)
-                const previousPreviewUrl = previewUrlsRef.current[docType]
-                if (previousPreviewUrl) {
-                  URL.revokeObjectURL(previousPreviewUrl)
-                }
-                previewUrlsRef.current[docType] = nextPreviewUrl
-              }
-
-              setPreviewUrls({ ...previewUrlsRef.current })
-              setIsDummyMode(true)
-              sessionStorage.setItem("deliveryNeedsRegistration", "true")
-            }}
-            className="bg-orange-50 text-orange-600 border border-orange-200 px-3 py-1.5 rounded-md text-[10px] font-bold uppercase tracking-wider hover:bg-orange-100 transition-colors"
-          >
-            Fill Dummy Data
-          </button>
+        <div className="mb-6">
+          <h2 className="text-xl font-bold text-gray-900 mb-2">Document Verification</h2>
+          <p className="text-sm text-gray-600">Please upload clear photos of your documents</p>
         </div>
 
         <form onSubmit={handleSubmit} className="space-y-4">

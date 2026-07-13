@@ -248,55 +248,9 @@ export default function SignupStep1() {
 
       {/* Content */}
       <div className="px-4 py-6">
-        <div className="mb-6 flex justify-between items-start">
-          <div>
-            <h2 className="text-xl font-bold text-gray-900 mb-2">Basic Details</h2>
-            <p className="text-sm text-gray-600">Please provide your information to continue</p>
-          </div>
-          <button
-            type="button"
-            onClick={() => {
-              const existingDetails = JSON.parse(sessionStorage.getItem("deliverySignupDetails") || "{}")
-              const loginPhone =
-                String(formData.phone || existingDetails.phone || "")
-                  .replace(/\D/g, "")
-                  .slice(-10)
-
-              const dummyFields = {
-                name: formData.name?.trim() || "Prince Bangar",
-                email: "princeb@redgo.test",
-                address: "123 RedGo Tower, Vijay Nagar",
-                city: "Indore",
-                state: "Madhya Pradesh",
-                vehicleType: "bike",
-                vehicleName: "Honda Activa",
-                vehicleNumber: "MP13AB1234",
-                drivingLicenseNumber: "MP1320110012345",
-                panNumber: "ABCDE1234F",
-                aadharNumber: "123456789012",
-                countryCode: formData.countryCode || "+91",
-              }
-
-              setFormData((prev) => ({
-                ...prev,
-                ...dummyFields,
-                phone: loginPhone || prev.phone,
-              }))
-              setErrors({})
-              sessionStorage.setItem("deliveryNeedsRegistration", "true")
-              sessionStorage.setItem(
-                "deliverySignupDetails",
-                JSON.stringify({
-                  ...existingDetails,
-                  ...dummyFields,
-                  phone: loginPhone || existingDetails.phone || "",
-                }),
-              )
-            }}
-            className="bg-orange-50 text-orange-600 border border-orange-200 px-3 py-1.5 rounded-md text-[10px] font-bold uppercase tracking-wider hover:bg-orange-100 transition-colors"
-          >
-            Fill Dummy Data
-          </button>
+        <div className="mb-6">
+          <h2 className="text-xl font-bold text-gray-900 mb-2">Basic Details</h2>
+          <p className="text-sm text-gray-600">Please provide your information to continue</p>
         </div>
 
         <form onSubmit={handleSubmit} className="space-y-4">
