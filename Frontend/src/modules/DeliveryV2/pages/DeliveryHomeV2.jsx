@@ -27,7 +27,7 @@ import ProfileV2 from '@/modules/DeliveryV2/pages/ProfileV2';
 import { 
   Bell, HelpCircle, AlertTriangle, 
   Plus, Minus, Navigation2, Target, Play, CheckCircle2, Clock, ChevronDown,
-  Contact
+  Contact, Phone, Navigation, Package
 } from 'lucide-react';
 
 import { getHaversineDistance, calculateETA, calculateHeading } from '@/modules/DeliveryV2/utils/geo';
@@ -936,21 +936,94 @@ export default function DeliveryHomeV2({ tab = 'feed' }) {
                              <ChevronDown className="w-6 h-6 text-gray-400 stroke-[3]" />
                           </button>
                         </div>
-                        <div className="flex justify-between w-full items-center mb-10 px-2 text-left">
-                          <div className="flex items-center gap-4">
-                            <div className="w-16 h-16 rounded-2xl overflow-hidden border border-gray-100 shadow-sm">
+                        <div className="flex justify-between w-full items-start mb-10 px-2 text-left gap-3">
+                          <div className="flex items-start gap-4 min-w-0 flex-1">
+                            <div className="w-16 h-16 rounded-2xl overflow-hidden border border-gray-100 shadow-sm shrink-0">
                                <img 
-                                 src={activeOrder?.user?.logo || activeOrder?.user?.profileImage || 'https://cdn-icons-png.flaticon.com/512/1275/1275302.png'} 
+                                 src={activeOrder?.user?.logo || activeOrder?.user?.profileImage || activeOrder?.userId?.profileImage || 'https://cdn-icons-png.flaticon.com/512/1275/1275302.png'} 
                                  className="w-full h-full object-cover" 
                                  alt="User"
                                />
                             </div>
-                            <div>
-                               <h3 className="text-gray-950 text-2xl font-bold uppercase">Handover Drop</h3>
+                            <div className="min-w-0 flex-1">
+                               <h3 className="text-gray-950 text-xl sm:text-2xl font-bold leading-tight break-words">
+                                 {activeOrder?.customerName ||
+                                   activeOrder?.userId?.name ||
+                                   activeOrder?.user?.name ||
+                                   activeOrder?.deliveryAddress?.fullName ||
+                                   activeOrder?.deliveryAddress?.name ||
+                                   'Customer'}
+                               </h3>
+                               {(() => {
+                                 const addr =
+                                   activeOrder?.customerAddress ||
+                                   [
+                                     activeOrder?.deliveryAddress?.street,
+                                     activeOrder?.deliveryAddress?.additionalDetails,
+                                     activeOrder?.deliveryAddress?.landmark,
+                                     activeOrder?.deliveryAddress?.area,
+                                     activeOrder?.deliveryAddress?.city,
+                                     activeOrder?.deliveryAddress?.state,
+                                     activeOrder?.deliveryAddress?.zipCode || activeOrder?.deliveryAddress?.pincode,
+                                   ]
+                                     .map((v) => String(v || '').trim())
+                                     .filter(Boolean)
+                                     .join(', ');
+                                 return addr ? (
+                                   <p className="text-gray-500 text-xs font-medium mt-1.5 leading-snug break-words">
+                                     {addr}
+                                   </p>
+                                 ) : null;
+                               })()}
                                <p className={`text-[10px] font-bold uppercase tracking-[0.2em] mt-1.5 ${isWithinRange ? 'text-green-600' : 'text-orange-500'}`}>
                                  {isWithinRange ? 'Ready - Swipe to Arrive √' : `${(distanceToTarget / 1000).toFixed(1)} km • ${eta || '--'} min Arrival`}
                                </p>
                             </div>
+                          </div>
+                          <div className="flex gap-2 shrink-0">
+                            <button
+                              type="button"
+                              onClick={() => {
+                                const raw =
+                                  activeOrder?.customerPhone ||
+                                  activeOrder?.userPhone ||
+                                  activeOrder?.userId?.phone ||
+                                  activeOrder?.user?.phone ||
+                                  activeOrder?.deliveryAddress?.phone ||
+                                  '';
+                                const num = String(raw).replace(/\D/g, '');
+                                if (!num) {
+                                  toast.error('Customer number not available');
+                                  return;
+                                }
+                                window.location.href = `tel:${num}`;
+                              }}
+                              className="w-10 h-10 rounded-full bg-green-50 flex items-center justify-center text-green-600 border border-green-100 active:scale-95 transition-all"
+                              aria-label="Call customer"
+                            >
+                              <Phone className="w-5 h-5" />
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                const loc = activeOrder?.customerLocation;
+                                const lat = parseFloat(loc?.lat ?? loc?.latitude);
+                                const lng = parseFloat(loc?.lng ?? loc?.longitude);
+                                if (!Number.isFinite(lat) || !Number.isFinite(lng)) {
+                                  toast.error('Customer location not available');
+                                  return;
+                                }
+                                window.open(
+                                  `https://www.google.com/maps/dir/?api=1&destination=${lat},${lng}&travelmode=driving`,
+                                  '_blank',
+                                  'noopener,noreferrer'
+                                );
+                              }}
+                              className="w-10 h-10 rounded-full bg-gray-900 flex items-center justify-center text-white shadow-lg active:scale-95 transition-all"
+                              aria-label="Navigate to customer"
+                            >
+                              <Navigation className="w-5 h-5" />
+                            </button>
                           </div>
                         </div>
 
@@ -966,7 +1039,7 @@ export default function DeliveryHomeV2({ tab = 'feed' }) {
                              </div>
                           </div>
                         )}
-                        <ActionSlider label="Slide to Arrive" successLabel="Arrived ✓" disabled={!isWithinRange} onConfirm={reachDrop} color="bg-blue-600" />
+                        <ActionSlider label="Slide to Arrive" successLabel="Arrived ✓" disabled={false} onConfirm={reachDrop} color="bg-blue-600" />
                       </div>
                     ) : (
                       <button 

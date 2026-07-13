@@ -19,7 +19,10 @@ import {
   fetchRazorpayPaymentLink,
   isRazorpayConfigured,
 } from '../helpers/razorpay.helper.js';
-import { fetchPolyline } from '../utils/googleMaps.js';
+import { fetchPolyline, toGeoJsonPoint } from '../utils/googleMaps.js';
+import {
+  ensureRiderEarningOnOrder,
+} from './riderEarning.service.js';
 import * as foodTransactionService from './foodTransaction.service.js';
 import * as dispatchService from './order-dispatch.service.js';
 import {
@@ -108,7 +111,8 @@ export async function getActiveTripsDelivery(deliveryPartnerId) {
   })
     .populate({
       path: 'restaurantId',
-      select: 'restaurantName name phone location addressLine1 area city state profileImage',
+      select:
+        'restaurantName name phone ownerPhone primaryContactNumber location addressLine1 addressLine2 area city state pincode landmark profileImage',
     })
     .populate({ path: 'userId', select: 'name phone' })
     .sort({ updatedAt: -1 })
@@ -604,6 +608,16 @@ export async function acceptOrderDelivery(orderId, deliveryPartnerId) {
     throw new ValidationError('Order is no longer available to accept');
   }
 
+  try {
+    const before = Number(order.riderEarning || 0);
+    await ensureRiderEarningOnOrder(order);
+    if (Number(order.riderEarning || 0) > before) {
+      await order.save();
+    }
+  } catch (err) {
+    logger.warn(`ensureRiderEarningOnOrder on accept failed: ${err?.message || err}`);
+  }
+
   const responseOrder = sanitizeOrderForExternal(order);
 
   void (async () => {
@@ -889,6 +903,13 @@ export async function confirmPickupDelivery(orderId, deliveryPartnerId, billImag
     to: 'picked_up',
     note: 'Order picked up',
   });
+
+  try {
+    await ensureRiderEarningOnOrder(order);
+  } catch (err) {
+    logger.warn(`ensureRiderEarningOnOrder on pickup failed: ${err?.message || err}`);
+  }
+
   await order.save();
 
   emitOrderUpdate(order, deliveryPartnerId);
@@ -1111,7 +1132,16 @@ export async function completeDelivery(orderId, deliveryPartnerId, body = {}) {
     }
   }
 
-  // 4. Update Order State
+  // 4. Backfill rider earning if missing (geocode coords + commission rules)
+  try {
+    await ensureRiderEarningOnOrder(order);
+  } catch (err) {
+    logger.warn(
+      `ensureRiderEarningOnOrder failed for ${order._id}: ${err?.message || err}`,
+    );
+  }
+
+  // 5. Update Order State
   order.orderStatus = 'delivered';
   order.deliveryState = {
     ...(order.deliveryState?.toObject?.() || order.deliveryState || {}),

@@ -75,11 +75,62 @@ export const PickupActionModal = ({
   }
 
   const isAtPickup = status === 'REACHED_PICKUP';
-  const restaurantName = order.restaurantName || order.restaurant_name || 'Restaurant';
-  const restaurantAddress = order.restaurantAddress || order.restaurant_address || order.restaurantLocation?.address || 'Address not available';
-  const restaurantPhone = order.restaurantPhone || order.restaurant_phone || order.restaurantId?.phone || '';
+  const restaurant = order.restaurantId || order.restaurant || {};
+  const restaurantName =
+    order.restaurantName ||
+    order.restaurant_name ||
+    restaurant.restaurantName ||
+    restaurant.name ||
+    'Restaurant';
+  const restaurantAddress =
+    order.restaurantAddress ||
+    order.restaurant_address ||
+    order.restaurantLocation?.address ||
+    [restaurant.addressLine1, restaurant.addressLine2, restaurant.area, restaurant.city, restaurant.state, restaurant.pincode]
+      .filter(Boolean)
+      .join(', ') ||
+    restaurant.location?.address ||
+    '';
+  const restaurantPhone =
+    order.restaurantPhone ||
+    order.restaurant_phone ||
+    restaurant.primaryContactNumber ||
+    restaurant.ownerPhone ||
+    restaurant.phone ||
+    '';
+  const restaurantCoords = order.restaurantLocation || null;
   const items = order.items || [];
-  const restaurantLogo = order.restaurantImage || order.restaurant?.logo || order.restaurant?.profileImage || 'https://cdn-icons-png.flaticon.com/512/3170/3170733.png';
+  const restaurantLogo =
+    order.restaurantImage ||
+    restaurant.profileImage ||
+    restaurant.logo ||
+    order.restaurant?.logo ||
+    order.restaurant?.profileImage ||
+    'https://cdn-icons-png.flaticon.com/512/3170/3170733.png';
+
+  const handleCallRestaurant = () => {
+    const num = String(restaurantPhone || '').replace(/\D/g, '');
+    if (!num) {
+      toast.error('Restaurant number not available');
+      return;
+    }
+    window.location.href = `tel:${num}`;
+  };
+
+  const handleNavigateToRestaurant = () => {
+    const lat = parseFloat(restaurantCoords?.lat ?? restaurantCoords?.latitude);
+    const lng = parseFloat(restaurantCoords?.lng ?? restaurantCoords?.longitude);
+    let mapsUrl;
+    if (Number.isFinite(lat) && Number.isFinite(lng)) {
+      mapsUrl = `https://www.google.com/maps/dir/?api=1&destination=${lat},${lng}&travelmode=driving`;
+    } else if (restaurantAddress) {
+      mapsUrl = `https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(restaurantAddress)}&travelmode=driving`;
+    } else {
+      toast.error('Restaurant location not available');
+      return;
+    }
+    window.open(mapsUrl, '_blank', 'noopener,noreferrer');
+  };
 
   return (
     <div className="fixed inset-0 z-110 p-0 sm:p-4 flex items-end justify-center">
@@ -108,8 +159,13 @@ export const PickupActionModal = ({
             <div className="w-14 h-14 bg-white rounded-2xl flex items-center justify-center shadow-lg shadow-black/5 overflow-hidden border border-gray-100">
               <img src={restaurantLogo} alt="Logo" className="w-full h-full object-cover" />
             </div>
-            <div>
-              <h3 className="text-gray-950 text-lg sm:text-xl font-bold">{restaurantName}</h3>
+            <div className="min-w-0 pr-2">
+              <h3 className="text-gray-950 text-lg sm:text-xl font-bold leading-tight">{restaurantName}</h3>
+              {restaurantAddress ? (
+                <p className="text-gray-500 text-xs font-medium mt-1 leading-snug line-clamp-2">
+                  {restaurantAddress}
+                </p>
+              ) : null}
               <p className="text-gray-500 text-[10px] font-bold uppercase tracking-widest flex items-center gap-1 mt-1.5">
                 {isAtPickup ? (
                   <span className="text-green-600">Reached Location √</span>
@@ -123,17 +179,19 @@ export const PickupActionModal = ({
           </div>
 
           <div className="flex gap-2">
-            {restaurantPhone && (
-              <button
-                onClick={() => window.location.href = `tel:${restaurantPhone}`}
-                className="w-10 h-10 rounded-full bg-green-50 flex items-center justify-center text-green-600 border border-green-100"
-              >
-                <Phone className="w-5 h-5" />
-              </button>
-            )}
-            <button 
-              onClick={() => window.open(`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(restaurantAddress)}`, '_blank')}
-              className="w-10 h-10 rounded-full bg-gray-900 flex items-center justify-center text-white shadow-lg"
+            <button
+              type="button"
+              onClick={handleCallRestaurant}
+              className="w-10 h-10 rounded-full bg-green-50 flex items-center justify-center text-green-600 border border-green-100 active:scale-95 transition-all"
+              aria-label="Call restaurant"
+            >
+              <Phone className="w-5 h-5" />
+            </button>
+            <button
+              type="button"
+              onClick={handleNavigateToRestaurant}
+              className="w-10 h-10 rounded-full bg-gray-900 flex items-center justify-center text-white shadow-lg active:scale-95 transition-all"
+              aria-label="Navigate to restaurant"
             >
               <Navigation className="w-5 h-5" />
             </button>
@@ -144,16 +202,14 @@ export const PickupActionModal = ({
           <div className="space-y-4 sm:space-y-6">
           {!isAtPickup ? (
             <div>
-              <p className={`text-center text-[10px] font-bold uppercase tracking-widest mb-3 transition-colors ${
-                isWithinRange ? 'text-green-600' : 'text-orange-500 animate-pulse'
-              }`}>
-                {isWithinRange ? 'Ready - Swipe to confirm arrival' : 'Get closer to restaurant'}
+              <p className="text-center text-[10px] font-bold uppercase tracking-widest mb-3 text-green-600">
+                Ready - Swipe to confirm arrival
               </p>
               <ActionSlider 
                 key="action-reach"
                 label="Slide to Reach" 
                 successLabel="Reached!"
-                disabled={!isWithinRange}
+                disabled={false}
                 onConfirm={onReachedPickup}
                 color="bg-green-600"
               />
@@ -204,14 +260,14 @@ export const PickupActionModal = ({
               </div>
 
               <div>
-                <p className={`text-center text-[10px] font-bold uppercase tracking-widest mb-3 ${billImageUploaded ? 'text-green-600' : 'text-gray-400'}`}>
-                  {billImageUploaded ? "Check the restaurant logo - Swipe to pick up" : "Capture bill to unlock swipe"}
+                <p className="text-center text-[10px] font-bold uppercase tracking-widest mb-3 text-green-600">
+                  Swipe to pick up
                 </p>
                 <ActionSlider 
                   key="action-pickup"
                   label="Slide to Pick Up" 
                   successLabel="Picked Up!"
-                  disabled={!billImageUploaded}
+                  disabled={false}
                   onConfirm={() => onPickedUp(billImageUrl)}
                   color="bg-orange-500"
                 />

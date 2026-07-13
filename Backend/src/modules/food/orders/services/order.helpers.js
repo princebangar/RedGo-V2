@@ -237,18 +237,40 @@ export function buildDeliverySocketPayload(orderDoc, restaurantDoc = null) {
       order?.restaurantId,
     restaurantName: restaurant?.restaurantName || order?.restaurantName,
     restaurantAddress:
+      [
+        restaurant?.addressLine1,
+        restaurant?.addressLine2,
+        restaurant?.area,
+        restaurant?.city,
+        restaurant?.state,
+        restaurant?.pincode,
+      ]
+        .filter(Boolean)
+        .join(', ') ||
       restaurantLocation?.address ||
       restaurantLocation?.formattedAddress ||
-      restaurant?.addressLine1 ||
       "",
-    restaurantPhone: restaurant?.phone || "",
+    restaurantPhone:
+      restaurant?.primaryContactNumber ||
+      restaurant?.ownerPhone ||
+      restaurant?.phone ||
+      "",
     restaurantLocation: {
       latitude: restaurantLocation?.latitude,
       longitude: restaurantLocation?.longitude,
       address:
+        [
+          restaurant?.addressLine1,
+          restaurant?.addressLine2,
+          restaurant?.area,
+          restaurant?.city,
+          restaurant?.state,
+          restaurant?.pincode,
+        ]
+          .filter(Boolean)
+          .join(', ') ||
         restaurantLocation?.address ||
         restaurantLocation?.formattedAddress ||
-        restaurant?.addressLine1 ||
         "",
       area: restaurantLocation?.area || restaurant?.area || "",
       city: restaurantLocation?.city || restaurant?.city || "",
