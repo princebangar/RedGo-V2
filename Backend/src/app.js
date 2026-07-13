@@ -8,7 +8,7 @@ import mongoSanitize from 'mongo-sanitize';
 import xssClean from 'xss-clean';
 import routes from './routes/index.js';
 import errorHandler from './middleware/errorHandler.js';
-import { apiRateLimiter } from './middleware/rateLimit.js';
+import { apiRateLimitMiddleware, getClientIp } from './middleware/rateLimit.js';
 import { responseTimeLogger } from './middleware/responseTimeLogger.js';
 import { requestIdMiddleware } from './middleware/requestId.js';
 import { healthCheck } from './config/health.js';
@@ -20,11 +20,17 @@ const uploadsDir = path.resolve(__dirname, '..', config.uploadPath);
 
 const app = express();
 
-// Trust first proxy (essential for express-rate-limit if behind a proxy)
-app.set('trust proxy', 1);
+// Trust proxy so req.ip / rate-limit see the real client IP (nginx, CF, Vite proxy).
+app.set('trust proxy', config.trustProxy);
 
 // Request ID tracing (before other middlewares so all logs can use it)
 app.use(requestIdMiddleware);
+
+// Attach resolved client IP for logging / downstream use
+app.use((req, _res, next) => {
+    req.clientIp = getClientIp(req);
+    next();
+});
 
 // Health endpoints (no rate limit, minimal JSON, no secrets)
 app.get('/health', async (_req, res) => {
@@ -74,8 +80,8 @@ app.use(xssClean());
 // Serve locally stored uploads (migrated from Cloudinary)
 app.use('/uploads', express.static(uploadsDir));
 
-// Global rate limiting for API routes
-app.use('/api', apiRateLimiter);
+// Rate limit: public free · auth routes use authRateLimiter · private = user+IP
+app.use('/api', apiRateLimitMiddleware);
 
 // Optional: log API response time (method, path, status, duration) - no sensitive data
 // app.use('/api', responseTimeLogger);
