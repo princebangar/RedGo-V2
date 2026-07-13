@@ -1,6 +1,7 @@
 import rateLimit from 'express-rate-limit';
 import { config } from '../config/env.js';
 import { verifyAccessToken } from '../core/auth/token.util.js';
+import { logger } from '../utils/logger.js';
 
 const privateWindowMs = config.rateLimitWindowMinutes * 60 * 1000;
 const authWindowMs = config.authRateLimitWindowMinutes * 60 * 1000;
@@ -12,9 +13,10 @@ const privateMax =
 
 /**
  * Resolve the real client IP behind Vite / nginx / Cloudflare / mobile gateways.
- * Prefer proxy headers, then Express `req.ip` (requires `trust proxy`).
  */
 export function getClientIp(req) {
+    if (req.clientIp) return req.clientIp;
+
     const headerFirst = (value) => {
         if (!value) return null;
         const raw = Array.isArray(value) ? value[0] : String(value);
@@ -22,22 +24,23 @@ export function getClientIp(req) {
         return first || null;
     };
 
-    const fromCf = headerFirst(req.headers['cf-connecting-ip']);
-    if (fromCf) return stripIpv6Mapped(fromCf);
-
-    const fromRealIp = headerFirst(req.headers['x-real-ip']);
-    if (fromRealIp) return stripIpv6Mapped(fromRealIp);
-
+    // Prefer left-most X-Forwarded-For (original client). Nginx sets this.
+    // CF-Connecting-IP only when Cloudflare is in front.
     const fromForwarded = headerFirst(req.headers['x-forwarded-for']);
-    if (fromForwarded) return stripIpv6Mapped(fromForwarded);
-
+    const fromCf = headerFirst(req.headers['cf-connecting-ip']);
+    const fromRealIp = headerFirst(req.headers['x-real-ip']);
     const fromTrueClient = headerFirst(req.headers['true-client-ip']);
-    if (fromTrueClient) return stripIpv6Mapped(fromTrueClient);
 
-    if (req.ip) return stripIpv6Mapped(req.ip);
+    // If Cloudflare is present, trust CF first; otherwise XFF / X-Real-IP from nginx.
+    const picked =
+        fromCf ||
+        fromForwarded ||
+        fromRealIp ||
+        fromTrueClient ||
+        (req.ip ? stripIpv6Mapped(req.ip) : null) ||
+        stripIpv6Mapped(req.socket?.remoteAddress || req.connection?.remoteAddress || 'unknown');
 
-    const remote = req.socket?.remoteAddress || req.connection?.remoteAddress;
-    return stripIpv6Mapped(remote || 'unknown');
+    return stripIpv6Mapped(picked);
 }
 
 function stripIpv6Mapped(ip) {
@@ -49,8 +52,21 @@ function stripIpv6Mapped(ip) {
 
 function normalizePath(req) {
     const raw = String(req.originalUrl || req.url || '').split('?')[0];
-    // Mounted under /api → paths look like /api/v1/...
     return raw.replace(/\/+$/, '') || '/';
+}
+
+/**
+ * High-frequency authenticated polls — do not burn the private budget.
+ */
+function isHighFrequencyPrivatePoll(req) {
+    const path = normalizePath(req);
+    return (
+        /\/food\/delivery\/orders\/(available|current)(?:\/|$)/.test(path) ||
+        /\/food\/delivery\/orders\/[^/]+\/payment-status(?:\/|$)/.test(path) ||
+        /\/food\/restaurant\/orders(?:\/|$)/.test(path) ||
+        /\/food\/auth\/me$/.test(path) ||
+        /\/auth\/me$/.test(path)
+    );
 }
 
 /**
@@ -61,7 +77,6 @@ export function isPublicApiPath(req) {
 
     if (path === '/api/v1/health' || path === '/api/health') return true;
 
-    // Explicit public segments
     if (
         path.includes('/public') ||
         /\/pages\/[^/]+$/.test(path) ||
@@ -76,7 +91,6 @@ export function isPublicApiPath(req) {
         return true;
     }
 
-    // Food user catalog (no auth)
     if (
         /\/food\/restaurant\/restaurants(\/|$)/.test(path) ||
         /\/food\/restaurant\/under-250$/.test(path) ||
@@ -89,7 +103,6 @@ export function isPublicApiPath(req) {
         return true;
     }
 
-    // Public registration entry (no token yet) — free; OTP still auth-limited
     if (
         path.endsWith('/food/delivery/register') ||
         path.endsWith('/food/restaurant/register')
@@ -101,7 +114,8 @@ export function isPublicApiPath(req) {
 }
 
 /**
- * Auth credential endpoints — handled only by `authRateLimiter` on the route.
+ * Strict auth credential endpoints — handled by `authRateLimiter` only.
+ * refresh-token is NOT here (mobile apps refresh often; uses private limiter).
  */
 export function isAuthCredentialPath(req) {
     const path = normalizePath(req);
@@ -112,9 +126,7 @@ export function isAuthCredentialPath(req) {
         /\/verify-otp$/.test(path) ||
         /\/admin\/login$/.test(path) ||
         /\/forgot-password\//.test(path) ||
-        /\/restaurant\/reapply$/.test(path) ||
-        /\/refresh-token$/.test(path) ||
-        /\/logout$/.test(path)
+        /\/restaurant\/reapply$/.test(path)
     );
 }
 
@@ -133,42 +145,62 @@ function getRateLimitUserId(req) {
     }
 }
 
+function buildPrivateKey(req) {
+    const ip = getClientIp(req);
+    const userId = getRateLimitUserId(req);
+    // Logged-in: per-user (IP alone would block whole CGNAT / shared Wi‑Fi).
+    // Anonymous private calls: per real IP.
+    return userId ? `private:user:${userId}` : `private:ip:${ip}`;
+}
+
+function buildAuthKey(req) {
+    const ip = getClientIp(req);
+    const phone =
+        req.body?.phone != null
+            ? String(req.body.phone).replace(/\D/g, '').slice(-15)
+            : '';
+    // Prefer phone so same number isn't blocked by shared IP; keep IP for no-body calls.
+    return phone ? `auth:phone:${phone}` : `auth:ip:${ip}`;
+}
+
 const rateLimitJson = (message) => ({
     success: false,
     message,
 });
 
-/** Private / authenticated API budget — keyed by user + real IP. */
+function onLimitReached(req, kind, key) {
+    logger.warn(
+        `[RATE_LIMIT] ${kind} exceeded key=${key} ip=${getClientIp(req)} path=${normalizePath(req)} ua=${String(req.headers['user-agent'] || '').slice(0, 80)}`,
+    );
+}
+
+/** Private / authenticated API budget. */
 export const privateRateLimiter = rateLimit({
     windowMs: privateWindowMs,
     max: privateMax,
     standardHeaders: true,
     legacyHeaders: false,
-    // We resolve IP ourselves (proxy headers + trust proxy).
     validate: { xForwardedForHeader: false, default: true },
-    keyGenerator: (req) => {
-        const ip = getClientIp(req);
-        const userId = getRateLimitUserId(req);
-        return userId ? `private:user:${userId}:ip:${ip}` : `private:ip:${ip}`;
+    keyGenerator: (req) => buildPrivateKey(req),
+    handler: (req, res, _next, options) => {
+        onLimitReached(req, 'private', buildPrivateKey(req));
+        res.status(options.statusCode).json(options.message);
     },
     message: rateLimitJson('Too many requests, please try again later.'),
-    skip: () => !config.rateLimitEnabled,
+    skip: (req) => !config.rateLimitEnabled || isHighFrequencyPrivatePoll(req),
 });
 
-/** Auth OTP / login budget — keyed by real IP (and optional phone). */
+/** Auth OTP / login budget — phone-first (not shared Wi‑Fi IP). */
 export const authRateLimiter = rateLimit({
     windowMs: authWindowMs,
     max: config.authRateLimitMax,
     standardHeaders: true,
     legacyHeaders: false,
     validate: { xForwardedForHeader: false, default: true },
-    keyGenerator: (req) => {
-        const ip = getClientIp(req);
-        const phone =
-            req.body?.phone != null
-                ? String(req.body.phone).replace(/\D/g, '').slice(-15)
-                : '';
-        return phone ? `auth:phone:${phone}:ip:${ip}` : `auth:ip:${ip}`;
+    keyGenerator: (req) => buildAuthKey(req),
+    handler: (req, res, _next, options) => {
+        onLimitReached(req, 'auth', buildAuthKey(req));
+        res.status(options.statusCode).json(options.message);
     },
     message: rateLimitJson('Too many authentication attempts. Please try again later.'),
     skip: () => !config.rateLimitEnabled,
@@ -177,15 +209,16 @@ export const authRateLimiter = rateLimit({
 /**
  * Mount on `/api`:
  * 1) public → no limit
- * 2) auth credential routes → skip here (route-level authRateLimiter)
- * 3) everything else (private) → user+IP private limit
+ * 2) auth OTP/login → skip (route-level authRateLimiter)
+ * 3) private → per-user (or per-IP if anonymous)
  */
 export function apiRateLimitMiddleware(req, res, next) {
     if (!config.rateLimitEnabled) return next();
     if (isPublicApiPath(req)) return next();
     if (isAuthCredentialPath(req)) return next();
+    if (isHighFrequencyPrivatePoll(req)) return next();
     return privateRateLimiter(req, res, next);
 }
 
-/** @deprecated Use apiRateLimitMiddleware / privateRateLimiter */
+/** @deprecated Use apiRateLimitMiddleware */
 export const apiRateLimiter = apiRateLimitMiddleware;
