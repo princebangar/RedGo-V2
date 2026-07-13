@@ -1970,3 +1970,180 @@ export async function rejectOrderAdmin(orderId, reason, adminId) {
   return normalizeOrderForClient(order);
 }
 
+/**
+ * Admin override: update order and/or payment status independently.
+ * Status correction only — does not run rider payout / refund automations.
+ */
+export async function updateOrderStatusesAdmin(orderId, adminId, { orderStatus, paymentStatus } = {}) {
+  const identity = buildOrderIdentityFilter(orderId);
+  if (!identity) throw new ValidationError("Order id required");
+
+  const hasOrderStatus = orderStatus != null && String(orderStatus).trim() !== "";
+  const hasPaymentStatus = paymentStatus != null && String(paymentStatus).trim() !== "";
+  if (!hasOrderStatus && !hasPaymentStatus) {
+    throw new ValidationError("Provide orderStatus and/or paymentStatus to update");
+  }
+
+  const ORDER_STATUS_ALIASES = {
+    pending: "created",
+    created: "created",
+    accepted: "confirmed",
+    confirmed: "confirmed",
+    processing: "preparing",
+    preparing: "preparing",
+    "ready for pickup": "ready_for_pickup",
+    ready_for_pickup: "ready_for_pickup",
+    "food on the way": "picked_up",
+    picked_up: "picked_up",
+    reached_pickup: "reached_pickup",
+    reached_drop: "reached_drop",
+    delivered: "delivered",
+    canceled: "cancelled_by_admin",
+    cancelled: "cancelled_by_admin",
+    cancelled_by_admin: "cancelled_by_admin",
+    "cancelled by restaurant": "cancelled_by_restaurant",
+    cancelled_by_restaurant: "cancelled_by_restaurant",
+    "cancelled by user": "cancelled_by_user",
+    cancelled_by_user: "cancelled_by_user",
+  };
+
+  const PAYMENT_STATUS_ALIASES = {
+    pending: "__pending__",
+    unpaid: "__pending__",
+    "not collected": "cod_pending",
+    "cod pending": "cod_pending",
+    collected: "paid",
+    paid: "paid",
+    failed: "failed",
+    refunded: "refunded",
+    cod_pending: "cod_pending",
+    created: "created",
+    authorized: "authorized",
+    pending_qr: "pending_qr",
+  };
+
+  const ALLOWED_ORDER = new Set([
+    "created",
+    "confirmed",
+    "preparing",
+    "ready_for_pickup",
+    "reached_pickup",
+    "picked_up",
+    "reached_drop",
+    "delivered",
+    "cancelled_by_user",
+    "cancelled_by_restaurant",
+    "cancelled_by_admin",
+  ]);
+
+  const ALLOWED_PAYMENT = new Set([
+    "cod_pending",
+    "created",
+    "authorized",
+    "paid",
+    "failed",
+    "refunded",
+    "pending_qr",
+  ]);
+
+  const order = await FoodOrder.findOne(identity);
+  if (!order) throw new NotFoundError("Order not found");
+
+  let nextOrderStatus = null;
+  if (hasOrderStatus) {
+    const key = String(orderStatus).trim().toLowerCase().replace(/_/g, " ").replace(/\s+/g, " ");
+    const keyRaw = String(orderStatus).trim().toLowerCase();
+    nextOrderStatus =
+      ORDER_STATUS_ALIASES[key] ||
+      ORDER_STATUS_ALIASES[keyRaw] ||
+      (ALLOWED_ORDER.has(keyRaw) ? keyRaw : null);
+    if (!nextOrderStatus || !ALLOWED_ORDER.has(nextOrderStatus)) {
+      throw new ValidationError(`Invalid order status: ${orderStatus}`);
+    }
+  }
+
+  let nextPaymentStatus = null;
+  if (hasPaymentStatus) {
+    const key = String(paymentStatus).trim().toLowerCase().replace(/_/g, " ").replace(/\s+/g, " ");
+    const keyRaw = String(paymentStatus).trim().toLowerCase();
+    let mapped =
+      PAYMENT_STATUS_ALIASES[key] ||
+      PAYMENT_STATUS_ALIASES[keyRaw] ||
+      (ALLOWED_PAYMENT.has(keyRaw) ? keyRaw : null);
+    if (mapped === "__pending__") {
+      const method = String(order.payment?.method || "").toLowerCase();
+      mapped = method === "cash" || method === "cod" ? "cod_pending" : "created";
+    }
+    if (!mapped || !ALLOWED_PAYMENT.has(mapped)) {
+      throw new ValidationError(`Invalid payment status: ${paymentStatus}`);
+    }
+    nextPaymentStatus = mapped;
+  }
+
+  const fromOrder = order.orderStatus;
+  const fromPayment = order.payment?.status;
+
+  if (nextOrderStatus && nextOrderStatus !== fromOrder) {
+    order.orderStatus = nextOrderStatus;
+    pushStatusHistory(order, {
+      byRole: "ADMIN",
+      byId: adminId,
+      from: fromOrder,
+      to: nextOrderStatus,
+      note: "Admin override — order status",
+    });
+
+    if (!order.deliveryState) order.deliveryState = {};
+
+    if (nextOrderStatus === "delivered") {
+      if (!order.deliveryState.deliveredAt) {
+        order.deliveryState.deliveredAt = new Date();
+      }
+      order.deliveryState.currentPhase = "delivered";
+    } else if (nextOrderStatus === "picked_up" || nextOrderStatus === "reached_drop") {
+      order.deliveryState.currentPhase =
+        nextOrderStatus === "reached_drop" ? "at_drop" : "en_route_to_delivery";
+    } else if (nextOrderStatus === "ready_for_pickup" || nextOrderStatus === "reached_pickup") {
+      order.deliveryState.currentPhase =
+        nextOrderStatus === "reached_pickup" ? "at_pickup" : "en_route_to_pickup";
+    }
+  }
+
+  if (nextPaymentStatus && order.payment && nextPaymentStatus !== fromPayment) {
+    order.payment.status = nextPaymentStatus;
+    pushStatusHistory(order, {
+      byRole: "ADMIN",
+      byId: adminId,
+      from: fromPayment || "",
+      to: nextPaymentStatus,
+      note: "Admin override — payment status",
+    });
+  }
+
+  await order.save();
+
+  try {
+    const io = getIO();
+    if (io) {
+      const payload = {
+        orderMongoId: order._id?.toString?.(),
+        orderId: order.orderId || order._id.toString(),
+        _id: order._id.toString(),
+        orderStatus: order.orderStatus,
+        status: order.orderStatus,
+        paymentStatus: order.payment?.status,
+        title: "Order updated by admin",
+        message: "Admin updated order status",
+      };
+      if (order.restaurantId) {
+        io.to(rooms.restaurant(order.restaurantId)).emit("order_status_update", payload);
+      }
+      if (order.userId) {
+        io.to(rooms.user(order.userId)).emit("order_status_update", payload);
+      }
+    }
+  } catch (_) {}
+
+  return normalizeOrderForClient(order);
+}
+

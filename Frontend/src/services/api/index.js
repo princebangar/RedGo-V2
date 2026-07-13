@@ -580,6 +580,10 @@ export const adminAPI = {
     apiClient.patch(`/food/admin/orders/${String(orderId)}/reject`, { reason }, {
       contextModule: "admin",
     }),
+  updateOrderStatuses: (orderId, body = {}) =>
+    apiClient.patch(`/food/admin/orders/${String(orderId)}/statuses`, body, {
+      contextModule: "admin",
+    }),
   /** Dispatch settings – auto vs manual assign (global) */
   /** Create restaurant (admin). Single API: POST /food/admin/restaurants. Body: JSON with image URLs. */
   createRestaurant: (body) =>

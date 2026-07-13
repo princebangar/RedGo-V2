@@ -9,9 +9,11 @@ import {
 import { useNavigate } from 'react-router-dom';
 import { deliveryAPI } from '@food/api';
 import { toast } from 'sonner';
+import { showUserFacingApiError } from '@/shared/utils/apiError';
 import { formatCurrency } from '@food/utils/currency';
 import { initRazorpayPayment } from "@food/utils/razorpay";
 import { getCompanyNameAsync } from "@food/utils/businessSettings";
+import { Skeleton } from '@food/components/ui/skeleton';
 
 /**
  * PocketV2 - 1:1 Match with Old PocketPage UI.
@@ -165,7 +167,7 @@ export const PocketV2 = () => {
         });
 
       } catch (err) {
-        toast.error('Failed to load wallet data');
+        showUserFacingApiError(err, 'Failed to load wallet data');
       } finally {
         setLoading(false);
       }
@@ -241,7 +243,7 @@ export const PocketV2 = () => {
       });
     } catch (err) {
       setDepositing(false);
-      toast.error(err?.response?.data?.message || "Deposit failed to start");
+      showUserFacingApiError(err, "Deposit failed to start");
     }
   };
 
@@ -270,10 +272,13 @@ export const PocketV2 = () => {
         setDepositAmount("");
         setDepositMode("cash");
       } else {
-        toast.error(res?.data?.message || "Cash submission failed");
+        showUserFacingApiError(
+          { response: { data: { message: res?.data?.message } } },
+          "Cash submission failed",
+        );
       }
     } catch (err) {
-      toast.error(err?.response?.data?.message || "Cash submission failed");
+      showUserFacingApiError(err, "Cash submission failed");
     } finally {
       setDepositing(false);
     }
@@ -296,27 +301,24 @@ export const PocketV2 = () => {
   };
 
   const getCurrentWeekRange = () => {
+    // Monday → Sunday (IST-friendly local browser clock for India riders)
     const now = new Date();
+    const day = now.getDay(); // Sun=0 ... Sat=6
+    const mondayOffset = (day + 6) % 7; // Mon=0 ... Sun=6
     const start = new Date(now);
-    start.setDate(now.getDate() - now.getDay());
+    start.setHours(0, 0, 0, 0);
+    start.setDate(now.getDate() - mondayOffset);
     const end = new Date(start);
     end.setDate(start.getDate() + 6);
     const formatDate = (d) => `${d.getDate()} ${d.toLocaleString('en-US', { month: 'short' })}`;
     return `${formatDate(start)} - ${formatDate(end)}`;
   };
 
-  if (loading) return (
-    <div className="min-h-screen bg-[#f6e9dc] flex flex-col items-center justify-center font-poppins">
-       <div className="w-10 h-10 border-4 border-[#ff8100] border-t-transparent rounded-full animate-spin mb-4" />
-       <p className="text-xs font-semibold text-gray-500">Loading Pocket...</p>
-    </div>
-  );
-
   return (
     <div className="min-h-screen bg-[#f6e9dc] pb-32 font-poppins">
        
        {/* 1. BANK DETAILS BANNER */}
-       {!walletState.bankDetailsFilled && (
+       {!loading && !walletState.bankDetailsFilled && (
          <div className="bg-yellow-400 px-4 py-3 flex items-center gap-3 border-b border-yellow-500/20">
             <div className="w-12 h-12 bg-black rounded-lg flex items-center justify-center text-white shrink-0 shadow-lg">
                <FileText className="w-7 h-7" />
@@ -342,8 +344,8 @@ export const PocketV2 = () => {
             className="bg-white rounded-xl p-6 shadow-sm border border-gray-100 text-center mb-5 transition-all active:scale-[0.98]"
           >
              <p className="text-gray-500 text-[11px] font-bold uppercase tracking-widest mb-2">Earnings: {getCurrentWeekRange()}</p>
-             <h2 className="text-4xl font-black text-black tracking-tighter">
-                ₹{walletState.weeklyEarnings.toFixed(0)}
+             <h2 className="text-4xl font-black text-black tracking-tighter min-h-[2.5rem] flex items-center justify-center">
+                {loading ? <Skeleton className="h-10 w-28" /> : `₹${walletState.weeklyEarnings.toFixed(0)}`}
              </h2>
           </div>
 
@@ -425,7 +427,9 @@ export const PocketV2 = () => {
                    </div>
                 </div>
                 <div className="flex items-center gap-2">
-                   <span className="text-base font-black text-black">₹{walletState.totalBalance.toFixed(2)}</span>
+                   <span className="text-base font-black text-black min-w-[4.5rem] inline-flex justify-end">
+                      {loading ? <Skeleton className="h-5 w-16" /> : `₹${walletState.totalBalance.toFixed(2)}`}
+                   </span>
                    <ChevronRight className="w-4 h-4 text-gray-300" />
                 </div>
              </button>
@@ -444,7 +448,9 @@ export const PocketV2 = () => {
                    </div>
                 </div>
                 <div className="flex items-center gap-2">
-                   <span className="text-base font-black text-black">₹{walletState.availableCashLimit.toFixed(2)}</span>
+                   <span className="text-base font-black text-black min-w-[4.5rem] inline-flex justify-end">
+                      {loading ? <Skeleton className="h-5 w-16" /> : `₹${walletState.availableCashLimit.toFixed(2)}`}
+                   </span>
                    <ChevronRight className="w-4 h-4 text-gray-300" />
                 </div>
              </button>
@@ -467,7 +473,9 @@ export const PocketV2 = () => {
                       <IndianRupee className="w-5 h-5" />
                    </div>
                    <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-1.5">Last Payout</p>
-                   <p className="text-xl font-black text-black leading-none mb-1">₹{walletState.payoutAmount}</p>
+                   <p className="text-xl font-black text-black leading-none mb-1 min-h-[1.5rem]">
+                      {loading ? <Skeleton className="h-6 w-16" /> : `₹${walletState.payoutAmount}`}
+                   </p>
                    <p className="text-[9px] text-gray-400 font-bold uppercase tracking-tight">Prev Week Info</p>
                 </div>
 

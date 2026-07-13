@@ -55,33 +55,88 @@ function SelectContent({
   children,
   position = "popper",
   align = "center",
+  scrollToTopOnOpen = false,
+  onOpenAutoFocus,
   ...props
-}: React.ComponentProps<typeof SelectPrimitive.Content>) {
+}: React.ComponentProps<typeof SelectPrimitive.Content> & {
+  /** Start list at top instead of jumping/scrolling to the selected option */
+  scrollToTopOnOpen?: boolean
+}) {
+  const contentRef = React.useRef<HTMLDivElement | null>(null)
+  // Keep menu invisible until Radix's post-open scroll-to-selected is neutralized
+  const [revealed, setRevealed] = React.useState(!scrollToTopOnOpen)
+
+  const resetScrollToTop = React.useCallback((node?: HTMLDivElement | null) => {
+    const content = node ?? contentRef.current
+    if (!content) return
+    content.querySelectorAll('[role="option"]').forEach((el) => {
+      const option = el as HTMLElement
+      option.scrollIntoView = () => {}
+      if (!(option as HTMLElement & { __rgFocusPatched?: boolean }).__rgFocusPatched) {
+        const nativeFocus = option.focus.bind(option)
+        option.focus = ((opts?: FocusOptions) => {
+          nativeFocus({ ...opts, preventScroll: true })
+        }) as typeof option.focus
+        ;(option as HTMLElement & { __rgFocusPatched?: boolean }).__rgFocusPatched = true
+      }
+    })
+    content.scrollTop = 0
+    const viewport = content.querySelector(
+      "[data-radix-select-viewport]"
+    ) as HTMLElement | null
+    if (viewport) viewport.scrollTop = 0
+  }, [])
+
+  React.useLayoutEffect(() => {
+    if (!scrollToTopOnOpen) return
+    resetScrollToTop()
+  }, [scrollToTopOnOpen, resetScrollToTop])
+
+  // Child (Radix) effects run first and may scroll to selected — reset then reveal
+  React.useEffect(() => {
+    if (!scrollToTopOnOpen) {
+      setRevealed(true)
+      return
+    }
+    resetScrollToTop()
+    setRevealed(true)
+  }, [scrollToTopOnOpen, resetScrollToTop])
+
   return (
     <SelectPrimitive.Portal>
       <SelectPrimitive.Content
+        ref={(node) => {
+          contentRef.current = node
+          if (scrollToTopOnOpen && node) resetScrollToTop(node)
+        }}
         data-slot="select-content"
         className={cn(
-          "z-50 rounded-md border border-border bg-popover text-popover-foreground shadow-lg",
+          "select-menu-scroll z-50 max-h-48 overflow-y-scroll rounded-md border border-border bg-popover text-popover-foreground shadow-lg",
           position === "popper" &&
             "data-[side=bottom]:translate-y-1 data-[side=left]:-translate-x-1 data-[side=right]:translate-x-1 data-[side=top]:-translate-y-1",
+          scrollToTopOnOpen && !revealed && "opacity-0 pointer-events-none",
           className
         )}
         position={position}
         align={align}
         {...props}
+        onOpenAutoFocus={(event) => {
+          if (scrollToTopOnOpen) {
+            event.preventDefault()
+            resetScrollToTop(event.currentTarget as HTMLDivElement)
+          }
+          onOpenAutoFocus?.(event)
+        }}
       >
-        <SelectScrollUpButton />
         <SelectPrimitive.Viewport
           className={cn(
-            "p-1",
+            "h-auto max-h-none w-full p-1",
             position === "popper" &&
-              "h-[var(--radix-select-trigger-height)] w-full min-w-[var(--radix-select-trigger-width)] scroll-my-1"
+              "min-w-[var(--radix-select-trigger-width)]",
           )}
         >
           {children}
         </SelectPrimitive.Viewport>
-        <SelectScrollDownButton />
       </SelectPrimitive.Content>
     </SelectPrimitive.Portal>
   )
