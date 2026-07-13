@@ -12,7 +12,6 @@ import { buildPaginationOptions, buildPaginatedResult } from '../../../../utils/
 import { FoodOffer } from '../../admin/models/offer.model.js';
 import { FoodOfferUsage } from '../../admin/models/offerUsage.model.js';
 import { FoodSystemConfig } from '../../admin/models/systemConfig.model.js';
-import { FoodDeliveryCommissionRule } from '../../admin/models/deliveryCommissionRule.model.js';
 import { FoodRestaurantCommission } from '../../admin/models/restaurantCommission.model.js';
 import { FoodTransaction } from '../models/foodTransaction.model.js';
 import { FoodSupportTicket } from '../../user/models/supportTicket.model.js';
@@ -26,7 +25,8 @@ import {
 } from '../helpers/razorpay.helper.js';
 import { getIO, rooms } from '../../../../config/socket.js';
 import { addOrderJob } from '../../../../queues/producers/order.producer.js';
-import { fetchPolyline } from '../utils/googleMaps.js';
+import { fetchPolyline, toGeoJsonPoint } from '../utils/googleMaps.js';
+import { resolveRiderEarningForDelivery } from './riderEarning.service.js';
 import { getFirebaseDB } from '../../../../config/firebase.js';
 import * as foodTransactionService from './foodTransaction.service.js';
 import * as userWalletService from '../../user/services/userWallet.service.js';
@@ -36,7 +36,6 @@ import * as deliveryService from './order-delivery.service.js';
 import * as paymentService from './order-payment.service.js';
 import {
   enqueueOrderEvent,
-  haversineKm,
   assertRestaurantDeliversToZone,
   generateFourDigitDeliveryOtp,
   sanitizeOrderForExternal,
@@ -55,66 +54,6 @@ import {
   STATUS_PRIORITY,
 } from './order.helpers.js';
 
-
-
-
-const COMMISSION_CACHE_MS = 10 * 1000;
-let commissionRulesCache = null;
-let commissionRulesLoadedAt = 0;
-
-async function getActiveCommissionRules() {
-  const now = Date.now();
-  if (
-    commissionRulesCache &&
-    now - commissionRulesLoadedAt < COMMISSION_CACHE_MS
-  ) {
-    return commissionRulesCache;
-  }
-  const list = await FoodDeliveryCommissionRule.find({
-    status: { $ne: false },
-  }).lean();
-  commissionRulesCache = list || [];
-  commissionRulesLoadedAt = now;
-  return commissionRulesCache;
-}
-
-// 🗑️ Moved to foodTransaction.service.js to centralize finance logic.
-
-
-async function getRiderEarning(distanceKm) {
-  const d = Number(distanceKm);
-  if (!Number.isFinite(d) || d <= 0) return 0;
-  const rules = await getActiveCommissionRules();
-  if (!rules.length) return 0;
-
-  const sorted = [...rules].sort(
-    (a, b) => (a.minDistance || 0) - (b.minDistance || 0),
-  );
-  const baseRule = sorted.find((r) => Number(r.minDistance || 0) === 0) || null;
-  if (!baseRule) return 0;
-
-  let earning = Number(baseRule.basePayout || 0);
-
-  for (const r of sorted) {
-    const perKm = Number(r.commissionPerKm || 0);
-    if (!Number.isFinite(perKm) || perKm <= 0) continue;
-    const min = Number(r.minDistance || 0);
-    const max = r.maxDistance == null ? null : Number(r.maxDistance);
-    if (d <= min) continue;
-    const upper = max == null ? d : Math.min(d, max);
-    const kmInSlab = Math.max(0, upper - min);
-    if (kmInSlab > 0) {
-      earning += kmInSlab * perKm;
-    }
-  }
-
-  if (!Number.isFinite(earning) || earning <= 0) return 0;
-  return Math.round(earning);
-}
-
-/** Append-only food_order_payments row; never blocks main flow on failure */
-// 🗑️ Deprecated in favor of FoodTransaction system.
-
 // ----- Settings -----
 export async function getDispatchSettings() {
   return dispatchService.getDispatchSettings();
@@ -132,7 +71,7 @@ export async function calculateOrder(userId, dto) {
 // ----- Create order -----
 export async function createOrder(userId, dto) {
   const restaurant = await FoodRestaurant.findById(dto.restaurantId)
-    .select("status restaurantName zoneId location isAcceptingOrders takeawaySettings")
+    .select("status restaurantName zoneId location isAcceptingOrders takeawaySettings addressLine1 addressLine2 area city state pincode")
     .lean();
   if (!restaurant) throw new ValidationError("Restaurant not found");
   if (restaurant.status !== "approved")
@@ -271,22 +210,61 @@ export async function createOrder(userId, dto) {
   };
 
   let distanceKm = null;
-  if (
-    restaurant.location?.coordinates?.length === 2 &&
-    dto.address?.location?.coordinates?.length === 2
-  ) {
-    const [rLng, rLat] = restaurant.location.coordinates;
-    const [dLng, dLat] = dto.address.location.coordinates;
-    const d = haversineKm(rLat, rLng, dLat, dLng);
-    distanceKm = Number.isFinite(d) ? d : null;
-  } else {
-    console.warn(
-      `Food order: distance not available, rider earning set to 0`,
-    );
-  }
+  let riderEarning = 0;
 
-  const riderEarning = orderType === "takeaway" ? 0 : await getRiderEarning(distanceKm);
-  
+  if (orderType !== 'takeaway') {
+    const earningResolved = await resolveRiderEarningForDelivery({
+      restaurant,
+      deliveryAddress,
+      orderType,
+    });
+    distanceKm = earningResolved.distanceKm;
+    riderEarning = earningResolved.riderEarning;
+
+    // Persist geocoded delivery coords so later map/dispatch don't miss them again
+    if (earningResolved.deliveryGeocoded && earningResolved.deliveryPoint) {
+      deliveryAddress.location = toGeoJsonPoint(earningResolved.deliveryPoint);
+    }
+
+    // Backfill restaurant coords when missing (helps future orders)
+    if (earningResolved.restaurantGeocoded && earningResolved.restaurantPoint) {
+      try {
+        await FoodRestaurant.updateOne(
+          {
+            _id: restaurant._id,
+            $or: [
+              { 'location.coordinates': { $exists: false } },
+              { 'location.coordinates': { $size: 0 } },
+              { 'location.coordinates.0': { $exists: false } },
+            ],
+          },
+          {
+            $set: {
+              location: {
+                ...(restaurant.location || {}),
+                type: 'Point',
+                coordinates: [
+                  earningResolved.restaurantPoint.lng,
+                  earningResolved.restaurantPoint.lat,
+                ],
+                latitude: earningResolved.restaurantPoint.lat,
+                longitude: earningResolved.restaurantPoint.lng,
+              },
+            },
+          },
+        );
+      } catch (err) {
+        logger.warn(`Restaurant coord backfill failed: ${err?.message || err}`);
+      }
+    }
+
+    if (!distanceKm) {
+      logger.warn(
+        `Food order: distance still unavailable after geocode; riderEarning=${riderEarning}`,
+      );
+    }
+  }
+ 
   // Calculate restaurant commission from subtotal
   const { commissionAmount: restaurantCommission } = await foodTransactionService.getRestaurantCommissionSnapshot({
     pricing: normalizedPricing,
