@@ -6,6 +6,7 @@ import { toast } from "sonner"
 import { deliveryAPI } from "@food/api"
 import { setAuthData as storeAuthData, clearModuleAuth } from "@food/utils/auth"
 import { collectFcmTokenFast, persistModuleFcmToken, finalizeDeliveryPendingSubmission, prefetchModuleFcmToken } from "@food/utils/firebaseMessaging"
+import { getUserFacingApiError } from "@/shared/utils/apiError"
 
 const DEFAULT_COUNTRY_CODE = "+91"
 
@@ -236,7 +237,7 @@ export default function DeliverySignIn() {
       sessionStorage.setItem("deliveryAuthData", JSON.stringify(authData))
       navigate("/food/delivery/otp")
     } catch (err) {
-      const msg = err?.response?.data?.error || err?.response?.data?.message || err?.message || "Failed to send OTP."
+      const msg = getUserFacingApiError(err, "Failed to send OTP. Please try again.")
       const lowerMsg = msg.toLowerCase()
       const isBlocked = lowerMsg.includes("blocked") || 
                         lowerMsg.includes("too many attempts") || 
@@ -393,11 +394,7 @@ export default function DeliverySignIn() {
       }
       setTimeout(verifyAndNavigate, 200)
     } catch (err) {
-      const message =
-        err?.response?.data?.error ||
-        err?.response?.data?.message ||
-        err?.message ||
-        "Failed to verify OTP. Please try again."
+      const message = getUserFacingApiError(err, "Failed to verify OTP. Please try again.")
 
       setOtp(["", "", "", ""])
       setTimeout(() => {
@@ -419,12 +416,12 @@ export default function DeliverySignIn() {
         setBlockTimer(totalSeconds)
         sessionStorage.setItem(getBlockKey(authData?.phone || ""), (Date.now() + (totalSeconds * 1000)).toString())
         setError("")
+      } else if (/invalid/i.test(message)) {
+        setError("Invalid OTP")
+        toast.error("Invalid OTP")
       } else {
-        if (/invalid/i.test(message)) {
-          setError("Invalid OTP")
-        } else {
-          setError(message)
-        }
+        setError(message)
+        toast.error(message)
       }
       setLoading(false)
     }
@@ -498,12 +495,9 @@ export default function DeliverySignIn() {
       }
       setTimeout(verifyAndNavigate, 200)
     } catch (err) {
-      const message =
-        err?.response?.data?.message ||
-        err?.response?.data?.error ||
-        err?.message ||
-        "Failed to complete registration. Please try again."
+      const message = getUserFacingApiError(err, "Failed to complete registration. Please try again.")
       setError(message)
+      toast.error(message)
     } finally {
       setLoading(false)
     }
@@ -541,11 +535,7 @@ export default function DeliverySignIn() {
       inputRefs.current[0]?.focus()
       toast.success("OTP resent successfully.")
     } catch (err) {
-      const message =
-        err?.response?.data?.error ||
-        err?.response?.data?.message ||
-        err?.message ||
-        "Failed to resend OTP. Please try again."
+      const message = getUserFacingApiError(err, "Failed to resend OTP. Please try again.")
 
       const isBlocked = message.toLowerCase().includes("blocked") || 
                         message.toLowerCase().includes("too many attempts") || 
@@ -564,6 +554,7 @@ export default function DeliverySignIn() {
         setError("")
       } else {
         setError(message)
+        toast.error(message)
       }
     } finally {
       setLoading(false)

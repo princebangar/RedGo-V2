@@ -41,11 +41,24 @@ export const config = {
     smsHubEnabled: process.env.SMS_HUB_ENABLED === 'true',
     msg91Enabled: process.env.MSG91_ENABLED === 'true',
 
-    // Rate limiting
+    // Rate limiting (see Backend/.env RATE_LIMIT_* / AUTH_RATE_LIMIT_*)
+    rateLimitEnabled: process.env.RATE_LIMIT_ENABLED !== 'false',
     rateLimitWindowMinutes: Number(process.env.RATE_LIMIT_WINDOW || 15),
-    rateLimitMaxRequests: Number(process.env.RATE_LIMIT_MAX || 100),
+    rateLimitMaxRequests: Number(process.env.RATE_LIMIT_MAX || 3500),
+    rateLimitDevMaxRequests: Number(process.env.RATE_LIMIT_DEV_MAX || 2000),
     authRateLimitWindowMinutes: Number(process.env.AUTH_RATE_LIMIT_WINDOW || 15),
     authRateLimitMax: Number(process.env.AUTH_RATE_LIMIT_MAX || 30),
+
+    // Proxy hops for req.ip / X-Forwarded-For (nginx, Cloudflare, load balancer).
+    // Set TRUST_PROXY=1 (one hop) or true. Default: 1 so rate-limit sees the real client IP.
+    trustProxy: (() => {
+        const raw = process.env.TRUST_PROXY;
+        if (raw === undefined || raw === '') return 1;
+        if (raw === 'true' || raw === 'TRUE') return true;
+        if (raw === 'false' || raw === 'FALSE') return false;
+        const n = Number(raw);
+        return Number.isFinite(n) ? n : 1;
+    })(),
 
     // Security
     bcryptSaltRounds: Number(process.env.BCRYPT_SALT_ROUNDS || 10),
