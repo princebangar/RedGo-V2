@@ -98,21 +98,65 @@ const openDeliveryFilesDB = () => {
 }
 
 const isUploadableFile = (file) => file instanceof File || file instanceof Blob
+const IMAGE_COMPRESS_TIMEOUT_MS = 8000
 
-export const prepareSignupDocumentFile = async (file) => {
-  if (!isUploadableFile(file) || !String(file.type || "").startsWith("image/")) {
-    throw new Error("Invalid image file")
-  }
+/** In-memory fallback when IndexedDB write hangs/fails (common in WebViews). */
+const signupDocumentMemory = Object.create(null)
 
+const toSignupFile = (file, fallbackName = "document.jpg") => {
+  if (file instanceof File) return file
+  const type = file?.type || "image/jpeg"
+  const extension = type.includes("png") ? "png" : type.includes("webp") ? "webp" : "jpg"
+  const name = String(fallbackName || "document").replace(/\.[^.]+$/, "") + `.${extension}`
+  return new File([file], name, { type, lastModified: Date.now() })
+}
+
+const canvasToJpegBlob = (canvas, quality) =>
+  new Promise((resolve, reject) => {
+    try {
+      // Prefer toBlob; fall back to dataURL if the callback never fires (WebView hang).
+      let settled = false
+      const settle = (blob) => {
+        if (settled) return
+        settled = true
+        if (blob) resolve(blob)
+        else reject(new Error("Image compression failed"))
+      }
+
+      canvas.toBlob((result) => settle(result), "image/jpeg", quality)
+
+      // Some WebViews never invoke toBlob callback — recover via toDataURL.
+      setTimeout(() => {
+        if (settled) return
+        try {
+          const dataUrl = canvas.toDataURL("image/jpeg", quality)
+          const [header, base64] = dataUrl.split(",")
+          if (!base64) {
+            settle(null)
+            return
+          }
+          const binary = atob(base64)
+          const bytes = new Uint8Array(binary.length)
+          for (let i = 0; i < binary.length; i += 1) {
+            bytes[i] = binary.charCodeAt(i)
+          }
+          settle(new Blob([bytes], { type: header.match(/:(.*?);/)?.[1] || "image/jpeg" }))
+        } catch {
+          settle(null)
+        }
+      }, 2500)
+    } catch (error) {
+      reject(error)
+    }
+  })
+
+const compressSignupDocumentFile = async (file) => {
   const maxBytes = 1.5 * 1024 * 1024
   const maxDimension = 1600
+  const original = toSignupFile(file)
 
-  if (file.size <= 400 * 1024) {
-    return file instanceof File ? file : new File([file], "document.jpg", { type: file.type || "image/jpeg" })
-  }
-
+  const bitmap = await createImageBitmap(original)
   try {
-    const bitmap = await createImageBitmap(file)
     const scale = Math.min(1, maxDimension / Math.max(bitmap.width, bitmap.height, 1))
     const targetWidth = Math.max(1, Math.round(bitmap.width * scale))
     const targetHeight = Math.max(1, Math.round(bitmap.height * scale))
@@ -121,48 +165,71 @@ export const prepareSignupDocumentFile = async (file) => {
     canvas.width = targetWidth
     canvas.height = targetHeight
     const context = canvas.getContext("2d")
-    if (!context) {
-      bitmap.close?.()
-      return file instanceof File ? file : new File([file], "document.jpg", { type: file.type || "image/jpeg" })
-    }
+    if (!context) return original
 
     context.drawImage(bitmap, 0, 0, targetWidth, targetHeight)
+
+    const blob = await canvasToJpegBlob(canvas, 0.82)
+    if (!blob || blob.size >= original.size || blob.size > maxBytes) {
+      return original
+    }
+
+    const baseName = String(original.name || "document").replace(/\.[^.]+$/, "")
+    return new File([blob], `${baseName}.jpg`, { type: "image/jpeg", lastModified: Date.now() })
+  } finally {
     bitmap.close?.()
+  }
+}
 
-    const blob = await new Promise((resolve, reject) => {
-      canvas.toBlob(
-        (result) => (result ? resolve(result) : reject(new Error("Image compression failed"))),
-        "image/jpeg",
-        0.82,
-      )
-    })
+export const prepareSignupDocumentFile = async (file) => {
+  if (!isUploadableFile(file) || !String(file.type || "").startsWith("image/")) {
+    throw new Error("Invalid image file")
+  }
 
-    if (!blob || blob.size >= file.size) {
-      return file instanceof File ? file : new File([file], "document.jpg", { type: file.type || "image/jpeg" })
-    }
+  const original = toSignupFile(file)
 
-    if (blob.size > maxBytes) {
-      return file instanceof File ? file : new File([file], "document.jpg", { type: file.type || "image/jpeg" })
-    }
+  // Keep small images as-is (including webp) — avoid canvas/toBlob hangs.
+  if (original.size <= 400 * 1024) {
+    return original
+  }
 
-    const baseName = String(file.name || "document").replace(/\.[^.]+$/, "")
-    return new File([blob], `${baseName}.jpg`, { type: "image/jpeg" })
+  try {
+    return await withTimeout(
+      compressSignupDocumentFile(original),
+      IMAGE_COMPRESS_TIMEOUT_MS,
+      () => original,
+    )
   } catch {
-    return file instanceof File ? file : new File([file], "document.jpg", { type: file.type || "image/jpeg" })
+    return original
   }
 }
 
 export const saveSignupDocumentToDB = async (docType, file) => {
   if (!DELIVERY_SIGNUP_DOC_TYPES.includes(docType) || !isUploadableFile(file)) return
 
-  const db = await openDeliveryFilesDB()
-  const tx = db.transaction(DELIVERY_FILES_STORE, "readwrite")
-  tx.objectStore(DELIVERY_FILES_STORE).put(file, docType)
-  await new Promise((resolve, reject) => {
-    tx.oncomplete = () => resolve(true)
-    tx.onerror = () => reject(tx.error || new Error("IndexedDB write failed"))
-    tx.onabort = () => reject(tx.error || new Error("IndexedDB write aborted"))
-  })
+  const prepared = toSignupFile(file, `${docType}.jpg`)
+  signupDocumentMemory[docType] = prepared
+
+  try {
+    await withTimeout(
+      (async () => {
+        const db = await openDeliveryFilesDB()
+        const tx = db.transaction(DELIVERY_FILES_STORE, "readwrite")
+        tx.objectStore(DELIVERY_FILES_STORE).put(prepared, docType)
+        await new Promise((resolve, reject) => {
+          tx.oncomplete = () => resolve(true)
+          tx.onerror = () => reject(tx.error || new Error("IndexedDB write failed"))
+          tx.onabort = () => reject(tx.error || new Error("IndexedDB write aborted"))
+        })
+      })(),
+      IDB_OPERATION_TIMEOUT_MS,
+      () => {
+        throw new Error("IndexedDB write timeout")
+      },
+    )
+  } catch {
+    // Session memory still holds the file for preview + submit.
+  }
 }
 
 export const getSignupDocumentFromDB = async (docType) => {
@@ -178,12 +245,14 @@ export const getAllSignupDocumentsFromDB = async () => {
     return acc
   }, {})
 
+  let fromDb = emptyResult
+
   try {
     const db = await openDeliveryFilesDB()
     const tx = db.transaction(DELIVERY_FILES_STORE, "readonly")
     const store = tx.objectStore(DELIVERY_FILES_STORE)
 
-    return await withTimeout(
+    fromDb = await withTimeout(
       new Promise((resolve) => {
         const documents = { ...emptyResult }
         let pending = DELIVERY_SIGNUP_DOC_TYPES.length
@@ -211,28 +280,49 @@ export const getAllSignupDocumentsFromDB = async () => {
       () => emptyResult,
     )
   } catch {
-    return emptyResult
+    fromDb = emptyResult
   }
+
+  // Prefer in-memory copies so a hung IndexedDB write never blocks signup.
+  return DELIVERY_SIGNUP_DOC_TYPES.reduce((acc, docType) => {
+    const memoryFile = signupDocumentMemory[docType]
+    acc[docType] = isUploadableFile(memoryFile)
+      ? memoryFile
+      : isUploadableFile(fromDb[docType])
+        ? fromDb[docType]
+        : null
+    return acc
+  }, { ...emptyResult })
 }
 
 export const deleteSignupDocumentFromDB = async (docType) => {
   if (!DELIVERY_SIGNUP_DOC_TYPES.includes(docType)) return
 
+  delete signupDocumentMemory[docType]
+
   try {
     const db = await openDeliveryFilesDB()
     const tx = db.transaction(DELIVERY_FILES_STORE, "readwrite")
     tx.objectStore(DELIVERY_FILES_STORE).delete(docType)
-    await new Promise((resolve, reject) => {
-      tx.oncomplete = () => resolve(true)
-      tx.onerror = () => reject(tx.error || new Error("IndexedDB delete failed"))
-      tx.onabort = () => reject(tx.error || new Error("IndexedDB delete aborted"))
-    })
+    await withTimeout(
+      new Promise((resolve, reject) => {
+        tx.oncomplete = () => resolve(true)
+        tx.onerror = () => reject(tx.error || new Error("IndexedDB delete failed"))
+        tx.onabort = () => reject(tx.error || new Error("IndexedDB delete aborted"))
+      }),
+      IDB_OPERATION_TIMEOUT_MS,
+      () => true,
+    )
   } catch {
     // Ignore delete failures during cleanup.
   }
 }
 
 export const clearSignupDocumentsFromDB = async () => {
+  DELIVERY_SIGNUP_DOC_TYPES.forEach((docType) => {
+    delete signupDocumentMemory[docType]
+  })
+
   try {
     if (typeof indexedDB === "undefined") return
     await Promise.all(DELIVERY_SIGNUP_DOC_TYPES.map((docType) => deleteSignupDocumentFromDB(docType)))
