@@ -40,8 +40,8 @@ router.post('/admin/login', authRateLimiter, adminLoginController);
 router.post('/admin/forgot-password/request-otp', authRateLimiter, requestAdminForgotPasswordOtpController);
 router.post('/admin/forgot-password/reset', authRateLimiter, resetAdminPasswordWithOtpController);
 
-router.post('/refresh-token', authRateLimiter, refreshTokenController);
-router.post('/logout', authRateLimiter, logoutController);
+router.post('/refresh-token', refreshTokenController);
+router.post('/logout', logoutController);
 
 // Authenticated auth routes — private user+IP limit via /api apiRateLimitMiddleware
 router.post('/logout-all', authMiddleware, logoutAllDevicesController);
