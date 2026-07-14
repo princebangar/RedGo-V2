@@ -201,45 +201,28 @@ async function fetchNewAutocompletePredictions(query, options = {}) {
   }
 }
 
-async function fetchTextSearchPredictions(query, apiKey, options = {}) {
+async function fetchTextSearchPredictions(query, options = {}) {
   const controller = new AbortController()
   const timeoutId = setTimeout(() => controller.abort(), 7000)
 
   try {
+    const { geocodeAPI } = await import("@food/api")
     const lat = Number(options.latitude)
     const lng = Number(options.longitude)
 
     const body = {
       textQuery: query,
-      languageCode: "en",
-      regionCode: "IN",
       maxResultCount: 6,
     }
 
     if (Number.isFinite(lat) && Number.isFinite(lng)) {
-      body.locationBias = {
-        circle: {
-          center: { latitude: lat, longitude: lng },
-          radius: 50000,
-        },
-      }
+      body.latitude = lat
+      body.longitude = lng
     }
 
-    const response = await fetch("https://places.googleapis.com/v1/places:searchText", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "X-Goog-Api-Key": apiKey,
-        "X-Goog-FieldMask": "places.id,places.displayName,places.formattedAddress,places.location",
-      },
-      signal: controller.signal,
-      body: JSON.stringify(body),
-    })
-
-    if (!response.ok) return []
-
-    const data = await response.json()
-    const places = Array.isArray(data.places) ? data.places : []
+    const response = await geocodeAPI.textSearch(body, { signal: controller.signal })
+    const data = response?.data?.data
+    const places = Array.isArray(data?.places) ? data.places : []
 
     return places.map((place) => {
       const placeId = normalizePlaceId(place.id)
@@ -271,12 +254,11 @@ export async function fetchPlaceSuggestions(input, options = {}) {
   if (query.length < 3) return []
 
   const google = await ensureGoogleMapsPlacesLoaded()
-  const apiKey = await getGoogleMapsApiKey()
 
   const [legacyResults, newResults, textResults] = await Promise.all([
     fetchLegacyAutocompletePredictions(google, query, options),
     fetchNewAutocompletePredictions(query, options),
-    apiKey ? fetchTextSearchPredictions(query, apiKey, options) : Promise.resolve([]),
+    fetchTextSearchPredictions(query, options),
   ])
 
   return mergeSuggestions(query, [textResults, legacyResults, newResults])

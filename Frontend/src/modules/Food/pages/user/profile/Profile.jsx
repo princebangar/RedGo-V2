@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from "react";
-import { Link, useNavigate, useNavigationType } from "react-router-dom";
+import { Link, useNavigate, useNavigationType, useLocation } from "react-router-dom";
 import { motion } from "framer-motion";
 import {
   ArrowLeft,
@@ -66,19 +66,20 @@ import { firebaseAuth } from "@food/firebase";
 import { clearModuleAuth } from "@food/utils/auth";
 import { toast } from "sonner";
 import { showAccountDeletedToast } from "@/shared/utils/customToasts";
-import { registerWebPushForCurrentModule } from "@food/utils/firebaseMessaging";
+import { resolveProfileBackPath } from "@food/utils/mainTabRoutes";
 
 const debugLog = (...args) => { };
 const debugWarn = (...args) => { };
 const debugError = (...args) => { };
-const USER_SESSION_PREFERENCE_KEYS = ["userVegMode", "food-under-250-filters"];
+const USER_SESSION_PREFERENCE_KEYS = ["userVegMode", "userVegModeOption", "food-under-250-filters"];
 
 
 export default function Profile() {
-  const { userProfile, vegMode, setVegMode, getDefaultAddress, addresses, updateUserProfile } =
+  const { userProfile, vegMode, setVegMode, vegModeOption, setVegModeOption, getDefaultAddress, addresses, updateUserProfile } =
     useProfile();
   const { openLocationSelector } = useLocationSelector();
   const navigate = useNavigate();
+  const location = useLocation();
   const companyName = useCompanyName();
   const defaultAddress = getDefaultAddress?.();
   const savedAddressSummary = defaultAddress
@@ -145,14 +146,17 @@ export default function Profile() {
     };
   }, [logoutConfirmOpen, deleteAccountOpen, showBalanceWarning, vegModeOpen, appearanceOpen]);
 
-  // Trigger web push registration when profile mounts to ensure FCM token is saved
-  useEffect(() => {
-    registerWebPushForCurrentModule().catch(console.error);
-  }, []);
-
   const handleVegModeUpdate = (nextValue) => {
     setVegMode(nextValue);
     localStorage.setItem("userVegMode", String(nextValue));
+  };
+
+  const handleVegModeOptionUpdate = (nextOption) => {
+    setVegModeOption(nextOption);
+    if (!vegMode) {
+      setVegMode(true);
+      localStorage.setItem("userVegMode", "true");
+    }
   };
 
   // Settings states
@@ -501,7 +505,7 @@ export default function Profile() {
         {/* Header: Back Arrow */}
         <div className="flex items-center mb-5">
           <button
-            onClick={() => navigate("/user/home")}
+            onClick={() => navigate(resolveProfileBackPath(location.state?.from))}
             className="h-11 w-11 flex items-center justify-center bg-white/70 dark:bg-[#1a1a1a]/70 backdrop-blur-md rounded-full shadow-[0_2px_12px_rgba(0,0,0,0.08)] hover:bg-white/90 dark:hover:bg-[#222]/90 active:scale-95 transition-all outline-none border border-black/10 dark:border-white/10"
           >
             <ArrowLeft className="h-6 w-6 text-black dark:text-white" />
@@ -522,7 +526,7 @@ export default function Profile() {
                     />
                   ) : (
                     <img
-                      src="/profile_avatar.png"
+                      src="/profile_avatar.webp"
                       alt={displayName}
                       className="w-full h-full object-cover rounded-full"
                     />
@@ -714,7 +718,11 @@ export default function Profile() {
                     className="text-base font-medium text-gray-900 dark:text-white"
                     whileHover={{ scale: 1.1 }}
                     transition={{ duration: 0.2 }}>
-                    {vegMode ? "ON" : "OFF"}
+                    {vegMode
+                      ? vegModeOption === "pure-veg"
+                        ? "Pure Veg"
+                        : "All restaurants"
+                      : "OFF"}
                   </motion.span>
                   <motion.div
                     whileHover={{ x: 4 }}
@@ -1038,32 +1046,62 @@ export default function Profile() {
           <div className="space-y-2 px-5 pb-5">
             <button
               onClick={() => {
-                handleVegModeUpdate(true);
+                handleVegModeOptionUpdate("all");
                 setVegModeOpen(false);
               }}
-              className={`w-full p-3 rounded-xl border-2 transition-all flex items-center justify-between ${vegMode
+              className={`w-full p-3 rounded-xl border-2 transition-all flex items-center justify-between ${vegMode && vegModeOption === "all"
                 ? "border-green-600 bg-green-50"
                 : "border-gray-200 bg-white hover:border-gray-300"
                 }`}>
               <div className="flex items-center gap-3">
                 <div
-                  className={`w-5 h-5 rounded-full border-2 flex items-center justify-center ${vegMode
+                  className={`w-5 h-5 rounded-full border-2 flex items-center justify-center ${vegMode && vegModeOption === "all"
                     ? "border-green-600 bg-green-600"
                     : "border-gray-300"
                     }`}>
-                  {vegMode && <Check className="h-3 w-3 text-white" />}
+                  {vegMode && vegModeOption === "all" && <Check className="h-3 w-3 text-white" />}
                 </div>
                 <div className="text-left">
                   <p className="font-medium text-gray-900 text-sm">
-                    Veg Mode ON
+                    All restaurants
                   </p>
                   <p className="text-xs text-gray-500">
-                    Show only vegetarian options
+                    Veg dishes from every restaurant
                   </p>
                 </div>
               </div>
               <Leaf
-                className={`h-5 w-5 ${vegMode ? "text-green-600" : "text-gray-400"}`}
+                className={`h-5 w-5 ${vegMode && vegModeOption === "all" ? "text-green-600" : "text-gray-400"}`}
+              />
+            </button>
+            <button
+              onClick={() => {
+                handleVegModeOptionUpdate("pure-veg");
+                setVegModeOpen(false);
+              }}
+              className={`w-full p-3 rounded-xl border-2 transition-all flex items-center justify-between ${vegMode && vegModeOption === "pure-veg"
+                ? "border-green-600 bg-green-50"
+                : "border-gray-200 bg-white hover:border-gray-300"
+                }`}>
+              <div className="flex items-center gap-3">
+                <div
+                  className={`w-5 h-5 rounded-full border-2 flex items-center justify-center ${vegMode && vegModeOption === "pure-veg"
+                    ? "border-green-600 bg-green-600"
+                    : "border-gray-300"
+                    }`}>
+                  {vegMode && vegModeOption === "pure-veg" && <Check className="h-3 w-3 text-white" />}
+                </div>
+                <div className="text-left">
+                  <p className="font-medium text-gray-900 text-sm">
+                    Pure Veg restaurants only
+                  </p>
+                  <p className="text-xs text-gray-500">
+                    Hide restaurants that serve non-veg
+                  </p>
+                </div>
+              </div>
+              <Leaf
+                className={`h-5 w-5 ${vegMode && vegModeOption === "pure-veg" ? "text-green-600" : "text-gray-400"}`}
               />
             </button>
             <button

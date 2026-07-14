@@ -14,6 +14,7 @@ import { useLocation } from "@food/hooks/useLocation"
 import { restaurantAPI } from "@food/api"
 import { API_BASE_URL } from "@food/api/config"
 import { useDelayedLoading } from "@food/hooks/useDelayedLoading"
+import { filterRestaurantsForVegMode } from "@food/utils/vegMode"
 
 const BACKEND_ORIGIN = API_BASE_URL.replace(/\/api\/?$/, "")
 
@@ -42,12 +43,17 @@ const pickRestaurantImage = (restaurant) => {
 }
 
 export default function Restaurants() {
-  const { addFavorite, removeFavorite, isFavorite, orderType } = useProfile()
+  const { addFavorite, removeFavorite, isFavorite, orderType, vegMode, vegModeOption } = useProfile()
   const { location: userLocation } = useLocation()
   const { zoneId } = useZone(userLocation)
   const [restaurants, setRestaurants] = useState([])
   const [loading, setLoading] = useState(true)
   const showRestaurantsSkeleton = useDelayedLoading(loading)
+
+  const visibleRestaurants = useMemo(
+    () => filterRestaurantsForVegMode(restaurants, { vegMode, vegModeOption }),
+    [restaurants, vegMode, vegModeOption],
+  )
 
   useEffect(() => {
     let cancelled = false
@@ -117,7 +123,7 @@ export default function Restaurants() {
     }
   }, [zoneId, orderType])
 
-  const hasRestaurants = useMemo(() => restaurants.length > 0, [restaurants.length])
+  const hasRestaurants = useMemo(() => visibleRestaurants.length > 0, [visibleRestaurants.length])
 
   return (
     <AnimatedPage className="min-h-screen bg-gradient-to-b from-yellow-50/30 dark:from-[#0a0a0a] via-white dark:via-[#0a0a0a] to-orange-50/20 dark:to-[#0a0a0a]">
@@ -143,7 +149,7 @@ export default function Restaurants() {
           <div className="py-16 text-center text-sm text-gray-500">No restaurants available right now.</div>
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3 sm:gap-4 lg:gap-5 xl:gap-6 pt-2 sm:pt-3 lg:pt-4">
-            {restaurants.map((restaurant, index) => {
+            {visibleRestaurants.map((restaurant, index) => {
               const favorite = isFavorite(restaurant.slug)
 
               const handleToggleFavorite = (e) => {

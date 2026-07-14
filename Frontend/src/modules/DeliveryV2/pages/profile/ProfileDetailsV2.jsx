@@ -473,7 +473,7 @@ export const ProfileDetailsV2 = () => {
               {profileImageUrl ? (
                 <img src={profileImageUrl} alt="Avatar" className="w-full h-full object-cover transition-transform group-hover:scale-110" />
               ) : (
-                <img src="/profile_avatar.png" alt="Avatar" className="w-full h-full object-cover transition-transform group-hover:scale-110" />
+                <img src="/profile_avatar.webp" alt="Avatar" className="w-full h-full object-cover transition-transform group-hover:scale-110" />
               )}
               {isUploadingImage && (
                 <div className="absolute inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center">

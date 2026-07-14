@@ -49,6 +49,7 @@ export default function MenuCategoriesPage() {
   const goBack = useRestaurantBackNavigation()
   const [categories, setCategories] = useState([])
   const [loading, setLoading] = useState(true)
+  const [isPureVegRestaurant, setIsPureVegRestaurant] = useState(false)
   const [showModal, setShowModal] = useState(false)
   const [editingCategory, setEditingCategory] = useState(null)
   const [formData, setFormData] = useState(defaultFormData)
@@ -60,6 +61,29 @@ export default function MenuCategoriesPage() {
 
   useEffect(() => {
     fetchCategories()
+  }, [])
+
+  useEffect(() => {
+    const fetchRestaurantDietType = async () => {
+      try {
+        const response = await restaurantAPI.getCurrentRestaurant()
+        const profile =
+          response?.data?.data?.restaurant ||
+          response?.data?.restaurant ||
+          response?.data?.data ||
+          null
+        const pureVeg = profile?.pureVegRestaurant === true
+        setIsPureVegRestaurant(pureVeg)
+        if (pureVeg) {
+          setFormData((prev) =>
+            prev.foodTypeScope === "Veg" ? prev : { ...prev, foodTypeScope: "Veg" },
+          )
+        }
+      } catch {
+        /* ignore — keep full diet options */
+      }
+    }
+    fetchRestaurantDietType()
   }, [])
 
   useEffect(() => {
@@ -104,7 +128,10 @@ export default function MenuCategoriesPage() {
 
   const openCreateModal = () => {
     setEditingCategory(null)
-    setFormData(defaultFormData)
+    setFormData({
+      ...defaultFormData,
+      foodTypeScope: isPureVegRestaurant ? "Veg" : defaultFormData.foodTypeScope,
+    })
     setSelectedImageFile(null)
     setImagePreview(null)
     setShowModal(true)
@@ -116,13 +143,14 @@ export default function MenuCategoriesPage() {
       return
     }
     setEditingCategory(category)
+    const scope = category?.foodTypeScope || "Veg"
     setFormData({
       name: category?.name || "",
       type: category?.type || "",
       image: category?.image || "",
       isActive: category?.isActive !== false,
       sortOrder: Number.isFinite(Number(category?.sortOrder)) ? Number(category.sortOrder) : 0,
-      foodTypeScope: category?.foodTypeScope || "Veg",
+      foodTypeScope: isPureVegRestaurant ? "Veg" : scope,
     })
     setSelectedImageFile(null)
     setImagePreview(category?.image || null)
@@ -169,7 +197,7 @@ export default function MenuCategoriesPage() {
         image: imageUrl,
         isActive: formData.isActive !== false,
         sortOrder: Number.isFinite(Number(formData.sortOrder)) ? Number(formData.sortOrder) : 0,
-        foodTypeScope: formData.foodTypeScope,
+        foodTypeScope: isPureVegRestaurant ? "Veg" : formData.foodTypeScope,
       }
 
       if (editingCategory) {
@@ -260,7 +288,10 @@ export default function MenuCategoriesPage() {
           <div className="rounded-2xl border border-dashed border-slate-300 bg-white px-6 py-12 text-center">
             <p className="text-lg font-semibold text-slate-900">No restaurant categories yet</p>
             <p className="mt-2 text-sm text-slate-500">
-              Start with a category and choose whether it should accept veg, non-veg, or both kinds of dishes.
+              Start with a category
+              {isPureVegRestaurant
+                ? " for your pure veg menu."
+                : " and choose whether it should accept veg, non-veg, or both kinds of dishes."}
             </p>
           </div>
         ) : (
@@ -398,15 +429,21 @@ export default function MenuCategoriesPage() {
 
                 <div>
                   <label className="mb-2 block text-sm font-medium text-slate-700">Diet Scope</label>
-                  <select
-                    value={formData.foodTypeScope}
-                    onChange={(e) => setFormData((prev) => ({ ...prev, foodTypeScope: e.target.value }))}
-                    className="w-full rounded-xl border border-slate-300 px-4 py-3 outline-none focus:border-[#B80B3D]"
-                  >
-                    <option value="Veg">Veg</option>
-                    <option value="Non-Veg">Non-Veg</option>
-                    <option value="Both">Both</option>
-                  </select>
+                  {isPureVegRestaurant ? (
+                    <div className="w-full rounded-xl border border-green-200 bg-green-50 px-4 py-3 text-sm font-medium text-green-700">
+                      Veg (Pure veg restaurant)
+                    </div>
+                  ) : (
+                    <select
+                      value={formData.foodTypeScope}
+                      onChange={(e) => setFormData((prev) => ({ ...prev, foodTypeScope: e.target.value }))}
+                      className="w-full rounded-xl border border-slate-300 px-4 py-3 outline-none focus:border-[#B80B3D]"
+                    >
+                      <option value="Veg">Veg</option>
+                      <option value="Non-Veg">Non-Veg</option>
+                      <option value="Both">Both</option>
+                    </select>
+                  )}
                 </div>
 
                 <div>

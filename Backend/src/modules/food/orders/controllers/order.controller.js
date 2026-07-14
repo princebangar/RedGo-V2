@@ -428,3 +428,18 @@ export async function rejectOrderAdminController(req, res, next) {
         next(err);
     }
 }
+
+export async function updateOrderStatusesAdminController(req, res, next) {
+    try {
+        const adminId = req.user?.userId;
+        const orderId = req.params.orderId;
+        const { orderStatus, paymentStatus } = req.body || {};
+        const order = await orderService.updateOrderStatusesAdmin(orderId, adminId, {
+            orderStatus,
+            paymentStatus,
+        });
+        return sendResponse(res, 200, 'Order status updated', { order });
+    } catch (err) {
+        next(err);
+    }
+}

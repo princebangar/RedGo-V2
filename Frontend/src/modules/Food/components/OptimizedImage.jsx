@@ -23,6 +23,7 @@ const OptimizedImage = React.memo(({
   objectFit = 'cover',
   placeholder = 'blur',
   blurDataURL,
+  responsive = true, // false = single src only (carousels / avoid per-slide request storms)
   onLoad,
   onError,
   ...props
@@ -33,6 +34,7 @@ const OptimizedImage = React.memo(({
 
   // Check if image URL supports optimization (external URLs)
   const supportsOptimization = (imageSrc) => {
+    if (!responsive) return false
     if (!imageSrc || typeof imageSrc !== 'string' || imageSrc === '') return false
     if (imageSrc.startsWith('data:') || imageSrc.startsWith('/')) return false
     // Check if it's an external URL (http/https)
@@ -51,23 +53,31 @@ const OptimizedImage = React.memo(({
     }
   }
 
-  // Generate responsive srcset
+  // Prefer thumbnail widths when sizes looks icon/chip-sized (avoids 1600w downloads for logos)
+  const responsiveWidths = useMemo(() => {
+    const s = String(sizes || '')
+    const looksLikeIcon =
+      /^\s*\d{1,3}px\s*$/i.test(s) ||
+      /\b(7[0-9]|8[0-9]|9[0-9]|1[01][0-9]|12[0-8])px\b/i.test(s) ||
+      /\b2[0-5]vw\b/i.test(s)
+    return looksLikeIcon ? [120, 200, 320] : [400, 600, 800, 1200, 1600]
+  }, [sizes])
+
+  // Generate responsive srcset (disabled when responsive=false — e.g. dish carousels)
   const srcSet = useMemo(() => {
-    if (!supportsOptimization(src)) return undefined
-    const sizesArr = [400, 600, 800, 1200, 1600]
-    return sizesArr
+    if (!responsive || !supportsOptimization(src)) return undefined
+    return responsiveWidths
       .map(size => `${appendImageParams(src, { w: size, q: 80 })} ${size}w`)
       .join(', ')
-  }, [src])
+  }, [src, responsive, responsiveWidths])
 
   // Generate WebP srcset
   const webPSrcSet = useMemo(() => {
-    if (!supportsOptimization(src)) return undefined
-    const sizesArr = [400, 600, 800, 1200, 1600]
-    return sizesArr
+    if (!responsive || !supportsOptimization(src)) return undefined
+    return responsiveWidths
       .map(size => `${appendImageParams(src, { w: size, q: 80, format: 'webp' })} ${size}w`)
       .join(', ')
-  }, [src])
+  }, [src, responsive, responsiveWidths])
 
   // Instant Cache Detection: Check if image is already cached/complete in browser cache on mount and source change
   useEffect(() => {
@@ -125,7 +135,7 @@ const OptimizedImage = React.memo(({
       )}
 
       {/* Loading Skeleton */}
-      {!isLoaded && !hasError && (
+      {!isLoaded && !hasError && placeholder !== 'empty' && (
         <div className="absolute inset-0 bg-gradient-to-r from-gray-200 via-gray-300 to-gray-200 dark:from-gray-700 dark:via-gray-600 dark:to-gray-700 animate-pulse" />
       )}
 

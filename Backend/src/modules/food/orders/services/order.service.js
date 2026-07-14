@@ -12,7 +12,6 @@ import { buildPaginationOptions, buildPaginatedResult } from '../../../../utils/
 import { FoodOffer } from '../../admin/models/offer.model.js';
 import { FoodOfferUsage } from '../../admin/models/offerUsage.model.js';
 import { FoodSystemConfig } from '../../admin/models/systemConfig.model.js';
-import { FoodDeliveryCommissionRule } from '../../admin/models/deliveryCommissionRule.model.js';
 import { FoodRestaurantCommission } from '../../admin/models/restaurantCommission.model.js';
 import { FoodTransaction } from '../models/foodTransaction.model.js';
 import { FoodSupportTicket } from '../../user/models/supportTicket.model.js';
@@ -26,7 +25,8 @@ import {
 } from '../helpers/razorpay.helper.js';
 import { getIO, rooms } from '../../../../config/socket.js';
 import { addOrderJob } from '../../../../queues/producers/order.producer.js';
-import { fetchPolyline } from '../utils/googleMaps.js';
+import { fetchPolyline, toGeoJsonPoint } from '../utils/googleMaps.js';
+import { resolveRiderEarningForDelivery } from './riderEarning.service.js';
 import { getFirebaseDB } from '../../../../config/firebase.js';
 import * as foodTransactionService from './foodTransaction.service.js';
 import * as userWalletService from '../../user/services/userWallet.service.js';
@@ -36,7 +36,6 @@ import * as deliveryService from './order-delivery.service.js';
 import * as paymentService from './order-payment.service.js';
 import {
   enqueueOrderEvent,
-  haversineKm,
   assertRestaurantDeliversToZone,
   generateFourDigitDeliveryOtp,
   sanitizeOrderForExternal,
@@ -55,66 +54,6 @@ import {
   STATUS_PRIORITY,
 } from './order.helpers.js';
 
-
-
-
-const COMMISSION_CACHE_MS = 10 * 1000;
-let commissionRulesCache = null;
-let commissionRulesLoadedAt = 0;
-
-async function getActiveCommissionRules() {
-  const now = Date.now();
-  if (
-    commissionRulesCache &&
-    now - commissionRulesLoadedAt < COMMISSION_CACHE_MS
-  ) {
-    return commissionRulesCache;
-  }
-  const list = await FoodDeliveryCommissionRule.find({
-    status: { $ne: false },
-  }).lean();
-  commissionRulesCache = list || [];
-  commissionRulesLoadedAt = now;
-  return commissionRulesCache;
-}
-
-// 🗑️ Moved to foodTransaction.service.js to centralize finance logic.
-
-
-async function getRiderEarning(distanceKm) {
-  const d = Number(distanceKm);
-  if (!Number.isFinite(d) || d <= 0) return 0;
-  const rules = await getActiveCommissionRules();
-  if (!rules.length) return 0;
-
-  const sorted = [...rules].sort(
-    (a, b) => (a.minDistance || 0) - (b.minDistance || 0),
-  );
-  const baseRule = sorted.find((r) => Number(r.minDistance || 0) === 0) || null;
-  if (!baseRule) return 0;
-
-  let earning = Number(baseRule.basePayout || 0);
-
-  for (const r of sorted) {
-    const perKm = Number(r.commissionPerKm || 0);
-    if (!Number.isFinite(perKm) || perKm <= 0) continue;
-    const min = Number(r.minDistance || 0);
-    const max = r.maxDistance == null ? null : Number(r.maxDistance);
-    if (d <= min) continue;
-    const upper = max == null ? d : Math.min(d, max);
-    const kmInSlab = Math.max(0, upper - min);
-    if (kmInSlab > 0) {
-      earning += kmInSlab * perKm;
-    }
-  }
-
-  if (!Number.isFinite(earning) || earning <= 0) return 0;
-  return Math.round(earning);
-}
-
-/** Append-only food_order_payments row; never blocks main flow on failure */
-// 🗑️ Deprecated in favor of FoodTransaction system.
-
 // ----- Settings -----
 export async function getDispatchSettings() {
   return dispatchService.getDispatchSettings();
@@ -132,7 +71,7 @@ export async function calculateOrder(userId, dto) {
 // ----- Create order -----
 export async function createOrder(userId, dto) {
   const restaurant = await FoodRestaurant.findById(dto.restaurantId)
-    .select("status restaurantName zoneId location isAcceptingOrders takeawaySettings")
+    .select("status restaurantName zoneId location isAcceptingOrders takeawaySettings addressLine1 addressLine2 area city state pincode")
     .lean();
   if (!restaurant) throw new ValidationError("Restaurant not found");
   if (restaurant.status !== "approved")
@@ -271,22 +210,61 @@ export async function createOrder(userId, dto) {
   };
 
   let distanceKm = null;
-  if (
-    restaurant.location?.coordinates?.length === 2 &&
-    dto.address?.location?.coordinates?.length === 2
-  ) {
-    const [rLng, rLat] = restaurant.location.coordinates;
-    const [dLng, dLat] = dto.address.location.coordinates;
-    const d = haversineKm(rLat, rLng, dLat, dLng);
-    distanceKm = Number.isFinite(d) ? d : null;
-  } else {
-    console.warn(
-      `Food order: distance not available, rider earning set to 0`,
-    );
-  }
+  let riderEarning = 0;
 
-  const riderEarning = orderType === "takeaway" ? 0 : await getRiderEarning(distanceKm);
-  
+  if (orderType !== 'takeaway') {
+    const earningResolved = await resolveRiderEarningForDelivery({
+      restaurant,
+      deliveryAddress,
+      orderType,
+    });
+    distanceKm = earningResolved.distanceKm;
+    riderEarning = earningResolved.riderEarning;
+
+    // Persist geocoded delivery coords so later map/dispatch don't miss them again
+    if (earningResolved.deliveryGeocoded && earningResolved.deliveryPoint) {
+      deliveryAddress.location = toGeoJsonPoint(earningResolved.deliveryPoint);
+    }
+
+    // Backfill restaurant coords when missing (helps future orders)
+    if (earningResolved.restaurantGeocoded && earningResolved.restaurantPoint) {
+      try {
+        await FoodRestaurant.updateOne(
+          {
+            _id: restaurant._id,
+            $or: [
+              { 'location.coordinates': { $exists: false } },
+              { 'location.coordinates': { $size: 0 } },
+              { 'location.coordinates.0': { $exists: false } },
+            ],
+          },
+          {
+            $set: {
+              location: {
+                ...(restaurant.location || {}),
+                type: 'Point',
+                coordinates: [
+                  earningResolved.restaurantPoint.lng,
+                  earningResolved.restaurantPoint.lat,
+                ],
+                latitude: earningResolved.restaurantPoint.lat,
+                longitude: earningResolved.restaurantPoint.lng,
+              },
+            },
+          },
+        );
+      } catch (err) {
+        logger.warn(`Restaurant coord backfill failed: ${err?.message || err}`);
+      }
+    }
+
+    if (!distanceKm) {
+      logger.warn(
+        `Food order: distance still unavailable after geocode; riderEarning=${riderEarning}`,
+      );
+    }
+  }
+ 
   // Calculate restaurant commission from subtotal
   const { commissionAmount: restaurantCommission } = await foodTransactionService.getRestaurantCommissionSnapshot({
     pricing: normalizedPricing,
@@ -392,11 +370,10 @@ export async function createOrder(userId, dto) {
     await notifyOwnersSafely([{ ownerType: "USER", ownerId: userId }], {
       title: isAwaitingOnlinePayment
         ? "Complete Payment to Confirm Order"
-        : "Order Confirmed! 🍔",
+        : "Order Confirmed!",
       body: isAwaitingOnlinePayment
         ? `Order #${order.order_id || order._id} is created. Please complete payment to send it to ${restaurant.restaurantName || "the restaurant"}.`
         : `Your order #${order.order_id || order._id} from ${restaurant.restaurantName || "the restaurant"} has been placed successfully.`,
-      image: "https://i.ibb.co/3m2Yh7r/Appzeto-Brand-Image.png",
       data: {
         type: isAwaitingOnlinePayment
           ? "order_created_pending_payment"
@@ -501,13 +478,13 @@ export async function verifyPayment(userId, dto) {
 
   // Notify Customer about payment success
   await notifyOwnersSafely([{ ownerType: "USER", ownerId: userId }], {
-    title: "Payment Successful! ✅",
+    title: "Payment Successful",
     body: `We have received your payment of ₹${order.payment.amountDue} for Order #${order._id.toString()}.`,
-    image: "https://i.ibb.co/3m2Yh7r/Appzeto-Brand-Image.png",
     data: {
       type: "payment_success",
       orderId: String(order._id.toString()),
       orderMongoId: String(order._id),
+      link: `/food/user/orders/${order._id?.toString?.() || ""}`,
     },
   });
 
@@ -936,13 +913,13 @@ export async function cancelOrder(orderId, userId, reason, refundDestination = "
       { ownerType: "RESTAURANT", ownerId: order.restaurantId },
     ],
     {
-      title: "Order Cancelled ❌",
+      title: "Order Cancelled",
       body: `Order #${order.order_id || order._id} has been cancelled successfully.${refundDetail}`,
-      image: "https://i.ibb.co/3m2Yh7r/Appzeto-Brand-Image.png",
       data: {
         type: "order_cancelled",
         orderId: String(order._id.toString()),
         orderMongoId: String(order._id),
+        link: `/food/user/orders/${order._id?.toString?.() || ""}`,
       },
     },
   );
@@ -1153,33 +1130,33 @@ export async function updateOrderStatusRestaurant(
 
   if (orderStatus === "confirmed") {
     if (isTakeawayOrder) {
-      title = "Order Accepted! ✅ Get Ready to Pick Up";
-      body = `Great news! ${restaurantNameStr} has accepted your takeaway order #${orderDisplayId}. Your food will be ready for pickup in approximately 20–30 minutes. We'll notify you the moment it's ready! 🍱`;
+      title = "Order Accepted — Get Ready to Pick Up";
+      body = `Great news! ${restaurantNameStr} has accepted your takeaway order #${orderDisplayId}. Your food will be ready for pickup in approximately 20–30 minutes. We'll notify you the moment it's ready.`;
     } else {
-      title = "Order Accepted! 🧑‍🍳";
+      title = "Order Accepted!";
       body = `${restaurantNameStr} has accepted your order #${orderDisplayId} and is starting to prepare it. Estimated delivery time: 30–45 minutes.`;
     }
   } else if (orderStatus === "preparing") {
     if (isTakeawayOrder) {
-      title = "Your Food is Being Prepared! 🍳";
-      body = `${restaurantNameStr} is now preparing your takeaway order #${orderDisplayId}. We'll ping you as soon as it's ready for pickup!`;
+      title = "Your Food is Being Prepared";
+      body = `${restaurantNameStr} is now preparing your takeaway order #${orderDisplayId}. We'll ping you as soon as it's ready for pickup.`;
     } else {
-      title = "Food is being prepared! 🍳";
+      title = "Food is being prepared";
       body = "Your food is currently being prepared by the restaurant.";
     }
   } else if (orderStatus === "ready_for_pickup") {
     if (isTakeawayOrder) {
-      title = "🎉 Your Order is Ready for Pickup!";
-      body = `Your takeaway order #${orderDisplayId} from ${restaurantNameStr} is ready! Please head to the restaurant and show your Order ID at the counter. Fresh food awaits you — don't keep it waiting! 🍽️`;
+      title = "Your Order is Ready for Pickup";
+      body = `Your takeaway order #${orderDisplayId} from ${restaurantNameStr} is ready! Please head to the restaurant and show your Order ID at the counter.`;
     } else {
-      title = "Food is ready! 🛍️";
-      body = `Your order #${orderDisplayId} is packed and ready. Your delivery partner will pick it up shortly!`;
+      title = "Food is ready";
+      body = `Your order #${orderDisplayId} is packed and ready. Your delivery partner will pick it up shortly.`;
     }
   } else if (String(orderStatus).includes("cancel")) {
     const isOnlinePaid = order.payment.method === "razorpay" && (order.payment.status === "paid" || order.payment.status === "refunded");
     const refundDetail = isOnlinePaid ? ` Your refund of ₹${order.pricing.total} is being processed and will be credited to your original payment method within 5-7 working days.` : "";
     
-    title = "Order Cancelled ❌";
+    title = "Order Cancelled";
     body = `Unfortunately, your order has been cancelled by the restaurant.${refundDetail}`;
   }
 
@@ -1248,7 +1225,6 @@ export async function updateOrderStatusRestaurant(
       {
         title: title,
         body: body,
-        image: "https://i.ibb.co/3m2Yh7r/Appzeto-Brand-Image.png",
         data: {
           type: "order_status_update",
           orderId: order._id.toString(),
@@ -1813,7 +1789,7 @@ export async function completeTakeawayOrderRestaurant(orderId, restaurantId, otp
         orderMongoId: order._id?.toString?.(),
         orderId: order.order_id || order._id.toString(),
         orderStatus: "delivered",
-        title: "Takeaway Order Picked Up! 🎉",
+        title: "Takeaway Order Picked Up",
         message: "You have picked up your order successfully. Enjoy your meal!",
       };
       io.to(rooms.restaurant(restaurantId)).emit("order_status_update", payload);
@@ -1826,9 +1802,8 @@ export async function completeTakeawayOrderRestaurant(orderId, restaurantId, otp
         { ownerType: "RESTAURANT", ownerId: restaurantId },
       ],
       {
-        title: "Takeaway Order Picked Up! 🎉",
+        title: "Takeaway Order Picked Up",
         body: "Your order has been picked up and marked as completed.",
-        image: "https://i.ibb.co/3m2Yh7r/Appzeto-Brand-Image.png",
         data: {
           type: "order_status_update",
           orderId: order._id.toString(),
@@ -1905,7 +1880,7 @@ export async function acceptOrderAdmin(orderId, adminId) {
         _id: order._id.toString(),
         orderStatus: order.orderStatus,
         status: order.orderStatus,
-        title: "Order Confirmed! 🍔",
+        title: "Order Confirmed!",
         message: `Your order has been confirmed and is being prepared.`,
       };
       io.to(rooms.restaurant(order.restaurantId)).emit("order_status_update", restaurantPayload);
@@ -1989,6 +1964,183 @@ export async function rejectOrderAdmin(orderId, reason, adminId) {
       };
       io.to(rooms.restaurant(order.restaurantId)).emit("order_status_update", restaurantPayload);
       io.to(rooms.user(order.userId)).emit("order_status_update", userPayload);
+    }
+  } catch (_) {}
+
+  return normalizeOrderForClient(order);
+}
+
+/**
+ * Admin override: update order and/or payment status independently.
+ * Status correction only — does not run rider payout / refund automations.
+ */
+export async function updateOrderStatusesAdmin(orderId, adminId, { orderStatus, paymentStatus } = {}) {
+  const identity = buildOrderIdentityFilter(orderId);
+  if (!identity) throw new ValidationError("Order id required");
+
+  const hasOrderStatus = orderStatus != null && String(orderStatus).trim() !== "";
+  const hasPaymentStatus = paymentStatus != null && String(paymentStatus).trim() !== "";
+  if (!hasOrderStatus && !hasPaymentStatus) {
+    throw new ValidationError("Provide orderStatus and/or paymentStatus to update");
+  }
+
+  const ORDER_STATUS_ALIASES = {
+    pending: "created",
+    created: "created",
+    accepted: "confirmed",
+    confirmed: "confirmed",
+    processing: "preparing",
+    preparing: "preparing",
+    "ready for pickup": "ready_for_pickup",
+    ready_for_pickup: "ready_for_pickup",
+    "food on the way": "picked_up",
+    picked_up: "picked_up",
+    reached_pickup: "reached_pickup",
+    reached_drop: "reached_drop",
+    delivered: "delivered",
+    canceled: "cancelled_by_admin",
+    cancelled: "cancelled_by_admin",
+    cancelled_by_admin: "cancelled_by_admin",
+    "cancelled by restaurant": "cancelled_by_restaurant",
+    cancelled_by_restaurant: "cancelled_by_restaurant",
+    "cancelled by user": "cancelled_by_user",
+    cancelled_by_user: "cancelled_by_user",
+  };
+
+  const PAYMENT_STATUS_ALIASES = {
+    pending: "__pending__",
+    unpaid: "__pending__",
+    "not collected": "cod_pending",
+    "cod pending": "cod_pending",
+    collected: "paid",
+    paid: "paid",
+    failed: "failed",
+    refunded: "refunded",
+    cod_pending: "cod_pending",
+    created: "created",
+    authorized: "authorized",
+    pending_qr: "pending_qr",
+  };
+
+  const ALLOWED_ORDER = new Set([
+    "created",
+    "confirmed",
+    "preparing",
+    "ready_for_pickup",
+    "reached_pickup",
+    "picked_up",
+    "reached_drop",
+    "delivered",
+    "cancelled_by_user",
+    "cancelled_by_restaurant",
+    "cancelled_by_admin",
+  ]);
+
+  const ALLOWED_PAYMENT = new Set([
+    "cod_pending",
+    "created",
+    "authorized",
+    "paid",
+    "failed",
+    "refunded",
+    "pending_qr",
+  ]);
+
+  const order = await FoodOrder.findOne(identity);
+  if (!order) throw new NotFoundError("Order not found");
+
+  let nextOrderStatus = null;
+  if (hasOrderStatus) {
+    const key = String(orderStatus).trim().toLowerCase().replace(/_/g, " ").replace(/\s+/g, " ");
+    const keyRaw = String(orderStatus).trim().toLowerCase();
+    nextOrderStatus =
+      ORDER_STATUS_ALIASES[key] ||
+      ORDER_STATUS_ALIASES[keyRaw] ||
+      (ALLOWED_ORDER.has(keyRaw) ? keyRaw : null);
+    if (!nextOrderStatus || !ALLOWED_ORDER.has(nextOrderStatus)) {
+      throw new ValidationError(`Invalid order status: ${orderStatus}`);
+    }
+  }
+
+  let nextPaymentStatus = null;
+  if (hasPaymentStatus) {
+    const key = String(paymentStatus).trim().toLowerCase().replace(/_/g, " ").replace(/\s+/g, " ");
+    const keyRaw = String(paymentStatus).trim().toLowerCase();
+    let mapped =
+      PAYMENT_STATUS_ALIASES[key] ||
+      PAYMENT_STATUS_ALIASES[keyRaw] ||
+      (ALLOWED_PAYMENT.has(keyRaw) ? keyRaw : null);
+    if (mapped === "__pending__") {
+      const method = String(order.payment?.method || "").toLowerCase();
+      mapped = method === "cash" || method === "cod" ? "cod_pending" : "created";
+    }
+    if (!mapped || !ALLOWED_PAYMENT.has(mapped)) {
+      throw new ValidationError(`Invalid payment status: ${paymentStatus}`);
+    }
+    nextPaymentStatus = mapped;
+  }
+
+  const fromOrder = order.orderStatus;
+  const fromPayment = order.payment?.status;
+
+  if (nextOrderStatus && nextOrderStatus !== fromOrder) {
+    order.orderStatus = nextOrderStatus;
+    pushStatusHistory(order, {
+      byRole: "ADMIN",
+      byId: adminId,
+      from: fromOrder,
+      to: nextOrderStatus,
+      note: "Admin override — order status",
+    });
+
+    if (!order.deliveryState) order.deliveryState = {};
+
+    if (nextOrderStatus === "delivered") {
+      if (!order.deliveryState.deliveredAt) {
+        order.deliveryState.deliveredAt = new Date();
+      }
+      order.deliveryState.currentPhase = "delivered";
+    } else if (nextOrderStatus === "picked_up" || nextOrderStatus === "reached_drop") {
+      order.deliveryState.currentPhase =
+        nextOrderStatus === "reached_drop" ? "at_drop" : "en_route_to_delivery";
+    } else if (nextOrderStatus === "ready_for_pickup" || nextOrderStatus === "reached_pickup") {
+      order.deliveryState.currentPhase =
+        nextOrderStatus === "reached_pickup" ? "at_pickup" : "en_route_to_pickup";
+    }
+  }
+
+  if (nextPaymentStatus && order.payment && nextPaymentStatus !== fromPayment) {
+    order.payment.status = nextPaymentStatus;
+    pushStatusHistory(order, {
+      byRole: "ADMIN",
+      byId: adminId,
+      from: fromPayment || "",
+      to: nextPaymentStatus,
+      note: "Admin override — payment status",
+    });
+  }
+
+  await order.save();
+
+  try {
+    const io = getIO();
+    if (io) {
+      const payload = {
+        orderMongoId: order._id?.toString?.(),
+        orderId: order.orderId || order._id.toString(),
+        _id: order._id.toString(),
+        orderStatus: order.orderStatus,
+        status: order.orderStatus,
+        paymentStatus: order.payment?.status,
+        title: "Order updated by admin",
+        message: "Admin updated order status",
+      };
+      if (order.restaurantId) {
+        io.to(rooms.restaurant(order.restaurantId)).emit("order_status_update", payload);
+      }
+      if (order.userId) {
+        io.to(rooms.user(order.userId)).emit("order_status_update", payload);
+      }
     }
   } catch (_) {}
 

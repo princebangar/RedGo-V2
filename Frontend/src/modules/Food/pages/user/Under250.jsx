@@ -24,6 +24,7 @@ import { isModuleAuthenticated } from "@food/utils/auth"
 import { flattenMenuItems, getMenuFromResponse } from "@food/utils/menuItems"
 import { calculateDistance, formatDistance } from "@food/utils/common"
 import { hasFoodVariants, getDefaultFoodVariant, buildCartLineId } from "@food/utils/foodVariants"
+import { isVegMenuItem, isNonVegCategoryScope } from "@food/utils/vegMode"
 const getLineItemIdForDish = (item, variant = null) =>
   buildCartLineId(item?.id || item?._id || "", variant?.id || variant?._id || "")
 
@@ -68,35 +69,12 @@ const readUnder250Filters = () => {
 }
 
 
-export default function Under250() {
+export default function Under250({ isTabActive = true }) {
   const initialFiltersRef = useRef(readUnder250Filters())
   const { location } = useLocation()
   const { zoneId, zoneStatus, isInService, isOutOfService } = useZone(location)
-  const { showGlobalLoader, openLocationSelector } = useLocationSelector()
-  const { userProfile } = useProfile()
-
-  const displayArea = useMemo(() => {
-    let name = location?.area || "Select Location"
-    if (/^-?\d+(\.\d+)?$/.test(name.trim())) {
-      return "Current Location"
-    }
-    return name
-  }, [location?.area])
-
-  const displayCity = location?.city || "Indore"
-  const displayAddress = useMemo(() => {
-    let addr = location?.address || location?.formattedAddress || ""
-    if (displayCity) {
-      addr = addr.replace(new RegExp(`,?\\s*${displayCity}\\s*`, 'gi'), '').trim()
-    }
-    if (location?.area && location?.area.length > 3) {
-      addr = addr.replace(new RegExp(`^${location?.area},?\\s*`, 'i'), '').trim()
-    }
-    if (/^-?\d+\.\d+,\s*-?\\s*\d+\.\d+$/.test(addr.trim()) || !addr || addr === ",") {
-      return "Pinpoint location"
-    }
-    return addr
-  }, [location?.address, location?.formattedAddress, displayCity, location?.area])
+  const { showGlobalLoader } = useLocationSelector()
+  const { userProfile, vegMode, vegModeOption } = useProfile()
 
   const navigate = useNavigate()
   const { addToCart, updateQuantity, removeFromCart, getCartItem, cart } = useCart()
@@ -189,49 +167,79 @@ export default function Under250() {
     return 999
   }
 
-  // Sort and filter restaurants based on selected sort and filters
+  // Sort and filter restaurants based on selected sort, filters, and veg mode
   const sortedAndFilteredRestaurants = useMemo(() => {
-    let filtered = under250Restaurants.map(r => ({ ...r, menuItems: [...(r.menuItems || [])] }))
+    let filtered = under250Restaurants.map((r) => ({
+      ...r,
+      menuItems: [...(r.menuItems || [])],
+    }))
+
+    // Veg mode: pure-veg restaurants only, or all restaurants with veg dishes only
+    if (vegMode) {
+      if (vegModeOption === "pure-veg") {
+        filtered = filtered.filter((restaurant) => {
+          // Full-menu signal from API (any price) — don't trust under-250 items alone
+          if (restaurant?.hasNonVegMenu === true) return false
+          if (restaurant?.isPureVeg === true) return true
+          if (restaurant?.hasNonVegMenu === false) {
+            // Menu scanned: no non-veg anywhere; allow even if admin flag is wrong/missing
+            return true
+          }
+          const items = restaurant.menuItems || []
+          const hasNonVegDish = items.some((item) => !isVegMenuItem(item))
+          return restaurant?.pureVegRestaurant === true && !hasNonVegDish
+        })
+      }
+      filtered = filtered
+        .map((restaurant) => {
+          const vegItems = (restaurant.menuItems || []).filter(isVegMenuItem)
+          if (vegItems.length === 0) return null
+          return { ...restaurant, menuItems: vegItems }
+        })
+        .filter(Boolean)
+    }
 
     // Apply category filter
     if (activeCategory) {
-      const selectedCat = categories.find(cat => cat.id === activeCategory)
+      const selectedCat = categories.find((cat) => cat.id === activeCategory)
       if (selectedCat) {
         const catNameLower = selectedCat.name.toLowerCase()
-        filtered = filtered.map(restaurant => {
-          const matches = restaurant.menuItems.filter(item => 
-            (item.category || "").toLowerCase() === catNameLower ||
-            (item.sectionName || "").toLowerCase() === catNameLower ||
-            (item.subsectionName || "").toLowerCase() === catNameLower
-          )
-          if (matches.length > 0) {
-            return { ...restaurant, menuItems: matches }
-          }
-          return null
-        }).filter(Boolean)
+        filtered = filtered
+          .map((restaurant) => {
+            const matches = restaurant.menuItems.filter(
+              (item) =>
+                (item.category || "").toLowerCase() === catNameLower ||
+                (item.sectionName || "").toLowerCase() === catNameLower ||
+                (item.subsectionName || "").toLowerCase() === catNameLower,
+            )
+            if (matches.length > 0) {
+              return { ...restaurant, menuItems: matches }
+            }
+            return null
+          })
+          .filter(Boolean)
       }
     }
 
     // Apply "Under 30 mins" filter
     if (under30MinsFilter) {
-      filtered = filtered.filter(restaurant => {
+      filtered = filtered.filter((restaurant) => {
         const deliveryTime = parseDeliveryTime(restaurant.deliveryTime)
         return deliveryTime <= 30
       })
     }
 
     // Apply sorting
-    if (selectedSort === 'rating-high') {
+    if (selectedSort === "rating-high") {
       filtered.sort((a, b) => {
         const ratingA = a.rating || 0
         const ratingB = b.rating || 0
         if (ratingB !== ratingA) {
           return ratingB - ratingA
         }
-        // Secondary sort by number of dishes
         return (b.menuItems?.length || 0) - (a.menuItems?.length || 0)
       })
-    } else if (selectedSort === 'delivery-time-low') {
+    } else if (selectedSort === "delivery-time-low") {
       filtered.sort((a, b) => {
         const timeA = parseDeliveryTime(a.deliveryTime)
         const timeB = parseDeliveryTime(b.deliveryTime)
@@ -243,10 +251,14 @@ export default function Under250() {
         }
         return (a.originalIndex || 0) - (b.originalIndex || 0)
       })
-    } else if (selectedSort === 'distance-low') {
+    } else if (selectedSort === "distance-low") {
       filtered.sort((a, b) => {
-        const distA = Number.isFinite(a.distanceInKm) ? a.distanceInKm : parseDistance(a.distance)
-        const distB = Number.isFinite(b.distanceInKm) ? b.distanceInKm : parseDistance(b.distance)
+        const distA = Number.isFinite(a.distanceInKm)
+          ? a.distanceInKm
+          : parseDistance(a.distance)
+        const distB = Number.isFinite(b.distanceInKm)
+          ? b.distanceInKm
+          : parseDistance(b.distance)
         if (distA !== distB) {
           return distA - distB
         }
@@ -255,13 +267,32 @@ export default function Under250() {
         }
         return (a.originalIndex || 0) - (b.originalIndex || 0)
       })
-    } else {
-      // Default: Relevance (keep original order from backend - already sorted by rating)
-      // No additional sorting needed
     }
 
     return filtered
-  }, [under250Restaurants, selectedSort, under30MinsFilter, activeCategory, categories])
+  }, [
+    under250Restaurants,
+    selectedSort,
+    under30MinsFilter,
+    activeCategory,
+    categories,
+    vegMode,
+    vegModeOption,
+  ])
+
+  const displayCategories = useMemo(() => {
+    if (!vegMode) return categories
+    return categories.filter((cat) => !isNonVegCategoryScope(cat))
+  }, [categories, vegMode])
+
+  // If active category was non-veg and veg mode turns on, clear it
+  useEffect(() => {
+    if (!vegMode || !activeCategory) return
+    const selected = categories.find((cat) => cat.id === activeCategory)
+    if (selected && isNonVegCategoryScope(selected)) {
+      setActiveCategory(null)
+    }
+  }, [vegMode, activeCategory, categories])
 
   // Fetch under-50 banner from public API
   useEffect(() => {
@@ -433,6 +464,26 @@ export default function Under250() {
               ? formatDistance(restaurant.distance)
               : (restaurant?.distance || "");
 
+          const mappedItems = (restaurant.menuItems || []).map(item => ({
+            ...item,
+            id: String(item.id || item._id),
+            price: Number(item.price || 0),
+            foodType: item.foodType || (item.isVeg ? "Veg" : "Non-Veg"),
+            isVeg: isVegMenuItem(item),
+            image:
+              item?.image ||
+              restaurant?.profileImage?.url ||
+              restaurant?.profileImage ||
+              ""
+          }))
+          const hasNonVegInPayload = mappedItems.some((item) => !item.isVeg)
+          const hasNonVegMenu =
+            restaurant?.hasNonVegMenu === true || hasNonVegInPayload
+              ? true
+              : restaurant?.hasNonVegMenu === false
+                ? false
+                : undefined
+
           return {
             ...restaurant,
             id: String(restaurantId),
@@ -445,17 +496,16 @@ export default function Under250() {
               (restaurant?.estimatedDeliveryTimeMinutes ? `${restaurant.estimatedDeliveryTimeMinutes} mins` : "30 mins"),
             distance: distanceInKm !== null ? formatDistance(distanceInKm) : fallbackDistance,
             distanceInKm,
+            hasNonVegMenu,
+            isPureVeg:
+              hasNonVegMenu === true
+                ? false
+                : restaurant?.isPureVeg === true ||
+                  (hasNonVegMenu === false &&
+                    (restaurant?.pureVegRestaurant === true ||
+                      mappedItems.some((item) => item.isVeg))),
             // Backend already filtered and attached menuItems
-            menuItems: (restaurant.menuItems || []).map(item => ({
-              ...item,
-              id: String(item.id || item._id),
-              price: Number(item.price || 0),
-              image:
-                item?.image ||
-                restaurant?.profileImage?.url ||
-                restaurant?.profileImage ||
-                ""
-            }))
+            menuItems: mappedItems
           };
         });
 
@@ -494,6 +544,7 @@ export default function Under250() {
               id: String(cat?.id || cat?._id || cat?.slug || `cat-${index}`),
               name,
               slug: String(cat?.slug || name.toLowerCase().replace(/\s+/g, "-")),
+              foodTypeScope: String(cat?.foodTypeScope || cat?.type || "Both"),
               image:
                 cat?.imageUrl ||
                 cat?.image ||
@@ -876,29 +927,15 @@ export default function Under250() {
         className="fixed top-0 left-0 right-0 z-40 w-full px-4 py-2 sm:py-3 rounded-b-[2rem] shadow-lg bg-[#D91F3A]"
       >
         <div className="relative z-10 max-w-7xl mx-auto flex items-center justify-between">
-          {/* Left: Location Selector */}
-          <Button
-            variant="ghost"
-            onClick={openLocationSelector}
-            className="flex items-center gap-2 cursor-pointer group min-w-0 relative z-50 text-left no-underline h-auto px-0 py-0 hover:bg-transparent transition-colors"
-          >
-            <div className="bg-white/10 p-1.5 rounded-xl group-active:scale-95 transition-all text-white/90">
-              <MapPin className="h-4 w-4 text-white/90 fill-white/20" />
-            </div>
-            <div className="flex flex-col min-w-0">
-              <div className="flex items-center gap-1">
-                <span className="text-[15px] font-black text-white truncate max-w-[160px] sm:max-w-[220px] leading-none drop-shadow-sm">
-                  {displayArea}
-                </span>
-                <ChevronDown className="h-3 w-3 text-white/70" />
-              </div>
-              {(displayAddress || displayCity) && (
-                <span className="text-[10px] font-medium text-white/80 truncate max-w-[160px] sm:max-w-[220px] leading-tight mt-0.5 drop-shadow-md">
-                  {displayAddress}{displayAddress && displayCity ? ", " : ""}{displayCity}
-                </span>
-              )}
-            </div>
-          </Button>
+          {/* Left: Takeaway-style heading (location only changeable from Delivery home) */}
+          <div className="flex flex-col min-w-0">
+            <span className="text-[10px] font-bold text-white/80 uppercase tracking-[0.2em] drop-shadow-md">
+              Budget Meals
+            </span>
+            <h1 className="text-xl font-bold text-white flex items-center gap-2 drop-shadow-md">
+              Under {RUPEE_SYMBOL}{under250PriceLimit}
+            </h1>
+          </div>
 
           {/* Right: Wallet & Profile Actions */}
           <div className="flex items-center gap-3 flex-shrink-0">
@@ -931,12 +968,12 @@ export default function Under250() {
             >
               <Avatar className="h-full w-full bg-[#FFF5E6] dark:bg-gray-800">
                 <AvatarImage 
-                  src={userProfile?.profileImage || "/profile_avatar.png"} 
+                  src={userProfile?.profileImage || "/profile_avatar.webp"} 
                   alt="Profile" 
                   className="object-cover"
                 />
                 <AvatarFallback className="bg-[#FFF5E6] dark:bg-gray-800 text-[20px] font-black text-[#DC2626] leading-none tracking-tighter antialiased">
-                  <img src="/profile_avatar.png" alt="Profile" className="object-cover w-full h-full" />
+                  <img src="/profile_avatar.webp" alt="Profile" className="object-cover w-full h-full" />
                 </AvatarFallback>
               </Avatar>
             </Link>
@@ -998,7 +1035,7 @@ export default function Under250() {
                 </span>
               </motion.div>
             </div>
-            {categories.map((category, index) => {
+            {displayCategories.map((category, index) => {
               const isActive = activeCategory === category.id
               return (
                 <div key={category.id} className="flex-shrink-0 cursor-pointer" onClick={() => setActiveCategory(isActive ? null : category.id)}>

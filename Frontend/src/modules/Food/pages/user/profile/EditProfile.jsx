@@ -598,7 +598,7 @@ export default function EditProfile() {
                   />
                 ) : (
                   <img
-                    src="/profile_avatar.png"
+                    src="/profile_avatar.webp"
                     alt={formData.name || 'User'}
                     className="w-full h-full object-cover rounded-full"
                   />

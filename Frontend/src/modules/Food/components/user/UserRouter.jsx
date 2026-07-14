@@ -4,19 +4,16 @@ import UserLayout from "./UserLayout"
 import Loader from "@food/components/Loader"
 import ProtectedRoute from "@food/components/ProtectedRoute"
 import AuthRedirect from "@food/components/AuthRedirect"
-import Home from "@food/pages/user/Home"
 
 const SearchResults = lazy(() => import("@food/pages/user/search/ProfessionalSearch"))
 
 // Lazy Loading Pages
 
 // Home & Discovery
-const Dining = lazy(() => import("@food/pages/user/Dining"))
 const DiningCategory = lazy(() => import("@food/pages/user/DiningCategory"))
 const DiningExplore50 = lazy(() => import("@food/pages/user/DiningExplore50"))
 const DiningExploreNear = lazy(() => import("@food/pages/user/DiningExploreNear"))
 const Coffee = lazy(() => import("@food/pages/user/Coffee"))
-const Under250 = lazy(() => import("@food/pages/user/Under250"))
 const Categories = lazy(() => import("@food/pages/user/Categories"))
 const CategoryPage = lazy(() => import("@food/pages/user/CategoryPage"))
 const Restaurants = lazy(() => import("@food/pages/user/restaurants/Restaurants"))
@@ -57,7 +54,6 @@ const CollectionDetail = lazy(() => import("@food/pages/user/CollectionDetail"))
 
 
 // Profile
-const Profile = lazy(() => import("@food/pages/user/profile/Profile"))
 const EditProfile = lazy(() => import("@food/pages/user/profile/EditProfile"))
 const Payments = lazy(() => import("@food/pages/user/profile/Payments"))
 const AddPayment = lazy(() => import("@food/pages/user/profile/AddPayment"))
@@ -107,6 +103,9 @@ const PageLoader = () => (
     </p>
   </div>
 )
+
+/** Main tabs render via MainTabKeepAlive in UserLayout — route match only. */
+const MainTabRoutePlaceholder = () => null
 
 const RequireInitialAuth = ({ children }) => {
   const location = useLocation();
@@ -186,17 +185,17 @@ export default function UserRouter() {
           {/* ========================================== */}
           {/* PUBLIC DISCOVERY ROUTES (Guest mode allowed) */}
           {/* ========================================== */}
-          {/* Home & Discovery */}
-          <Route path="" element={<Home />} />
-          <Route path="home" element={<Home />} />
-          <Route path="takeaway" element={<Home />} />
-          <Route path="dining" element={<Dining />} />
+          {/* Home & Discovery — kept alive in UserLayout MainTabKeepAlive */}
+          <Route path="" element={<MainTabRoutePlaceholder />} />
+          <Route path="home" element={<MainTabRoutePlaceholder />} />
+          <Route path="takeaway" element={<MainTabRoutePlaceholder />} />
+          <Route path="dining" element={<MainTabRoutePlaceholder />} />
           <Route path="dining/:category" element={<DiningCategory />} />
           <Route path="dining/explore/upto50" element={<DiningExplore50 />} />
           <Route path="dining/explore/near-rated" element={<DiningExploreNear />} />
           <Route path="dining/coffee" element={<Coffee />} />
           <Route path="dining/:diningType/:slug" element={<DiningRestaurantDetails />} />
-          <Route path="under-250" element={<Under250 />} />
+          <Route path="under-250" element={<MainTabRoutePlaceholder />} />
           <Route path="categories" element={<Categories />} />
           <Route path="category/:category" element={<CategoryPage />} />
           <Route path="restaurants" element={<Restaurants />} />
@@ -239,8 +238,8 @@ export default function UserRouter() {
             <Route path="collections" element={<Collections />} />
             <Route path="collections/:id" element={<CollectionDetail />} />
 
-            {/* Profile */}
-            <Route path="profile" element={<Profile />} />
+            {/* Profile — kept alive in UserLayout MainTabKeepAlive */}
+            <Route path="profile" element={<MainTabRoutePlaceholder />} />
             <Route path="profile/edit" element={<EditProfile />} />
             <Route path="profile/payments" element={<Payments />} />
             <Route path="profile/payments/new" element={<AddPayment />} />

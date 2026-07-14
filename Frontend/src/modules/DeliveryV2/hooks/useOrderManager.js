@@ -5,6 +5,7 @@ import {
   mapDeliveryPhaseToTripStatus,
 } from '@/modules/DeliveryV2/store/useDeliveryStore';
 import { deliveryAPI } from '@food/api';
+import { showUserFacingApiError } from '@/shared/utils/apiError';
 import { toast } from 'sonner';
 import { mapOrderLocations } from '@/modules/DeliveryV2/utils/orderMapping';
 
@@ -80,12 +81,15 @@ export const useOrderManager = () => {
         msg.toLowerCase().includes('already accepted')
       ) {
         toast.error('This order was just taken by another delivery partner.', {
+          id: 'user-facing-api-error',
           duration: 4000,
         });
       } else if (msg.toLowerCase().includes('maximum concurrent')) {
-        toast.error('Maximum concurrent orders reached');
+        toast.error('Maximum concurrent orders reached', {
+          id: 'user-facing-api-error',
+        });
       } else {
-        toast.error(msg);
+        showUserFacingApiError(error, 'Network error. Please try again.');
       }
       throw error;
     } finally {
@@ -107,11 +111,7 @@ export const useOrderManager = () => {
         throw new Error('Confirm pickup failed');
       }
     } catch (error) {
-      toast.error(
-        error?.response?.data?.error ||
-          error?.response?.data?.message ||
-          'Failed to update status',
-      );
+      showUserFacingApiError(error, 'Failed to update status');
       throw error;
     }
   };
@@ -137,11 +137,7 @@ export const useOrderManager = () => {
         throw new Error('Confirm order ID failed');
       }
     } catch (error) {
-      toast.error(
-        error?.response?.data?.error ||
-          error?.response?.data?.message ||
-          'Error confirming pickup',
-      );
+      showUserFacingApiError(error, 'Error confirming pickup');
       throw error;
     }
   };
@@ -160,11 +156,7 @@ export const useOrderManager = () => {
         throw new Error('Confirm drop failed');
       }
     } catch (error) {
-      toast.error(
-        error?.response?.data?.error ||
-          error?.response?.data?.message ||
-          'Failed to notify arrival',
-      );
+      showUserFacingApiError(error, 'Failed to notify arrival');
       throw error;
     }
   };
@@ -183,7 +175,9 @@ export const useOrderManager = () => {
         // OTP not yet verified — verify first
         const verifyRes = await deliveryAPI.verifyDropOtp(orderId, otp);
         if (!verifyRes?.data?.success) {
-          toast.error('Invalid OTP. Please check with customer.');
+          toast.error('Invalid OTP. Please check with customer.', {
+            id: 'user-facing-api-error',
+          });
           throw new Error('Invalid OTP');
         }
       }
@@ -210,11 +204,7 @@ export const useOrderManager = () => {
       updateOrderSession(orderId, { showVerification: false });
     } catch (error) {
       console.error('Completion Error:', error);
-      toast.error(
-        error?.response?.data?.error ||
-          error?.response?.data?.message ||
-          'Verification failed',
-      );
+      showUserFacingApiError(error, 'Verification failed');
       throw error;
     }
   };

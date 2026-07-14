@@ -187,6 +187,7 @@ export async function createRestaurantFood(restaurantId, body = {}) {
 
     const description = toStr(body.description);
     const image = toStr(body.image);
+    if (!image) throw new ValidationError('Item image is required');
     const isAvailable = body.isAvailable !== false;
     const foodType = normalizeFoodType(body.foodType);
     const preparationTime = toStr(body.preparationTime);
@@ -259,7 +260,11 @@ export async function updateRestaurantFood(restaurantId, foodId, body = {}) {
         update.name = name;
     }
     if (body.description !== undefined) update.description = toStr(body.description);
-    if (body.image !== undefined) update.image = toStr(body.image);
+    if (body.image !== undefined) {
+        const image = toStr(body.image);
+        if (!image) throw new ValidationError('Item image is required');
+        update.image = image;
+    }
     Object.assign(update, getUpdatedFoodPricing(existing, body));
     if (body.isAvailable !== undefined) update.isAvailable = body.isAvailable !== false;
     if (body.isRecommended !== undefined) update.isRecommended = body.isRecommended === true;

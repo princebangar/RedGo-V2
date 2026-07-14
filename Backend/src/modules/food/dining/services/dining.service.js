@@ -5,6 +5,7 @@ import { FoodZone } from '../../admin/models/zone.model.js';
 import { FoodDiningCategory } from '../models/diningCategory.model.js';
 import { FoodDiningRestaurant } from '../models/diningRestaurant.model.js';
 import { FoodDiningRequest } from '../models/diningRequest.model.js';
+import { FoodItem } from '../../admin/models/food.model.js';
 
 const slugify = (value) =>
     String(value || '')
@@ -413,25 +414,48 @@ export async function listDiningRestaurantsPublic(query = {}) {
     const diningDocs = await FoodDiningRestaurant.find(filter)
         .populate({
             path: 'restaurantId',
-            select: 'restaurantName restaurantNameNormalized ownerName ownerPhone profileImage coverImages menuImages cuisines location area city zoneId status rating diningSettings estimatedDeliveryTime estimatedDeliveryTimeMinutes featuredDish featuredPrice offer openingTime closingTime openDays isAcceptingOrders costForTwo',
+            select: 'restaurantName restaurantNameNormalized ownerName ownerPhone profileImage coverImages menuImages cuisines location area city zoneId status rating diningSettings estimatedDeliveryTime estimatedDeliveryTimeMinutes featuredDish featuredPrice offer openingTime closingTime openDays isAcceptingOrders costForTwo pureVegRestaurant',
             match: restaurantMatch
         })
         .populate('categoryIds', 'name slug imageUrl')
         .lean();
 
-    return diningDocs
-        .filter((doc) => doc.restaurantId)
-        .map((doc) => ({
-            ...doc.restaurantId,
-            restaurant: doc.restaurantId,
+    const enabledDocs = diningDocs.filter((doc) => doc.restaurantId);
+    const restaurantObjectIds = enabledDocs
+        .map((doc) => doc.restaurantId?._id)
+        .filter(Boolean);
+
+    const nonVegRestaurantIds = restaurantObjectIds.length
+        ? await FoodItem.distinct('restaurantId', {
+            restaurantId: { $in: restaurantObjectIds },
+            approvalStatus: 'approved',
+            foodType: 'Non-Veg',
+        })
+        : [];
+    const nonVegRestaurantIdSet = new Set(nonVegRestaurantIds.map((id) => String(id)));
+
+    return enabledDocs.map((doc) => {
+        const restaurant = doc.restaurantId;
+        const rid = String(restaurant._id);
+        const hasNonVegMenu = nonVegRestaurantIdSet.has(rid);
+        const pureVegRestaurant =
+            doc.pureVegRestaurant === true || restaurant?.pureVegRestaurant === true;
+
+        return {
+            ...restaurant,
+            restaurant,
             categories: doc.categoryIds || [],
+            pureVegRestaurant,
+            hasNonVegMenu,
+            isPureVeg: !hasNonVegMenu,
             diningSettings: {
                 isEnabled: true,
                 maxGuests: Math.max(1, Number(doc.maxGuests) || 6),
-                pureVegRestaurant: doc.pureVegRestaurant === true || doc.restaurantId?.pureVegRestaurant === true,
-                diningType: doc.categoryIds?.[0]?.slug || doc.restaurantId?.diningSettings?.diningType || ''
+                pureVegRestaurant,
+                diningType: doc.categoryIds?.[0]?.slug || restaurant?.diningSettings?.diningType || ''
             }
-        }));
+        };
+    });
 }
 
 // ==================== DINING SETTINGS REQUESTS ====================

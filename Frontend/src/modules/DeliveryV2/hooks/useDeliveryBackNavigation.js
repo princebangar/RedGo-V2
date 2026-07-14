@@ -28,7 +28,9 @@ const resolveDeliveryBackPath = ({ pathname, state }) => {
   if (normalizedPath === "/signup/details") return "/food/delivery/signup"
   if (normalizedPath === "/signup/documents") return "/food/delivery/signup/details"
   if (normalizedPath === "/otp") return explicitBackPath || "/food/delivery/login"
-  if (normalizedPath === "/terms") return explicitBackPath || "/food/delivery/signup"
+  if (normalizedPath === "/terms" || normalizedPath === "/privacy" || normalizedPath === "/help/content") {
+    return explicitBackPath || "/food/delivery/login"
+  }
 
   if (
     normalizedPath === "/profile/details" ||

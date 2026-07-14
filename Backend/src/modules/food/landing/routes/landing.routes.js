@@ -42,6 +42,12 @@ import {
     getPublicLandingSettingsController
 } from '../controllers/publicLanding.controller.js';
 import { detectZonePublicController, listZonesPublicController, listZonesNearbyPublicController } from '../controllers/zonePublic.controller.js';
+import {
+    reverseGeocodePublicController,
+    geocodePlacePublicController,
+    nearbyPlacesPublicController,
+    textSearchPlacesPublicController,
+} from '../controllers/geocodePublic.controller.js';
 import { getPublicEnvController } from '../controllers/publicEnv.controller.js';
 import {
     listGourmetAdmin,
@@ -126,6 +132,11 @@ router.get('/landing/settings/public', getPublicLandingSettingsController);
 router.get('/zones/detect', detectZonePublicController);
 router.get('/zones/nearby', listZonesNearbyPublicController);
 router.get('/zones/public', listZonesPublicController);
+// Geocode proxies — API key stays on the server
+router.get('/geocode/reverse', reverseGeocodePublicController);
+router.get('/geocode/place', geocodePlacePublicController);
+router.post('/geocode/nearby', nearbyPlacesPublicController);
+router.post('/geocode/text-search', textSearchPlacesPublicController);
 router.get('/public/env', getPublicEnvController);
 // Admin landing settings (old paths used by admin UI)
 router.get('/hero-banners/landing/settings', getAdminLandingSettingsController);

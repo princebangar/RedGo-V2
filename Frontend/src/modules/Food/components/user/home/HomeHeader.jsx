@@ -1,12 +1,11 @@
 import { useState, useEffect } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { MapPin, ChevronDown, Search, Mic, Wallet, Utensils, Soup, Bell } from 'lucide-react';
 import { Avatar, AvatarFallback, AvatarImage } from "@food/components/ui/avatar";
 import { useProfile } from "@food/context/ProfileContext";
 import useNotificationInbox from "@food/hooks/useNotificationInbox";
 import VoiceSearchOverlay from "@food/components/user/VoiceSearchOverlay";
-import { useNavigate } from 'react-router-dom';
 import { isModuleAuthenticated } from "@food/utils/auth";
 
 // Images for banner - exactly as in FestBanner.jsx
@@ -27,6 +26,18 @@ const bannerImages = {
   ]
 };
 
+/** Session-level preload so rotation never re-hits the network for the same URLs */
+const preloadedBannerPools = new Set();
+function preloadBannerPool(pool, poolKey) {
+  if (!pool?.length || preloadedBannerPools.has(poolKey)) return;
+  preloadedBannerPools.add(poolKey);
+  pool.forEach((src) => {
+    const img = new Image();
+    img.decoding = "async";
+    img.src = src;
+  });
+}
+
 export default function HomeHeader({
   location,
   handleSearchFocus,
@@ -36,15 +47,20 @@ export default function HomeHeader({
   handleVegModeChange,
   vegModeToggleRef,
   handleVoiceSearchClick,
+  isTabActive = true,
   // Banner Props integrated
   videoUrl = "",
   hideFoodImages = false,
   showBanner = false
 }) {
   const navigate = useNavigate();
+  const routerLocation = useLocation();
   const { userProfile } = useProfile();
   const [isVoiceOverlayOpen, setIsVoiceOverlayOpen] = useState(false);
-  const { unreadCount: broadcastUnread } = useNotificationInbox('user', { pollMs: 60000 });
+  const { unreadCount: broadcastUnread } = useNotificationInbox("user", {
+    pollMs: 60000,
+    enabled: isTabActive,
+  });
   const [localUnread, setLocalUnread] = useState(() => {
     try {
       const saved = JSON.parse(localStorage.getItem('food_user_notifications') || '[]')
@@ -63,14 +79,20 @@ export default function HomeHeader({
   // FestBanner Logic
   const [imgIndex, setImgIndex] = useState(0);
   const currentPool = vegMode ? bannerImages.veg : bannerImages.nonVeg;
+  const poolKey = vegMode ? "veg" : "nonVeg";
+
+  // Load every banner URL once per mode — animation keeps running from cache
+  useEffect(() => {
+    preloadBannerPool(currentPool, poolKey);
+  }, [currentPool, poolKey]);
 
   useEffect(() => {
-    if (!showBanner) return;
+    if (!showBanner || !isTabActive) return undefined;
     const timer = setInterval(() => {
       setImgIndex(prev => (prev + 1) % currentPool.length);
     }, 4000);
     return () => clearInterval(timer);
-  }, [currentPool.length, showBanner]);
+  }, [currentPool.length, showBanner, isTabActive]);
 
   useEffect(() => {
     setImgIndex(0);
@@ -190,6 +212,7 @@ export default function HomeHeader({
               {/* Profile Photo - Increased size for better clarity */}
               <Link
                 to="/food/user/profile"
+                state={{ from: routerLocation.pathname }}
                 onClick={(e) => {
                   if (!isModuleAuthenticated('user')) {
                     e.preventDefault();
@@ -200,12 +223,12 @@ export default function HomeHeader({
               >
                 <Avatar className="h-full w-full bg-[#FFF5E6]">
                   <AvatarImage 
-                    src={userProfile?.profileImage || "/profile_avatar.png"} 
+                    src={userProfile?.profileImage || "/profile_avatar.webp"} 
                     alt="Profile" 
                     className="object-cover"
                   />
                   <AvatarFallback className="bg-[#FFF5E6] text-[20px] font-black text-[#DC2626] leading-none tracking-tighter antialiased">
-                    <img src="/profile_avatar.png" alt="Profile" className="object-cover w-full h-full" />
+                    <img src="/profile_avatar.webp" alt="Profile" className="object-cover w-full h-full" />
                   </AvatarFallback>
                 </Avatar>
               </Link>
@@ -335,6 +358,16 @@ export default function HomeHeader({
               <div className="h-28 sm:h-36" />
             ) : (
               <div className="flex items-end justify-center gap-5 sm:gap-8 pt-4 relative w-full mb-1">
+                {/* Keep entire pool mounted once so rotate never re-downloads */}
+                <div
+                  aria-hidden
+                  className="pointer-events-none absolute w-px h-px overflow-hidden opacity-0"
+                >
+                  {currentPool.map((src) => (
+                    <img key={src} src={src} alt="" decoding="async" />
+                  ))}
+                </div>
+
                 <div className={`absolute bottom-4 left-1/2 -translate-x-1/2 w-56 h-12 blur-[45px] rounded-full transition-colors duration-700 ${vegMode ? 'bg-emerald-500/40' : 'bg-yellow-400/40'}`} />
 
                 <AnimatePresence mode="popLayout" initial={false}>
@@ -355,7 +388,13 @@ export default function HomeHeader({
                       default: { duration: 0.8, type: "spring", damping: 15 }
                     }}
                   >
-                    <img src={displayImages[0]} alt="food" className="w-full h-full object-cover rounded-2xl border-[3px] border-white shadow-2xl rotate-12" />
+                    <img
+                      src={displayImages[0]}
+                      alt="food"
+                      decoding="async"
+                      loading="eager"
+                      className="w-full h-full object-cover rounded-2xl border-[3px] border-white shadow-2xl rotate-12"
+                    />
                   </motion.div>
 
                   <motion.div
@@ -376,7 +415,13 @@ export default function HomeHeader({
                   >
                     <div className="relative h-full w-full">
                       <div className={`absolute -inset-2.5 blur-3xl rounded-full animate-pulse transition-colors duration-700 ${vegMode ? 'bg-white/40' : 'bg-yellow-400/40'}`} />
-                      <img src={displayImages[1]} alt="food" className="relative w-full h-full object-cover rounded-[2.5rem] border-[4px] border-white shadow-[0_22px_55px_rgba(0,0,0,0.4)]" />
+                      <img
+                        src={displayImages[1]}
+                        alt="food"
+                        decoding="async"
+                        loading="eager"
+                        className="relative w-full h-full object-cover rounded-[2.5rem] border-[4px] border-white shadow-[0_22px_55px_rgba(0,0,0,0.4)]"
+                      />
                     </div>
                   </motion.div>
 
@@ -397,7 +442,13 @@ export default function HomeHeader({
                       default: { duration: 0.8, type: "spring", damping: 15 }
                     }}
                   >
-                    <img src={displayImages[2]} alt="food" className="w-full h-full object-cover rounded-2xl border-[3px] border-white shadow-2xl -rotate-12 bg-white" />
+                    <img
+                      src={displayImages[2]}
+                      alt="food"
+                      decoding="async"
+                      loading="eager"
+                      className="w-full h-full object-cover rounded-2xl border-[3px] border-white shadow-2xl -rotate-12 bg-white"
+                    />
                   </motion.div>
                 </AnimatePresence>
               </div>

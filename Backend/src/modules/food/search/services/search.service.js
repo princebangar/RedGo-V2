@@ -216,7 +216,10 @@ export const searchUnified = async (query = {}, options = {}) => {
                     matchType: 'food',
                     matchedDish: food.name,
                     matchedDishImage: food.image,
-                    matchedDishId: food._id
+                    matchedDishId: food._id,
+                    matchedDishFoodType: food.foodType || null,
+                    foodType: food.foodType || null,
+                    isVeg: String(food.foodType || '').toLowerCase() === 'veg',
                 });
                 return;
             }
@@ -241,7 +244,10 @@ export const searchUnified = async (query = {}, options = {}) => {
                     matchType: 'food',
                     matchedDish: food.name,
                     matchedDishImage: food.image,
-                    matchedDishId: food._id
+                    matchedDishId: food._id,
+                    matchedDishFoodType: food.foodType || null,
+                    foodType: food.foodType || null,
+                    isVeg: String(food.foodType || '').toLowerCase() === 'veg',
                 });
             });
         }

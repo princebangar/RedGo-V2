@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from "react"
+import React, { useState, useEffect, useMemo } from "react"
 import { Eye, Printer, ArrowUpDown, Loader2, Check, X, Trash2, ChevronDown, ChevronUp } from "lucide-react"
 
 const getStatusColor = (orderStatus) => {
@@ -21,7 +21,8 @@ const getStatusColor = (orderStatus) => {
 }
 
 const getPaymentStatusColor = (paymentStatus) => {
-  if (paymentStatus === "Paid") return "text-emerald-600"
+  if (paymentStatus === "Paid" || paymentStatus === "Collected") return "text-emerald-600"
+  if (paymentStatus === "COD Pending" || paymentStatus === "Not Collected") return "text-amber-600"
   if (paymentStatus === "Refunded") return "text-sky-600"
   if (paymentStatus === "Unpaid" || paymentStatus === "Failed") return "text-red-600"
   return "text-slate-600"
@@ -39,12 +40,40 @@ export default function OrdersTable({
   actionLoadingOrderId,
   actionLoadingType,
   deletingOrderId,
+  currentPage: controlledPage,
+  pageSize: controlledPageSize,
+  totalItems,
+  onPageChange,
+  onPageSizeChange,
 }) {
-  const [currentPage, setCurrentPage] = useState(1)
+  const [localPage, setLocalPage] = useState(1)
+  const [localPageSize, setLocalPageSize] = useState(20)
   const [expandedOrders, setExpandedOrders] = useState({})
   const [openReasonId, setOpenReasonId] = useState(null)
-  const itemsPerPage = 10
-  const totalPages = Math.ceil(orders.length / itemsPerPage)
+
+  const isServerPaged =
+    typeof totalItems === "number" &&
+    typeof onPageChange === "function" &&
+    typeof onPageSizeChange === "function"
+
+  const currentPage = isServerPaged ? (controlledPage || 1) : localPage
+  const pageSize = isServerPaged ? (controlledPageSize || 20) : localPageSize
+  const totalCount = isServerPaged ? totalItems : orders.length
+  const totalPages = Math.max(1, Math.ceil(totalCount / pageSize) || 1)
+
+  const setCurrentPage = (updater) => {
+    const next = typeof updater === "function" ? updater(currentPage) : updater
+    if (isServerPaged) onPageChange(next)
+    else setLocalPage(next)
+  }
+
+  const setPageSize = (size) => {
+    if (isServerPaged) onPageSizeChange(size)
+    else {
+      setLocalPageSize(size)
+      setLocalPage(1)
+    }
+  }
 
   const toggleOrderExpand = (orderId) => {
     setExpandedOrders(prev => ({
@@ -53,10 +82,10 @@ export default function OrdersTable({
     }))
   }
   
-  // Reset to page 1 when orders change
+  // Reset to page 1 when orders change (client-paged fallback only)
   useEffect(() => {
-    setCurrentPage(1)
-  }, [orders.length])
+    if (!isServerPaged) setLocalPage(1)
+  }, [orders.length, isServerPaged])
   
   const [sortConfig, setSortConfig] = useState({ key: "orderDate", direction: "desc" })
 
@@ -145,17 +174,17 @@ export default function OrdersTable({
   }, [orders, sortConfig])
 
   const paginatedOrders = useMemo(() => {
-    const start = (currentPage - 1) * itemsPerPage
-    const end = start + itemsPerPage
-    return sortedOrders.slice(start, end)
-  }, [sortedOrders, currentPage])
+    if (isServerPaged) return sortedOrders
+    const start = (currentPage - 1) * pageSize
+    return sortedOrders.slice(start, start + pageSize)
+  }, [sortedOrders, currentPage, pageSize, isServerPaged])
 
   const formatRestaurantName = (name) => {
     if (name === "Cafe Monarch") return "Café Monarch"
     return name
   }
 
-  if (orders.length === 0) {
+  if (orders.length === 0 && totalCount === 0) {
     return (
       <div className="bg-white rounded-xl shadow-sm border border-slate-200">
         <div className="flex flex-col items-center justify-center py-20">
@@ -297,7 +326,7 @@ export default function OrdersTable({
               >
                 {visibleColumns.si && (
                   <td className="px-6 py-4 whitespace-nowrap">
-                    <span className="text-sm font-medium text-slate-700">{(currentPage - 1) * itemsPerPage + index + 1}</span>
+                    <span className="text-sm font-medium text-slate-700">{(currentPage - 1) * pageSize + index + 1}</span>
                   </td>
                 )}
                 {visibleColumns.orderId && (
@@ -523,25 +552,26 @@ export default function OrdersTable({
                         const rowKey = order.id || order.orderId
                         const isOpen = openReasonId === rowKey
                         return (
-                          <div className="mt-1">
+                          <div className="mt-1 max-w-[240px]">
                             <button
                               type="button"
                               onClick={() => setOpenReasonId(isOpen ? null : rowKey)}
-                              className="inline-flex items-center gap-1 rounded-md border border-red-200 bg-red-50 px-2 py-0.5 text-xs font-medium text-red-600 hover:bg-red-100 transition-colors"
+                              className={`rounded-md border border-red-200 bg-red-50 text-left transition-colors hover:bg-red-100 ${
+                                isOpen
+                                  ? "flex w-full flex-col items-start gap-1.5 px-2.5 py-2"
+                                  : "inline-flex items-center gap-1 px-2 py-0.5"
+                              }`}
                             >
-                              Reason
-                              {isOpen ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
-                            </button>
-                            {isOpen && (
-                              <div className="mt-1 max-w-[240px] rounded-md border border-red-200 bg-red-50 px-2 py-1.5 text-xs text-red-600 whitespace-normal break-words">
-                                <span className="font-medium">
-                                  {order.cancelledBy === 'user' ? 'Cancelled by User: ' :
-                                   order.cancelledBy === 'restaurant' ? 'Cancelled by Restaurant: ' :
-                                   'Reason: '}
+                              <span className="inline-flex items-center gap-1 text-xs font-semibold text-red-600">
+                                Reason
+                                {isOpen ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
+                              </span>
+                              {isOpen ? (
+                                <span className="text-xs font-medium leading-snug text-red-700 whitespace-normal break-words">
+                                  {order.cancellationReason}
                                 </span>
-                                {order.cancellationReason}
-                              </div>
-                            )}
+                              ) : null}
+                            </button>
                           </div>
                         )
                       })()}
@@ -706,56 +736,100 @@ export default function OrdersTable({
         </table>
       </div>
       
-      {/* Pagination */}
-      {totalPages > 1 && (
-        <div className="px-6 py-4 bg-slate-50 border-t border-slate-200 flex items-center justify-between">
-          <div className="text-sm text-slate-600">
-            Showing <span className="font-semibold">{(currentPage - 1) * itemsPerPage + 1}</span> to{" "}
-            <span className="font-semibold">{Math.min(currentPage * itemsPerPage, orders.length)}</span> of{" "}
-            <span className="font-semibold">{orders.length}</span> orders
+      {/* Pagination Controls — same pattern as Delivery Man List */}
+      {totalCount > 0 && (
+        <div className="flex flex-col sm:flex-row items-center justify-between gap-4 border-t border-slate-100 bg-white px-4 py-4 sm:px-6">
+          <div className="flex items-center gap-3">
+            <span className="text-sm text-slate-500 font-medium">Rows per page:</span>
+            <select
+              value={pageSize}
+              onChange={(e) => setPageSize(Number(e.target.value))}
+              className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-sm font-semibold text-slate-700 focus:outline-none focus:ring-2 focus:ring-slate-400 focus:border-slate-400 cursor-pointer shadow-sm"
+            >
+              <option value={10}>10</option>
+              <option value={20}>20</option>
+              <option value={50}>50</option>
+              <option value={100}>100</option>
+            </select>
           </div>
-          <div className="flex items-center gap-2">
+
+          <div className="flex flex-1 justify-between sm:hidden w-full">
             <button
-              onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
+              onClick={() => setCurrentPage((prev) => Math.max(prev - 1, 1))}
               disabled={currentPage === 1}
-              className="px-3 py-1.5 text-sm font-medium rounded-lg border border-slate-300 bg-white text-slate-700 hover:bg-slate-50 disabled:opacity-50 disabled:cursor-not-allowed transition-all"
+              className="relative inline-flex items-center rounded-md border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-50 transition-colors"
             >
               Previous
             </button>
-            <div className="flex items-center gap-1">
-              {Array.from({ length: Math.min(5, totalPages) }, (_, i) => {
-                let pageNum
-                if (totalPages <= 5) {
-                  pageNum = i + 1
-                } else if (currentPage <= 3) {
-                  pageNum = i + 1
-                } else if (currentPage >= totalPages - 2) {
-                  pageNum = totalPages - 4 + i
-                } else {
-                  pageNum = currentPage - 2 + i
-                }
-                return (
-                  <button
-                    key={pageNum}
-                    onClick={() => setCurrentPage(pageNum)}
-                    className={`px-3 py-1.5 text-sm font-medium rounded-lg transition-all ${
-                      currentPage === pageNum
-                        ? "bg-emerald-500 text-white shadow-md"
-                        : "border border-slate-300 bg-white text-slate-700 hover:bg-slate-50"
-                    }`}
-                  >
-                    {pageNum}
-                  </button>
-                )
-              })}
-            </div>
             <button
-              onClick={() => setCurrentPage(prev => Math.min(totalPages, prev + 1))}
-              disabled={currentPage === totalPages}
-              className="px-3 py-1.5 text-sm font-medium rounded-lg border border-slate-300 bg-white text-slate-700 hover:bg-slate-50 disabled:opacity-50 disabled:cursor-not-allowed transition-all"
+              onClick={() => setCurrentPage((prev) => Math.min(prev + 1, totalPages))}
+              disabled={currentPage >= totalPages}
+              className="relative ml-3 inline-flex items-center rounded-md border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-50 transition-colors"
             >
               Next
             </button>
+          </div>
+
+          <div className="hidden sm:flex sm:flex-1 sm:items-center sm:justify-between w-full">
+            <div className="pl-4">
+              <p className="text-sm text-slate-600">
+                Showing{" "}
+                <span className="font-semibold text-slate-900">
+                  {Math.min(totalCount, (currentPage - 1) * pageSize + 1)}
+                </span>{" "}
+                to{" "}
+                <span className="font-semibold text-slate-900">
+                  {Math.min(totalCount, currentPage * pageSize)}
+                </span>{" "}
+                of{" "}
+                <span className="font-semibold text-slate-900">{totalCount}</span> orders
+              </p>
+            </div>
+            <div>
+              <nav className="isolate inline-flex -space-x-px rounded-md shadow-sm gap-1" aria-label="Pagination">
+                <button
+                  onClick={() => setCurrentPage((prev) => Math.max(prev - 1, 1))}
+                  disabled={currentPage === 1}
+                  className="relative inline-flex items-center rounded-md px-2.5 py-1.5 text-slate-500 border border-slate-200 hover:bg-slate-50 disabled:opacity-50 transition-colors"
+                >
+                  &lt;
+                </button>
+                {Array.from({ length: totalPages }, (_, i) => i + 1)
+                  .filter(
+                    (page) =>
+                      page === 1 ||
+                      page === totalPages ||
+                      (page >= currentPage - 2 && page <= currentPage + 2),
+                  )
+                  .map((page, index, arr) => {
+                    const showEllipsisBefore = index > 0 && page - arr[index - 1] > 1
+                    return (
+                      <React.Fragment key={page}>
+                        {showEllipsisBefore && (
+                          <span className="px-3 py-1.5 text-slate-400 text-sm">...</span>
+                        )}
+                        <button
+                          onClick={() => setCurrentPage(page)}
+                          className={`relative inline-flex items-center px-3.5 py-1.5 text-sm font-semibold rounded-md transition-colors ${
+                            currentPage === page
+                              ? "bg-slate-900 text-white"
+                              : "text-slate-700 border border-slate-200 hover:bg-slate-50"
+                          }`}
+                        >
+                          {page}
+                        </button>
+                      </React.Fragment>
+                    )
+                  })}
+                <button
+                  onClick={() => setCurrentPage((prev) => Math.min(prev + 1, totalPages))}
+                  disabled={currentPage >= totalPages}
+                  className="relative inline-flex items-center rounded-md px-2.5 py-1.5 text-slate-500 border border-slate-200 hover:bg-slate-50 disabled:opacity-50 transition-colors"
+                >
+                  &gt;
+                </button>
+              </nav>
+            </div>
           </div>
         </div>
       )}

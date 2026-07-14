@@ -11,6 +11,7 @@ import { useProfile } from "@food/context/ProfileContext"
 import { FaLocationDot } from "react-icons/fa6"
 import { diningAPI } from "@food/api"
 import { getRestaurantAvailabilityStatus } from "@food/utils/restaurantAvailability"
+import { filterRestaurantsForVegMode } from "@food/utils/vegMode"
 
 const slugifyRestaurant = (value) =>
   String(value || "")
@@ -54,7 +55,7 @@ export default function DiningCategory() {
   const goBack = useAppBackNavigation()
   const { openLocationSelector } = useLocationSelector()
   const { location } = useLocationHook()
-  const { addFavorite, removeFavorite, isFavorite } = useProfile()
+  const { addFavorite, removeFavorite, isFavorite, vegMode, vegModeOption } = useProfile()
 
   const [restaurants, setRestaurants] = useState([])
   const [isLoading, setIsLoading] = useState(true)
@@ -92,6 +93,11 @@ export default function DiningCategory() {
               rating: Number(restaurant.rating || restaurant.avgRating || 0).toFixed(1),
               offer: restaurant.offer || "Pre-book tables and dining offers",
               featuredDish: restaurant.featuredDish || "Chef's special",
+              pureVegRestaurant:
+                restaurant.pureVegRestaurant === true ||
+                restaurant.diningSettings?.pureVegRestaurant === true,
+              hasNonVegMenu: restaurant.hasNonVegMenu,
+              isPureVeg: restaurant.isPureVeg,
               featuredPrice: restaurant.featuredPrice || null,
               availability,
             }
@@ -114,6 +120,10 @@ export default function DiningCategory() {
 
   const cityName = location?.city || "Select location"
   const heading = useMemo(() => formatCategoryHeading(category), [category])
+  const visibleRestaurants = useMemo(
+    () => filterRestaurantsForVegMode(restaurants, { vegMode, vegModeOption }),
+    [restaurants, vegMode, vegModeOption],
+  )
 
   const handleLocationClick = useCallback(() => {
     openLocationSelector()
@@ -160,7 +170,7 @@ export default function DiningCategory() {
             </div>
             <div className="inline-flex items-center gap-2 self-start rounded-full bg-white px-4 py-2 text-sm font-semibold text-[#6b5641] shadow-sm dark:border dark:border-gray-700 dark:bg-[#1a1a1a] dark:text-gray-300">
               <MapPin className="h-4 w-4 text-[#DC2626]" />
-              <span>{restaurants.length} places found</span>
+              <span>{visibleRestaurants.length} places found</span>
             </div>
           </div>
         </div>
@@ -169,13 +179,13 @@ export default function DiningCategory() {
           <div className="py-20 text-center text-[#7f6850] dark:text-gray-400">Loading dining restaurants...</div>
         ) : error ? (
           <div className="py-20 text-center text-red-600">{error}</div>
-        ) : restaurants.length === 0 ? (
+        ) : visibleRestaurants.length === 0 ? (
           <div className="rounded-[24px] border border-dashed border-[#e8d9c5] bg-white px-6 py-16 text-center text-[#7f6850] dark:border-gray-800 dark:bg-[#141414] dark:text-gray-400">
             No restaurants are linked to this dining category yet.
           </div>
         ) : (
           <div className="grid grid-cols-1 gap-5 md:grid-cols-2 xl:grid-cols-3">
-            {restaurants.map((restaurant) => {
+            {visibleRestaurants.map((restaurant) => {
               const favorite = isFavorite(restaurant.slug)
 
               const toggleFavorite = (event) => {

@@ -7,7 +7,7 @@ const debugError = (...args) => {}
 
 
 const ProfileContext = createContext(null)
-const USER_SESSION_PREFERENCE_KEYS = ["userVegMode", "userOrderType", "food-under-250-filters"]
+const USER_SESSION_PREFERENCE_KEYS = ["userVegMode", "userVegModeOption", "userOrderType", "food-under-250-filters"]
 
 export function ProfileProvider({ children }) {
   const getAddressId = (address) => address?.id || address?._id || null
@@ -87,6 +87,26 @@ export function ProfileProvider({ children }) {
     return saved !== null ? saved === "true" : false
   })
 
+  // Veg filter scope: "all" restaurants (veg dishes only) vs "pure-veg" restaurants only
+  const [vegModeOption, setVegModeOptionState] = useState(() => {
+    try {
+      const saved = localStorage.getItem("userVegModeOption")
+      return saved === "pure-veg" ? "pure-veg" : "all"
+    } catch {
+      return "all"
+    }
+  })
+
+  const setVegModeOption = useCallback((next) => {
+    const normalized = next === "pure-veg" ? "pure-veg" : "all"
+    try {
+      localStorage.setItem("userVegModeOption", normalized)
+    } catch {
+      // ignore
+    }
+    setVegModeOptionState(normalized)
+  }, [])
+
   // orderType state - stored in localStorage for persistence
   const [orderType, _setOrderType] = useState(() => {
     const saved = localStorage.getItem("userOrderType")
@@ -135,6 +155,12 @@ export function ProfileProvider({ children }) {
     }
   }, [vegMode, isAuthenticated])
 
+  useEffect(() => {
+    if (isAuthenticated) {
+      localStorage.setItem("userVegModeOption", vegModeOption)
+    }
+  }, [vegModeOption, isAuthenticated])
+
   // Wrap setOrderType to SYNCHRONOUSLY save to localStorage before React re-render
   const setOrderType = (newType) => {
     if (["delivery", "dining", "takeaway"].includes(newType)) {
@@ -157,6 +183,7 @@ export function ProfileProvider({ children }) {
         setFavorites([])
         setDishFavorites([])
         setVegMode(false)
+        setVegModeOptionState("all")
         USER_SESSION_PREFERENCE_KEYS.forEach((key) => {
           localStorage.removeItem(key)
         })
@@ -534,6 +561,8 @@ export function ProfileProvider({ children }) {
       favorites,
       vegMode,
       setVegMode,
+      vegModeOption,
+      setVegModeOption,
       orderType,
       setOrderType,
       addAddress,
@@ -569,6 +598,8 @@ export function ProfileProvider({ children }) {
       dishFavorites,
       vegMode,
       setVegMode,
+      vegModeOption,
+      setVegModeOption,
       orderType,
       setOrderType,
       addAddress,
@@ -634,6 +665,8 @@ export function useProfile() {
       getDishFavorites: () => [],
       vegMode: false,
       setVegMode: () => debugWarn("ProfileProvider not available"),
+      vegModeOption: "all",
+      setVegModeOption: () => debugWarn("ProfileProvider not available"),
       orderType: "delivery",
       setOrderType: () => debugWarn("ProfileProvider not available"),
       isAuthenticated: false

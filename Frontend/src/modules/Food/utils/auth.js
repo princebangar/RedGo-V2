@@ -152,6 +152,11 @@ export function clearModuleAuth(module) {
   localStorage.removeItem(`${module}_user`);
   // Clear cached FCM web token for this module
   localStorage.removeItem(`fcm_web_registered_token_${module}`);
+  try {
+    sessionStorage.removeItem(`fcm_backend_synced_${module}`);
+  } catch {
+    /* ignore */
+  }
   localStorage.removeItem("app:isOnline");
   
   if (module === "user") {
@@ -197,6 +202,7 @@ export function clearUserSession() {
     "user",
     "cart",
     "userVegMode",
+    "userVegModeOption",
     "food-under-250-filters",
     "app:isOnline"
   ];

@@ -86,6 +86,55 @@ const setGlobalLocationLoading = (isLoading) => {
 // then rely on localStorage/DB. Live watching is enabled only via explicit user action.
 const AUTO_START_LIVE_WATCH = false
 
+const SERVICE_CITIES = [
+  "Indore",
+  "Bhopal",
+  "Ujjain",
+  "Dewas",
+  "Mhow",
+  "Pithampur",
+  "Rau",
+]
+
+/**
+ * Prefer metro/service city over village/locality (e.g. Dhabli → Indore)
+ * so restaurant APIs filtered by city don't return empty lists.
+ */
+export function resolveServiceCity({
+  locality = "",
+  adminArea2 = "",
+  formattedAddress = "",
+  fallback = "Indore",
+} = {}) {
+  const findKnown = (text) => {
+    const match = String(text || "").match(
+      new RegExp(`\\b(${SERVICE_CITIES.join("|")})\\b`, "i"),
+    )
+    if (!match) return ""
+    const hit = match[1]
+    return (
+      SERVICE_CITIES.find((city) => city.toLowerCase() === hit.toLowerCase()) ||
+      hit
+    )
+  }
+
+  const fromFormatted = findKnown(formattedAddress)
+  if (fromFormatted) return fromFormatted
+
+  const localityTrim = String(locality || "").trim()
+  if (localityTrim) {
+    const knownLocality = SERVICE_CITIES.find(
+      (city) => city.toLowerCase() === localityTrim.toLowerCase(),
+    )
+    if (knownLocality) return knownLocality
+  }
+
+  const fromAdmin = findKnown(adminArea2)
+  if (fromAdmin) return fromAdmin
+
+  return localityTrim || fallback
+}
+
 const reverseGeocodeDirect = async (latitude, longitude) => {
   const now = Date.now()
   const movedMeters = geoDistanceMeters(
@@ -169,7 +218,33 @@ const reverseGeocodeDirect = async (latitude, longitude) => {
         }
       }
 
-      const city = data.city || data.locality || (addrParts.length > 1 ? addrParts[addrParts.length - 2] : "Indore")
+      const city = resolveServiceCity({
+        locality: data.city || data.locality || "",
+        adminArea2: Array.isArray(data?.localityInfo?.administrative)
+          ? data.localityInfo.administrative.find((entry) => {
+              const desc = String(entry?.description || "").toLowerCase()
+              return (
+                desc.includes("city") ||
+                desc.includes("district") ||
+                desc.includes("municipality") ||
+                desc.includes("order3") ||
+                desc.includes("order 3")
+              )
+            })?.name || ""
+          : "",
+        formattedAddress,
+        fallback: addrParts.length > 1 ? addrParts[addrParts.length - 2] : "Indore",
+      })
+
+      // Keep village/locality as area when city was upgraded to metro name
+      const localityName = String(data.locality || data.city || "").trim()
+      if (
+        !area &&
+        localityName &&
+        localityName.toLowerCase() !== String(city).toLowerCase()
+      ) {
+        area = localityName
+      }
 
       const value = {
         city: city,
@@ -237,9 +312,25 @@ export const hasValidStoredUserLocation = () => {
 }
 
 let pageLoadAutoRefreshStarted = false
+let pageLoadDeliveryModeBootstrapped = false
 let autoLocationRefreshInFlight = null
 const AUTO_LOCATION_REFRESH_COOLDOWN_MS = 15_000
 let lastAutoLocationRefreshAt = 0
+
+/**
+ * On every fresh page load / hard refresh, prefer live GPS over a previously
+ * selected saved address (e.g. Patran still stuck while user is in Indore).
+ * Explicit "saved address" selection still works after the user picks one.
+ */
+function bootstrapCurrentLocationModeOnPageLoad() {
+  if (pageLoadDeliveryModeBootstrapped) return
+  pageLoadDeliveryModeBootstrapped = true
+  try {
+    localStorage.setItem("deliveryAddressMode", "current")
+  } catch {
+    /* ignore */
+  }
+}
 
 const runDedupedAutoRefresh = (refreshFn) => {
   const now = Date.now()
@@ -254,6 +345,9 @@ const runDedupedAutoRefresh = (refreshFn) => {
 }
 
 export function useLocation() {
+  // Must run before addressMode state init so first paint prefers GPS mode.
+  bootstrapCurrentLocationModeOnPageLoad()
+
   const [isDefaultLocationMode, setIsDefaultLocationMode] = useState(() => {
     try {
       const saved = localStorage.getItem("redgo_customization_settings")
@@ -452,30 +546,26 @@ export function useLocation() {
 
   // Google Places API removed - using OLA Maps only
 
-  /* Removed Google Geocoding/Places (maps.googleapis.com). Uses BigDataCloud reverse-geocode only. */
+  /* Reverse geocode via backend proxy so the Maps key never hits the browser Network tab. */
   const reverseGeocodeWithGoogleMaps = async (latitude, longitude, _options = {}) => {
-    const apiKey = import.meta.env.VITE_GOOGLE_MAPS_API_KEY
-    if (!apiKey) {
-      debugWarn("?? Google Maps API Key not found, using BigDataCloud fallback")
-      return reverseGeocodeDirect(latitude, longitude)
-    }
-
     try {
-      debugLog("?? Fetching exact address from Google Maps for:", latitude, longitude)
-      
-      const controller = new AbortController()
-      const timeoutId = setTimeout(() => controller.abort(), 4000) // 4s timeout for Google
+      debugLog("?? Fetching exact address from Google Maps (proxy) for:", latitude, longitude)
 
-      const response = await fetch(
-        `https://maps.googleapis.com/maps/api/geocode/json?latlng=${latitude},${longitude}&key=${apiKey}`,
-        { signal: controller.signal }
-      )
-      clearTimeout(timeoutId)
-      
-      const data = await response.json()
-      
-      if (data.status !== "OK" || !data.results || data.results.length === 0) {
-        debugWarn("?? Google Geocoding failed or returned no results:", data.status)
+      const { geocodeAPI } = await import("@food/api")
+      const controller = new AbortController()
+      const timeoutId = setTimeout(() => controller.abort(), 3000)
+
+      let response
+      try {
+        response = await geocodeAPI.reverse(latitude, longitude, {}, { signal: controller.signal })
+      } finally {
+        clearTimeout(timeoutId)
+      }
+
+      const data = response?.data?.data
+
+      if (data?.status !== "OK" || !data.results || data.results.length === 0) {
+        debugWarn("?? Google Geocoding failed or returned no results:", data?.status)
         return reverseGeocodeDirect(latitude, longitude)
       }
 
@@ -488,23 +578,34 @@ export function useLocation() {
         return comp ? comp.long_name : ""
       }
 
-      const getShortComponent = (types) => {
-        const comp = components.find(c => types.some(t => c.types.includes(t)))
-        return comp ? comp.short_name : ""
-      }
-
       // Extract parts
       const streetNumber = getComponent(["street_number"])
       const route = getComponent(["route"])
       const sublocality = getComponent(["sublocality_level_1"]) || getComponent(["sublocality"])
       const neighborhood = getComponent(["neighborhood"])
-      const city = getComponent(["locality"])
+      const locality = getComponent(["locality"])
+      const adminArea2 = getComponent(["administrative_area_level_2"])
       const state = getComponent(["administrative_area_level_1"])
       const country = getComponent(["country"])
       const pincode = getComponent(["postal_code"])
+
+      // Prefer Indore (etc.) over village locality like Dhabli so restaurant city filter works
+      const city = resolveServiceCity({
+        locality,
+        adminArea2,
+        formattedAddress: result.formatted_address,
+        fallback: "Indore",
+      })
       
       // Determine area - prioritize sublocality/neighborhood for "Exact" feel
       let area = sublocality || neighborhood || ""
+      if (
+        !area &&
+        locality &&
+        locality.toLowerCase() !== String(city).toLowerCase()
+      ) {
+        area = locality
+      }
       
       // If we have building/apartment info (premise/subpremise)
       const premise = getComponent(["premise"]) || getComponent(["subpremise"]) || getComponent(["point_of_interest"])
@@ -1795,6 +1896,8 @@ export function useLocation() {
     }, 5000) // 5 second safety timeout
 
     // Request fresh location in BACKGROUND when permission is already granted.
+    // Fresh page load already set deliveryAddressMode=current so UI follows GPS
+    // instead of a previously selected saved address (Patran, etc.).
     const startAutoLocationRefresh = () => {
       runDedupedAutoRefresh(() => refreshLocationIfPermitted({ showLoading: false }))
     }
@@ -1802,6 +1905,9 @@ export function useLocation() {
     if (!isDefaultLocationMode && !isSuppressedPath) {
       if (!pageLoadAutoRefreshStarted) {
         pageLoadAutoRefreshStarted = true
+        try {
+          window.dispatchEvent(new CustomEvent("deliveryAddressModeUpdated"))
+        } catch {}
         startAutoLocationRefresh()
       }
     } else {
@@ -1950,6 +2056,90 @@ export function useLocation() {
     }
   }
 
+  /**
+   * Fast path for Address Selector "Use current location".
+   * - Does not clear cache first
+   * - Prefers recent GPS (≤30s) + low-accuracy first (much faster)
+   * - Single reverse-geocode, DB update in background
+   */
+  const requestLocationFast = async () => {
+    setError(null)
+
+    if (!navigator.geolocation) {
+      throw new Error("Geolocation not supported")
+    }
+
+    try {
+      try {
+        localStorage.setItem("deliveryAddressMode", "current")
+        window.dispatchEvent(new CustomEvent("deliveryAddressModeUpdated"))
+      } catch {}
+
+      const getPosition = (options) =>
+        new Promise((resolve, reject) => {
+          navigator.geolocation.getCurrentPosition(resolve, reject, options)
+        })
+
+      let pos
+      try {
+        // Fast path: network/wifi location + accept a recent fix
+        pos = await getPosition({
+          enableHighAccuracy: false,
+          timeout: 6000,
+          maximumAge: 30000,
+        })
+      } catch {
+        // Fallback: true GPS if low-accuracy fails
+        pos = await getPosition({
+          enableHighAccuracy: true,
+          timeout: 10000,
+          maximumAge: 0,
+        })
+      }
+
+      const { latitude, longitude, accuracy } = pos.coords
+      if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) {
+        throw new Error("Invalid coordinates")
+      }
+
+      let addr
+      try {
+        addr = await reverseGeocodeWithGoogleMaps(latitude, longitude)
+      } catch {
+        addr = await reverseGeocodeDirect(latitude, longitude)
+      }
+
+      const finalLoc = {
+        ...addr,
+        city: resolveServiceCity({
+          locality: addr?.city || "",
+          formattedAddress: addr?.formattedAddress || addr?.address || "",
+          fallback: addr?.city || "Indore",
+        }),
+        latitude,
+        longitude,
+        accuracy: accuracy ?? null,
+      }
+
+      localStorage.setItem("userLocation", JSON.stringify(finalLoc))
+      setLocation(finalLoc)
+      setPermissionGranted(true)
+
+      // Don't block UI on DB write
+      updateLocationInDB(finalLoc).catch(() => {})
+
+      try {
+        window.dispatchEvent(new CustomEvent("userLocationUpdated"))
+      } catch {}
+
+      return finalLoc
+    } catch (err) {
+      debugError("? Fast location request failed:", err)
+      setError(err.message || "Failed to get location")
+      throw err
+    }
+  }
+
   const { getDefaultAddress } = useProfile()
   const defaultSavedAddress = getDefaultAddress?.() || null
 
@@ -1976,16 +2166,17 @@ export function useLocation() {
   // Listen to deliveryAddressMode changes using a local state
   const [addressMode, setAddressMode] = useState(() => {
     try {
-      return localStorage.getItem("deliveryAddressMode") || "saved"
+      // Boot already set "current" on fresh page load; fall back to current (not saved).
+      return localStorage.getItem("deliveryAddressMode") || "current"
     } catch {
-      return "saved"
+      return "current"
     }
   })
 
   useEffect(() => {
     const handleModeUpdate = () => {
       try {
-        setAddressMode(localStorage.getItem("deliveryAddressMode") || "saved")
+        setAddressMode(localStorage.getItem("deliveryAddressMode") || "current")
       } catch {}
     }
     window.addEventListener("userLocationUpdated", handleModeUpdate)
@@ -2040,6 +2231,7 @@ export function useLocation() {
     error,
     permissionGranted,
     requestLocation,
+    requestLocationFast,
     startWatchingLocation,
     stopWatchingLocation,
   }
