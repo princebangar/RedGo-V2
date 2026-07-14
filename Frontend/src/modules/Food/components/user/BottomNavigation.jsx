@@ -4,11 +4,17 @@ import { useState, useEffect, useRef } from "react"
 import { motion, AnimatePresence } from "framer-motion"
 import api from "@food/api"
 import { useProfile } from "@food/context/ProfileContext"
+import {
+  getCachedUnder250PriceLimit,
+  getLandingSettingsPublic,
+} from "@food/utils/foodPageCache"
 
 export default function BottomNavigation() {
   const location = useLocation()
   const pathname = location.pathname
-  const [under250PriceLimit, setUnder250PriceLimit] = useState(250)
+  const [under250PriceLimit, setUnder250PriceLimit] = useState(() =>
+    getCachedUnder250PriceLimit(250),
+  )
 
   const [isVisible, setIsVisible] = useState(true)
   const lastScrollYRef = useRef(typeof window !== 'undefined' ? window.scrollY : 0)
@@ -26,21 +32,22 @@ export default function BottomNavigation() {
     }
   }
 
-  // Fetch landing settings to get dynamic price limit
+  // Fetch landing settings to get dynamic price limit (shared cache)
   useEffect(() => {
     let cancelled = false
-    api.get('/food/landing/settings/public')
-      .then((res) => {
+    getLandingSettingsPublic(() => api.get("/food/landing/settings/public"))
+      .then((settings) => {
         if (cancelled) return
-        const settings = res?.data?.data
-        if (settings && typeof settings.under250PriceLimit === 'number') {
+        if (settings && typeof settings.under250PriceLimit === "number") {
           setUnder250PriceLimit(settings.under250PriceLimit)
         }
       })
       .catch(() => {
         if (!cancelled) setUnder250PriceLimit(250)
       })
-    return () => { cancelled = true }
+    return () => {
+      cancelled = true
+    }
   }, [])
 
   // Scroll logic to hide/show footer - uses refs to avoid listener re-registration

@@ -17,6 +17,13 @@ import { useVoiceSearch } from "@food/hooks/useVoiceSearch"
 // Force HMR reload
 import { RestaurantGridSkeleton } from "@food/components/ui/loading-skeletons"
 import { Suspense, lazy } from "react"
+import { useProfile } from "@food/context/ProfileContext"
+import {
+  filterCategoriesForVegMode,
+  filterRestaurantsForVegMode,
+  isVegMenuItem,
+  matchesVegRestaurantFilter,
+} from "@food/utils/vegMode"
 const CategoryPage = lazy(() => import("../CategoryPage"))
 
 // Helper to resolve media URLs consistently
@@ -49,6 +56,7 @@ export default function ProfessionalSearch() {
   const navigate = useNavigate()
   const { location: userCoords } = useGeoLocation()
   const { zoneId } = useZone(userCoords)
+  const { vegMode, vegModeOption } = useProfile()
   const searchMode = searchParams.get("mode") || "delivery"
   const isTakeawaySearch = searchMode === "takeaway"
   
@@ -115,11 +123,25 @@ export default function ProfessionalSearch() {
   const fetchCategories = async () => {
     try {
       const res = await searchAPI.getAdminCategories({ zoneId })
-      if (res.data?.success) setCategories(res.data.data.categories)
+      if (res.data?.success) setCategories(res.data.data.categories || [])
     } catch (err) {
       console.error("Failed to fetch categories", err)
     }
   }
+
+  const visibleCategories = useMemo(
+    () => filterCategoriesForVegMode(categories, vegMode),
+    [categories, vegMode],
+  )
+
+  // If a non-veg category was selected before veg mode turned on, clear it
+  useEffect(() => {
+    if (!vegMode || !selectedCategoryId) return
+    const stillVisible = visibleCategories.some(
+      (c) => String(c._id || c.id) === String(selectedCategoryId),
+    )
+    if (!stillVisible) setSelectedCategoryId(null)
+  }, [vegMode, selectedCategoryId, visibleCategories])
 
   const addToHistory = (term) => {
     const newHistory = [term, ...history.filter(h => h !== term)].slice(0, 5)
@@ -148,21 +170,32 @@ export default function ProfessionalSearch() {
         limit: 50,
         zoneId,
         orderType: searchMode,
+        ...(vegMode ? { isVeg: "true" } : {}),
       })
 
       const all = res.data?.success ? (res.data.data?.restaurants || []) : []
+      const restaurantsRaw = all.filter(r => r.matchType === 'restaurant' || !r.matchType)
+      const dishesRaw = all.filter(r => r.matchType === 'food')
 
-      setResults({
-        restaurants: all.filter(r => r.matchType === 'restaurant' || !r.matchType),
-        dishes: all.filter(r => r.matchType === 'food')
+      const restaurants = filterRestaurantsForVegMode(restaurantsRaw, {
+        vegMode,
+        vegModeOption,
       })
+      const dishes = dishesRaw
+        .filter((r) => !vegMode || isVegMenuItem({
+          foodType: r.matchedDishFoodType || r.foodType,
+          isVeg: r.isVeg,
+        }))
+        .filter((r) => matchesVegRestaurantFilter(r, { vegMode, vegModeOption }))
+
+      setResults({ restaurants, dishes })
     } catch (err) {
       console.error("Search failed", err)
       setResults({ restaurants: [], dishes: [] })
     } finally {
       setLoading(false)
     }
-  }, [userCoords, zoneId, searchMode])
+  }, [userCoords, zoneId, searchMode, vegMode, vegModeOption])
 
   useEffect(() => {
     performSearch(debouncedQuery, selectedCategoryId)
@@ -251,7 +284,7 @@ export default function ProfessionalSearch() {
           <div className="mb-8">
             <div className="flex items-center justify-between mb-5 px-1">
               <h3 className="text-xs font-black text-gray-400 uppercase tracking-widest">Top Categories</h3>
-              {categories.length > 8 && (
+              {visibleCategories.length > 8 && (
                 <span className="text-[10px] font-bold text-[#DC2626] uppercase tracking-tighter">Swipe for more</span>
               )}
             </div>
@@ -264,9 +297,11 @@ export default function ProfessionalSearch() {
                   </div>
                 ))}
               </div>
+            ) : visibleCategories.length === 0 ? (
+              <p className="text-sm text-gray-500 dark:text-gray-400 px-1">No veg categories available</p>
             ) : (
               <div className="grid grid-cols-4 sm:grid-cols-5 md:grid-cols-6 lg:grid-cols-8 gap-x-3 gap-y-6">
-                {categories.map((cat) => (
+                {visibleCategories.map((cat) => (
                   <button 
                     key={cat._id} 
                     onClick={() => handleCategoryClick(cat._id)}

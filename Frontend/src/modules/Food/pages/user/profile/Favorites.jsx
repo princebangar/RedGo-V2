@@ -1,5 +1,5 @@
 import { Link, useLocation } from "react-router-dom"
-import { useState } from "react"
+import { useMemo, useState } from "react"
 
 import { Heart, Star, Clock, MapPin, ArrowRight, ArrowLeft, Bookmark } from "lucide-react"
 import AnimatedPage from "@food/components/user/AnimatedPage"
@@ -8,13 +8,34 @@ import { Card, CardHeader, CardTitle, CardContent } from "@food/components/ui/ca
 import { Button } from "@food/components/ui/button"
 import { useProfile } from "@food/context/ProfileContext"
 import { toast } from "sonner"
+import {
+  filterDishesForVegMode,
+  filterRestaurantsForVegMode,
+} from "@food/utils/vegMode"
 
 export default function Favorites() {
   const location = useLocation()
   const from = location.state?.from || "/food/user/profile"
-  const { getFavorites, removeFavorite, getDishFavorites, removeDishFavorite } = useProfile()
-  const restaurantFavorites = getFavorites()
-  const dishFavorites = getDishFavorites()
+  const {
+    favorites,
+    dishFavorites: allDishFavorites,
+    removeFavorite,
+    removeDishFavorite,
+    vegMode,
+    vegModeOption,
+  } = useProfile()
+  const restaurantFavorites = useMemo(
+    () =>
+      filterRestaurantsForVegMode(favorites || [], {
+        vegMode,
+        vegModeOption,
+      }),
+    [favorites, vegMode, vegModeOption],
+  )
+  const dishFavorites = useMemo(
+    () => filterDishesForVegMode(allDishFavorites || [], vegMode),
+    [allDishFavorites, vegMode],
+  )
   const [activeTab, setActiveTab] = useState("restaurants")
 
   const handleRemoveFavorite = (e, slug) => {

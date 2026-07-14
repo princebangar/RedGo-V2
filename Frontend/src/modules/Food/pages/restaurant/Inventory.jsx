@@ -1343,16 +1343,30 @@ export default function Inventory() {
     [categories]
   )
 
-  const activeFilterOptions = useMemo(
-    () => (activeTab === "add-ons" ? ADDON_FILTER_OPTIONS : MENU_FILTER_OPTIONS),
-    [activeTab]
-  )
+  const activeFilterOptions = useMemo(() => {
+    if (activeTab === "add-ons") return ADDON_FILTER_OPTIONS
+    const isPureVeg = restaurantProfile?.pureVegRestaurant === true
+    if (!isPureVeg) return MENU_FILTER_OPTIONS
+    // Pure-veg restaurants: hide veg/non-veg diet filters
+    return MENU_FILTER_OPTIONS.filter(
+      (option) => option.value !== "veg" && option.value !== "non-veg",
+    )
+  }, [activeTab, restaurantProfile?.pureVegRestaurant])
 
   useEffect(() => {
     if (!activeFilterOptions.some((option) => option.value === selectedFilter)) {
       setSelectedFilter("all")
     }
   }, [activeFilterOptions, selectedFilter])
+
+  useEffect(() => {
+    if (
+      restaurantProfile?.pureVegRestaurant === true &&
+      (selectedFilter === "non-veg" || selectedFilter === "veg")
+    ) {
+      setSelectedFilter("all")
+    }
+  }, [restaurantProfile?.pureVegRestaurant, selectedFilter])
 
   const filterMenuItems = (items = [], filterValue = "all") => {
     if (filterValue === "all") return items

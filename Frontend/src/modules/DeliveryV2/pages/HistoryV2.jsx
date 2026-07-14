@@ -7,6 +7,35 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { deliveryAPI } from '@food/api';
 import { toast } from 'sonner';
 import useDeliveryBackNavigation from '../hooks/useDeliveryBackNavigation';
+import { Skeleton } from '@food/components/ui/skeleton';
+
+const HISTORY_PREFS_KEY = 'delivery_trip_history_prefs_v1';
+
+const toLocalDateKey = (date) => {
+  const d = date instanceof Date ? date : new Date(date);
+  if (Number.isNaN(d.getTime())) return null;
+  const year = d.getFullYear();
+  const month = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+};
+
+const parseLocalDateKey = (key) => {
+  if (!key || !/^\d{4}-\d{2}-\d{2}$/.test(String(key))) return null;
+  const [y, m, d] = String(key).split('-').map(Number);
+  const date = new Date(y, m - 1, d);
+  return Number.isNaN(date.getTime()) ? null : date;
+};
+
+const loadHistoryPrefs = () => {
+  try {
+    const raw = localStorage.getItem(HISTORY_PREFS_KEY);
+    if (!raw) return null;
+    return JSON.parse(raw);
+  } catch {
+    return null;
+  }
+};
 
 /**
  * HistoryV2 - EXACT 1:1 Match with User Screenshot.
@@ -16,28 +45,50 @@ import useDeliveryBackNavigation from '../hooks/useDeliveryBackNavigation';
  */
 export const HistoryV2 = () => {
   const goBack = useDeliveryBackNavigation();
-  const [activeTab, setActiveTab] = useState("daily");
-  const [selectedDate, setSelectedDate] = useState(new Date());
-  const [selectedTripType, setSelectedTripType] = useState("ALL TRIPS");
+  const savedPrefs = useMemo(() => loadHistoryPrefs(), []);
+  const [activeTab, setActiveTab] = useState(() => {
+    const tab = String(savedPrefs?.activeTab || 'daily').toLowerCase();
+    return ['daily', 'weekly', 'monthly'].includes(tab) ? tab : 'daily';
+  });
+  const [selectedDate, setSelectedDate] = useState(() => {
+    return parseLocalDateKey(savedPrefs?.selectedDate) || new Date();
+  });
+  const [selectedTripType, setSelectedTripType] = useState(() => {
+    const type = savedPrefs?.selectedTripType || 'ALL TRIPS';
+    return ['ALL TRIPS', 'Completed', 'Cancelled', 'Pending'].includes(type) ? type : 'ALL TRIPS';
+  });
   const [showDatePicker, setShowDatePicker] = useState(false);
   const [showTripTypePicker, setShowTripTypePicker] = useState(false);
   const [trips, setTrips] = useState([]);
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState(true);
   const [showBonusModal, setShowBonusModal] = useState(false);
   const [bonusTransactions, setBonusTransactions] = useState([]);
   const [bonusLoading, setBonusLoading] = useState(false);
 
   const tripTypes = ["ALL TRIPS", "Completed", "Cancelled", "Pending"];
 
+  // Persist filters so refresh / remount keeps yesterday (etc.) selected
+  useEffect(() => {
+    try {
+      localStorage.setItem(
+        HISTORY_PREFS_KEY,
+        JSON.stringify({
+          activeTab,
+          selectedDate: toLocalDateKey(selectedDate),
+          selectedTripType,
+        }),
+      );
+    } catch {
+      // ignore quota / private mode
+    }
+  }, [activeTab, selectedDate, selectedTripType]);
+
   // Fetch Logic
   useEffect(() => {
     const fetchTrips = async () => {
       setLoading(true);
       try {
-        const year = selectedDate.getFullYear();
-        const month = String(selectedDate.getMonth() + 1).padStart(2, "0");
-        const day = String(selectedDate.getDate()).padStart(2, "0");
-        const dateStr = `${year}-${month}-${day}`;
+        const dateStr = toLocalDateKey(selectedDate);
 
         const params = {
           period: activeTab,
@@ -95,10 +146,25 @@ export const HistoryV2 = () => {
 
   const metrics = useMemo(() => {
      return trips.reduce((acc, trip) => {
-        if (trip.status === 'Completed') {
-           acc.earnings += Number(trip.deliveryEarning || trip.amount || trip.earningAmount || 0);
-           const isCOD = (trip.paymentMethod || '').toLowerCase() === 'cash' || (trip.paymentMethod || '').toLowerCase() === 'cod';
-           if (isCOD) acc.cod += Number(trip.codCollectedAmount || trip.orderTotal || 0);
+        const status = String(trip.status || '').toLowerCase();
+        if (status === 'completed') {
+           acc.earnings += Number(trip.deliveryEarning ?? trip.amount ?? trip.earningAmount ?? 0) || 0;
+           const method = String(trip.paymentMethod || '').toLowerCase();
+           const isCOD =
+             method === 'cash' ||
+             method === 'cod' ||
+             method === 'cash on delivery';
+           if (isCOD) {
+             const collected = Number(trip.codCollectedAmount);
+             const due = Number(trip.codAmount);
+             const fallback = Number(trip.orderTotal);
+             const amount = Number.isFinite(collected) && collected > 0
+               ? collected
+               : Number.isFinite(due) && due > 0
+                 ? due
+                 : (Number.isFinite(fallback) ? fallback : 0);
+             acc.cod += amount;
+           }
         }
         return acc;
      }, { earnings: 0, cod: 0 });
@@ -204,11 +270,15 @@ export const HistoryV2 = () => {
           <div className="bg-[#E9F9F4] rounded-2xl p-6 border border-[#D1F2E8] flex justify-between items-center">
              <div>
                 <p className="text-[11px] font-bold text-[#10B981] mb-1">COD Collected</p>
-                <h3 className="text-xl font-bold text-gray-950">₹{metrics.cod.toFixed(2)}</h3>
+                <h3 className="text-xl font-bold text-gray-950 min-h-[1.75rem] flex items-center">
+                   {loading ? <Skeleton className="h-7 w-24" /> : `₹${metrics.cod.toFixed(2)}`}
+                </h3>
              </div>
              <div className="text-right">
                 <p className="text-[11px] font-bold text-[#10B981] mb-1">Earnings</p>
-                <h3 className="text-xl font-bold text-gray-950">₹{metrics.earnings.toFixed(2)}</h3>
+                <h3 className="text-xl font-bold text-gray-950 min-h-[1.75rem] flex items-center justify-end">
+                   {loading ? <Skeleton className="h-7 w-24" /> : `₹${metrics.earnings.toFixed(2)}`}
+                </h3>
              </div>
           </div>
 
@@ -224,8 +294,15 @@ export const HistoryV2 = () => {
                    const isCompleted = (trip.status || '').toLowerCase() === 'completed';
                    const isCancelled = (trip.status || '').toLowerCase() === 'cancelled';
                    const isPending = !isCompleted && !isCancelled;
-                   const payout = Number(trip.deliveryEarning || trip.amount || trip.earningAmount || 0);
-                   const collection = Number(trip.codCollectedAmount || trip.orderTotal || 0);
+                   const payout = Number(trip.deliveryEarning ?? trip.amount ?? trip.earningAmount ?? 0) || 0;
+                   const collectedRaw = Number(trip.codCollectedAmount);
+                   const dueRaw = Number(trip.codAmount);
+                   const totalRaw = Number(trip.orderTotal);
+                   const collection = Number.isFinite(collectedRaw) && collectedRaw > 0
+                     ? collectedRaw
+                     : Number.isFinite(dueRaw) && dueRaw > 0
+                       ? dueRaw
+                       : (Number.isFinite(totalRaw) ? totalRaw : 0);
                    const isQR = (trip.paymentMethod || '').toLowerCase() === 'razorpay_qr';
                    const isCOD = (trip.paymentMethod || '').toLowerCase() === 'cash' || (trip.paymentMethod || '').toLowerCase() === 'cod';
 

@@ -1794,7 +1794,16 @@ export const listRestaurantsUnderPriceLimit = async (query = {}, priceLimit = 25
         restaurantItemsMap[rid].push({
             ...item,
             id: String(item._id),
-            isVeg: item.isVeg ?? (String(item.foodType || '').toLowerCase().includes('veg') && !String(item.foodType || '').toLowerCase().includes('non'))
+            isVeg: (() => {
+                const ft = String(item.foodType || '').trim().toLowerCase();
+                if (ft === 'veg') return true;
+                if (ft === 'non-veg' || ft === 'non veg' || ft === 'nonveg' || ft.includes('non')) {
+                    return false;
+                }
+                if (item.isVeg === true) return true;
+                if (item.isVeg === false) return false;
+                return false;
+            })(),
         });
     });
 
@@ -1808,9 +1817,18 @@ export const listRestaurantsUnderPriceLimit = async (query = {}, priceLimit = 25
         return { restaurants: [], total: 0 };
     }
 
+    // Full-menu non-veg check (any price) — Under 250 payload alone can miss chicken > priceLimit
+    const eligibleRestaurantIds = eligibleRestaurants.map((r) => r._id);
+    const nonVegRestaurantIds = await FoodItem.distinct('restaurantId', {
+        restaurantId: { $in: eligibleRestaurantIds },
+        approvalStatus: 'approved',
+        foodType: 'Non-Veg',
+    });
+    const nonVegRestaurantIdSet = new Set(nonVegRestaurantIds.map((id) => String(id)));
+
     // 4. Fetch outlet timings only for the eligible restaurants
     const outletTimingsRaw = await FoodRestaurantOutletTimings.find({
-        restaurantId: { $in: eligibleRestaurants.map(r => r._id) }
+        restaurantId: { $in: eligibleRestaurantIds }
     }).lean();
 
     const timingsMap = {};
@@ -1823,6 +1841,7 @@ export const listRestaurantsUnderPriceLimit = async (query = {}, priceLimit = 25
         const rid = String(r._id);
         const items = restaurantItemsMap[rid] || [];
         const timings = timingsMap[rid] || [];
+        const hasNonVegMenu = nonVegRestaurantIdSet.has(rid);
         
         return {
             ...r,
@@ -1830,6 +1849,8 @@ export const listRestaurantsUnderPriceLimit = async (query = {}, priceLimit = 25
             restaurantId: rid,
             name: r.restaurantName,
             menuItems: items,
+            hasNonVegMenu,
+            isPureVeg: !hasNonVegMenu,
             outletTimings: { timings },
             image: r.coverImages?.[0] || r.profileImage || (r.menuImages?.length > 0 ? r.menuImages[0] : null) || null,
             images: Array.isArray(r.coverImages) && r.coverImages.length > 0

@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react"
+import { useState, useEffect, useMemo } from "react"
 import { Link, useNavigate } from "react-router-dom"
 import { ArrowLeft, Star, Clock, Bookmark, BadgePercent, Utensils } from "lucide-react"
 import { Button } from "@food/components/ui/button"
@@ -11,6 +11,8 @@ import OptimizedImage from "@food/components/OptimizedImage"
 import { RestaurantGridSkeleton } from "@food/components/ui/loading-skeletons"
 import { useDelayedLoading } from "@food/hooks/useDelayedLoading"
 import { useLocation } from "@food/hooks/useLocation"
+import { useProfile } from "@food/context/ProfileContext"
+import { filterRestaurantsForVegMode } from "@food/utils/vegMode"
 
 // Import banner
 import gourmetBanner from "@food/assets/gourmet_new_banner.png"
@@ -27,7 +29,13 @@ export default function Gourmet() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
   const { location } = useLocation()
+  const { vegMode, vegModeOption } = useProfile()
   const showGourmetSkeleton = useDelayedLoading(loading)
+
+  const visibleGourmetRestaurants = useMemo(
+    () => filterRestaurantsForVegMode(gourmetRestaurants, { vegMode, vegModeOption }),
+    [gourmetRestaurants, vegMode, vegModeOption],
+  )
 
   const backendOrigin = (API_BASE_URL || "").replace(/\/api\/v1\/?$/, "")
 
@@ -116,7 +124,7 @@ export default function Gourmet() {
           {/* Restaurant Count */}
           <div className="flex items-center justify-between pb-2 border-b border-gray-100 dark:border-zinc-800">
             <p className="text-[10px] font-black text-gray-400 dark:text-gray-500 tracking-[0.2em] uppercase">
-              {showGourmetSkeleton ? '...' : gourmetRestaurants.length} PREMIER ESTABLISHMENTS
+              {showGourmetSkeleton ? '...' : visibleGourmetRestaurants.length} PREMIER ESTABLISHMENTS
             </p>
             <div className="flex items-center gap-2">
               <span className="h-1.5 w-1.5 rounded-full bg-green-500 animate-pulse" />
@@ -138,12 +146,12 @@ export default function Gourmet() {
           {/* Restaurant Cards */}
           {!showGourmetSkeleton && !error && (
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 md:gap-6">
-              {gourmetRestaurants.length === 0 ? (
+              {visibleGourmetRestaurants.length === 0 ? (
                 <div className="col-span-full text-center py-12">
                   <p className="text-gray-500 dark:text-gray-400">No Gourmet restaurants available at the moment</p>
                 </div>
               ) : (
-                gourmetRestaurants.map((item) => {
+                visibleGourmetRestaurants.map((item) => {
                   const restaurant = item.restaurant || item
                   const restaurantSlug = restaurant.slug || restaurant.restaurantName?.toLowerCase().replace(/\s+/g, "-") || restaurant.name?.toLowerCase().replace(/\s+/g, "-") || ""
                   const restaurantId = restaurant._id || restaurant.restaurantId || restaurant.id

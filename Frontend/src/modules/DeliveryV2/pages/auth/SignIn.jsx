@@ -6,6 +6,7 @@ import { toast } from "sonner"
 import { deliveryAPI } from "@food/api"
 import { setAuthData as storeAuthData, clearModuleAuth } from "@food/utils/auth"
 import { collectFcmTokenFast, persistModuleFcmToken, finalizeDeliveryPendingSubmission, prefetchModuleFcmToken } from "@food/utils/firebaseMessaging"
+import { getUserFacingApiError, showUserFacingApiError } from "@/shared/utils/apiError"
 
 const DEFAULT_COUNTRY_CODE = "+91"
 
@@ -16,12 +17,19 @@ export default function DeliverySignIn() {
 
   // Step 1 States
   const [phone, setPhone] = useState(() => {
-    const stored = sessionStorage.getItem("deliveryAuthData")
-    if (stored) {
-      try {
+    try {
+      if (sessionStorage.getItem("deliveryClearLoginPhone") === "1") {
+        sessionStorage.removeItem("deliveryClearLoginPhone")
+        sessionStorage.removeItem("deliveryAuthData")
+        return ""
+      }
+      const stored = sessionStorage.getItem("deliveryAuthData")
+      if (stored) {
         const data = JSON.parse(stored)
         return data.phone ? data.phone.replace("+91", "").trim() : ""
-      } catch (e) { return "" }
+      }
+    } catch (e) {
+      return ""
     }
     return ""
   })
@@ -54,6 +62,16 @@ export default function DeliverySignIn() {
   const focusKeeperRef = useRef(null)
   const keyboardPrimedRef = useRef(false)
   const [instantAuthTransition, setInstantAuthTransition] = useState(false)
+
+  const clearPersistedLoginPhone = () => {
+    try {
+      sessionStorage.removeItem("deliveryAuthData")
+      sessionStorage.setItem("deliveryClearLoginPhone", "1")
+    } catch {
+      // ignore
+    }
+    setPhone("")
+  }
 
   const getBlockKey = (phoneStr) => {
     const clean = phoneStr?.replace(/\D/g, "") || ""
@@ -219,7 +237,7 @@ export default function DeliverySignIn() {
       sessionStorage.setItem("deliveryAuthData", JSON.stringify(authData))
       navigate("/food/delivery/otp")
     } catch (err) {
-      const msg = err?.response?.data?.error || err?.response?.data?.message || err?.message || "Failed to send OTP."
+      const msg = getUserFacingApiError(err, "Failed to send OTP. Please try again.")
       const lowerMsg = msg.toLowerCase()
       const isBlocked = lowerMsg.includes("blocked") || 
                         lowerMsg.includes("too many attempts") || 
@@ -245,7 +263,7 @@ export default function DeliverySignIn() {
         navigate("/food/delivery/otp", { state: { initialBlockMins: totalMins } })
         return
       }
-      toast.error(msg)
+      showUserFacingApiError(err, "Failed to send OTP. Please try again.")
     } finally {
       setLoading(false)
       submitting.current = false
@@ -376,11 +394,7 @@ export default function DeliverySignIn() {
       }
       setTimeout(verifyAndNavigate, 200)
     } catch (err) {
-      const message =
-        err?.response?.data?.error ||
-        err?.response?.data?.message ||
-        err?.message ||
-        "Failed to verify OTP. Please try again."
+      const message = getUserFacingApiError(err, "Failed to verify OTP. Please try again.")
 
       setOtp(["", "", "", ""])
       setTimeout(() => {
@@ -402,12 +416,12 @@ export default function DeliverySignIn() {
         setBlockTimer(totalSeconds)
         sessionStorage.setItem(getBlockKey(authData?.phone || ""), (Date.now() + (totalSeconds * 1000)).toString())
         setError("")
+      } else if (/invalid/i.test(message)) {
+        setError("Invalid OTP")
+        toast.error("Invalid OTP", { id: "user-facing-api-error" })
       } else {
-        if (/invalid/i.test(message)) {
-          setError("Invalid OTP")
-        } else {
-          setError(message)
-        }
+        setError(message)
+        showUserFacingApiError(err, message)
       }
       setLoading(false)
     }
@@ -481,12 +495,9 @@ export default function DeliverySignIn() {
       }
       setTimeout(verifyAndNavigate, 200)
     } catch (err) {
-      const message =
-        err?.response?.data?.message ||
-        err?.response?.data?.error ||
-        err?.message ||
-        "Failed to complete registration. Please try again."
+      const message = getUserFacingApiError(err, "Failed to complete registration. Please try again.")
       setError(message)
+      showUserFacingApiError(err, "Failed to complete registration. Please try again.")
     } finally {
       setLoading(false)
     }
@@ -524,11 +535,7 @@ export default function DeliverySignIn() {
       inputRefs.current[0]?.focus()
       toast.success("OTP resent successfully.")
     } catch (err) {
-      const message =
-        err?.response?.data?.error ||
-        err?.response?.data?.message ||
-        err?.message ||
-        "Failed to resend OTP. Please try again."
+      const message = getUserFacingApiError(err, "Failed to resend OTP. Please try again.")
 
       const isBlocked = message.toLowerCase().includes("blocked") || 
                         message.toLowerCase().includes("too many attempts") || 
@@ -547,6 +554,7 @@ export default function DeliverySignIn() {
         setError("")
       } else {
         setError(message)
+        showUserFacingApiError(err, "Failed to resend OTP. Please try again.")
       }
     } finally {
       setLoading(false)
@@ -992,11 +1000,32 @@ export default function DeliverySignIn() {
             <div className="mt-8 text-center">
               <p className="text-[11px] text-gray-400/80 font-medium leading-relaxed max-w-[320px] mx-auto">
                 By continuing, you agree to our <br />
-                <Link to="/food/delivery/terms" className="text-gray-400 hover:text-[#0E4B9C] transition-colors uppercase tracking-wider font-semibold">TERMS</Link>
+                <Link
+                  to="/food/delivery/terms"
+                  state={{ from: "/food/delivery/login" }}
+                  onClick={clearPersistedLoginPhone}
+                  className="text-gray-400 hover:text-[#0E4B9C] transition-colors uppercase tracking-wider font-semibold"
+                >
+                  TERMS
+                </Link>
                 <span className="mx-2 text-gray-400/80 font-bold">•</span>
-                <Link to="/food/delivery/privacy" className="text-gray-400 hover:text-[#0E4B9C] transition-colors uppercase tracking-wider font-semibold">PRIVACY</Link>
+                <Link
+                  to="/food/delivery/privacy"
+                  state={{ from: "/food/delivery/login" }}
+                  onClick={clearPersistedLoginPhone}
+                  className="text-gray-400 hover:text-[#0E4B9C] transition-colors uppercase tracking-wider font-semibold"
+                >
+                  PRIVACY
+                </Link>
                 <span className="mx-2 text-gray-400/80 font-bold">•</span>
-                <Link to="/food/delivery/help/content" className="text-gray-400 hover:text-[#0E4B9C] transition-colors uppercase tracking-wider font-semibold">SUPPORT</Link>
+                <Link
+                  to="/food/delivery/help/content"
+                  state={{ from: "/food/delivery/login" }}
+                  onClick={clearPersistedLoginPhone}
+                  className="text-gray-400 hover:text-[#0E4B9C] transition-colors uppercase tracking-wider font-semibold"
+                >
+                  SUPPORT
+                </Link>
               </p>
             </div>
           )}

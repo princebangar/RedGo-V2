@@ -19,7 +19,10 @@ import {
   fetchRazorpayPaymentLink,
   isRazorpayConfigured,
 } from '../helpers/razorpay.helper.js';
-import { fetchPolyline } from '../utils/googleMaps.js';
+import { fetchPolyline, toGeoJsonPoint } from '../utils/googleMaps.js';
+import {
+  ensureRiderEarningOnOrder,
+} from './riderEarning.service.js';
 import * as foodTransactionService from './foodTransaction.service.js';
 import * as dispatchService from './order-dispatch.service.js';
 import {
@@ -33,6 +36,7 @@ import {
   sanitizeOrderForExternal,
   isStatusAdvance,
 } from './order.helpers.js';
+import { detectZoneIdForPoint } from '../../utils/zoneGeo.js';
 
 function normalizeOtpValue(value) {
   return String(value ?? '').replace(/\D/g, '').trim();
@@ -107,7 +111,8 @@ export async function getActiveTripsDelivery(deliveryPartnerId) {
   })
     .populate({
       path: 'restaurantId',
-      select: 'restaurantName name phone location addressLine1 area city state profileImage',
+      select:
+        'restaurantName name phone ownerPhone primaryContactNumber location addressLine1 addressLine2 area city state pincode landmark profileImage',
     })
     .populate({ path: 'userId', select: 'name phone' })
     .sort({ updatedAt: -1 })
@@ -270,12 +275,13 @@ function emitOrderUpdate(order, deliveryPartnerId, options = {}) {
         {
           title: userTitle,
           body: userBody,
-          dataOnly: true,
+          // Must include notification payload so Android/iOS show tray UI when app is killed
           data: {
             type: 'order_status_update',
             orderId,
             orderMongoId: order._id?.toString?.() || '',
             orderStatus: status,
+            link: `/food/user/orders/${order._id?.toString?.() || ''}`,
           },
         },
       );
@@ -351,9 +357,12 @@ async function syncRazorpayQrPayment(orderDoc) {
 
 export async function listOrdersAvailableDelivery(deliveryPartnerId, query) {
   const { page, limit, skip } = buildPaginationOptions(query);
-  const [partnerCapacity, orderCapacity] = await Promise.all([
+  const [partnerCapacity, orderCapacity, partner] = await Promise.all([
     getPartnerCashCapacity(deliveryPartnerId),
     getPartnerOrderCapacity(deliveryPartnerId),
+    FoodDeliveryPartner.findById(deliveryPartnerId)
+      .select('lastLat lastLng lastLocationAt')
+      .lean(),
   ]);
   const cashLimit = {
     blocked: !partnerCapacity.hasCapacity,
@@ -378,17 +387,25 @@ export async function listOrdersAvailableDelivery(deliveryPartnerId, query) {
     },
   };
 
-  const filter = partnerCapacity.hasCapacity
-    ? {
-        orderType: 'delivery',
-        $or: [
-          {
-            'dispatch.status': 'unassigned',
-            orderStatus: { $in: ['preparing', 'ready_for_pickup'] },
-          },
-          activeOwnOrderFilter,
-        ],
-      }
+  // Zone-scope new offers: partner must be inside the same service zone as the order.
+  const partnerZoneId = await detectZoneIdForPoint(partner?.lastLat, partner?.lastLng);
+
+  let unassignedOfferFilter = null;
+  if (
+    partnerCapacity.hasCapacity &&
+    orderCapacity.remaining > 0 &&
+    partnerZoneId
+  ) {
+    unassignedOfferFilter = {
+      orderType: 'delivery',
+      'dispatch.status': 'unassigned',
+      orderStatus: { $in: ['preparing', 'ready_for_pickup'] },
+      zoneId: new mongoose.Types.ObjectId(partnerZoneId),
+    };
+  }
+
+  const filter = unassignedOfferFilter
+    ? { $or: [unassignedOfferFilter, activeOwnOrderFilter] }
     : activeOwnOrderFilter;
 
   const [docs, total] = await Promise.all([
@@ -399,7 +416,7 @@ export async function listOrdersAvailableDelivery(deliveryPartnerId, query) {
       .populate('userId', 'name phone email')
       .populate(
         'restaurantId',
-        'restaurantName name address phone ownerPhone location profileImage',
+        'restaurantName name address phone ownerPhone location profileImage zoneId',
       )
       .lean(),
     FoodOrder.countDocuments(filter),
@@ -427,7 +444,14 @@ export async function listOrdersAvailableDelivery(deliveryPartnerId, query) {
   const newOffers = enriched.filter((order) => {
     const dispatchStatus = String(order?.dispatch?.status || '').toLowerCase();
     const orderStatus = String(order?.orderStatus || '').toLowerCase();
+    const orderZoneId = String(order?.zoneId || order?.restaurantId?.zoneId || '');
+    const sameZone = partnerZoneId && orderZoneId && partnerZoneId === orderZoneId;
+    const isOwnAccepted =
+      String(order?.dispatch?.deliveryPartnerId || '') === String(deliveryPartnerId);
+    // New offers must be same-zone; own active trips always included above.
+    if (isOwnAccepted) return false;
     return (
+      sameZone &&
       ['unassigned', 'assigned'].includes(dispatchStatus) &&
       ['preparing', 'ready_for_pickup'].includes(orderStatus)
     );
@@ -456,9 +480,28 @@ export async function acceptOrderDelivery(orderId, deliveryPartnerId) {
   const partnerId = new mongoose.Types.ObjectId(deliveryPartnerId);
 
   const existingOrder = await FoodOrder.findOne(identity)
-    .select('pricing payment dispatch orderStatus')
+    .select('pricing payment dispatch orderStatus zoneId restaurantId')
+    .populate({ path: 'restaurantId', select: 'zoneId location' })
     .lean();
   if (!existingOrder) throw new NotFoundError('Order not found');
+
+  const partner = await FoodDeliveryPartner.findById(deliveryPartnerId)
+    .select('lastLat lastLng lastLocationAt')
+    .lean();
+  const partnerZoneId = await detectZoneIdForPoint(partner?.lastLat, partner?.lastLng);
+  const orderZoneId = String(
+    existingOrder?.zoneId || existingOrder?.restaurantId?.zoneId || '',
+  ).trim();
+
+  const alreadyAcceptedByPartnerEarly =
+    existingOrder?.dispatch?.status === 'accepted' &&
+    String(existingOrder?.dispatch?.deliveryPartnerId || '') === String(deliveryPartnerId);
+
+  if (!alreadyAcceptedByPartnerEarly) {
+    if (!partnerZoneId || !orderZoneId || partnerZoneId !== orderZoneId) {
+      throw new ForbiddenError('This order is outside your service zone');
+    }
+  }
 
   const paymentMethod = String(existingOrder?.payment?.method || 'cash').toLowerCase();
   const isCashOrder = paymentMethod === 'cash';
@@ -480,9 +523,7 @@ export async function acceptOrderDelivery(orderId, deliveryPartnerId) {
   }
 
   const orderCapacity = await getPartnerOrderCapacity(deliveryPartnerId);
-  const alreadyAcceptedByPartner =
-    existingOrder?.dispatch?.status === 'accepted' &&
-    String(existingOrder?.dispatch?.deliveryPartnerId || '') === String(deliveryPartnerId);
+  const alreadyAcceptedByPartner = alreadyAcceptedByPartnerEarly;
 
   if (!alreadyAcceptedByPartner && orderCapacity.remaining <= 0) {
     throw new ValidationError('Maximum concurrent orders reached');
@@ -565,6 +606,16 @@ export async function acceptOrderDelivery(orderId, deliveryPartnerId) {
     }
 
     throw new ValidationError('Order is no longer available to accept');
+  }
+
+  try {
+    const before = Number(order.riderEarning || 0);
+    await ensureRiderEarningOnOrder(order);
+    if (Number(order.riderEarning || 0) > before) {
+      await order.save();
+    }
+  } catch (err) {
+    logger.warn(`ensureRiderEarningOnOrder on accept failed: ${err?.message || err}`);
   }
 
   const responseOrder = sanitizeOrderForExternal(order);
@@ -852,6 +903,13 @@ export async function confirmPickupDelivery(orderId, deliveryPartnerId, billImag
     to: 'picked_up',
     note: 'Order picked up',
   });
+
+  try {
+    await ensureRiderEarningOnOrder(order);
+  } catch (err) {
+    logger.warn(`ensureRiderEarningOnOrder on pickup failed: ${err?.message || err}`);
+  }
+
   await order.save();
 
   emitOrderUpdate(order, deliveryPartnerId);
@@ -1074,7 +1132,16 @@ export async function completeDelivery(orderId, deliveryPartnerId, body = {}) {
     }
   }
 
-  // 4. Update Order State
+  // 4. Backfill rider earning if missing (geocode coords + commission rules)
+  try {
+    await ensureRiderEarningOnOrder(order);
+  } catch (err) {
+    logger.warn(
+      `ensureRiderEarningOnOrder failed for ${order._id}: ${err?.message || err}`,
+    );
+  }
+
+  // 5. Update Order State
   order.orderStatus = 'delivered';
   order.deliveryState = {
     ...(order.deliveryState?.toObject?.() || order.deliveryState || {}),

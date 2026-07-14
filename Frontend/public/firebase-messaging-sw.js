@@ -194,7 +194,10 @@ async function loadFirebaseWebConfig() {
     const visibleClient = await hasVisibleClientForTarget(payload);
     
     if (!visibleClient) {
-      const title = payload?.notification?.title || payload?.data?.title || "New Notification";
+      const title = String(payload?.notification?.title || payload?.data?.title || "New Notification")
+        .replace(/^[👤🏪🛵🛡️]\s*/, "")
+        .replace(/^\[(User|Shop|Rider|Admin)\]\s*/i, "")
+        .trim() || "New Notification";
       const body = payload?.notification?.body || payload?.data?.body || "";
       const image =
         payload?.notification?.image ||
@@ -218,6 +221,7 @@ async function loadFirebaseWebConfig() {
       self.registration.showNotification(title, {
         body,
         icon: "/favicon.ico",
+        badge: "/favicon.ico",
         image,
         tag: notificationKey,
         renotify: false,

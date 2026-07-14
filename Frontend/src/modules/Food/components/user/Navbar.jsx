@@ -188,12 +188,12 @@ export default function Navbar() {
                 >
                   <Avatar className="h-10 w-10">
                     <AvatarImage 
-                      src={userProfile?.profileImage || "/profile_avatar.png"} 
+                      src={userProfile?.profileImage || "/profile_avatar.webp"} 
                       alt="Profile" 
                       className="object-cover"
                     />
                     <AvatarFallback className="bg-primary text-white text-xs">
-                      <img src="/profile_avatar.png" alt="Profile" className="object-cover w-full h-full" />
+                      <img src="/profile_avatar.webp" alt="Profile" className="object-cover w-full h-full" />
                     </AvatarFallback>
                   </Avatar>
                 </Button>
@@ -202,7 +202,7 @@ export default function Navbar() {
                 <Link to="/food/user/cart" state={{ from: routerLocation.pathname }}>
                   <DropdownMenuItem>YOUR CART</DropdownMenuItem>
                 </Link>
-                <Link to="/food/user/profile">
+                <Link to="/food/user/profile" state={{ from: routerLocation.pathname }}>
                   <DropdownMenuItem>Profile</DropdownMenuItem>
                 </Link>
                 <Link to="/food/user/orders">

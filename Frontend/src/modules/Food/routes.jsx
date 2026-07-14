@@ -6,8 +6,8 @@ import Loader from "@food/components/Loader"
 import AuthInitializer from "@food/components/AuthInitializer"
 import PushSoundEnableButton from "@food/components/PushSoundEnableButton"
 import { initPushNotificationClient, registerWebPushForCurrentModule } from "@food/utils/firebaseMessaging"
+import { isExactMainTabPath } from "@food/utils/mainTabRoutes"
 import { isModuleAuthenticated } from "@food/utils/auth"
-import { useRestaurantNotifications } from "@food/hooks/useRestaurantNotifications"
 import { AppShellSkeleton } from "./components/ui/loading-skeletons"
 import { Loader2 } from "lucide-react"
 
@@ -25,6 +25,14 @@ const UserRouter = lazy(() => import("@food/components/user/UserRouter"))
 
 // Restaurant Module
 const RestaurantRouter = lazy(() => import("@food/components/restaurant/RestaurantRouter"))
+const RestaurantGlobalNotificationListenerInner = lazy(() =>
+  import("@food/hooks/useRestaurantNotifications").then((mod) => ({
+    default: function RestaurantGlobalNotificationListenerInner() {
+      mod.useRestaurantNotifications()
+      return null
+    },
+  }))
+)
 
 // Admin Module
 const AdminRouter = lazy(() => import("@food/components/admin/AdminRouter"))
@@ -65,11 +73,6 @@ function ScrollToTop() {
     window.scrollTo(0, 0);
   }, [pathname]);
   return null;
-}
-
-function RestaurantGlobalNotificationListenerInner() {
-  useRestaurantNotifications()
-  return null
 }
 
 function RestaurantGlobalNotificationListener() {
@@ -114,17 +117,42 @@ function RestaurantGlobalNotificationListener() {
     return null
   }
 
-  return <RestaurantGlobalNotificationListenerInner />
+  return (
+    <Suspense fallback={null}>
+      <RestaurantGlobalNotificationListenerInner />
+    </Suspense>
+  )
 }
 
 export default function App() {
   const location = useLocation()
   const navigate = useNavigate()
+  const lastFcmPathRef = React.useRef("")
 
   useEffect(() => {
     initPushNotificationClient()
-    registerWebPushForCurrentModule(location.pathname)
+
+    const pathname = location.pathname
+    const isUserMainTabSwitch =
+      isExactMainTabPath(pathname) &&
+      isExactMainTabPath(lastFcmPathRef.current) &&
+      pathname !== lastFcmPathRef.current
+
+    lastFcmPathRef.current = pathname
+
+    if (isUserMainTabSwitch) return
+
+    registerWebPushForCurrentModule(pathname)
   }, [location.pathname])
+
+  // Ensure FCM token is saved once after login (not on every tab switch)
+  useEffect(() => {
+    const onLoginSuccess = () => {
+      registerWebPushForCurrentModule("/food/user")
+    }
+    window.addEventListener("userLoginSuccess", onLoginSuccess)
+    return () => window.removeEventListener("userLoginSuccess", onLoginSuccess)
+  }, [])
 
   // Global Auth Failure Listener EXACTLY like Redgo
   useEffect(() => {

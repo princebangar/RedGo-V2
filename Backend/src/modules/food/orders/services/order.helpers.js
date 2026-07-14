@@ -42,8 +42,14 @@ export function assertRestaurantDeliversToZone(
   const restaurantZoneId = restaurant?.zoneId ? String(restaurant.zoneId) : "";
   const deliveryZoneId = zoneId ? String(zoneId) : "";
 
-  if (restaurantZoneId && deliveryZoneId && restaurantZoneId !== deliveryZoneId) {
-    throw new ValidationError("This restaurant does not deliver to your selected location");
+  // Same-zone only: never allow Indore user → Punjab restaurant (or missing zone).
+  if (restaurantZoneId) {
+    if (!deliveryZoneId) {
+      throw new ValidationError("Delivery location is outside this restaurant's service zone");
+    }
+    if (restaurantZoneId !== deliveryZoneId) {
+      throw new ValidationError("This restaurant does not deliver to your selected location");
+    }
   }
 
   if (
@@ -231,18 +237,40 @@ export function buildDeliverySocketPayload(orderDoc, restaurantDoc = null) {
       order?.restaurantId,
     restaurantName: restaurant?.restaurantName || order?.restaurantName,
     restaurantAddress:
+      [
+        restaurant?.addressLine1,
+        restaurant?.addressLine2,
+        restaurant?.area,
+        restaurant?.city,
+        restaurant?.state,
+        restaurant?.pincode,
+      ]
+        .filter(Boolean)
+        .join(', ') ||
       restaurantLocation?.address ||
       restaurantLocation?.formattedAddress ||
-      restaurant?.addressLine1 ||
       "",
-    restaurantPhone: restaurant?.phone || "",
+    restaurantPhone:
+      restaurant?.primaryContactNumber ||
+      restaurant?.ownerPhone ||
+      restaurant?.phone ||
+      "",
     restaurantLocation: {
       latitude: restaurantLocation?.latitude,
       longitude: restaurantLocation?.longitude,
       address:
+        [
+          restaurant?.addressLine1,
+          restaurant?.addressLine2,
+          restaurant?.area,
+          restaurant?.city,
+          restaurant?.state,
+          restaurant?.pincode,
+        ]
+          .filter(Boolean)
+          .join(', ') ||
         restaurantLocation?.address ||
         restaurantLocation?.formattedAddress ||
-        restaurant?.addressLine1 ||
         "",
       area: restaurantLocation?.area || restaurant?.area || "",
       city: restaurantLocation?.city || restaurant?.city || "",

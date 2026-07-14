@@ -32,7 +32,7 @@ export async function updateBusinessSettings(req, res, next) {
             return res.status(400).json({ success: false, message: 'Invalid data format' });
         }
 
-        const { companyName, email, phoneCountryCode, phoneNumber, address, state, pincode, region } = data;
+        const { companyName, email, phoneCountryCode, phoneNumber, address, state, pincode, region, removeLogo, removeFavicon } = data;
 
         // Ensure string inputs for validation to prevent crashes from non-string values
         const s_companyName = String(companyName || "").trim();
@@ -41,6 +41,8 @@ export async function updateBusinessSettings(req, res, next) {
         const s_address = String(address || "").trim();
         const s_state = String(state || "").trim();
         const s_pincode = String(pincode || "").trim();
+        const shouldRemoveLogo = removeLogo === true || removeLogo === 'true' || removeLogo === 1 || removeLogo === '1';
+        const shouldRemoveFavicon = removeFavicon === true || removeFavicon === 'true' || removeFavicon === 1 || removeFavicon === '1';
 
         // Validation
         if (!s_companyName || s_companyName.length < 2 || s_companyName.length > 50) {
@@ -75,10 +77,11 @@ export async function updateBusinessSettings(req, res, next) {
                 number: s_phoneNumber || settings.phone?.number || ''
             };
         }
+        // Always persist optional text fields (including empty = cleared)
         if (address !== undefined) settings.address = s_address;
         if (state !== undefined) settings.state = s_state;
         if (pincode !== undefined) settings.pincode = s_pincode;
-        if (region) settings.region = String(region).trim();
+        if (region !== undefined) settings.region = String(region || 'India').trim() || 'India';
 
         // Handle file uploads
         if (req.files) {
@@ -96,6 +99,16 @@ export async function updateBusinessSettings(req, res, next) {
                     publicId: faviconResult.public_id
                 };
             }
+        }
+
+        // Explicit removals (only when no replacement file was uploaded)
+        if (shouldRemoveLogo && !(req.files && req.files.logo)) {
+            settings.logo = { url: '', publicId: '' };
+            settings.markModified('logo');
+        }
+        if (shouldRemoveFavicon && !(req.files && req.files.favicon)) {
+            settings.favicon = { url: '', publicId: '' };
+            settings.markModified('favicon');
         }
 
         await settings.save();

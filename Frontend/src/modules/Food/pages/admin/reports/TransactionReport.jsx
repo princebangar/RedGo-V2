@@ -1,9 +1,10 @@
-import { useState, useMemo, useEffect } from "react"
-import { BarChart3, ChevronDown, Info, FileText, FileSpreadsheet, Code, Loader2 } from "lucide-react"
+import { useState, useMemo, useEffect, useRef } from "react"
+import { BarChart3, ChevronDown, Info, FileText, FileSpreadsheet, Code, Loader2, X } from "lucide-react"
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from "@food/components/ui/dropdown-menu"
 import { exportTransactionReportToCSV, exportTransactionReportToExcel, exportTransactionReportToPDF, exportTransactionReportToJSON } from "@food/components/admin/reports/reportsExportUtils"
 import { adminAPI } from "@food/api"
 import { toast } from "sonner"
+import { Skeleton } from "@food/components/ui/skeleton"
 
 // Import icons from Transaction-report-icons
 import completedIcon from "@food/assets/Transaction-report-icons/trx1.svg"
@@ -18,6 +19,75 @@ import exportIcon from "@food/assets/Dashboard-icons/image9.png"
 const debugLog = (...args) => {}
 const debugWarn = (...args) => {}
 const debugError = (...args) => {}
+
+function AmountSkeleton({ className = "h-6 w-24 mx-auto" }) {
+  return <Skeleton className={className} />
+}
+
+const METRIC_INFO = {
+  completed:
+    "Total GMV from delivered orders — sum of each delivered order’s pricing.total. Pulled live from FoodOrder data.",
+  refunded:
+    "Total amount actually refunded to customers (online/wallet payments where payment status is refunded). COD cancels are excluded — no money was collected, so nothing is refunded.",
+  admin:
+    "Platform earnings = restaurant commission + platform fee + delivery net (delivery fee − rider earning) + GST, for delivered orders only.",
+  restaurant:
+    "Restaurant share = (item subtotal + packaging) − restaurant commission, for delivered orders only.",
+  deliveryman:
+    "Total delivery partner earnings — sum of riderEarning on delivered orders.",
+}
+
+function InfoTip({ tipKey, colorClass = "bg-green-500", align = "right" }) {
+  const [open, setOpen] = useState(false)
+  const wrapRef = useRef(null)
+
+  useEffect(() => {
+    if (!open) return undefined
+    const onDoc = (e) => {
+      if (wrapRef.current && !wrapRef.current.contains(e.target)) setOpen(false)
+    }
+    document.addEventListener("mousedown", onDoc)
+    return () => document.removeEventListener("mousedown", onDoc)
+  }, [open])
+
+  return (
+    <div className="relative inline-flex" ref={wrapRef}>
+      <button
+        type="button"
+        aria-label="What does this mean?"
+        aria-expanded={open}
+        onClick={(e) => {
+          e.stopPropagation()
+          setOpen((v) => !v)
+        }}
+        className={`w-5 h-5 sm:w-6 sm:h-6 rounded-full ${colorClass} flex items-center justify-center text-white shadow-sm hover:brightness-110 active:scale-95 transition-all cursor-pointer`}
+      >
+        <Info className="w-3 h-3" />
+      </button>
+      {open && (
+        <div
+          role="dialog"
+          className={`absolute z-50 mt-2 w-64 sm:w-72 rounded-xl border border-slate-200 bg-white p-3 shadow-lg text-left ${
+            align === "left" ? "left-0" : "right-0"
+          }`}
+        >
+          <div className="flex items-start justify-between gap-2 mb-1.5">
+            <p className="text-[11px] font-bold uppercase tracking-wide text-slate-500">How this is calculated</p>
+            <button
+              type="button"
+              aria-label="Close"
+              onClick={() => setOpen(false)}
+              className="p-0.5 rounded text-slate-400 hover:text-slate-700"
+            >
+              <X className="w-3.5 h-3.5" />
+            </button>
+          </div>
+          <p className="text-xs text-slate-700 leading-relaxed">{METRIC_INFO[tipKey]}</p>
+        </div>
+      )}
+    </div>
+  )
+}
 
 
 export default function TransactionReport() {
@@ -90,6 +160,7 @@ export default function TransactionReport() {
           search: searchQuery || undefined,
           zone: filters.zone !== "All Zones" ? filters.zone : undefined,
           restaurant: filters.restaurant !== "All restaurants" ? filters.restaurant : undefined,
+          time: filters.time || "All Time",
           fromDate: fromDate ? fromDate.toISOString() : undefined,
           toDate: toDate ? toDate.toISOString() : undefined,
           limit: 1000
@@ -126,7 +197,7 @@ export default function TransactionReport() {
   }, [searchQuery, filters])
 
   const filteredTransactions = useMemo(() => {
-    return transactions // Backend already filters, so just return transactions
+    return transactions
   }, [transactions])
 
   const handleExport = (format) => {
@@ -143,7 +214,8 @@ export default function TransactionReport() {
   }
 
   const handleFilterApply = () => {
-    // Filters are already applied via useMemo
+    // Filters already live-bound via selects; force a light re-fetch by cloning state
+    setFilters((prev) => ({ ...prev }))
   }
 
   const handleResetFilters = () => {
@@ -152,9 +224,13 @@ export default function TransactionReport() {
       restaurant: "All restaurants",
       time: "All Time",
     })
+    setSearchQuery("")
   }
 
-  const activeFiltersCount = (filters.zone !== "All Zones" ? 1 : 0) + (filters.restaurant !== "All restaurants" ? 1 : 0) + (filters.time !== "All Time" ? 1 : 0)
+  const activeFiltersCount =
+    (filters.zone !== "All Zones" ? 1 : 0) +
+    (filters.restaurant !== "All restaurants" ? 1 : 0) +
+    (filters.time !== "All Time" ? 1 : 0)
 
   const formatCurrency = (amount) => {
     if (amount >= 1000) {
@@ -172,10 +248,10 @@ export default function TransactionReport() {
   const getStatusBadgeClasses = (status) => {
     const normalized = String(status || '').toLowerCase()
 
-    if (['captured', 'settled', 'completed', 'paid', 'delivered'].includes(normalized)) {
+    if (['captured', 'settled', 'completed', 'paid', 'delivered', 'confirmed'].includes(normalized)) {
       return 'bg-green-100 text-green-700'
     }
-    if (['pending', 'created', 'authorized', 'cod_pending'].includes(normalized)) {
+    if (['pending', 'created', 'authorized', 'cod_pending', 'processing'].includes(normalized)) {
       return 'bg-yellow-100 text-yellow-700'
     }
     if (['failed', 'refunded', 'cancelled', 'cancelled_by_admin', 'cancelled_by_user', 'cancelled_by_restaurant'].includes(normalized)) {
@@ -185,16 +261,20 @@ export default function TransactionReport() {
     return 'bg-slate-100 text-slate-700'
   }
 
-  if (loading) {
-    return (
-      <div className="p-2 lg:p-3 bg-slate-50 min-h-screen flex items-center justify-center">
-        <div className="flex flex-col items-center gap-4">
-          <Loader2 className="w-8 h-8 text-blue-600 animate-spin" />
-          <p className="text-gray-600">Loading transaction report...</p>
-        </div>
-      </div>
-    )
+  const formatStatusLabel = (status) => {
+    const raw = String(status || 'N/A').trim()
+    if (!raw) return 'N/A'
+    const lower = raw.toLowerCase()
+    // Legacy ledger values → user-facing labels
+    if (lower === 'captured' || lower === 'settled') return 'Delivered'
+    if (lower === 'completed') return 'Delivered'
+    return raw
+      .split(/[_\s]+/)
+      .map((w) => (w ? w.charAt(0).toUpperCase() + w.slice(1).toLowerCase() : w))
+      .join(' ')
   }
+
+  const amountsLoading = loading || isRefreshing
 
   return (
     <div className="p-2 lg:p-3 bg-slate-50 min-h-screen">
@@ -278,44 +358,43 @@ export default function TransactionReport() {
 
         {/* Summary Cards */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mb-3">
-          {/* Left Column - Large Cards */}
           <div className="space-y-3">
-            {/* Completed Transaction - Green */}
             <div className="rounded-lg shadow-sm border border-slate-200 p-4" style={{ backgroundColor: '#f1f5f9' }}>
               <div className="relative mb-3 flex justify-center">
                 <div className="w-16 h-16 rounded-full bg-green-100 flex items-center justify-center">
                   <img src={completedIcon} alt="Completed" className="w-12 h-12" />
                 </div>
-                <div className="absolute top-0 right-0 w-6 h-6 rounded-full bg-green-500 flex items-center justify-center">
-                  <Info className="w-3 h-3 text-white" />
+                <div className="absolute top-0 right-0">
+                  <InfoTip tipKey="completed" colorClass="bg-green-500" align="right" />
                 </div>
               </div>
               <div className="text-center">
-                <p className="text-xl font-bold text-green-600 mb-1">{formatCurrency(summary.completedTransaction)}</p>
+                <div className="text-xl font-bold text-green-600 mb-1 min-h-[1.75rem] flex items-center justify-center">
+                  {amountsLoading ? <AmountSkeleton className="h-7 w-28" /> : formatCurrency(summary.completedTransaction)}
+                </div>
                 <p className="text-sm text-slate-600 leading-tight">Completed Transaction</p>
               </div>
             </div>
 
-            {/* Refunded Transaction - Red */}
             <div className="rounded-lg shadow-sm border border-slate-200 p-4" style={{ backgroundColor: '#f1f5f9' }}>
               <div className="relative mb-3 flex justify-center">
                 <div className="w-16 h-16 rounded-full bg-red-100 flex items-center justify-center">
                   <img src={refundedIcon} alt="Refunded" className="w-12 h-12" />
                 </div>
-                <div className="absolute top-0 right-0 w-6 h-6 rounded-full bg-red-500 flex items-center justify-center">
-                  <Info className="w-3 h-3 text-white" />
+                <div className="absolute top-0 right-0">
+                  <InfoTip tipKey="refunded" colorClass="bg-red-500" align="right" />
                 </div>
               </div>
               <div className="text-center">
-                <p className="text-xl font-bold text-red-600 mb-1">{formatFullCurrency(summary.refundedTransaction)}</p>
+                <div className="text-xl font-bold text-red-600 mb-1 min-h-[1.75rem] flex items-center justify-center">
+                  {amountsLoading ? <AmountSkeleton className="h-7 w-28" /> : formatFullCurrency(summary.refundedTransaction)}
+                </div>
                 <p className="text-sm text-slate-600 leading-tight">Refunded Transaction</p>
               </div>
             </div>
           </div>
 
-          {/* Right Column - Small Cards */}
           <div className="space-y-3">
-            {/* Admin Earning */}
             <div className="rounded-lg shadow-sm border border-slate-200 p-3" style={{ backgroundColor: '#f1f5f9' }}>
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-3">
@@ -324,16 +403,15 @@ export default function TransactionReport() {
                   </div>
                   <div className="flex items-center gap-2">
                     <p className="text-sm font-semibold text-slate-900">Admin Earning</p>
-                    <div className="w-5 h-5 rounded-full bg-green-500 flex items-center justify-center">
-                      <Info className="w-3 h-3 text-white" />
-                    </div>
+                    <InfoTip tipKey="admin" colorClass="bg-green-500" align="left" />
                   </div>
                 </div>
-                <p className="text-base font-bold text-slate-900">{formatCurrency(summary.adminEarning)}</p>
+                <div className="text-base font-bold text-slate-900 min-w-[4.5rem] flex justify-end">
+                  {amountsLoading ? <AmountSkeleton className="h-5 w-16" /> : formatCurrency(summary.adminEarning)}
+                </div>
               </div>
             </div>
 
-            {/* Restaurant Earning */}
             <div className="rounded-lg shadow-sm border border-slate-200 p-3" style={{ backgroundColor: '#f1f5f9' }}>
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-3">
@@ -342,16 +420,15 @@ export default function TransactionReport() {
                   </div>
                   <div className="flex items-center gap-2">
                     <p className="text-sm font-semibold text-slate-900">Restaurant Earning</p>
-                    <div className="w-5 h-5 rounded-full bg-blue-500 flex items-center justify-center">
-                      <Info className="w-3 h-3 text-white" />
-                    </div>
+                    <InfoTip tipKey="restaurant" colorClass="bg-blue-500" align="left" />
                   </div>
                 </div>
-                <p className="text-base font-bold text-green-600">{formatCurrency(summary.restaurantEarning)}</p>
+                <div className="text-base font-bold text-green-600 min-w-[4.5rem] flex justify-end">
+                  {amountsLoading ? <AmountSkeleton className="h-5 w-16" /> : formatCurrency(summary.restaurantEarning)}
+                </div>
               </div>
             </div>
 
-            {/* Deliveryman Earning */}
             <div className="rounded-lg shadow-sm border border-slate-200 p-3" style={{ backgroundColor: '#f1f5f9' }}>
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-3">
@@ -360,12 +437,12 @@ export default function TransactionReport() {
                   </div>
                   <div className="flex items-center gap-2">
                     <p className="text-sm font-semibold text-slate-900">Deliveryman Earning</p>
-                    <div className="w-5 h-5 rounded-full bg-red-500 flex items-center justify-center">
-                      <Info className="w-3 h-3 text-white" />
-                    </div>
+                    <InfoTip tipKey="deliveryman" colorClass="bg-red-500" align="left" />
                   </div>
                 </div>
-                <p className="text-base font-bold text-orange-600">{formatCurrency(summary.deliverymanEarning)}</p>
+                <div className="text-base font-bold text-orange-600 min-w-[4.5rem] flex justify-end">
+                  {amountsLoading ? <AmountSkeleton className="h-5 w-16" /> : formatCurrency(summary.deliverymanEarning)}
+                </div>
               </div>
             </div>
           </div>
@@ -374,7 +451,15 @@ export default function TransactionReport() {
         {/* Order Transactions Section */}
         <div className="bg-white rounded-lg shadow-sm border border-slate-200 p-3">
           <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 mb-3">
-            <h2 className="text-base font-bold text-slate-900">Order Transactions {filteredTransactions.length}</h2>
+            <h2 className="text-base font-bold text-slate-900">
+              Order Transactions{" "}
+              {amountsLoading ? (
+                <AmountSkeleton className="inline-block h-4 w-8 align-middle" />
+              ) : (
+                filteredTransactions.length
+              )}
+              <span className="ml-2 text-xs font-medium text-slate-500">({filters.time})</span>
+            </h2>
 
             <div className="flex items-center gap-2">
               <div className="relative flex-1 sm:flex-initial min-w-[180px]">
@@ -442,7 +527,17 @@ export default function TransactionReport() {
                 </tr>
               </thead>
               <tbody className="bg-white divide-y divide-slate-100">
-                {filteredTransactions.length === 0 ? (
+                {amountsLoading ? (
+                  Array.from({ length: 6 }).map((_, index) => (
+                    <tr key={`sk-${index}`}>
+                      {Array.from({ length: 11 }).map((__, col) => (
+                        <td key={col} className="px-1.5 py-2">
+                          <AmountSkeleton className="h-3 w-full max-w-[4.5rem]" />
+                        </td>
+                      ))}
+                    </tr>
+                  ))
+                ) : filteredTransactions.length === 0 ? (
                   <tr>
                     <td colSpan={11} className="px-6 py-20 text-center">
                       <div className="flex flex-col items-center justify-center">
@@ -504,7 +599,7 @@ export default function TransactionReport() {
                       </td>
                       <td className="px-1.5 py-1">
                         <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-[9px] font-bold uppercase tracking-wide ${getStatusBadgeClasses(transaction.status || transaction.orderStatus)}`}>
-                          {transaction.status || transaction.orderStatus || 'N/A'}
+                          {formatStatusLabel(transaction.status || transaction.orderStatus)}
                         </span>
                       </td>
                     </tr>

@@ -18,6 +18,11 @@ import api from "@food/api"
 import { restaurantAPI, adminAPI, searchAPI } from "@food/api"
 import { API_BASE_URL } from "@food/api/config"
 import { useProfile } from "@food/context/ProfileContext"
+import {
+  filterCategoriesForVegMode,
+  isNonVegCategoryScope,
+  isVegMenuItem,
+} from "@food/utils/vegMode"
 import { useLocation } from "@food/hooks/useLocation"
 import { useZone } from "@food/hooks/useZone"
 import { useDelayedLoading } from "@food/hooks/useDelayedLoading"
@@ -47,7 +52,7 @@ export default function CategoryPage({ embeddedCategorySlug = null, hideHeader =
   const params = useParams()
   const category = embeddedCategorySlug || params.category
   const navigate = useNavigate()
-  const { vegMode } = useProfile()
+  const { vegMode, vegModeOption } = useProfile()
   const { location } = useLocation()
   const { zoneId, isOutOfService, loading: loadingZone } = useZone(location)
   const navType = useNavigationType()
@@ -85,6 +90,27 @@ export default function CategoryPage({ embeddedCategorySlug = null, hideHeader =
   // State for categories from admin
   const [categories, setCategories] = useState([])
   const [loadingCategories, setLoadingCategories] = useState(true)
+
+  const displayCategories = useMemo(() => {
+    if (!Array.isArray(categories)) return []
+    if (!vegMode) return categories
+    return categories.filter(
+      (cat) => cat?.id === "all" || cat?.slug === "all" || !isNonVegCategoryScope(cat),
+    )
+  }, [categories, vegMode])
+
+  // Clear non-veg category selection when veg mode turns on
+  useEffect(() => {
+    if (!vegMode || !selectedCategory || selectedCategory === "all") return
+    const selected = categories.find(
+      (cat) =>
+        String(cat?.slug || "").toLowerCase() === String(selectedCategory).toLowerCase() ||
+        String(cat?.id || "") === String(selectedCategory),
+    )
+    if (selected && isNonVegCategoryScope(selected)) {
+      setSelectedCategory("all")
+    }
+  }, [vegMode, selectedCategory, categories])
 
   const activeCategory = useMemo(() => {
     if (!selectedCategory || selectedCategory === 'all' || !categories) return null;
@@ -591,6 +617,7 @@ export default function CategoryPage({ embeddedCategorySlug = null, hideHeader =
               image: cat.image || foodImages[0],
               slug: cat.slug || cat.name.toLowerCase().replace(/\s+/g, '-'),
               type: cat.type,
+              foodTypeScope: cat.foodTypeScope || cat.type || "",
             }))
           ]
 
@@ -1262,6 +1289,14 @@ export default function CategoryPage({ embeddedCategorySlug = null, hideHeader =
     const sourceData = restaurantsData.length > 0 ? restaurantsData : []
     let filtered = [...sourceData]
 
+    if (vegMode && vegModeOption === "pure-veg") {
+      filtered = filtered.filter((r) => {
+        if (r?.hasNonVegMenu === true) return false
+        if (r?.isPureVeg === true || r?.hasNonVegMenu === false) return true
+        return r?.pureVegRestaurant === true
+      })
+    }
+
     // Filter by category - Dynamic filtering based on menu items
     if (selectedCategory && selectedCategory !== 'all') {
       const expandedDishes = []
@@ -1275,7 +1310,7 @@ export default function CategoryPage({ embeddedCategorySlug = null, hideHeader =
 
             if (categoryDishes.length > 0) {
               const validDishes = vegMode
-                ? categoryDishes.filter((dish) => dish.foodType === "Veg")
+                ? categoryDishes.filter((dish) => isVegMenuItem(dish))
                 : categoryDishes;
 
               validDishes.forEach((dishForCard) => {
@@ -1301,15 +1336,30 @@ export default function CategoryPage({ embeddedCategorySlug = null, hideHeader =
         filtered = vegMode
           ? fallbackDishes.filter((dish) => dish.categoryDishFoodType === "Veg")
           : fallbackDishes
+        if (vegMode && vegModeOption === "pure-veg") {
+          filtered = filtered.filter((r) => {
+            if (r?.hasNonVegMenu === true) return false
+            if (r?.isPureVeg === true || r?.hasNonVegMenu === false) return true
+            return r?.pureVegRestaurant === true
+          })
+        }
       }
     }
 
     return applyFiltersAndSorting(filtered)
-  }, [selectedCategory, activeFilters, deferredSearchQuery, restaurantsData, categoryKeywords, vegMode, approvedFoodsData, sortBy])
+  }, [selectedCategory, activeFilters, deferredSearchQuery, restaurantsData, categoryKeywords, vegMode, vegModeOption, approvedFoodsData, sortBy])
 
   const filteredAllRestaurants = useMemo(() => {
     const sourceData = restaurantsData.length > 0 ? restaurantsData : []
     let filtered = [...sourceData]
+
+    if (vegMode && vegModeOption === "pure-veg") {
+      filtered = filtered.filter((r) => {
+        if (r?.hasNonVegMenu === true) return false
+        if (r?.isPureVeg === true || r?.hasNonVegMenu === false) return true
+        return r?.pureVegRestaurant === true
+      })
+    }
 
     // Filter by category - Dynamic filtering based on menu items
     // If category is selected, expand restaurants into dish cards (one card per matching dish)
@@ -1325,7 +1375,7 @@ export default function CategoryPage({ embeddedCategorySlug = null, hideHeader =
 
             if (categoryDishes.length > 0) {
               const validDishes = vegMode
-                ? categoryDishes.filter((dish) => dish.foodType === "Veg")
+                ? categoryDishes.filter((dish) => isVegMenuItem(dish))
                 : categoryDishes;
 
               validDishes.forEach((dishForCard) => {
@@ -1351,11 +1401,18 @@ export default function CategoryPage({ embeddedCategorySlug = null, hideHeader =
         filtered = vegMode
           ? fallbackDishes.filter((dish) => dish.categoryDishFoodType === "Veg")
           : fallbackDishes
+        if (vegMode && vegModeOption === "pure-veg") {
+          filtered = filtered.filter((r) => {
+            if (r?.hasNonVegMenu === true) return false
+            if (r?.isPureVeg === true || r?.hasNonVegMenu === false) return true
+            return r?.pureVegRestaurant === true
+          })
+        }
       }
     }
 
     return applyFiltersAndSorting(filtered)
-  }, [selectedCategory, activeFilters, deferredSearchQuery, restaurantsData, categoryKeywords, vegMode, approvedFoodsData, sortBy])
+  }, [selectedCategory, activeFilters, deferredSearchQuery, restaurantsData, categoryKeywords, vegMode, vegModeOption, approvedFoodsData, sortBy])
 
   const showRestaurantSkeleton = useDelayedLoading(
     isLoadingFilterResults || loadingRestaurants || loadingZone || loadingCategories || (isEnrichingMenus && selectedCategory !== 'all'),
@@ -1445,7 +1502,7 @@ export default function CategoryPage({ embeddedCategorySlug = null, hideHeader =
               {showCategorySkeleton ? (
                 <CategoryChipRowSkeleton className="py-3" />
               ) : (
-                categories && categories.length > 0 ? categories.map((cat) => {
+                categories && displayCategories.length > 0 ? displayCategories.map((cat) => {
                   const categorySlug = cat.slug || cat.id
                   const isSelected = selectedCategory === categorySlug || selectedCategory === cat.id
                   const isAllCategory = categorySlug === "all" || cat.id === "all"

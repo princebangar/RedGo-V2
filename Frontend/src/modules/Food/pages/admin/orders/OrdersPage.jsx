@@ -42,6 +42,15 @@ export default function OrdersPage({ statusKey = "all" }) {
   const config = statusConfig[statusKey] || statusConfig["all"]
   const [orders, setOrders] = useState([])
   const [isLoading, setIsLoading] = useState(true)
+  const [currentPage, setCurrentPage] = useState(1)
+  const [pageSize, setPageSize] = useState(() => {
+    try {
+      return Number(localStorage.getItem("admin_orders_pageSize")) || 20
+    } catch {
+      return 20
+    }
+  })
+  const [totalOrders, setTotalOrders] = useState(0)
   const [processingRefund, setProcessingRefund] = useState(null)
   const [processingActionOrderId, setProcessingActionOrderId] = useState(null)
   const [actionLoadingType, setActionLoadingType] = useState(null) // 'accept' | 'reject'
@@ -327,8 +336,8 @@ export default function OrdersPage({ statusKey = "all" }) {
     try {
       if (!silent) setIsLoading(true)
       const params = {
-        page: 1,
-        limit: 100,
+        page: currentPage,
+        limit: pageSize,
         status:
           statusKey === "all"
             ? undefined
@@ -340,12 +349,15 @@ export default function OrdersPage({ statusKey = "all" }) {
 
       const response = await adminAPI.getOrders(params)
 
+      const payload = response?.data?.data || response?.data || {}
       const rawOrders =
-        response?.data?.data?.orders ??
-        response?.data?.orders ??
-        response?.data?.data?.docs ??
-        response?.data?.data
+        payload?.orders ??
+        payload?.docs ??
+        payload?.data ??
+        (Array.isArray(payload) ? payload : [])
       const nextOrders = Array.isArray(rawOrders) ? rawOrders : []
+      const meta = payload?.meta || payload?.pagination || {}
+      const nextTotal = Number(meta.total ?? payload?.total ?? nextOrders.length) || 0
 
       if (response.data?.success) {
         const nextOrderIds = new Set(
@@ -366,7 +378,7 @@ export default function OrdersPage({ statusKey = "all" }) {
           }
         }
 
-        if (withRingCheck && !isFirstLoadRef.current && statusKey === "all") {
+        if (withRingCheck && !isFirstLoadRef.current && statusKey === "all" && currentPage === 1) {
           const hasNewOrder = [...nextOrderIds].some(
             (id) => !seenOrderIdsRef.current.has(id),
           )
@@ -388,12 +400,14 @@ export default function OrdersPage({ statusKey = "all" }) {
         seenOrderIdsRef.current = nextOrderIds
         isFirstLoadRef.current = false
         setOrders(nextOrders)
+        setTotalOrders(nextTotal)
         // Refresh sidebar badges count
         refreshSidebarBadges()
       } else {
         debugError("Failed to fetch orders:", response.data)
         if (!silent) toast.error("Failed to fetch orders")
         setOrders([])
+        setTotalOrders(0)
       }
     } catch (error) {
       debugError("Error fetching orders:", error)
@@ -401,10 +415,21 @@ export default function OrdersPage({ statusKey = "all" }) {
         toast.error(error.response?.data?.message || "Failed to fetch orders")
       }
       setOrders([])
+      setTotalOrders(0)
     } finally {
       if (!silent) setIsLoading(false)
     }
-  }, [statusKey, playDefaultRing, showBrowserNotification, startAlertLoop, stopOrderAlert])
+  }, [statusKey, currentPage, pageSize, playDefaultRing, showBrowserNotification, startAlertLoop, stopOrderAlert])
+
+  useEffect(() => {
+    setCurrentPage(1)
+    isFirstLoadRef.current = true
+    seenOrderIdsRef.current = new Set()
+  }, [statusKey])
+
+  useEffect(() => {
+    fetchOrders({ silent: false, withRingCheck: false })
+  }, [fetchOrders])
 
   const normalizedOrders = useMemo(() => {
     const safeOrders = Array.isArray(orders) ? orders : []
@@ -421,6 +446,7 @@ export default function OrdersPage({ statusKey = "all" }) {
             day: "2-digit",
             month: "short",
             year: "numeric",
+            timeZone: "Asia/Kolkata",
           }).toUpperCase()
         : ""
       const time = createdAt
@@ -428,6 +454,7 @@ export default function OrdersPage({ statusKey = "all" }) {
             hour: "2-digit",
             minute: "2-digit",
             hour12: true,
+            timeZone: "Asia/Kolkata",
           }).toUpperCase()
         : ""
 
@@ -457,13 +484,16 @@ export default function OrdersPage({ statusKey = "all" }) {
       const isQrPayment = method === "razorpay_qr" || method === "qr" || (method === "cod" && hasRazorpayId) || (method === "cash" && hasRazorpayId);
       
       let paymentStatus = order.paymentStatus
+      if (paymentStatus === "Collected") paymentStatus = "Paid"
+      if (paymentStatus === "Not Collected") paymentStatus = "COD Pending"
       const paymentStatusRaw = order.payment?.status || ""
       if (!paymentStatus) {
         const s = String(paymentStatusRaw || "").toLowerCase()
         if (s === "refunded") paymentStatus = "Refunded"
-        else if (s === "paid" || s === "authorized" || s === "captured" || s === "settled" || isQrPayment) paymentStatus = "Paid"
+        else if (s === "paid" || s === "authorized" || s === "captured" || s === "settled") paymentStatus = "Paid"
         else if (s === "failed") paymentStatus = "Failed"
-        else if (backendStatus === "delivered" && (method === "cash" || method === "cod" || method === "cash on delivery")) paymentStatus = "Paid"
+        else if (s === "cod_pending") paymentStatus = "COD Pending"
+        else if (isQrPayment) paymentStatus = "Paid"
         else paymentStatus = "Pending"
       }
 
@@ -483,9 +513,11 @@ export default function OrdersPage({ statusKey = "all" }) {
         displayStatus = "Pending"
       } else if (backendStatus === "confirmed") {
         displayStatus = "Accepted"
-      } else if (backendStatus === "preparing" || backendStatus === "ready_for_pickup") {
+      } else if (backendStatus === "preparing") {
         displayStatus = "Processing"
-      } else if (backendStatus === "picked_up") {
+      } else if (backendStatus === "ready_for_pickup" || backendStatus === "reached_pickup") {
+        displayStatus = "Ready for Pickup"
+      } else if (backendStatus === "picked_up" || backendStatus === "reached_drop") {
         displayStatus = "Food On The Way"
       } else if (backendStatus === "delivered") {
         displayStatus = "Delivered"
@@ -511,7 +543,12 @@ export default function OrdersPage({ statusKey = "all" }) {
         ? order.items.map((item) => ({
             quantity: item.quantity || 1,
             name: item.name || item.foodName || item.title || "Item",
-            price: item.price || 0,
+            price: item.price || item.variantPrice || 0,
+            variantName: item.variantName || item.variant || item.selectedVariant?.name || "",
+            variantId: item.variantId || item.selectedVariant?.id || "",
+            isVeg: item.isVeg,
+            description: item.description || "",
+            addons: item.addons || item.addOns || [],
           }))
         : []
 
@@ -571,6 +608,7 @@ export default function OrdersPage({ statusKey = "all" }) {
     isViewOrderOpen,
     setIsViewOrderOpen,
     selectedOrder,
+    setSelectedOrder,
     filters,
     setFilters,
     visibleColumns,
@@ -600,12 +638,6 @@ export default function OrdersPage({ statusKey = "all" }) {
     const timer = setTimeout(handleScroll, 100)
     return () => clearTimeout(timer)
   }, [statusKey])
-
-  useEffect(() => {
-    isFirstLoadRef.current = true
-    seenOrderIdsRef.current = new Set()
-    fetchOrders({ silent: false, withRingCheck: false })
-  }, [fetchOrders])
 
   useEffect(() => {
     if (statusKey !== "all") return undefined
@@ -965,7 +997,7 @@ export default function OrdersPage({ statusKey = "all" }) {
     <div className="p-4 lg:p-6 bg-slate-50 min-h-screen w-full max-w-full overflow-x-hidden">
       <OrdersTopbar 
         title={config.title} 
-        count={count} 
+        count={totalOrders || count} 
         searchQuery={searchQuery}
         setSearchQuery={setSearchQuery}
         onFilterClick={() => setIsFilterOpen(true)}
@@ -998,6 +1030,29 @@ export default function OrdersPage({ statusKey = "all" }) {
             isOpen={isViewOrderOpen}
             onOpenChange={setIsViewOrderOpen}
             order={selectedOrder}
+            onOrderUpdated={(updatedOrder) => {
+              if (!updatedOrder) return
+              setSelectedOrder(updatedOrder)
+              setOrders((prev) => {
+                if (!Array.isArray(prev)) return prev
+                const key = String(
+                  updatedOrder.id || updatedOrder._id || updatedOrder.orderId || "",
+                )
+                if (!key) return prev
+                return prev.map((item) => {
+                  const itemKey = String(item.id || item._id || item.orderId || "")
+                  if (itemKey !== key) return item
+                  return {
+                    ...item,
+                    ...updatedOrder,
+                    orderStatus: updatedOrder.orderStatus || item.orderStatus,
+                    paymentStatus: updatedOrder.paymentStatus || item.paymentStatus,
+                    payment: updatedOrder.payment || item.payment,
+                  }
+                })
+              })
+              fetchOrders({ silent: true, withRingCheck: false })
+            }}
           />
           <RefundModal
             isOpen={refundModalOpen}
@@ -1018,6 +1073,17 @@ export default function OrdersPage({ statusKey = "all" }) {
             actionLoadingOrderId={processingActionOrderId}
             actionLoadingType={actionLoadingType}
             deletingOrderId={deletingOrderId}
+            currentPage={currentPage}
+            pageSize={pageSize}
+            totalItems={totalOrders}
+            onPageChange={setCurrentPage}
+            onPageSizeChange={(size) => {
+              setPageSize(size)
+              try {
+                localStorage.setItem("admin_orders_pageSize", String(size))
+              } catch {}
+              setCurrentPage(1)
+            }}
           />
         </>
       )}

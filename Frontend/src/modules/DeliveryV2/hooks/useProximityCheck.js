@@ -1,12 +1,20 @@
 import { useMemo } from 'react';
 import { useDeliveryStore } from '@/modules/DeliveryV2/store/useDeliveryStore';
 import { calculateDistance } from '@/modules/DeliveryV2/hooks/proximity.utils';
+import { parseLatLng } from '@/modules/DeliveryV2/utils/geo';
+
+/** City delivery should never show 100+ km — usually GPS fallback / bad coords. */
+const MAX_TRUSTED_TRIP_DISTANCE_M = 100_000;
 
 /**
  * useProximityCheck - Professional hook for dynamic range monitoring.
  * Ensures rider can only advance based on Admin-defined ranges.
- * 
- * @returns {Object} { distanceToTarget, isWithinRange, actionLimit }
+ *
+ * Target phase:
+ * - PICKING_UP / REACHED_PICKUP → restaurant
+ * - PICKED_UP / REACHED_DROP → customer
+ *
+ * @returns {Object} { distanceToTarget, isWithinRange, actionLimit, targetType }
  */
 export const useProximityCheck = () => {
   const riderLocation = useDeliveryStore((state) => state.riderLocation);
@@ -14,22 +22,28 @@ export const useProximityCheck = () => {
   const tripStatus = useDeliveryStore((state) => state.getFocusedTripStatus());
   const settings = useDeliveryStore((state) => state.settings);
 
+  const targetType = useMemo(() => {
+    if (['PICKING_UP', 'REACHED_PICKUP'].includes(tripStatus)) return 'restaurant';
+    if (['PICKED_UP', 'REACHED_DROP'].includes(tripStatus)) return 'customer';
+    return null;
+  }, [tripStatus]);
+
   // Determine current target based on trip state
   const targetLocation = useMemo(() => {
-    if (!activeOrder) return null;
-    
-    // If heading to pickup or arrived at pickup, target is restaurant
-    if (['PICKING_UP', 'REACHED_PICKUP'].includes(tripStatus)) {
-      return activeOrder.restaurantLocation || activeOrder.restaurant_location;
+    if (!activeOrder || !targetType) return null;
+
+    if (targetType === 'restaurant') {
+      return parseLatLng(
+        activeOrder.restaurantLocation || activeOrder.restaurant_location,
+      );
     }
-    
-    // If heading to drop or arrived at drop, target is customer
-    if (['PICKED_UP', 'REACHED_DROP'].includes(tripStatus)) {
-      return activeOrder.customerLocation || activeOrder.customer_location;
-    }
-    
-    return null;
-  }, [activeOrder, tripStatus]);
+
+    return parseLatLng(
+      activeOrder.customerLocation || activeOrder.customer_location,
+    );
+  }, [activeOrder, targetType]);
+
+  const riderPoint = useMemo(() => parseLatLng(riderLocation), [riderLocation]);
 
   // Determine current range limit from admin settings
   const actionLimit = useMemo(() => {
@@ -38,17 +52,23 @@ export const useProximityCheck = () => {
     return 500;
   }, [tripStatus, settings]);
 
-  // Calculate real-time distance
+  // Calculate real-time distance (Infinity = unknown / untrusted)
   const distanceToTarget = useMemo(() => {
-    if (!riderLocation || !targetLocation) return Infinity;
-    
-    return calculateDistance(
-      riderLocation.lat,
-      riderLocation.lng,
+    if (!riderPoint || !targetLocation) return Infinity;
+
+    const meters = calculateDistance(
+      riderPoint.lat,
+      riderPoint.lng,
       targetLocation.lat,
-      targetLocation.lng
+      targetLocation.lng,
     );
-  }, [riderLocation, targetLocation]);
+
+    if (!Number.isFinite(meters) || meters > MAX_TRUSTED_TRIP_DISTANCE_M) {
+      return Infinity;
+    }
+
+    return meters;
+  }, [riderPoint, targetLocation]);
 
   // Dev mode bypass
   const isDevMode = import.meta.env.VITE_APP_MODE === 'developer' || 
@@ -61,5 +81,18 @@ export const useProximityCheck = () => {
     distanceToTarget,
     isWithinRange,
     actionLimit,
+    targetType,
   };
 };
+
+/** Display km for trip HUD — never show Infinity / bogus values. */
+export function formatTripDistanceKm(distanceToTarget) {
+  if (
+    distanceToTarget == null ||
+    distanceToTarget === Infinity ||
+    !Number.isFinite(distanceToTarget)
+  ) {
+    return '--';
+  }
+  return (distanceToTarget / 1000).toFixed(1);
+}

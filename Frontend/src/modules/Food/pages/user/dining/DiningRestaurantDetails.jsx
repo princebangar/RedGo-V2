@@ -3,6 +3,7 @@ import { useLocation, useNavigate, useParams } from "react-router-dom"
 import { restaurantAPI, diningAPI } from "@food/api"
 import { useProfile } from "@food/context/ProfileContext"
 import { getMenuFromResponse } from "@food/utils/menuItems"
+import { isVegMenuItem } from "@food/utils/vegMode"
 import useAppBackNavigation from "@food/hooks/useAppBackNavigation"
 import { isModuleAuthenticated } from "@food/utils/auth"
 import {
@@ -60,20 +61,23 @@ const buildFacilities = (restaurant) => {
     : ["Dinner", "Lunch", "Home delivery", "Takeaway available", "Vegetarian only", "Less noisy"]
 }
 
-const buildFeaturedSections = (menuSections) =>
+const buildFeaturedSections = (menuSections, vegMode = false) =>
   menuSections
     .map((section, index) => {
       const items = [
         ...(Array.isArray(section?.items) ? section.items : []),
         ...((Array.isArray(section?.subsections) ? section.subsections : []).flatMap((subsection) => subsection?.items || [])),
       ]
+      const visibleItems = vegMode ? items.filter(isVegMenuItem) : items
+      if (vegMode && visibleItems.length === 0) return null
 
       return {
         id: `${section?.name || "section"}-${index}`,
         title: section?.name || "Menu",
-        pages: items.length || 1,
+        pages: visibleItems.length || 1,
       }
     })
+    .filter(Boolean)
     .slice(0, 2)
 
 const formatTimeLabel = (value) => {
@@ -96,7 +100,7 @@ export default function DiningRestaurantDetails() {
   const location = useLocation()
   const navigate = useNavigate()
   const goBack = useAppBackNavigation()
-  const { addFavorite, removeFavorite, isFavorite } = useProfile()
+  const { addFavorite, removeFavorite, isFavorite, vegMode } = useProfile()
 
   const [restaurant, setRestaurant] = useState(location.state?.restaurant || null)
   const [menuSections, setMenuSections] = useState([])
@@ -295,7 +299,7 @@ export default function DiningRestaurantDetails() {
   const imageGallery = buildImageList(restaurant)
   const heroImage = imageGallery[0] || ""
   const menuPreviewImages = imageGallery.length > 0 ? imageGallery : [""]
-  const featuredSections = buildFeaturedSections(menuSections)
+  const featuredSections = buildFeaturedSections(menuSections, vegMode)
   const cuisines =
     Array.isArray(restaurant?.cuisines) && restaurant.cuisines.length > 0
       ? restaurant.cuisines.join(", ")

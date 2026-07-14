@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react"
-import { Eye, MapPin, Package, User, Phone, Mail, Calendar, Clock, Truck, CreditCard, Receipt, CheckCircle2, FileText } from "lucide-react"
+import { Eye, MapPin, Package, User, Phone, Mail, Calendar, Clock, Truck, CreditCard, Receipt, CheckCircle2, FileText, Loader2 } from "lucide-react"
 import {
   Dialog,
   DialogContent,
@@ -7,11 +7,39 @@ import {
   DialogTitle,
   DialogDescription,
 } from "@food/components/ui/dialog"
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@food/components/ui/select"
 import { adminAPI } from "@food/api"
+import { toast } from "sonner"
+
 const debugLog = (...args) => {}
 const debugWarn = (...args) => {}
 const debugError = (...args) => {}
 
+const ADMIN_ORDER_STATUS_OPTIONS = [
+  "Pending",
+  "Accepted",
+  "Processing",
+  "Ready for Pickup",
+  "Food On The Way",
+  "Delivered",
+  "Cancelled by User",
+  "Cancelled by Restaurant",
+  "Canceled",
+]
+
+const ADMIN_PAYMENT_STATUS_OPTIONS = [
+  "Pending",
+  "Paid",
+  "COD Pending",
+  "Failed",
+  "Refunded",
+]
 
 const getStatusColor = (orderStatus) => {
   const colors = {
@@ -44,15 +72,69 @@ const resolveCustomerId = (order) => {
 
 const getPaymentStatusColor = (paymentStatus) => {
   if (paymentStatus === "Paid" || paymentStatus === "Collected") return "text-emerald-600"
-  if (paymentStatus === "Not Collected") return "text-amber-600"
+  if (paymentStatus === "COD Pending" || paymentStatus === "Not Collected") return "text-amber-600"
   if (paymentStatus === "Unpaid" || paymentStatus === "Failed") return "text-red-600"
   return "text-slate-600"
 }
 
-export default function ViewOrderDialog({ isOpen, onOpenChange, order }) {
+const resolveDisplayOrderStatus = (order) => {
+  if (!order) return "Pending"
+  const existing = String(order.orderStatus || "").trim()
+  if (ADMIN_ORDER_STATUS_OPTIONS.includes(existing)) return existing
+
+  const backendStatus = String(order.orderStatus || order.status || "").toLowerCase()
+  if (!backendStatus || backendStatus === "created") return "Pending"
+  if (backendStatus === "confirmed") return "Accepted"
+  if (backendStatus === "preparing") return "Processing"
+  if (backendStatus === "ready_for_pickup") return "Ready for Pickup"
+  if (backendStatus === "reached_pickup") return "Ready for Pickup"
+  if (backendStatus === "picked_up" || backendStatus === "reached_drop") return "Food On The Way"
+  if (backendStatus === "delivered") return "Delivered"
+  if (backendStatus === "cancelled_by_restaurant") return "Cancelled by Restaurant"
+  if (backendStatus === "cancelled_by_user") return "Cancelled by User"
+  if (backendStatus === "cancelled_by_admin") return "Canceled"
+  return existing || "Pending"
+}
+
+const resolveDisplayPaymentStatus = (order) => {
+  if (!order) return "Pending"
+
+  // Legacy UI labels → current friendly labels
+  if (order.paymentStatus === "Collected") return "Paid"
+  if (order.paymentStatus === "Not Collected") return "COD Pending"
+  if (ADMIN_PAYMENT_STATUS_OPTIONS.includes(order.paymentStatus)) {
+    return order.paymentStatus
+  }
+
+  // 1:1 with DB payment.status (friendly labels only)
+  const raw = String(order.payment?.status || "").toLowerCase()
+  if (raw === "refunded") return "Refunded"
+  if (raw === "failed") return "Failed"
+  if (raw === "paid" || raw === "authorized" || raw === "captured" || raw === "settled") {
+    return "Paid"
+  }
+  if (raw === "cod_pending") return "COD Pending"
+  return "Pending"
+}
+
+export default function ViewOrderDialog({ isOpen, onOpenChange, order, onOrderUpdated }) {
   const [customerTotalOrders, setCustomerTotalOrders] = useState(undefined)
   const [loadingCustomerOrders, setLoadingCustomerOrders] = useState(false)
   const [loadedCustomerId, setLoadedCustomerId] = useState(null)
+  const [draftOrderStatus, setDraftOrderStatus] = useState("Pending")
+  const [draftPaymentStatus, setDraftPaymentStatus] = useState("Pending")
+  const [updatingStatuses, setUpdatingStatuses] = useState(false)
+
+  useEffect(() => {
+    if (!isOpen || !order) return
+    setDraftOrderStatus(resolveDisplayOrderStatus(order))
+    setDraftPaymentStatus(resolveDisplayPaymentStatus(order))
+  }, [isOpen, order?.id, order?.orderId, order?.orderStatus, order?.paymentStatus, order?.payment?.status])
+
+  const baselineOrderStatus = resolveDisplayOrderStatus(order)
+  const baselinePaymentStatus = resolveDisplayPaymentStatus(order)
+  const hasAdminStatusChanges =
+    draftOrderStatus !== baselineOrderStatus || draftPaymentStatus !== baselinePaymentStatus
 
   useEffect(() => {
     if (!isOpen || !order) return
@@ -101,6 +183,70 @@ export default function ViewOrderDialog({ isOpen, onOpenChange, order }) {
   const showTotalOrdersSkeleton =
     Boolean(customerId) &&
     (loadingCustomerOrders || loadedCustomerId !== customerId)
+
+  const displayOrderStatus = resolveDisplayOrderStatus(order)
+  const displayPaymentStatus = resolveDisplayPaymentStatus(order)
+
+  const handleAdminStatusUpdate = async () => {
+    if (!hasAdminStatusChanges || updatingStatuses) return
+    const orderKey = order.id || order._id || order.orderId
+    if (!orderKey) {
+      toast.error("Order id not found")
+      return
+    }
+
+    const payload = {}
+    if (draftOrderStatus !== baselineOrderStatus) payload.orderStatus = draftOrderStatus
+    if (draftPaymentStatus !== baselinePaymentStatus) payload.paymentStatus = draftPaymentStatus
+    if (!payload.orderStatus && !payload.paymentStatus) return
+
+    setUpdatingStatuses(true)
+    try {
+      const response = await adminAPI.updateOrderStatuses(orderKey, payload)
+      if (!response?.data?.success) {
+        throw new Error(response?.data?.message || "Update failed")
+      }
+      const updated = response?.data?.data?.order || response?.data?.order
+      const nextOrder = {
+        ...order,
+        ...(updated || {}),
+        id: order.id || order._id || updated?._id,
+        orderId: order.orderId || updated?.orderId,
+        orderStatus:
+          draftOrderStatus !== baselineOrderStatus
+            ? draftOrderStatus
+            : resolveDisplayOrderStatus({
+                ...order,
+                ...updated,
+                orderStatus: updated?.orderStatus || order.orderStatus,
+              }),
+        paymentStatus:
+          draftPaymentStatus !== baselinePaymentStatus
+            ? draftPaymentStatus
+            : resolveDisplayPaymentStatus({ ...order, ...updated }),
+        payment: updated?.payment || order.payment,
+        status: updated?.orderStatus || order.status,
+        deliveredAt: updated?.deliveredAt || order.deliveredAt,
+        items:
+          Array.isArray(updated?.items) && updated.items.length
+            ? updated.items
+            : order.items,
+      }
+
+      onOrderUpdated?.(nextOrder)
+      toast.success("Order updated successfully")
+    } catch (error) {
+      debugError("Admin status update failed:", error)
+      toast.error(
+        error?.response?.data?.message ||
+          error?.response?.data?.error ||
+          error?.message ||
+          "Failed to update order",
+      )
+    } finally {
+      setUpdatingStatuses(false)
+    }
+  }
 
   // Debug: Log order data to check billImageUrl
   if (order.billImageUrl) {
@@ -162,7 +308,10 @@ export default function ViewOrderDialog({ isOpen, onOpenChange, order }) {
 
   return (
     <Dialog open={isOpen} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-4xl max-h-[90vh] bg-white p-0 overflow-y-auto lg:left-[calc(50%+var(--admin-sidebar-offset,10rem))]">
+      <DialogContent
+        className="max-w-4xl max-h-[90vh] bg-white p-0 overflow-y-auto lg:left-[calc(50%+var(--admin-sidebar-offset,10rem))]"
+        onOpenAutoFocus={(e) => e.preventDefault()}
+      >
         <DialogHeader className="px-6 pt-6 pb-4 border-b border-slate-200 sticky top-0 bg-white z-10">
           <DialogTitle className="flex items-center gap-2">
             <Eye className="w-5 h-5 text-orange-600" />
@@ -247,8 +396,8 @@ export default function ViewOrderDialog({ isOpen, onOpenChange, order }) {
               {order.orderStatus && (
                 <div className="space-y-1">
                   <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Order Status</p>
-                  <span className={`inline-flex items-center px-3 py-1 rounded-full text-xs font-medium ${getStatusColor(order.orderStatus)}`}>
-                    {order.orderStatus}
+                  <span className={`inline-flex items-center px-3 py-1 rounded-full text-xs font-medium ${getStatusColor(displayOrderStatus)}`}>
+                    {displayOrderStatus}
                   </span>
                   {order.cancellationReason && (
                     <p className="text-xs text-red-600 mt-1">
@@ -272,23 +421,106 @@ export default function ViewOrderDialog({ isOpen, onOpenChange, order }) {
                   )}
                 </div>
               )}
-              {(order.paymentStatus || order.paymentCollectionStatus != null) && (
+              {(order.paymentStatus || order.paymentCollectionStatus != null || order.payment?.status) && (
                 <div className="space-y-1">
                   <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider flex items-center gap-2">
                     <CreditCard className="w-4 h-4" />
                     Payment Status
                   </p>
-                  <p className={`text-sm font-medium ${getPaymentStatusColor(
-                    order.paymentType === 'Cash on Delivery' || order.payment?.method === 'cash' || order.payment?.method === 'cod'
-                      ? (order.paymentCollectionStatus ? 'Collected' : (order.status === 'delivered' ? 'Collected' : 'Not Collected'))
-                      : order.paymentStatus
-                  )}`}>
-                    {order.paymentType === 'Cash on Delivery' || order.payment?.method === 'cash' || order.payment?.method === 'cod'
-                      ? (order.paymentCollectionStatus ? 'Collected' : (order.status === 'delivered' ? 'Collected' : 'Not Collected'))
-                      : order.paymentStatus}
+                  <p className={`text-sm font-medium ${getPaymentStatusColor(displayPaymentStatus)}`}>
+                    {displayPaymentStatus}
                   </p>
                 </div>
               )}
+
+              {/* Admin Controls — optional independent status updates */}
+              <div className="rounded-xl border border-slate-200 bg-slate-50/60 p-4 shadow-sm">
+                <h4 className="text-sm font-bold text-slate-900 mb-4">Admin Controls</h4>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div className="space-y-1.5">
+                    <label className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider">
+                      Change Order Status
+                    </label>
+                    <Select
+                      value={draftOrderStatus}
+                      onValueChange={setDraftOrderStatus}
+                      disabled={updatingStatuses}
+                    >
+                      <SelectTrigger className="h-10 w-full rounded-lg border-slate-200 bg-white text-slate-900 shadow-none hover:border-slate-300 focus:border-[#FF6B4A] focus:ring-[#FF6B4A]/30">
+                        <SelectValue placeholder="Select order status" />
+                      </SelectTrigger>
+                      <SelectContent
+                        side="bottom"
+                        sideOffset={4}
+                        avoidCollisions={false}
+                        position="popper"
+                        scrollToTopOnOpen
+                        className="select-menu-scroll z-[12000] max-h-48 border-slate-200 bg-white text-slate-900 shadow-xl"
+                      >
+                        {ADMIN_ORDER_STATUS_OPTIONS.map((status) => (
+                          <SelectItem
+                            key={status}
+                            value={status}
+                            className="cursor-pointer rounded-md border-0 py-2.5 focus:bg-orange-50 focus:text-slate-900 data-[state=checked]:bg-orange-50 data-[state=checked]:font-semibold"
+                          >
+                            {status}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="space-y-1.5">
+                    <label className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider">
+                      Change Payment Status
+                    </label>
+                    <Select
+                      value={draftPaymentStatus}
+                      onValueChange={setDraftPaymentStatus}
+                      disabled={updatingStatuses}
+                    >
+                      <SelectTrigger className="h-10 w-full rounded-lg border-slate-200 bg-white text-slate-900 shadow-none hover:border-slate-300 focus:border-[#FF6B4A] focus:ring-[#FF6B4A]/30">
+                        <SelectValue placeholder="Select payment status" />
+                      </SelectTrigger>
+                      <SelectContent
+                        side="bottom"
+                        sideOffset={4}
+                        avoidCollisions={false}
+                        position="popper"
+                        scrollToTopOnOpen
+                        className="select-menu-scroll z-[12000] max-h-48 border-slate-200 bg-white text-slate-900 shadow-xl"
+                      >
+                        {ADMIN_PAYMENT_STATUS_OPTIONS.map((status) => (
+                          <SelectItem
+                            key={status}
+                            value={status}
+                            className="cursor-pointer rounded-md border-0 py-2.5 focus:bg-orange-50 focus:text-slate-900 data-[state=checked]:bg-orange-50 data-[state=checked]:font-semibold"
+                          >
+                            {status}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </div>
+                <div className="mt-4 flex justify-end">
+                  <button
+                    type="button"
+                    onClick={handleAdminStatusUpdate}
+                    disabled={!hasAdminStatusChanges || updatingStatuses}
+                    className="inline-flex items-center justify-center gap-2 rounded-lg bg-[#FF6B4A] px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-[#f25a38] disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    {updatingStatuses ? (
+                      <>
+                        <Loader2 className="w-4 h-4 animate-spin" />
+                        Updating…
+                      </>
+                    ) : (
+                      "Update"
+                    )}
+                  </button>
+                </div>
+              </div>
+
               {order.deliveryType && (
                 <div className="space-y-1">
                   <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider flex items-center gap-2">
@@ -361,21 +593,41 @@ export default function ViewOrderDialog({ isOpen, onOpenChange, order }) {
                 Order Items ({order.items.length})
               </h3>
               <div className="space-y-3">
-                {order.items.map((item, index) => (
+                {order.items.map((item, index) => {
+                  const variantLabel = String(
+                    item.variantName ||
+                      item.variant ||
+                      item.selectedVariant?.name ||
+                      item.variationName ||
+                      "",
+                  ).trim()
+                  return (
                   <div key={index} className="flex items-start justify-between p-3 bg-slate-50 rounded-lg">
-                    <div className="flex-1">
-                      <div className="flex items-center gap-2">
-                        <span className="text-xs font-bold text-slate-700 bg-white px-2 py-1 rounded">
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-start gap-2">
+                        <span className="text-xs font-bold text-slate-700 bg-white px-2 py-1 rounded shrink-0">
                           {item.quantity || 1}x
                         </span>
-                        <div>
-                          <p className="text-sm font-medium text-slate-900">{item.name || "Unknown Item"}</p>
-                          {item.variantName && (
-                            <p className="text-xs text-slate-500 font-medium">{item.variantName}</p>
-                          )}
+                        <div className="min-w-0">
+                          <p className="text-sm font-medium text-slate-900">
+                            {item.name || item.foodName || item.title || "Unknown Item"}
+                          </p>
+                          {variantLabel ? (
+                            <p className="text-xs text-slate-500 mt-0.5 font-medium">
+                              {variantLabel}
+                            </p>
+                          ) : null}
+                          {Array.isArray(item.addons) && item.addons.length > 0 ? (
+                            <p className="text-[11px] text-slate-400 mt-0.5">
+                              {item.addons
+                                .map((a) => a.name || a.title || a)
+                                .filter(Boolean)
+                                .join(", ")}
+                            </p>
+                          ) : null}
                         </div>
                         {item.isVeg !== undefined && (
-                          <span className={`text-xs px-1.5 py-0.5 rounded ${item.isVeg ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>
+                          <span className={`text-xs px-1.5 py-0.5 rounded shrink-0 ${item.isVeg ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>
                             {item.isVeg ? 'Veg' : 'Non-Veg'}
                           </span>
                         )}
@@ -384,11 +636,12 @@ export default function ViewOrderDialog({ isOpen, onOpenChange, order }) {
                         <p className="text-xs text-slate-500 mt-1 ml-8">{item.description}</p>
                       )}
                     </div>
-                    <p className="text-sm font-semibold text-slate-900">
+                    <p className="text-sm font-semibold text-slate-900 shrink-0 ml-3">
                       ₹{((item.price || 0) * (item.quantity || 1)).toFixed(2)}
                     </p>
                   </div>
-                ))}
+                  )
+                })}
               </div>
             </div>
           )}

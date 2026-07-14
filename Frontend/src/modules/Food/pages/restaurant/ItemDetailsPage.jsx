@@ -69,7 +69,8 @@ export default function ItemDetailsPage() {
   const [itemSizeQuantity, setItemSizeQuantity] = useState("")
   const [itemSizeUnit, setItemSizeUnit] = useState("piece")
   const [itemDescription, setItemDescription] = useState("")
-  const [foodType, setFoodType] = useState("Non-Veg")
+  const [foodType, setFoodType] = useState("Veg")
+  const [isPureVegRestaurant, setIsPureVegRestaurant] = useState(false)
   const [basePrice, setBasePrice] = useState("")
   const [variants, setVariants] = useState([])
   const [preparationTime, setPreparationTime] = useState("")
@@ -126,7 +127,11 @@ export default function ItemDetailsPage() {
     setItemSizeQuantity(item.itemSizeQuantity || "")
     setItemSizeUnit(item.itemSizeUnit || "piece")
     setItemDescription(item.description || "")
-    setFoodType(item.foodType === "Veg" ? "Veg" : "Non-Veg")
+    if (isPureVegRestaurant) {
+      setFoodType("Veg")
+    } else {
+      setFoodType(item.foodType === "Veg" ? "Veg" : "Non-Veg")
+    }
     const itemVariants = getFoodVariants(item)
     setVariants(itemVariants.map(createVariantDraft))
     setBasePrice(itemVariants.length === 0 ? item.price?.toString() || "" : "")
@@ -179,6 +184,26 @@ export default function ItemDetailsPage() {
       setAllergens(item.allergies.join(", "))
     }
   }
+
+  // Fetch item data from menu API when editing
+  useEffect(() => {
+    const fetchRestaurantDietType = async () => {
+      try {
+        const response = await restaurantAPI.getCurrentRestaurant()
+        const profile =
+          response?.data?.data?.restaurant ||
+          response?.data?.restaurant ||
+          response?.data?.data ||
+          null
+        const pureVeg = profile?.pureVegRestaurant === true
+        setIsPureVegRestaurant(pureVeg)
+        if (pureVeg) setFoodType("Veg")
+      } catch (error) {
+        debugWarn("Failed to load restaurant diet type:", error)
+      }
+    }
+    fetchRestaurantDietType()
+  }, [])
 
   // Fetch item data from menu API when editing
   useEffect(() => {
@@ -294,10 +319,14 @@ export default function ItemDetailsPage() {
   }, [isCategoryPopupOpen])
 
   const filteredCategories = useMemo(() => {
-    if (!debouncedCategorySearch) return categories
+    let list = categories
+    if (isPureVegRestaurant) {
+      list = list.filter((cat) => cat.foodTypeScope !== "Non-Veg")
+    }
+    if (!debouncedCategorySearch) return list
     const query = debouncedCategorySearch.toLowerCase()
-    return categories.filter((cat) => String(cat.name || "").toLowerCase().includes(query))
-  }, [categories, debouncedCategorySearch])
+    return list.filter((cat) => String(cat.name || "").toLowerCase().includes(query))
+  }, [categories, debouncedCategorySearch, isPureVegRestaurant])
 
   // Keep focused form fields visible above mobile keyboard
   useEffect(() => {
@@ -532,6 +561,18 @@ export default function ItemDetailsPage() {
       return
     }
 
+    const hasExistingHttpImage = images.some(
+      (img) =>
+        typeof img === "string" &&
+        (img.startsWith("http://") || img.startsWith("https://")) &&
+        !img.startsWith("blob:"),
+    )
+    const hasPendingUpload = imageFiles.size > 0
+    if (!hasExistingHttpImage && !hasPendingUpload) {
+      toast.error("Please add an item image")
+      return
+    }
+
     try {
       setUploadingImages(true)
 
@@ -596,6 +637,12 @@ export default function ItemDetailsPage() {
         url.trim() !== '' &&
         self.indexOf(url) === index
       ).slice(0, 1)
+
+      if (allImageUrls.length === 0) {
+        toast.error("Please add an item image")
+        setUploadingImages(false)
+        return
+      }
 
       // Debug: Log image URLs
       debugLog('=== IMAGE UPLOAD SUMMARY ===')
@@ -662,6 +709,8 @@ export default function ItemDetailsPage() {
         price: variant.price,
       }))
 
+      const effectiveFoodType = isPureVegRestaurant ? "Veg" : foodType
+
       // Create/update FoodItem in DB (single call per explicit Save; no autosave spam)
       let itemId
       if (isNewItem) {
@@ -671,7 +720,7 @@ export default function ItemDetailsPage() {
           price: hasVariants ? undefined : parsedBasePrice,
           variants: variantPayload,
           image: allImageUrls.length > 0 ? allImageUrls[0] : "",
-          foodType: foodType,
+          foodType: effectiveFoodType,
           isAvailable: isInStock,
           isRecommended: isRecommended === true,
           preparationTime: preparationTime || "",
@@ -694,7 +743,7 @@ export default function ItemDetailsPage() {
           price: hasVariants ? undefined : parsedBasePrice,
           variants: variantPayload,
           image: allImageUrls.length > 0 ? allImageUrls[0] : "",
-          foodType: foodType,
+          foodType: effectiveFoodType,
           isAvailable: isInStock,
           isRecommended: isRecommended === true,
           preparationTime: preparationTime || "",
@@ -911,8 +960,8 @@ export default function ItemDetailsPage() {
                 <div className="w-20 h-20 bg-white/80 rounded-full flex items-center justify-center mx-auto mb-3 shadow-lg">
                   <Camera className="w-10 h-10 text-gray-400" />
                 </div>
-                <p className="text-sm font-medium text-gray-600">No images added yet</p>
-                <p className="text-xs text-gray-500 mt-1">Tap the button below to add one image</p>
+                <p className="text-sm font-medium text-gray-600">Item image required</p>
+                <p className="text-xs text-gray-500 mt-1">Add one photo before saving this dish</p>
               </div>
             </div>
           )}
@@ -933,7 +982,7 @@ export default function ItemDetailsPage() {
               <div className="w-5 h-5 rounded-full bg-white/20 flex items-center justify-center">
                 <Plus className="w-4 h-4" />
               </div>
-              <span>Add Image</span>
+              <span>{images.length > 0 ? "Replace Image" : "Add Image (Required)"}</span>
             </button>
           </div>
         </div>
@@ -1010,6 +1059,7 @@ export default function ItemDetailsPage() {
             {/* Dietary Options */}
             <div className="flex gap-2 mt-3">
               <button
+                type="button"
                 onClick={() => setFoodType("Veg")}
                 className={`flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-medium transition-colors ${foodType === "Veg"
                   ? "border-green-600 border-2 text-green-600"
@@ -1019,16 +1069,19 @@ export default function ItemDetailsPage() {
                 {foodType === "Veg" && <Check className="w-4 h-4" />}
                 <span>Veg</span>
               </button>
-              <button
-                onClick={() => setFoodType("Non-Veg")}
-                className={`flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-medium transition-colors ${foodType === "Non-Veg"
-                  ? "border-red-600 border-2 text-[#B80B3D]"
-                  : "bg-gray-100 text-gray-700 hover:bg-gray-200"
-                  }`}
-              >
-                {foodType === "Non-Veg" && <Check className="w-4 h-4" />}
-                <span>Non-Veg</span>
-              </button>
+              {!isPureVegRestaurant && (
+                <button
+                  type="button"
+                  onClick={() => setFoodType("Non-Veg")}
+                  className={`flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-medium transition-colors ${foodType === "Non-Veg"
+                    ? "border-red-600 border-2 text-[#B80B3D]"
+                    : "bg-gray-100 text-gray-700 hover:bg-gray-200"
+                    }`}
+                >
+                  {foodType === "Non-Veg" && <Check className="w-4 h-4" />}
+                  <span>Non-Veg</span>
+                </button>
+              )}
             </div>
           </div>
 

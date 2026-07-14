@@ -139,7 +139,7 @@ export default function BottomNavigation() {
             />
           ) : (
             <img
-              src="/profile_avatar.png"
+              src="/profile_avatar.webp"
               alt="Profile"
               className={`w-7 h-7 rounded-full border-2 object-cover ${
                 isActive("/food/delivery/profile") ? "" : "border-gray-300"

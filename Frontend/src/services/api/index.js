@@ -580,6 +580,10 @@ export const adminAPI = {
     apiClient.patch(`/food/admin/orders/${String(orderId)}/reject`, { reason }, {
       contextModule: "admin",
     }),
+  updateOrderStatuses: (orderId, body = {}) =>
+    apiClient.patch(`/food/admin/orders/${String(orderId)}/statuses`, body, {
+      contextModule: "admin",
+    }),
   /** Dispatch settings – auto vs manual assign (global) */
   /** Create restaurant (admin). Single API: POST /food/admin/restaurants. Body: JSON with image URLs. */
   createRestaurant: (body) =>
@@ -2329,6 +2333,23 @@ export const zoneAPI = {
   /** Public: list active zones (for onboarding dropdowns). */
   getPublicZones: (params = {}, config = {}) =>
     apiClient.get("/food/zones/public", { params: params ?? {}, ...config }),
+};
+
+/** Public geocode proxies — Google API key stays on the backend. */
+export const geocodeAPI = {
+  reverse: (lat, lng, params = {}, config = {}) =>
+    apiClient.get("/food/geocode/reverse", {
+      params: { lat, lng, ...params },
+      ...config,
+    }),
+  place: (placeId, config = {}) =>
+    apiClient.get("/food/geocode/place", {
+      params: { place_id: placeId },
+      ...config,
+    }),
+  nearby: (body, config = {}) => apiClient.post("/food/geocode/nearby", body, config),
+  textSearch: (body, config = {}) =>
+    apiClient.post("/food/geocode/text-search", body, config),
 };
 export const uploadAPI = {
   /**

@@ -77,7 +77,10 @@ export const loadBusinessSettings = async () => {
  * Update favicon in document
  */
 export const updateFavicon = (url) => {
-  if (!url || typeof document === 'undefined') return;
+  if (typeof document === 'undefined') return;
+
+  // Admin favicon when present; otherwise default RedGo crop favicon
+  const href = url || '/favicon.webp';
 
   // Remove existing favicons
   const existingFavicons = document.querySelectorAll("link[rel*='icon']");
@@ -86,8 +89,8 @@ export const updateFavicon = (url) => {
   // Add new favicon
   const link = document.createElement("link");
   link.rel = "icon";
-  link.type = "image/png";
-  link.href = url;
+  link.type = /\.webp(\?|$)/i.test(href) ? "image/webp" : "image/png";
+  link.href = href;
   // Prevent third-party cookie warning (Cloudinary)
   link.crossOrigin = "anonymous";
   document.head.appendChild(link);
