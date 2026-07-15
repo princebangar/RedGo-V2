@@ -103,6 +103,11 @@ export async function createCollectQr(
     customerName: customerInfo.name || user.name || 'Customer',
     customerEmail: customerInfo.email || user.email || 'customer@example.com',
     customerPhone: customerInfo.phone || user.phone,
+    notes: {
+      foodOrderId: order._id.toString(),
+      orderDisplayId: String(order.orderId || ''),
+      purpose: 'cod_collect_qr',
+    },
   });
 
   // Phase 2: write QR collection state into FoodTransaction only.

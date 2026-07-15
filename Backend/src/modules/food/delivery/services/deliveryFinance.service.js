@@ -7,7 +7,8 @@ import { FoodDeliveryPartner } from '../models/deliveryPartner.model.js';
 import { DeliveryBonusTransaction } from '../../admin/models/deliveryBonusTransaction.model.js';
 import { getDeliveryCashLimitSettings } from '../../admin/services/admin.service.js';
 import { ValidationError } from '../../../../core/auth/errors.js';
-import { createRazorpayOrder, getRazorpayKeyId, isRazorpayConfigured, verifyPaymentSignature } from '../../orders/helpers/razorpay.helper.js';
+import { createRazorpayOrder, getRazorpayKeyId, isRazorpayConfigured, verifyPaymentSignature, fetchRazorpayPayment, assertRazorpayPaymentMatches } from '../../orders/helpers/razorpay.helper.js';
+import { config } from '../../../../config/env.js';
 
 /**
  * Enhanced wallet fetch for delivery partners.
@@ -222,6 +223,9 @@ export const createDeliveryCashDepositOrder = async (deliveryPartnerId, amountIn
     const receipt = `cash_deposit_${String(deliveryPartnerId).slice(-8)}_${Date.now()}`;
 
     if (!isRazorpayConfigured()) {
+        if (config.nodeEnv === 'production') {
+            throw new ValidationError('Payment gateway is not configured');
+        }
         return {
             razorpay: {
                 key: getRazorpayKeyId() || 'rzp_test_dummy',
@@ -271,12 +275,24 @@ export const verifyDeliveryCashDepositPayment = async (deliveryPartnerId, payloa
         throw new ValidationError('Deposit amount cannot exceed cash in hand');
     }
 
-    const isValid = isRazorpayConfigured()
-        ? verifyPaymentSignature(orderId, paymentId, signature)
-        : true;
-
-    if (!isValid) {
-        throw new ValidationError('Payment verification failed');
+    if (!isRazorpayConfigured()) {
+        if (config.nodeEnv === 'production') {
+            throw new ValidationError('Payment gateway is not configured');
+        }
+    } else {
+        const isValid = verifyPaymentSignature(orderId, paymentId, signature);
+        if (!isValid) {
+            throw new ValidationError('Payment verification failed');
+        }
+        try {
+            const rzPayment = await fetchRazorpayPayment(paymentId);
+            assertRazorpayPaymentMatches(rzPayment, {
+                orderId,
+                amountPaise: Math.round(amount * 100),
+            });
+        } catch (err) {
+            throw new ValidationError(err?.message || 'Payment verification failed');
+        }
     }
 
     const deposit = existing
