@@ -760,6 +760,32 @@ export default function AddressSelectorPage() {
       if (editingAddressId) {
         const updated = await updateAddress(editingAddressId, payload)
         if (updated) {
+          try {
+            const defaultAddr = addresses.find((a) => a.isDefault) || updated
+            const isEditingDefault =
+              String(getAddressId(defaultAddr)) === String(editingAddressId) ||
+              Boolean(updated?.isDefault)
+            if (isEditingDefault) {
+              sessionStorage.setItem("manual_location_update", "true")
+              localStorage.setItem("deliveryAddressMode", "saved")
+              const locationData = {
+                latitude: mapPosition[0],
+                longitude: mapPosition[1],
+                city: addressFormData.city || "",
+                state: addressFormData.state || "",
+                address: [addressFormData.street, addressFormData.city, addressFormData.state, addressFormData.zipCode]
+                  .filter(Boolean)
+                  .join(", "),
+                area: addressFormData.additionalDetails || addressFormData.street || "",
+                pincode: addressFormData.zipCode || "",
+                formattedAddress: [addressFormData.street, addressFormData.city, addressFormData.state, addressFormData.zipCode]
+                  .filter(Boolean)
+                  .join(", "),
+              }
+              localStorage.setItem("userLocation", JSON.stringify(locationData))
+              window.dispatchEvent(new CustomEvent("userLocationUpdated"))
+            }
+          } catch {}
           toast.success("Address updated")
           setEditingAddressId(null)
           setShowAddressForm(false)
@@ -771,12 +797,28 @@ export default function AddressSelectorPage() {
       if (created) {
         const id = getAddressId(created)
         if (id) await setDefaultAddress(id)
-        try { 
+        try {
           sessionStorage.setItem("manual_location_update", "true");
           localStorage.setItem("deliveryAddressMode", "saved")
+          // Keep active delivery location in sync with the exact map pin
+          // (city text alone is not enough for zone / restaurant fetching).
+          const locationData = {
+            latitude: mapPosition[0],
+            longitude: mapPosition[1],
+            city: addressFormData.city || "",
+            state: addressFormData.state || "",
+            address: [addressFormData.street, addressFormData.city, addressFormData.state, addressFormData.zipCode]
+              .filter(Boolean)
+              .join(", "),
+            area: addressFormData.additionalDetails || addressFormData.street || "",
+            pincode: addressFormData.zipCode || "",
+            formattedAddress: [addressFormData.street, addressFormData.city, addressFormData.state, addressFormData.zipCode]
+              .filter(Boolean)
+              .join(", "),
+          }
+          localStorage.setItem("userLocation", JSON.stringify(locationData))
           window.dispatchEvent(new CustomEvent("userLocationUpdated"))
         } catch {}
-        // toast.success("Address saved")
         handleBack()
       }
     } catch (error) {
