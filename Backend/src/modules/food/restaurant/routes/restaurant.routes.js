@@ -131,7 +131,13 @@ router.patch('/takeaway-settings', authMiddleware, requireApprovedRestaurant, as
 router.post('/dining-settings/request', authMiddleware, requireApprovedRestaurant, createDiningRequestController);
 router.get('/dining-settings/pending', authMiddleware, requireApprovedRestaurant, getPendingDiningRequestController);
 router.get('/outlet-timings', authMiddleware, requireApprovedRestaurant, getCurrentRestaurantOutletTimingsController);
-router.put('/outlet-timings', authMiddleware, requireApprovedRestaurant, upsertCurrentRestaurantOutletTimingsController);
+router.put('/outlet-timings', authMiddleware, requireApprovedRestaurant, async (req, res, next) => {
+    await invalidateCache('restaurants:*');
+    await invalidateCache('restaurant_detail:*');
+    await invalidateCache('restaurant_timings:*');
+    await invalidateCache('under_250:*');
+    next();
+}, upsertCurrentRestaurantOutletTimingsController);
 router.get('/finance', authMiddleware, requireApprovedRestaurant, getRestaurantFinanceController);
 router.post('/withdraw', authMiddleware, requireApprovedRestaurant, createWithdrawalRequestController);
 router.get('/withdrawals', authMiddleware, requireApprovedRestaurant, listMyWithdrawalsController);

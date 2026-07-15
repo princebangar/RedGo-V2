@@ -82,7 +82,7 @@ export const getPublicLandingSettingsController = async (req, res, next) => {
         let recommendedRestaurants = [];
         if (Array.isArray(ids) && ids.length > 0) {
             recommendedRestaurants = await FoodRestaurant.find({ _id: { $in: ids }, status: 'approved' })
-                .select('restaurantName area city profileImage coverImages menuImages slug rating cuisines pureVegRestaurant')
+                .select('restaurantName area city profileImage coverImages menuImages slug rating cuisines pureVegRestaurant isAcceptingOrders isActive openingTime closingTime openDays')
                 .lean();
         }
         const payload = {

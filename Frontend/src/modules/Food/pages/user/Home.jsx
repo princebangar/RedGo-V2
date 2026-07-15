@@ -2497,8 +2497,11 @@ export default function Home({ homeMode = null, isTabActive = true }) {
         slug: restaurant?.slug || restaurant?.restaurantId || restaurantId,
         offer: null,
         pureVegRestaurant: restaurant?.pureVegRestaurant === true,
-        isActive: true,
-        isAcceptingOrders: true,
+        isActive: restaurant?.isActive !== false,
+        isAcceptingOrders: restaurant?.isAcceptingOrders !== false,
+        openingTime: restaurant?.openingTime || null,
+        closingTime: restaurant?.closingTime || null,
+        openDays: Array.isArray(restaurant?.openDays) ? restaurant.openDays : [],
       };
     });
 

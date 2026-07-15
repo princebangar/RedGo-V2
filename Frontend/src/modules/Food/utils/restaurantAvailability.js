@@ -66,8 +66,14 @@ const getTodayTiming = (restaurant, dayName) => {
 
   const outletTimingsObject = restaurant?.outletTimings
   if (outletTimingsObject && typeof outletTimingsObject === "object" && !Array.isArray(outletTimingsObject)) {
+    // Day-keyed map: { Wednesday: { isOpen, openingTime, closingTime } }
     const direct = outletTimingsObject[dayName]
     if (direct && typeof direct === "object") return direct
+
+    // Single-day object from a bad list projection: { day, isOpen, openingTime, closingTime }
+    if (typeof outletTimingsObject.day === "string") {
+      return normalizeDay(outletTimingsObject.day) === dayName ? outletTimingsObject : null
+    }
   }
 
   return null

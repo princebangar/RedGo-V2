@@ -79,6 +79,19 @@ export async function createOrder(userId, dto) {
   if (restaurant.isAcceptingOrders === false)
     throw new ValidationError("Restaurant not accepting orders");
 
+  // Enforce weekly outlet timings (Asia/Kolkata) so closed restaurants cannot receive orders.
+  try {
+    const { assertRestaurantOpenForOrders } = await import(
+      "../../restaurant/services/outletTimings.service.js"
+    );
+    await assertRestaurantOpenForOrders(dto.restaurantId);
+  } catch (timingError) {
+    if (timingError instanceof ValidationError) throw timingError;
+    logger.warn(
+      `[OrderCreate] Outlet timing check skipped for ${dto.restaurantId}: ${timingError?.message || timingError}`
+    );
+  }
+
   const orderType = dto.orderType || "delivery";
   if (orderType === "takeaway") {
     if (restaurant.takeawaySettings?.isEnabled === false) {
@@ -1530,7 +1543,7 @@ export async function listOrdersAdmin(query) {
         filter.orderStatus = "confirmed";
         break;
       case "processing":
-        filter.orderStatus = { $in: ["preparing", "ready_for_pickup"] };
+        filter.orderStatus = { $in: ["confirmed", "preparing", "ready_for_pickup"] };
         break;
       case "food-on-the-way":
         filter.orderStatus = "picked_up";
