@@ -21,7 +21,9 @@ import {
     verifyPaymentSignature,
     getRazorpayKeyId,
     isRazorpayConfigured,
-    initiateRazorpayRefund
+    initiateRazorpayRefund,
+    fetchRazorpayPayment,
+    assertRazorpayPaymentMatches,
 } from '../helpers/razorpay.helper.js';
 import { getIO, rooms } from '../../../../config/socket.js';
 import { addOrderJob } from '../../../../queues/producers/order.producer.js';
@@ -341,9 +343,14 @@ export async function createOrder(userId, dto) {
         amount: rzOrder.amount,
         currency: rzOrder.currency || "INR",
       };
-      // Store Razorpay order id in local payment snapshot (ledger will store it)
+      // Persist on both local snapshot AND the Mongoose document (mutation after
+      // `new FoodOrder({ payment })` alone does not always update nested paths).
       payment.razorpay = { orderId: rzOrder.id, paymentId: "", signature: "" };
       payment.status = "created";
+      order.payment = order.payment || {};
+      order.payment.razorpay = { orderId: rzOrder.id, paymentId: "", signature: "" };
+      order.payment.status = "created";
+      order.markModified("payment");
     } catch (err) {
       throw new ValidationError(err?.message || "Payment gateway error");
     }
@@ -457,18 +464,39 @@ export async function verifyPayment(userId, dto) {
   if (order.payment.status === "paid")
     return { order: normalizeOrderForClient(order), payment: order.payment };
 
+  const storedOrderId = String(order.payment?.razorpay?.orderId || "").trim();
+  const clientOrderId = String(dto.razorpayOrderId || "").trim();
+  if (storedOrderId && clientOrderId && storedOrderId !== clientOrderId) {
+    throw new ValidationError("Payment does not match this order");
+  }
+
   const valid = verifyPaymentSignature(
-    dto.razorpayOrderId,
+    clientOrderId,
     dto.razorpayPaymentId,
     dto.razorpaySignature,
   );
   if (!valid) throw new ValidationError("Payment verification failed");
 
+  // Bind to Razorpay API: amount + order id + status (defense in depth)
+  try {
+    const rzPayment = await fetchRazorpayPayment(dto.razorpayPaymentId);
+    const expectedPaise = Math.round(Number(order.payment?.amountDue ?? order.pricing?.total ?? 0) * 100);
+    assertRazorpayPaymentMatches(rzPayment, {
+      orderId: storedOrderId || clientOrderId,
+      amountPaise: expectedPaise,
+    });
+  } catch (err) {
+    throw new ValidationError(err?.message || "Payment verification failed");
+  }
+
   // Payment is verified, but the order stays "created" (Pending) so the
   // restaurant/admin still has to accept it — same flow as COD orders.
   order.payment.status = "paid";
+  if (!order.payment.razorpay) order.payment.razorpay = {};
+  if (!order.payment.razorpay.orderId) order.payment.razorpay.orderId = clientOrderId;
   order.payment.razorpay.paymentId = dto.razorpayPaymentId;
   order.payment.razorpay.signature = dto.razorpaySignature;
+  order.markModified("payment");
   pushStatusHistory(order, {
     byRole: "USER",
     byId: userId,

@@ -1,7 +1,8 @@
 import mongoose from 'mongoose';
 import { ValidationError } from '../../../../core/auth/errors.js';
 import { FoodUserWallet } from '../models/userWallet.model.js';
-import { createRazorpayOrder, getRazorpayKeyId, isRazorpayConfigured, verifyPaymentSignature } from '../../orders/helpers/razorpay.helper.js';
+import { createRazorpayOrder, getRazorpayKeyId, isRazorpayConfigured, verifyPaymentSignature, fetchRazorpayPayment, assertRazorpayPaymentMatches } from '../../orders/helpers/razorpay.helper.js';
+import { config } from '../../../../config/env.js';
 
 const ensureWallet = async (userId) => {
     const id = String(userId || '');
@@ -74,6 +75,9 @@ export const createWalletTopupOrder = async (userId, amountInr) => {
     const amountPaise = Math.round(amount * 100);
 
     if (!isRazorpayConfigured()) {
+        if (config.nodeEnv === 'production') {
+            throw new ValidationError('Payment gateway is not configured');
+        }
         // Dev fallback: return a compatible shape without writing to DB.
         const orderId = `order_dev_${Date.now()}`;
         return {
@@ -116,12 +120,25 @@ export const verifyWalletTopupPayment = async (userId, payload) => {
         return { wallet: await getUserWallet(userId) };
     }
 
-    // If razorpay not configured (dev), accept and credit wallet.
-    const ok = isRazorpayConfigured()
-        ? verifyPaymentSignature(orderId, paymentId, signature)
-        : true;
-    if (!ok) {
-        throw new ValidationError('Payment verification failed');
+    if (!isRazorpayConfigured()) {
+        if (config.nodeEnv === 'production') {
+            throw new ValidationError('Payment gateway is not configured');
+        }
+        // Dev-only: accept without gateway
+    } else {
+        const ok = verifyPaymentSignature(orderId, paymentId, signature);
+        if (!ok) {
+            throw new ValidationError('Payment verification failed');
+        }
+        try {
+            const rzPayment = await fetchRazorpayPayment(paymentId);
+            assertRazorpayPaymentMatches(rzPayment, {
+                orderId,
+                amountPaise: Math.round(amount * 100),
+            });
+        } catch (err) {
+            throw new ValidationError(err?.message || 'Payment verification failed');
+        }
     }
 
     // Store ONLY after payment is verified.

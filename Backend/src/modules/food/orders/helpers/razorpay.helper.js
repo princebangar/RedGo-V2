@@ -36,13 +36,28 @@ export function createRazorpayOrder(amountPaise, currency = 'INR', receipt = '')
     });
 }
 
-export function createPaymentLink({ amountPaise, currency = 'INR', description, orderId, customerName, customerEmail, customerPhone }) {
+export function createPaymentLink({
+    amountPaise,
+    currency = 'INR',
+    description,
+    orderId,
+    customerName,
+    customerEmail,
+    customerPhone,
+    notes = {},
+}) {
     const instance = getRazorpayInstance();
     if (!instance) return Promise.reject(new Error('Razorpay not configured'));
+    const foodOrderId = orderId ? String(orderId) : '';
     return instance.paymentLink.create({
         amount: Math.round(amountPaise),
         currency,
-        description: description || `Order ${orderId}`,
+        description: description || `Order ${foodOrderId}`,
+        reference_id: foodOrderId ? foodOrderId.slice(0, 40) : undefined,
+        notes: {
+            foodOrderId,
+            ...(notes || {}),
+        },
         customer: {
             name: customerName || 'Customer',
             email: customerEmail || 'customer@example.com',
@@ -52,10 +67,39 @@ export function createPaymentLink({ amountPaise, currency = 'INR', description, 
 }
 
 export function verifyPaymentSignature(orderId, paymentId, signature) {
-    if (!KEY_SECRET) return false;
+    if (!KEY_SECRET || !orderId || !paymentId || !signature) return false;
     const body = `${orderId}|${paymentId}`;
     const expected = crypto.createHmac('sha256', KEY_SECRET).update(body).digest('hex');
-    return expected === signature;
+    try {
+        const a = Buffer.from(expected, 'utf8');
+        const b = Buffer.from(String(signature), 'utf8');
+        if (a.length !== b.length) return false;
+        return crypto.timingSafeEqual(a, b);
+    } catch {
+        return false;
+    }
+}
+
+/**
+ * Assert Razorpay payment matches expected order id + amount (paise).
+ * Status must be captured or authorized.
+ */
+export function assertRazorpayPaymentMatches(payment, { orderId, amountPaise }) {
+    if (!payment?.id) throw new Error('Payment not found on Razorpay');
+    const status = String(payment.status || '').toLowerCase();
+    if (!['captured', 'authorized'].includes(status)) {
+        throw new Error(`Payment not successful (status=${status || 'unknown'})`);
+    }
+    if (orderId && payment.order_id && String(payment.order_id) !== String(orderId)) {
+        throw new Error('Payment does not match Razorpay order');
+    }
+    if (Number.isFinite(amountPaise) && amountPaise > 0) {
+        const paid = Number(payment.amount);
+        if (!Number.isFinite(paid) || Math.abs(paid - Math.round(amountPaise)) > 1) {
+            throw new Error('Payment amount mismatch');
+        }
+    }
+    return true;
 }
 
 /**
