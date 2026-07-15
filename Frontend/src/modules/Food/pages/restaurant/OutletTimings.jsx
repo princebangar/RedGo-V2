@@ -65,6 +65,8 @@ export default function OutletTimings() {
   const [days, setDays] = useState(getDefaultDays)
   const [loading, setLoading] = useState(true)
   const saveTimerRef = useRef(null)
+  // Skip the first post-load render so we don't overwrite DB with synthetic defaults.
+  const allowAutosaveRef = useRef(false)
 
   // Load from backend on mount.
   useEffect(() => {
@@ -72,6 +74,7 @@ export default function OutletTimings() {
     ;(async () => {
       try {
         setLoading(true)
+        allowAutosaveRef.current = false
         const res = await restaurantAPI.getOutletTimings()
         const outletTimings = res?.data?.data?.outletTimings || res?.data?.outletTimings
         if (mounted && outletTimings && typeof outletTimings === "object") {
@@ -80,7 +83,13 @@ export default function OutletTimings() {
       } catch (error) {
         debugError("Error loading outlet timings from backend:", error)
       } finally {
-        if (mounted) setLoading(false)
+        if (mounted) {
+          setLoading(false)
+          // Enable autosave on the next tick after state settles.
+          setTimeout(() => {
+            allowAutosaveRef.current = true
+          }, 0)
+        }
       }
     })()
     return () => {
@@ -88,9 +97,9 @@ export default function OutletTimings() {
     }
   }, [])
 
-  // Save to backend whenever days change (debounced).
+  // Save to backend whenever days change (debounced) — only after user edits.
   useEffect(() => {
-    if (loading) return
+    if (loading || !allowAutosaveRef.current) return
     if (saveTimerRef.current) clearTimeout(saveTimerRef.current)
     saveTimerRef.current = setTimeout(async () => {
       try {
@@ -130,6 +139,7 @@ export default function OutletTimings() {
   }
 
   const toggleDayOpen = (day) => {
+    allowAutosaveRef.current = true
     isInternalUpdate.current = true
     setDays(prev => {
       const newOpen = !prev[day].isOpen
@@ -151,6 +161,7 @@ export default function OutletTimings() {
       return
     }
     
+    allowAutosaveRef.current = true
     isInternalUpdate.current = true
     const timeString = timeToString(newTime)
     

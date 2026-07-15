@@ -397,10 +397,26 @@ export async function getRestaurants(query) {
 
 
 const CANCELLED_ORDER_STATUSES = ['cancelled_by_user', 'cancelled_by_restaurant', 'cancelled_by_admin'];
+// Broad "in progress" set used by live activity / charts — not the Pending Orders card.
 const PENDING_ORDER_STATUSES = ['created', 'confirmed', 'preparing', 'ready_for_pickup', 'picked_up'];
-const DASHBOARD_PENDING_ORDER_STATUSES = ['created', 'confirmed'];
-const DASHBOARD_PROCESSING_ORDER_STATUSES = ['preparing', 'ready_for_pickup'];
+// Must match admin Pending Orders page (`listOrdersAdmin` status=pending → orderStatus=created).
+const DASHBOARD_PENDING_ORDER_STATUSES = ['created'];
+// Confirmed + kitchen stages (pending page is only brand-new `created` orders).
+const DASHBOARD_PROCESSING_ORDER_STATUSES = ['confirmed', 'preparing', 'ready_for_pickup'];
 const DELIVERED_ORDER_STATUS_EXPR = { $eq: ['$orderStatus', 'delivered'] };
+/** Same visibility rule as listOrdersAdmin base filter (exclude unpaid online checkouts). */
+const ADMIN_VISIBLE_PAYMENT_EXPR = {
+    $or: [
+        { $in: [{ $toLower: { $ifNull: ['$payment.method', ''] } }, ['cash', 'wallet', 'cod', 'cash on delivery']] },
+        {
+            $in: [
+                { $toLower: { $ifNull: ['$payment.status', ''] } },
+                ['paid', 'authorized', 'captured', 'settled', 'refunded']
+            ]
+        },
+        { $in: ['$orderStatus', CANCELLED_ORDER_STATUSES] }
+    ]
+};
 const IS_CASH_COD_METHOD_EXPR = {
     $in: [
         { $toLower: { $ifNull: ['$payment.method', ''] } },
@@ -541,12 +557,30 @@ export async function getDashboardStats(query = {}) {
                     },
                     dashboardPending: {
                         $sum: {
-                            $cond: [{ $in: ['$orderStatus', DASHBOARD_PENDING_ORDER_STATUSES] }, 1, 0]
+                            $cond: [
+                                {
+                                    $and: [
+                                        { $in: ['$orderStatus', DASHBOARD_PENDING_ORDER_STATUSES] },
+                                        ADMIN_VISIBLE_PAYMENT_EXPR
+                                    ]
+                                },
+                                1,
+                                0
+                            ]
                         }
                     },
                     dashboardProcessing: {
                         $sum: {
-                            $cond: [{ $in: ['$orderStatus', DASHBOARD_PROCESSING_ORDER_STATUSES] }, 1, 0]
+                            $cond: [
+                                {
+                                    $and: [
+                                        { $in: ['$orderStatus', DASHBOARD_PROCESSING_ORDER_STATUSES] },
+                                        ADMIN_VISIBLE_PAYMENT_EXPR
+                                    ]
+                                },
+                                1,
+                                0
+                            ]
                         }
                     },
                     revenueTotal: { 
@@ -840,7 +874,8 @@ export async function getDashboardStats(query = {}) {
         addons: { total: Number(addonsTotal || 0) },
         customers: { total: Number(customersTotal || 0) },
         orderStats: {
-            pending: Number(totals.pending || 0),
+            // Align with /admin/food/orders/pending (created + visible payment only).
+            pending: Number(totals.dashboardPending || 0),
             processing: Number(totals.dashboardProcessing || 0),
             completed: Number(totals.delivered || 0)
         },
@@ -3740,6 +3775,22 @@ export async function createRestaurantByAdmin(body) {
     }
 
     const restaurant = await FoodRestaurant.create(doc);
+
+    try {
+        const { seedOutletTimingsForRestaurant } = await import(
+            '../../restaurant/services/outletTimings.service.js'
+        );
+        await seedOutletTimingsForRestaurant(restaurant._id, {
+            openingTime: normalizedOpeningTime,
+            closingTime: normalizedClosingTime,
+            openDays: doc.openDays || []
+        });
+    } catch (e) {
+        logger.warn(
+            `[OutletTimings] Failed to seed timings for admin-created restaurant ${restaurant._id}: ${e?.message || e}`
+        );
+    }
+
     return restaurant.toObject();
 }
 

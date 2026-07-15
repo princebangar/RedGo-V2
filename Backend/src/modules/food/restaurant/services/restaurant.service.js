@@ -10,6 +10,7 @@ import { FoodItem } from '../../admin/models/food.model.js';
 import { getFoodDisplayPrice } from '../../admin/services/foodVariant.service.js';
 import { FoodOrder } from '../../orders/models/order.model.js';
 import { FoodRestaurantOutletTimings } from '../models/outletTimings.model.js';
+import { seedOutletTimingsForRestaurant } from './outletTimings.service.js';
 import { logger } from '../../../../utils/logger.js';
 
 const normalizeName = (value) =>
@@ -468,6 +469,18 @@ export const registerRestaurant = async (payload, files) => {
         logger.info(
             `[FCM-Register] Restaurant ${restaurant._id} saved tokens web=${tokenSnapshot?.fcmTokens?.length || 0} mobile=${tokenSnapshot?.fcmTokenMobile?.length || 0}`
         );
+
+        try {
+            await seedOutletTimingsForRestaurant(restaurant._id, {
+                openingTime: normalizedOpeningTime,
+                closingTime: normalizedClosingTime,
+                openDays: openDays || []
+            });
+        } catch (e) {
+            logger.warn(
+                `[OutletTimings] Failed to seed timings for restaurant ${restaurant._id}: ${e?.message || e}`
+            );
+        }
 
         try {
             const { notifyAdminsSafely } = await import('../../../../core/notifications/firebase.service.js');
@@ -1480,7 +1493,10 @@ export const listApprovedRestaurants = async (query = {}) => {
         closingTime: 1,
         openDays: 1,
         takeawaySettings: 1,
-        outletTimings: { $arrayElemAt: ['$outletTimingsData.timings', 0] }
+        // Full week array (not a single day). `$outletTimingsData.timings` is [[...days]]; take first doc's week.
+        outletTimings: {
+            $ifNull: [{ $arrayElemAt: ['$outletTimingsData.timings', 0] }, []]
+        }
     };
 
     const pipeline = [];
