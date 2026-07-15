@@ -1633,25 +1633,31 @@ export default function Home({ homeMode = null, isTabActive = true }) {
   }, [defaultSavedAddress]);
 
   const effectiveLocation = location;
+  // Single zone hook — duplicate useZone(location) caused double detect + loading flicker.
+  const effectiveZoneId = zoneId;
+  const effectiveZoneLoading = zoneLoading;
 
-  const { zoneId: effectiveZoneId, loading: effectiveZoneLoading } = useZone(effectiveLocation);
+  const showCategorySkeleton = loadingRealCategories || loadingMenuCategories || zoneLoading;
+  const showRestaurantSkeleton = isLoadingFilterResults || loadingRestaurants || zoneLoading;
+  // While zone/restaurants are settling, never surface a real "0 restaurants" count.
+  const isRestaurantsResolving =
+    loadingRestaurants ||
+    isLoadingFilterResults ||
+    zoneLoading;
 
-  const showCategorySkeleton = loadingRealCategories || loadingMenuCategories || zoneLoading || effectiveZoneLoading;
-  const showRestaurantSkeleton = isLoadingFilterResults || loadingRestaurants || zoneLoading || effectiveZoneLoading;
-
-  // Clear states immediately on zone loading to prevent displaying stale data from previous zones
+  // Only flip restaurant loading when the zone actually changes (not every detect flicker).
+  const prevResolvedZoneIdRef = useRef(zoneId);
   useEffect(() => {
-    if (zoneLoading || effectiveZoneLoading) {
-      setRealCategories([]);
-      setRestaurantsData([]);
-      setLoadingRealCategories(true);
-      setLoadingRestaurants(true);
-    }
-  }, [zoneLoading, effectiveZoneLoading]);
+    if (zoneLoading) return;
+    if (prevResolvedZoneIdRef.current === zoneId) return;
+    prevResolvedZoneIdRef.current = zoneId;
+    setLoadingRealCategories(true);
+    setLoadingRestaurants(true);
+  }, [zoneId, zoneLoading]);
 
   // Fetch categories (zone-aware) for the homepage category rail.
   useEffect(() => {
-    if (zoneLoading || effectiveZoneLoading) return;
+    if (zoneLoading) return;
 
     let cancelled = false;
     const run = async () => {
@@ -1660,14 +1666,20 @@ export default function Home({ homeMode = null, isTabActive = true }) {
         // Dedupe repeated calls (StrictMode + zone settling). Cache per zoneKey and share in-flight request.
         const cached = publicCategoriesCacheRef.current.get(zoneKey);
         if (cached) {
-          if (!cancelled) setRealCategories(cached);
+          if (!cancelled) {
+            setRealCategories(cached);
+            setLoadingRealCategories(false);
+          }
           return;
         }
 
         const inFlight = publicCategoriesInFlightRef.current.get(zoneKey);
         if (inFlight) {
           const categories = await inFlight;
-          if (!cancelled) setRealCategories(categories);
+          if (!cancelled) {
+            setRealCategories(categories);
+            setLoadingRealCategories(false);
+          }
           return;
         }
 
@@ -1716,7 +1728,7 @@ export default function Home({ homeMode = null, isTabActive = true }) {
     return () => {
       cancelled = true;
     };
-  }, [zoneId, zoneLoading, effectiveZoneLoading, normalizeImageUrl]);
+  }, [zoneId, zoneLoading, normalizeImageUrl]);
 
 
 
@@ -1790,8 +1802,6 @@ export default function Home({ homeMode = null, isTabActive = true }) {
   // Fetch restaurants from API with filters
   const fetchRestaurants = useCallback(
     async (filters = {}) => {
-        if (zoneLoading || effectiveZoneLoading) return;
-
         if (!effectiveZoneId) {
           setRestaurantsData([]);
           setLoadingRestaurants(false);
@@ -1800,10 +1810,7 @@ export default function Home({ homeMode = null, isTabActive = true }) {
 
         const requestSeq = ++restaurantsRequestSeqRef.current;
       try {
-        const isCacheEmpty = !HOME_RESTAURANTS_CACHE || (Array.isArray(HOME_RESTAURANTS_CACHE) && HOME_RESTAURANTS_CACHE.length === 0);
-        if (isCacheEmpty || filters.activeFilters || filters.sortBy || filters.selectedCuisine || effectiveOrderType) {
-          setLoadingRestaurants(true);
-        }
+        setLoadingRestaurants(true);
 
         // Backend disconnected - new backend in progress. Skip health check.
 
@@ -1883,8 +1890,8 @@ export default function Home({ homeMode = null, isTabActive = true }) {
         if (effectiveZoneId) {
           params.zoneId = effectiveZoneId;
         } else {
-          setRestaurantsData([]);
-          setLoadingRestaurants(false);
+          // Zone id vanished mid-request — keep resolving state, don't flash 0.
+          setLoadingRestaurants(true);
           return;
         }
 
@@ -1931,6 +1938,9 @@ export default function Home({ homeMode = null, isTabActive = true }) {
           if (restaurantsArray.length === 0) {
             debugWarn("No restaurants found in API response");
             setRestaurantsData([]);
+            if (requestSeq === restaurantsRequestSeqRef.current) {
+              setLoadingRestaurants(false);
+            }
             return;
           }
 
@@ -2045,14 +2055,19 @@ export default function Home({ homeMode = null, isTabActive = true }) {
               };
             });
 
-          startTransition(() => {
-            setRestaurantsData(transformedRestaurants);
-            HOME_RESTAURANTS_CACHE = transformedRestaurants;
-            setSessionCache('food_home_restaurants', transformedRestaurants);
-          });
+          // Commit list + end loading in the same turn so UI never paints "0" in between.
+          setRestaurantsData(transformedRestaurants);
+          HOME_RESTAURANTS_CACHE = transformedRestaurants;
+          setSessionCache('food_home_restaurants', transformedRestaurants);
+          if (requestSeq === restaurantsRequestSeqRef.current) {
+            setLoadingRestaurants(false);
+          }
         } else {
           debugWarn("Invalid API response structure:", response.data);
           setRestaurantsData([]);
+          if (requestSeq === restaurantsRequestSeqRef.current) {
+            setLoadingRestaurants(false);
+          }
         }
       } catch (error) {
         debugError("Error fetching restaurants:", error);
@@ -2060,7 +2075,6 @@ export default function Home({ homeMode = null, isTabActive = true }) {
         // Don't set hardcoded data here - let the useMemo fallback handle it
         // This way, if API succeeds later, it will show the real data
         setRestaurantsData([]);
-      } finally {
         if (requestSeq === restaurantsRequestSeqRef.current) {
           setLoadingRestaurants(false);
         }
@@ -2074,8 +2088,6 @@ export default function Home({ homeMode = null, isTabActive = true }) {
       effectiveZoneId,
       effectiveOrderType,
       isTakeawayPage,
-      zoneLoading,
-      effectiveZoneLoading,
     ],
   );
 
@@ -2105,31 +2117,39 @@ export default function Home({ homeMode = null, isTabActive = true }) {
     [activeFilters, sortBy, selectedCuisine, fetchRestaurants],
   );
 
-  // Fetch restaurants when appliedFilters change - added small debounce to prevent request storms on refresh
+  // Fetch when filters/orderType/zone settle. Wait for zoneLoading so we never
+  // skip a fetch and get stuck on "Finding Restaurants For You".
   useEffect(() => {
+    if (zoneLoading) return;
+    if (!effectiveZoneId) {
+      setRestaurantsData([]);
+      setLoadingRestaurants(false);
+      return;
+    }
     const timer = setTimeout(() => {
       fetchRestaurants(appliedFilters);
-    }, 100);
+    }, 50);
     return () => clearTimeout(timer);
-  }, [appliedFilters, fetchRestaurants, effectiveOrderType]);
+  }, [appliedFilters, fetchRestaurants, effectiveOrderType, zoneLoading, effectiveZoneId]);
 
 
 
   // IMPORTANT:
-  // Homepage should avoid eager N+1 menu requests. We only resolve menu metadata
-  // when the UI truly needs it: Veg Mode is enabled, or admin categories are unavailable.
+  // Homepage must NOT eagerly hit /menu for every restaurant (N+1 storm).
+  // Menu meta is only needed for Veg Mode diet filtering. Category rail uses
+  // admin/public categories, then landing fallbacks — never per-restaurant menus.
   useEffect(() => {
     const restaurantIds = menuUnionRestaurantIdsKey
       ? menuUnionRestaurantIdsKey.split(",").filter(Boolean)
       : [];
-    const shouldFetchMenuMeta = vegMode || realCategories.length === 0;
+    const shouldFetchMenuMeta = Boolean(vegMode);
 
     const fetchMenuCategories = async () => {
       const requestSeq = ++menuUnionRequestSeqRef.current;
 
       if (!menuUnionRestaurantIdsKey || !shouldFetchMenuMeta) {
         setMenuCategories([]);
-        setRestaurantDietMeta({});
+        if (!vegMode) setRestaurantDietMeta({});
         setLoadingMenuCategories(false);
         return;
       }
@@ -2285,7 +2305,6 @@ export default function Home({ homeMode = null, isTabActive = true }) {
   }, [
     menuUnionRestaurantIdsKey,
     normalizeImageUrl,
-    realCategories.length,
     slugifyCategory,
     vegMode,
   ]);
@@ -2361,7 +2380,7 @@ export default function Home({ homeMode = null, isTabActive = true }) {
     filteredRestaurants.length === 0;
 
   const takeawaySectionSubtitle = useMemo(() => {
-    if (loadingRestaurants) return "Finding Restaurants For You";
+    if (isRestaurantsResolving) return "Finding Restaurants For You";
     if (!isTakeawayActive) {
       return `${filteredRestaurants.length} Restaurants Delivering to You`;
     }
@@ -2373,7 +2392,7 @@ export default function Home({ homeMode = null, isTabActive = true }) {
     }
     return `${filteredRestaurants.length} Restaurant${filteredRestaurants.length === 1 ? "" : "s"} near you`;
   }, [
-    loadingRestaurants,
+    isRestaurantsResolving,
     isTakeawayActive,
     isTakeawaySearching,
     filteredRestaurants.length,

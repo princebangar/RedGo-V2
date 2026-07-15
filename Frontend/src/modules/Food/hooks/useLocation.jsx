@@ -313,23 +313,55 @@ export const hasValidStoredUserLocation = () => {
 
 let pageLoadAutoRefreshStarted = false
 let pageLoadDeliveryModeBootstrapped = false
+let cachedIsNewAppSession = false
 let autoLocationRefreshInFlight = null
 const AUTO_LOCATION_REFRESH_COOLDOWN_MS = 15_000
 let lastAutoLocationRefreshAt = 0
 
-/**
- * On every fresh page load / hard refresh, prefer live GPS over a previously
- * selected saved address (e.g. Patran still stuck while user is in Indore).
- * Explicit "saved address" selection still works after the user picks one.
- */
-function bootstrapCurrentLocationModeOnPageLoad() {
-  if (pageLoadDeliveryModeBootstrapped) return
-  pageLoadDeliveryModeBootstrapped = true
+/** Marks an active tab after boot; not used alone for stickiness (Chrome can restore it). */
+export const LOCATION_APP_SESSION_KEY = "redgo_location_session"
+
+function isBrowserPageReload() {
   try {
+    return (
+      performance.getEntriesByType("navigation")[0]?.type === "reload" ||
+      window.performance?.navigation?.type === 1
+    )
+  } catch {
+    return false
+  }
+}
+
+/**
+ * Stick selected delivery location only on F5/reload.
+ * New tab / cold open / reopened closed tab → force current GPS
+ * (sessionStorage alone is unreliable — Chrome often restores it on reopen).
+ * @returns {{ isNewAppSession: boolean }}
+ */
+function bootstrapLocationModeOnAppOpen() {
+  if (pageLoadDeliveryModeBootstrapped) {
+    return { isNewAppSession: cachedIsNewAppSession }
+  }
+  pageLoadDeliveryModeBootstrapped = true
+
+  if (isBrowserPageReload()) {
+    cachedIsNewAppSession = false
+    try {
+      sessionStorage.setItem(LOCATION_APP_SESSION_KEY, "1")
+    } catch {
+      /* ignore */
+    }
+    return { isNewAppSession: false }
+  }
+
+  cachedIsNewAppSession = true
+  try {
+    sessionStorage.setItem(LOCATION_APP_SESSION_KEY, "1")
     localStorage.setItem("deliveryAddressMode", "current")
   } catch {
     /* ignore */
   }
+  return { isNewAppSession: true }
 }
 
 const runDedupedAutoRefresh = (refreshFn) => {
@@ -345,8 +377,8 @@ const runDedupedAutoRefresh = (refreshFn) => {
 }
 
 export function useLocation() {
-  // Must run before addressMode state init so first paint prefers GPS mode.
-  bootstrapCurrentLocationModeOnPageLoad()
+  // Must run before addressMode state init so first paint knows session mode.
+  const { isNewAppSession } = bootstrapLocationModeOnAppOpen()
 
   const [isDefaultLocationMode, setIsDefaultLocationMode] = useState(() => {
     try {
@@ -1895,32 +1927,30 @@ export function useLocation() {
       })
     }, 5000) // 5 second safety timeout
 
-    // Request fresh location in BACKGROUND when permission is already granted.
-    // Fresh page load already set deliveryAddressMode=current so UI follows GPS
-    // instead of a previously selected saved address (Patran, etc.).
+    // Fresh tab/app open → force current GPS (F5 keeps selected city via isNewAppSession=false).
     const startAutoLocationRefresh = () => {
       runDedupedAutoRefresh(() => refreshLocationIfPermitted({ showLoading: false }))
     }
 
-    if (!isDefaultLocationMode && !isSuppressedPath) {
+    if (!isDefaultLocationMode && !isSuppressedPath && isNewAppSession) {
       if (!pageLoadAutoRefreshStarted) {
         pageLoadAutoRefreshStarted = true
         try {
+          sessionStorage.setItem("manual_location_update", "true")
+          localStorage.setItem("deliveryAddressMode", "current")
           window.dispatchEvent(new CustomEvent("deliveryAddressModeUpdated"))
         } catch {}
-        startAutoLocationRefresh()
+        // requestLocation clears the prior city pin and pulls live GPS (not a silent cache hit).
+        runDedupedAutoRefresh(() =>
+          requestLocation().catch((err) => {
+            debugError("New-tab current location fetch failed, falling back:", err)
+            return refreshLocationIfPermitted({ showLoading: true })
+          }),
+        )
       }
     } else {
       setLoading(false)
     }
-
-    const handleVisibilityChange = () => {
-      if (document.visibilityState !== "visible") return
-      if (isDefaultLocationMode || isSuppressedPath) return
-      startAutoLocationRefresh()
-    }
-
-    document.addEventListener("visibilitychange", handleVisibilityChange)
 
     // Listen for storage changes to keep location in sync across components/tabs
     const handleStorageChange = (e) => {
@@ -1950,19 +1980,22 @@ export function useLocation() {
     window.addEventListener('storage', handleStorageChange)
     window.addEventListener('userLocationUpdated', handleCustomUpdate)
     
-    // Auto-fetch location ONLY when user successfully LOGS IN
-    // This avoids triggering it during profile updates
+    // Auto-fetch current location on login (even if this tab already had a session).
     const handleLoginSuccess = () => {
       if (isDefaultLocationMode) {
         debugLog("?? Default Location Mode is active. Suppressing login success location fetch.")
         return
       }
 
-      // Check if we already fetched for this specific login session to be safe
       const hasFetchedThisLogin = sessionStorage.getItem('lastLoginLocationFetch');
       if (hasFetchedThisLogin) return;
 
       debugLog("?? Login success, triggering one-time automatic location fetch...")
+      try {
+        sessionStorage.setItem(LOCATION_APP_SESSION_KEY, "1")
+        localStorage.setItem("deliveryAddressMode", "current")
+        window.dispatchEvent(new CustomEvent("deliveryAddressModeUpdated"))
+      } catch {}
       setTimeout(() => {
         requestLocation().then(() => {
           sessionStorage.setItem('lastLoginLocationFetch', 'true');
@@ -1979,7 +2012,6 @@ export function useLocation() {
       clearTimeout(loadingTimeout)
       debugLog("?? Cleaning up location watcher")
       stopWatchingLocation()
-      document.removeEventListener("visibilitychange", handleVisibilityChange)
       window.removeEventListener('storage', handleStorageChange)
       window.removeEventListener('userLocationUpdated', handleCustomUpdate)
       window.removeEventListener('userLoginSuccess', handleLoginSuccess)
@@ -2166,7 +2198,7 @@ export function useLocation() {
   // Listen to deliveryAddressMode changes using a local state
   const [addressMode, setAddressMode] = useState(() => {
     try {
-      // Boot already set "current" on fresh page load; fall back to current (not saved).
+      // New app/tab sessions force "current"; same-session refresh keeps prior mode.
       return localStorage.getItem("deliveryAddressMode") || "current"
     } catch {
       return "current"
