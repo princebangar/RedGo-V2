@@ -60,8 +60,8 @@ export function useZone(location) {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState(null)
   
-  const initialLat = roundCoord(location?.latitude, 6)
-  const initialLng = roundCoord(location?.longitude, 6)
+  const initialLat = roundCoord(location?.latitude, 5)
+  const initialLng = roundCoord(location?.longitude, 5)
   const prevCoordsRef = useRef({ latitude: null, longitude: null })
   const debounceTimerRef = useRef(null)
 
@@ -132,8 +132,8 @@ export function useZone(location) {
     }
   }, []);
 
-  const lat = roundCoord(location?.latitude, 6)
-  const lng = roundCoord(location?.longitude, 6)
+  const lat = roundCoord(location?.latitude, 5)
+  const lng = roundCoord(location?.longitude, 5)
   const coordsChanged =
     prevCoordsRef.current.latitude !== lat ||
     prevCoordsRef.current.longitude !== lng;
@@ -142,9 +142,14 @@ export function useZone(location) {
   useEffect(() => {
 
     if (Number.isFinite(lat) && Number.isFinite(lng)) {
-      // Only detect zone if coordinates changed significantly
+      // Only detect zone if coordinates changed significantly (~1m via 5 decimals)
       if (coordsChanged) {
-        setLoading(true);
+        const hadCachedZone = Boolean(
+          typeof localStorage !== "undefined" && localStorage.getItem("userZoneId"),
+        );
+        // Keep cached zone usable for instant restaurant fetch on refresh;
+        // only block UI when we have no zone at all yet.
+        if (!hadCachedZone) setLoading(true);
         prevCoordsRef.current = { latitude: lat, longitude: lng }
         if (debounceTimerRef.current) {
           clearTimeout(debounceTimerRef.current)
@@ -189,7 +194,9 @@ export function useZone(location) {
     zoneId,
     zone,
     zoneStatus,
-    loading: loading || coordsChanged,
+    // Don't OR with coordsChanged — that re-flashes loading on every parent re-render
+    // until the effect commits, which makes Home look like it "auto-refreshes".
+    loading,
     error,
     isInService: zoneStatus === "IN_SERVICE",
     isOutOfService: zoneStatus === "OUT_OF_SERVICE",

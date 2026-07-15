@@ -26,6 +26,23 @@ import MainTabKeepAlive from "./MainTabKeepAlive"
 import { getMainTabFromPath, isExactMainTabPath, rememberMainTabBeforeProfile } from "@food/utils/mainTabRoutes"
 import { registerFoodPageCacheLifecycle } from "@food/utils/foodPageCache"
 
+let reloadManualLocationFlagCleared = false
+/** Clear sticky manual-location loader flag on F5 before first paint. */
+function clearManualLocationFlagOnReload() {
+  if (reloadManualLocationFlagCleared) return
+  reloadManualLocationFlagCleared = true
+  try {
+    const isReload =
+      performance.getEntriesByType("navigation")[0]?.type === "reload" ||
+      window.performance?.navigation?.type === 1
+    if (isReload) {
+      sessionStorage.removeItem("manual_location_update")
+    }
+  } catch {
+    /* ignore */
+  }
+}
+
 // Sync orderType with route
 function RouteSyncHandler() {
   const location = useLocation()
@@ -164,6 +181,7 @@ function LocationSelectorProvider({ children }) {
 }
 
 function UserLayoutContent() {
+  clearManualLocationFlagOnReload()
   const location = useLocation()
   const { location: activeLocation, loading: isGeoLoading } = useGeoLocation()
   const { loading: isProfileLoading } = useProfile()
@@ -325,8 +343,12 @@ function UserLayoutContent() {
       window.scrollTo({ top: 0, left: 0, behavior: 'instant' });
       sessionStorage.removeItem("homeScrollY");
       sessionStorage.removeItem("homeVisibleCount");
+      // F5 keeps sticky delivery location — don't flash "Fetching Location..."
+      // from a prior manual select flag. Fresh tab open / login still fetch normally.
+      sessionStorage.removeItem("manual_location_update");
+      setShowGlobalLoader(false);
     }
-  }, []);
+  }, [setShowGlobalLoader]);
 
   useEffect(() => {
     registerFoodPageCacheLifecycle();
