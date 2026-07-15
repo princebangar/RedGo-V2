@@ -1888,6 +1888,10 @@ export default function Home({ homeMode = null, isTabActive = true }) {
           return;
         }
 
+        // Zone-based delivery: do NOT filter by city name.
+        // Villages like "Dugal Kalan" / "Dogal" sit inside a zone whose restaurants
+        // are typically registered under the main town (e.g. "Patran"). City matching
+        // incorrectly returns 0 restaurants even when the pin is inside the zone.
         const resolvedCity = resolveServiceCity({
           locality: effectiveLocation?.city || "",
           formattedAddress:
@@ -1904,7 +1908,7 @@ export default function Home({ homeMode = null, isTabActive = true }) {
           normalizedUserCity !== "current location" &&
           normalizedUserCity !== "unknown city" &&
           normalizedUserCity !== "select location";
-        if (hasUsableUserCity) {
+        if (!effectiveZoneId && hasUsableUserCity) {
           params.city = resolvedCity || String(effectiveLocation.city).trim();
         }
 
@@ -1930,41 +1934,10 @@ export default function Home({ homeMode = null, isTabActive = true }) {
             return;
           }
 
-          // Transform API data to match expected format
-          const normalizeCityValue = (value) =>
-            String(value || "")
-              .trim()
-              .split(",")[0]
-              .toLowerCase()
-              .replace(/[^a-z0-9\s]/g, "")
-              .replace(/\s+/g, " ")
-              .trim();
-
           const userLat = effectiveLocation?.latitude;
           const userLng = effectiveLocation?.longitude;
 
-          const strictCityRestaurants = restaurantsArray.filter((restaurant) => {
-            if (!hasUsableUserCity) return true;
-
-            const cityCandidates = [
-              restaurant?.city,
-              restaurant?.location?.city,
-              restaurant?.address?.city,
-              restaurant?.onboarding?.step1?.city,
-              restaurant?.onboarding?.step1?.location?.city,
-            ];
-
-            const restaurantCity = cityCandidates
-              .map((candidate) => normalizeCityValue(candidate))
-              .find(Boolean);
-
-            if (!restaurantCity) return false;
-
-            const userCity = normalizeCityValue(params.city || effectiveLocation?.city);
-            return restaurantCity === userCity;
-          });
-
-          const transformedRestaurants = strictCityRestaurants
+          const transformedRestaurants = restaurantsArray
             .filter((restaurant) => {
               if (effectiveOrderType === "takeaway" || isTakeawayPage) {
                 if (!restaurant.takeawaySettings?.isEnabled && !restaurant.takeawayAvailable) {

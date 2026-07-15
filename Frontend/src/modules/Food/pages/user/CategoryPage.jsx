@@ -879,6 +879,8 @@ export default function CategoryPage({ embeddedCategorySlug = null, hideHeader =
           params.zoneId = zoneId;
         }
 
+        // When zone is known, list by zone (not city name) so villages inside a
+        // zone still see that zone's restaurants.
         const normalizedUserCity = String(location?.city || "")
           .trim()
           .toLowerCase();
@@ -887,7 +889,7 @@ export default function CategoryPage({ embeddedCategorySlug = null, hideHeader =
           normalizedUserCity !== "current location" &&
           normalizedUserCity !== "unknown city" &&
           normalizedUserCity !== "select location";
-        if (hasUsableUserCity) {
+        if (!zoneId && hasUsableUserCity) {
           params.city = String(location.city).trim();
         }
 
