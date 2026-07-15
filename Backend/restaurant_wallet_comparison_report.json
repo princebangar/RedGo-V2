@@ -1,0 +1,1397 @@
+{
+  "generatedAt": "2026-07-12T17:54:36.702Z",
+  "source": {
+    "storesCsvPath": "C:\\Users\\SHUBHAM\\Desktop\\RedGo-V2\\stores.csv",
+    "walletsCsvPath": "C:\\Users\\SHUBHAM\\Desktop\\RedGo-V2\\store_wallets.csv"
+  },
+  "summary": {
+    "legacyStoreCount": 64,
+    "legacyWalletCount": 103,
+    "newRestaurantCount": 40,
+    "newWalletCount": 63,
+    "exactMatchCount": 20,
+    "likelyMatchCount": 5,
+    "missingStoreRowCount": 41,
+    "unmatchedCount": 37
+  },
+  "exactMatches": [
+    {
+      "vendorId": "18",
+      "walletCsvId": "25",
+      "oldRestaurantName": "Ashwani Bakers Restaurant",
+      "oldPhoneLast10": "9149207086",
+      "newRestaurantId": "6a0d5cdb6b48d9a4bbbe0eb3",
+      "newRestaurantName": "Ashwani Bakers Restaurant",
+      "newRestaurantPhoneLast10": "9149207086",
+      "existingWallet": null,
+      "walletFromLegacy": {
+        "totalEarnings": 197799.64,
+        "totalSettled": 188874,
+        "lockedAmount": 0,
+        "collectedCash": 0,
+        "balance": 8925.64
+      }
+    },
+    {
+      "vendorId": "26",
+      "walletCsvId": "28",
+      "oldRestaurantName": "Chill Out Restaurant Corner",
+      "oldPhoneLast10": "7087818210",
+      "newRestaurantId": "6a2264185765ca33b0344292",
+      "newRestaurantName": "Chill Out Restaurant Corner",
+      "newRestaurantPhoneLast10": "7087818210",
+      "existingWallet": null,
+      "walletFromLegacy": {
+        "totalEarnings": 53333.06,
+        "totalSettled": 47150,
+        "lockedAmount": 0,
+        "collectedCash": 0,
+        "balance": 6183.06
+      }
+    },
+    {
+      "vendorId": "15",
+      "walletCsvId": "29",
+      "oldRestaurantName": "Busyday Fast Food",
+      "oldPhoneLast10": "9872958717",
+      "newRestaurantId": "6a115c1eca9744e889a62dac",
+      "newRestaurantName": "Busyday Fast Food",
+      "newRestaurantPhoneLast10": "9872958717",
+      "existingWallet": null,
+      "walletFromLegacy": {
+        "totalEarnings": 206511.75,
+        "totalSettled": 201200,
+        "lockedAmount": 0,
+        "collectedCash": 0,
+        "balance": 5311.75
+      }
+    },
+    {
+      "vendorId": "14",
+      "walletCsvId": "30",
+      "oldRestaurantName": "Pizza 13 Food Court",
+      "oldPhoneLast10": "7997701313",
+      "newRestaurantId": "69e47a1b4e3ac22fcd6ffddd",
+      "newRestaurantName": "Pizza 13 Food Court",
+      "newRestaurantPhoneLast10": "7997701313",
+      "existingWallet": null,
+      "walletFromLegacy": {
+        "totalEarnings": 363553.98,
+        "totalSettled": 361050,
+        "lockedAmount": 0,
+        "collectedCash": 0,
+        "balance": 2503.98
+      }
+    },
+    {
+      "vendorId": "22",
+      "walletCsvId": "31",
+      "oldRestaurantName": "Chilli Chatkara",
+      "oldPhoneLast10": "9041049903",
+      "newRestaurantId": "6a115101e4d0204fb23b3516",
+      "newRestaurantName": "Chilli Chatkara",
+      "newRestaurantPhoneLast10": "9041049903",
+      "existingWallet": null,
+      "walletFromLegacy": {
+        "totalEarnings": 265423.74,
+        "totalSettled": 262940,
+        "lockedAmount": 0,
+        "collectedCash": 0,
+        "balance": 2483.74
+      }
+    },
+    {
+      "vendorId": "30",
+      "walletCsvId": "34",
+      "oldRestaurantName": "Khalsa Chaap",
+      "oldPhoneLast10": "7814596736",
+      "newRestaurantId": "6a128f20ba73454bdca8144f",
+      "newRestaurantName": "Khalsa Chaap",
+      "newRestaurantPhoneLast10": "7814596736",
+      "existingWallet": null,
+      "walletFromLegacy": {
+        "totalEarnings": 120041.92,
+        "totalSettled": 117530,
+        "lockedAmount": 0,
+        "collectedCash": 0,
+        "balance": 2511.92
+      }
+    },
+    {
+      "vendorId": "20",
+      "walletCsvId": "40",
+      "oldRestaurantName": "Alley's Cafe",
+      "oldPhoneLast10": "6283494847",
+      "newRestaurantId": "6a115a36ca9744e889a62cca",
+      "newRestaurantName": "Alley's Cafe",
+      "newRestaurantPhoneLast10": "6283494847",
+      "existingWallet": null,
+      "walletFromLegacy": {
+        "totalEarnings": 95155.2,
+        "totalSettled": 94406,
+        "lockedAmount": 0,
+        "collectedCash": 0,
+        "balance": 749.2
+      }
+    },
+    {
+      "vendorId": "33",
+      "walletCsvId": "44",
+      "oldRestaurantName": "Kaler Food Point",
+      "oldPhoneLast10": "7973946232",
+      "newRestaurantId": "6a0fefbc9bd142ff2a1390b2",
+      "newRestaurantName": "Kaler Food Point",
+      "newRestaurantPhoneLast10": "7973946232",
+      "existingWallet": null,
+      "walletFromLegacy": {
+        "totalEarnings": 36262.69,
+        "totalSettled": 35487,
+        "lockedAmount": 0,
+        "collectedCash": 0,
+        "balance": 775.69
+      }
+    },
+    {
+      "vendorId": "21",
+      "walletCsvId": "46",
+      "oldRestaurantName": "Eat & Chill Cafe",
+      "oldPhoneLast10": "9915289198",
+      "newRestaurantId": "6a17f254956ac7d0d2091fd6",
+      "newRestaurantName": "Eat & Chill Cafe",
+      "newRestaurantPhoneLast10": "9915289198",
+      "existingWallet": null,
+      "walletFromLegacy": {
+        "totalEarnings": 9146.24,
+        "totalSettled": 8240,
+        "lockedAmount": 0,
+        "collectedCash": 0,
+        "balance": 906.24
+      }
+    },
+    {
+      "vendorId": "36",
+      "walletCsvId": "50",
+      "oldRestaurantName": "Fruit Fiesta",
+      "oldPhoneLast10": "7364047786",
+      "newRestaurantId": "6a2298235765ca33b034882f",
+      "newRestaurantName": "Fruit Fiesta",
+      "newRestaurantPhoneLast10": "7364047786",
+      "existingWallet": null,
+      "walletFromLegacy": {
+        "totalEarnings": 23386.5,
+        "totalSettled": 18337,
+        "lockedAmount": 0,
+        "collectedCash": 0,
+        "balance": 5049.5
+      }
+    },
+    {
+      "vendorId": "38",
+      "walletCsvId": "52",
+      "oldRestaurantName": "Mr. Rolls & Shakes",
+      "oldPhoneLast10": "7710600220",
+      "newRestaurantId": "6a0ff6049bd142ff2a139176",
+      "newRestaurantName": "Mr. Rolls & Shakes",
+      "newRestaurantPhoneLast10": "7710600220",
+      "existingWallet": null,
+      "walletFromLegacy": {
+        "totalEarnings": 115845.26,
+        "totalSettled": 114052,
+        "lockedAmount": 0,
+        "collectedCash": 0,
+        "balance": 1793.26
+      }
+    },
+    {
+      "vendorId": "39",
+      "walletCsvId": "53",
+      "oldRestaurantName": "Sagar Snacks Bar",
+      "oldPhoneLast10": "9814620133",
+      "newRestaurantId": "6a2296cc5765ca33b03486f4",
+      "newRestaurantName": "Sagar Snacks Bar",
+      "newRestaurantPhoneLast10": "9814620133",
+      "existingWallet": null,
+      "walletFromLegacy": {
+        "totalEarnings": 21418.68,
+        "totalSettled": 20850,
+        "lockedAmount": 0,
+        "collectedCash": 0,
+        "balance": 568.68
+      }
+    },
+    {
+      "vendorId": "41",
+      "walletCsvId": "54",
+      "oldRestaurantName": "Gff Juice Bar",
+      "oldPhoneLast10": "8054982155",
+      "newRestaurantId": "6a17eed2956ac7d0d2091e36",
+      "newRestaurantName": "Gff Juice Bar",
+      "newRestaurantPhoneLast10": "8054982155",
+      "existingWallet": null,
+      "walletFromLegacy": {
+        "totalEarnings": 2691.92,
+        "totalSettled": 2500,
+        "lockedAmount": 0,
+        "collectedCash": 0,
+        "balance": 191.92
+      }
+    },
+    {
+      "vendorId": "46",
+      "walletCsvId": "60",
+      "oldRestaurantName": "Shama Chicken Dhaba",
+      "oldPhoneLast10": "9758131293",
+      "newRestaurantId": "6a229c1e5765ca33b0348a97",
+      "newRestaurantName": "Shama Chicken Dhaba",
+      "newRestaurantPhoneLast10": "9758131293",
+      "existingWallet": null,
+      "walletFromLegacy": {
+        "totalEarnings": 139483.78,
+        "totalSettled": 119960,
+        "lockedAmount": 0,
+        "collectedCash": 0,
+        "balance": 19523.78
+      }
+    },
+    {
+      "vendorId": "48",
+      "walletCsvId": "62",
+      "oldRestaurantName": "Reddu Dairy Sweets",
+      "oldPhoneLast10": "9877777752",
+      "newRestaurantId": "6a229b025765ca33b034894d",
+      "newRestaurantName": "Reddu Dairy Sweets",
+      "newRestaurantPhoneLast10": "9877777752",
+      "existingWallet": null,
+      "walletFromLegacy": {
+        "totalEarnings": 7046.09,
+        "totalSettled": 2977,
+        "lockedAmount": 0,
+        "collectedCash": 0,
+        "balance": 4069.09
+      }
+    },
+    {
+      "vendorId": "55",
+      "walletCsvId": "70",
+      "oldRestaurantName": "Balaji Sweets",
+      "oldPhoneLast10": "6377700602",
+      "newRestaurantId": "6a1ef84cee5c9059a8257920",
+      "newRestaurantName": "Balaji Sweets",
+      "newRestaurantPhoneLast10": "6377700602",
+      "existingWallet": null,
+      "walletFromLegacy": {
+        "totalEarnings": 38230,
+        "totalSettled": 30500,
+        "lockedAmount": 0,
+        "collectedCash": 0,
+        "balance": 7730
+      }
+    },
+    {
+      "vendorId": "58",
+      "walletCsvId": "74",
+      "oldRestaurantName": "Sun Beams 19",
+      "oldPhoneLast10": "9915148111",
+      "newRestaurantId": "6a251ac6554116aaba721847",
+      "newRestaurantName": "Sun Beams 19",
+      "newRestaurantPhoneLast10": "9915148111",
+      "existingWallet": null,
+      "walletFromLegacy": {
+        "totalEarnings": 133594.75,
+        "totalSettled": 132000,
+        "lockedAmount": 0,
+        "collectedCash": 0,
+        "balance": 1594.75
+      }
+    },
+    {
+      "vendorId": "63",
+      "walletCsvId": "81",
+      "oldRestaurantName": "Vijay Dosa",
+      "oldPhoneLast10": "8610822033",
+      "newRestaurantId": "6a1ef9e3ee5c9059a8257a6a",
+      "newRestaurantName": "Vijay Dosa",
+      "newRestaurantPhoneLast10": "8610822033",
+      "existingWallet": null,
+      "walletFromLegacy": {
+        "totalEarnings": 21104.5,
+        "totalSettled": 20556,
+        "lockedAmount": 0,
+        "collectedCash": 0,
+        "balance": 548.5
+      }
+    },
+    {
+      "vendorId": "70",
+      "walletCsvId": "88",
+      "oldRestaurantName": "Chole Puri Junction",
+      "oldPhoneLast10": "7355240737",
+      "newRestaurantId": "6a1161bcca9744e889a62eee",
+      "newRestaurantName": "Chole Puri Junction",
+      "newRestaurantPhoneLast10": "7355240737",
+      "existingWallet": null,
+      "walletFromLegacy": {
+        "totalEarnings": 18038.1,
+        "totalSettled": 13376,
+        "lockedAmount": 0,
+        "collectedCash": 0,
+        "balance": 4662.1
+      }
+    },
+    {
+      "vendorId": "72",
+      "walletCsvId": "90",
+      "oldRestaurantName": "Caffe Amour",
+      "oldPhoneLast10": "9804300021",
+      "newRestaurantId": "6a16ac26e87d1ae1c1f95968",
+      "newRestaurantName": "Caffe Amour",
+      "newRestaurantPhoneLast10": "9804300021",
+      "existingWallet": null,
+      "walletFromLegacy": {
+        "totalEarnings": 41886.19,
+        "totalSettled": 40650,
+        "lockedAmount": 0,
+        "collectedCash": 0,
+        "balance": 1236.19
+      }
+    }
+  ],
+  "likelyMatches": [
+    {
+      "vendorId": "17",
+      "walletCsvId": "38",
+      "oldRestaurantName": "The Posh Cafe",
+      "oldPhoneLast10": "8528585513",
+      "walletFromLegacy": {
+        "totalEarnings": 217818.24,
+        "totalSettled": 214800,
+        "lockedAmount": 0,
+        "collectedCash": 0,
+        "balance": 3018.24
+      },
+      "candidates": [
+        {
+          "newRestaurantId": "6a115806e4d0204fb23b361f",
+          "newRestaurantName": "The Posh Cafe",
+          "newRestaurantPhoneLast10": "9988918575"
+        }
+      ]
+    },
+    {
+      "vendorId": "16",
+      "walletCsvId": "41",
+      "oldRestaurantName": "Cali Hawkers",
+      "oldPhoneLast10": "9888085996",
+      "walletFromLegacy": {
+        "totalEarnings": 237024.66,
+        "totalSettled": 206500,
+        "lockedAmount": 30500,
+        "collectedCash": 0,
+        "balance": 24.66
+      },
+      "candidates": [
+        {
+          "newRestaurantId": "6a0d58b66b48d9a4bbbdfccc",
+          "newRestaurantName": "Cali Hawkers",
+          "newRestaurantPhoneLast10": "9888242226"
+        }
+      ]
+    },
+    {
+      "vendorId": "32",
+      "walletCsvId": "42",
+      "oldRestaurantName": "Melvon Cafe",
+      "oldPhoneLast10": "6283916938",
+      "walletFromLegacy": {
+        "totalEarnings": 91764.94,
+        "totalSettled": 90859,
+        "lockedAmount": 0,
+        "collectedCash": 0,
+        "balance": 905.94
+      },
+      "candidates": [
+        {
+          "newRestaurantId": "6a1439c9bd07f0dc3944dfc0",
+          "newRestaurantName": "Melvon Cafe",
+          "newRestaurantPhoneLast10": "7710555911"
+        }
+      ]
+    },
+    {
+      "vendorId": "23",
+      "walletCsvId": "43",
+      "oldRestaurantName": "Chai Sutta Bar",
+      "oldPhoneLast10": "9700023808",
+      "walletFromLegacy": {
+        "totalEarnings": 56439.24,
+        "totalSettled": 53200,
+        "lockedAmount": 0,
+        "collectedCash": 0,
+        "balance": 3239.24
+      },
+      "candidates": [
+        {
+          "newRestaurantId": "6a11558be4d0204fb23b35ba",
+          "newRestaurantName": "Chai Sutta Bar",
+          "newRestaurantPhoneLast10": "6283184100"
+        }
+      ]
+    },
+    {
+      "vendorId": "86",
+      "walletCsvId": "104",
+      "oldRestaurantName": "Swaad express",
+      "oldPhoneLast10": "6283176416",
+      "walletFromLegacy": {
+        "totalEarnings": 20936.3,
+        "totalSettled": 19700,
+        "lockedAmount": 0,
+        "collectedCash": 0,
+        "balance": 1236.3
+      },
+      "candidates": [
+        {
+          "newRestaurantId": "6a0ff22b9bd142ff2a13911d",
+          "newRestaurantName": "Swaad Express",
+          "newRestaurantPhoneLast10": "9357211540"
+        }
+      ]
+    }
+  ],
+  "missingStoreRows": [
+    {
+      "vendorId": "25",
+      "walletCsvId": "26",
+      "walletFromLegacy": {
+        "totalEarnings": 14687.49,
+        "totalSettled": 14687,
+        "lockedAmount": 0,
+        "collectedCash": 0,
+        "balance": 0.49
+      }
+    },
+    {
+      "vendorId": "29",
+      "walletCsvId": "32",
+      "walletFromLegacy": {
+        "totalEarnings": 205.92,
+        "totalSettled": 0,
+        "lockedAmount": 0,
+        "collectedCash": 0,
+        "balance": 205.92
+      }
+    },
+    {
+      "vendorId": "31",
+      "walletCsvId": "35",
+      "walletFromLegacy": {
+        "totalEarnings": 737.1,
+        "totalSettled": 737,
+        "lockedAmount": 0,
+        "collectedCash": 0,
+        "balance": 0.1
+      }
+    },
+    {
+      "vendorId": "24",
+      "walletCsvId": "37",
+      "walletFromLegacy": {
+        "totalEarnings": 69281.63,
+        "totalSettled": 69220,
+        "lockedAmount": 0,
+        "collectedCash": 0,
+        "balance": 61.63
+      }
+    },
+    {
+      "vendorId": "34",
+      "walletCsvId": "45",
+      "walletFromLegacy": {
+        "totalEarnings": 54595.74,
+        "totalSettled": 54594,
+        "lockedAmount": 0,
+        "collectedCash": 0,
+        "balance": 1.74
+      }
+    },
+    {
+      "vendorId": "11",
+      "walletCsvId": "47",
+      "walletFromLegacy": {
+        "totalEarnings": 626.85,
+        "totalSettled": 0,
+        "lockedAmount": 0,
+        "collectedCash": 0,
+        "balance": 626.85
+      }
+    },
+    {
+      "vendorId": "43",
+      "walletCsvId": "57",
+      "walletFromLegacy": {
+        "totalEarnings": 2337.36,
+        "totalSettled": 2337,
+        "lockedAmount": 0,
+        "collectedCash": 0,
+        "balance": 0.36
+      }
+    },
+    {
+      "vendorId": "44",
+      "walletCsvId": "58",
+      "walletFromLegacy": {
+        "totalEarnings": 25229.64,
+        "totalSettled": 25229.64,
+        "lockedAmount": 0,
+        "collectedCash": 0,
+        "balance": 0
+      }
+    },
+    {
+      "vendorId": "45",
+      "walletCsvId": "59",
+      "walletFromLegacy": {
+        "totalEarnings": 180,
+        "totalSettled": 180,
+        "lockedAmount": 0,
+        "collectedCash": 0,
+        "balance": 0
+      }
+    },
+    {
+      "vendorId": "50",
+      "walletCsvId": "63",
+      "walletFromLegacy": {
+        "totalEarnings": 0,
+        "totalSettled": 0,
+        "lockedAmount": 0,
+        "collectedCash": 0,
+        "balance": 0
+      }
+    },
+    {
+      "vendorId": "49",
+      "walletCsvId": "64",
+      "walletFromLegacy": {
+        "totalEarnings": 0,
+        "totalSettled": 0,
+        "lockedAmount": 0,
+        "collectedCash": 0,
+        "balance": 0
+      }
+    },
+    {
+      "vendorId": "51",
+      "walletCsvId": "66",
+      "walletFromLegacy": {
+        "totalEarnings": 0,
+        "totalSettled": 0,
+        "lockedAmount": 0,
+        "collectedCash": 0,
+        "balance": 0
+      }
+    },
+    {
+      "vendorId": "53",
+      "walletCsvId": "67",
+      "walletFromLegacy": {
+        "totalEarnings": 0,
+        "totalSettled": 0,
+        "lockedAmount": 0,
+        "collectedCash": 0,
+        "balance": 0
+      }
+    },
+    {
+      "vendorId": "68",
+      "walletCsvId": "86",
+      "walletFromLegacy": {
+        "totalEarnings": 1774.06,
+        "totalSettled": 1774,
+        "lockedAmount": 0,
+        "collectedCash": 0,
+        "balance": 0.06
+      }
+    },
+    {
+      "vendorId": "69",
+      "walletCsvId": "87",
+      "walletFromLegacy": {
+        "totalEarnings": 346.75,
+        "totalSettled": 199,
+        "lockedAmount": 0,
+        "collectedCash": 0,
+        "balance": 147.75
+      }
+    },
+    {
+      "vendorId": "71",
+      "walletCsvId": "89",
+      "walletFromLegacy": {
+        "totalEarnings": 173.7,
+        "totalSettled": 170,
+        "lockedAmount": 0,
+        "collectedCash": 0,
+        "balance": 3.7
+      }
+    },
+    {
+      "vendorId": "73",
+      "walletCsvId": "91",
+      "walletFromLegacy": {
+        "totalEarnings": 0,
+        "totalSettled": 0,
+        "lockedAmount": 0,
+        "collectedCash": 0,
+        "balance": 0
+      }
+    },
+    {
+      "vendorId": "75",
+      "walletCsvId": "92",
+      "walletFromLegacy": {
+        "totalEarnings": 254.15,
+        "totalSettled": 254.15,
+        "lockedAmount": 0,
+        "collectedCash": 0,
+        "balance": 0
+      }
+    },
+    {
+      "vendorId": "76",
+      "walletCsvId": "93",
+      "walletFromLegacy": {
+        "totalEarnings": 85,
+        "totalSettled": 85,
+        "lockedAmount": 0,
+        "collectedCash": 0,
+        "balance": 0
+      }
+    },
+    {
+      "vendorId": "77",
+      "walletCsvId": "94",
+      "walletFromLegacy": {
+        "totalEarnings": 124.8,
+        "totalSettled": 124.8,
+        "lockedAmount": 0,
+        "collectedCash": 0,
+        "balance": 0
+      }
+    },
+    {
+      "vendorId": "78",
+      "walletCsvId": "95",
+      "walletFromLegacy": {
+        "totalEarnings": 0,
+        "totalSettled": 0,
+        "lockedAmount": 0,
+        "collectedCash": 0,
+        "balance": 0
+      }
+    },
+    {
+      "vendorId": "79",
+      "walletCsvId": "96",
+      "walletFromLegacy": {
+        "totalEarnings": 448.8,
+        "totalSettled": 448.8,
+        "lockedAmount": 0,
+        "collectedCash": 0,
+        "balance": 0
+      }
+    },
+    {
+      "vendorId": "80",
+      "walletCsvId": "97",
+      "walletFromLegacy": {
+        "totalEarnings": 306,
+        "totalSettled": 306,
+        "lockedAmount": 0,
+        "collectedCash": 0,
+        "balance": 0
+      }
+    },
+    {
+      "vendorId": "81",
+      "walletCsvId": "98",
+      "walletFromLegacy": {
+        "totalEarnings": 0,
+        "totalSettled": 0,
+        "lockedAmount": 0,
+        "collectedCash": 0,
+        "balance": 0
+      }
+    },
+    {
+      "vendorId": "82",
+      "walletCsvId": "99",
+      "walletFromLegacy": {
+        "totalEarnings": 0,
+        "totalSettled": 0,
+        "lockedAmount": 0,
+        "collectedCash": 0,
+        "balance": 0
+      }
+    },
+    {
+      "vendorId": "84",
+      "walletCsvId": "102",
+      "walletFromLegacy": {
+        "totalEarnings": 663,
+        "totalSettled": 0,
+        "lockedAmount": 663,
+        "collectedCash": 0,
+        "balance": 0
+      }
+    },
+    {
+      "vendorId": "85",
+      "walletCsvId": "103",
+      "walletFromLegacy": {
+        "totalEarnings": 0,
+        "totalSettled": 0,
+        "lockedAmount": 0,
+        "collectedCash": 0,
+        "balance": 0
+      }
+    },
+    {
+      "vendorId": "87",
+      "walletCsvId": "105",
+      "walletFromLegacy": {
+        "totalEarnings": 193.8,
+        "totalSettled": 193.8,
+        "lockedAmount": 0,
+        "collectedCash": 0,
+        "balance": 0
+      }
+    },
+    {
+      "vendorId": "88",
+      "walletCsvId": "106",
+      "walletFromLegacy": {
+        "totalEarnings": 908.65,
+        "totalSettled": 908.65,
+        "lockedAmount": 0,
+        "collectedCash": 0,
+        "balance": 0
+      }
+    },
+    {
+      "vendorId": "89",
+      "walletCsvId": "107",
+      "walletFromLegacy": {
+        "totalEarnings": 51,
+        "totalSettled": 51,
+        "lockedAmount": 0,
+        "collectedCash": 0,
+        "balance": 0
+      }
+    },
+    {
+      "vendorId": "91",
+      "walletCsvId": "109",
+      "walletFromLegacy": {
+        "totalEarnings": 0,
+        "totalSettled": 0,
+        "lockedAmount": 0,
+        "collectedCash": 0,
+        "balance": 0
+      }
+    },
+    {
+      "vendorId": "95",
+      "walletCsvId": "113",
+      "walletFromLegacy": {
+        "totalEarnings": 0,
+        "totalSettled": 0,
+        "lockedAmount": 0,
+        "collectedCash": 0,
+        "balance": 0
+      }
+    },
+    {
+      "vendorId": "96",
+      "walletCsvId": "114",
+      "walletFromLegacy": {
+        "totalEarnings": 0,
+        "totalSettled": 0,
+        "lockedAmount": 0,
+        "collectedCash": 0,
+        "balance": 0
+      }
+    },
+    {
+      "vendorId": "97",
+      "walletCsvId": "115",
+      "walletFromLegacy": {
+        "totalEarnings": 0,
+        "totalSettled": 0,
+        "lockedAmount": 0,
+        "collectedCash": 0,
+        "balance": 0
+      }
+    },
+    {
+      "vendorId": "99",
+      "walletCsvId": "117",
+      "walletFromLegacy": {
+        "totalEarnings": 0,
+        "totalSettled": 0,
+        "lockedAmount": 0,
+        "collectedCash": 0,
+        "balance": 0
+      }
+    },
+    {
+      "vendorId": "100",
+      "walletCsvId": "118",
+      "walletFromLegacy": {
+        "totalEarnings": 0,
+        "totalSettled": 0,
+        "lockedAmount": 0,
+        "collectedCash": 0,
+        "balance": 0
+      }
+    },
+    {
+      "vendorId": "104",
+      "walletCsvId": "121",
+      "walletFromLegacy": {
+        "totalEarnings": 85,
+        "totalSettled": 0,
+        "lockedAmount": 0,
+        "collectedCash": 0,
+        "balance": 85
+      }
+    },
+    {
+      "vendorId": "102",
+      "walletCsvId": "122",
+      "walletFromLegacy": {
+        "totalEarnings": 0,
+        "totalSettled": 0,
+        "lockedAmount": 0,
+        "collectedCash": 0,
+        "balance": 0
+      }
+    },
+    {
+      "vendorId": "109",
+      "walletCsvId": "125",
+      "walletFromLegacy": {
+        "totalEarnings": 4106.45,
+        "totalSettled": 3000,
+        "lockedAmount": 0,
+        "collectedCash": 0,
+        "balance": 1106.45
+      }
+    },
+    {
+      "vendorId": "108",
+      "walletCsvId": "126",
+      "walletFromLegacy": {
+        "totalEarnings": 515.24,
+        "totalSettled": 0,
+        "lockedAmount": 0,
+        "collectedCash": 0,
+        "balance": 515.24
+      }
+    },
+    {
+      "vendorId": "107",
+      "walletCsvId": "127",
+      "walletFromLegacy": {
+        "totalEarnings": 2774.75,
+        "totalSettled": 0,
+        "lockedAmount": 0,
+        "collectedCash": 0,
+        "balance": 2774.75
+      }
+    }
+  ],
+  "unmatchedRows": [
+    {
+      "vendorId": "12",
+      "walletCsvId": "27",
+      "oldRestaurantName": "5 Tara Food Point",
+      "oldPhoneLast10": "9056107109",
+      "walletFromLegacy": {
+        "totalEarnings": 127240.18,
+        "totalSettled": 127197,
+        "lockedAmount": 0,
+        "collectedCash": 0,
+        "balance": 43.18
+      }
+    },
+    {
+      "vendorId": "19",
+      "walletCsvId": "33",
+      "oldRestaurantName": "Waffle & Subway House 🍔",
+      "oldPhoneLast10": "9530968938",
+      "walletFromLegacy": {
+        "totalEarnings": 371730.52,
+        "totalSettled": 368038,
+        "lockedAmount": 0,
+        "collectedCash": 0,
+        "balance": 3692.52
+      }
+    },
+    {
+      "vendorId": "27",
+      "walletCsvId": "36",
+      "oldRestaurantName": "Bella Ciao Cafe & Restaurant",
+      "oldPhoneLast10": "7889259820",
+      "walletFromLegacy": {
+        "totalEarnings": 17647.41,
+        "totalSettled": 16146,
+        "lockedAmount": 0,
+        "collectedCash": 0,
+        "balance": 1501.41
+      }
+    },
+    {
+      "vendorId": "28",
+      "walletCsvId": "39",
+      "oldRestaurantName": "Sardar Ji Amritsar Kulcha & Cafe",
+      "oldPhoneLast10": "9779799154",
+      "walletFromLegacy": {
+        "totalEarnings": 98064.75,
+        "totalSettled": 95131.75,
+        "lockedAmount": 0,
+        "collectedCash": 0,
+        "balance": 2933
+      }
+    },
+    {
+      "vendorId": "13",
+      "walletCsvId": "48",
+      "oldRestaurantName": "Pizza Blast",
+      "oldPhoneLast10": "9501410727",
+      "walletFromLegacy": {
+        "totalEarnings": 1316.82,
+        "totalSettled": 0,
+        "lockedAmount": 0,
+        "collectedCash": 0,
+        "balance": 1316.82
+      }
+    },
+    {
+      "vendorId": "35",
+      "walletCsvId": "49",
+      "oldRestaurantName": "MOM'S KITCHEN",
+      "oldPhoneLast10": "6280932378",
+      "walletFromLegacy": {
+        "totalEarnings": 0,
+        "totalSettled": 0,
+        "lockedAmount": 0,
+        "collectedCash": 0,
+        "balance": 0
+      }
+    },
+    {
+      "vendorId": "37",
+      "walletCsvId": "51",
+      "oldRestaurantName": "vijay Egg Store",
+      "oldPhoneLast10": "9501373807",
+      "walletFromLegacy": {
+        "totalEarnings": 0,
+        "totalSettled": 0,
+        "lockedAmount": 0,
+        "collectedCash": 0,
+        "balance": 0
+      }
+    },
+    {
+      "vendorId": "40",
+      "walletCsvId": "55",
+      "oldRestaurantName": "5911 Golgappa Junction",
+      "oldPhoneLast10": "7889271457",
+      "walletFromLegacy": {
+        "totalEarnings": 0,
+        "totalSettled": 0,
+        "lockedAmount": 0,
+        "collectedCash": 0,
+        "balance": 0
+      }
+    },
+    {
+      "vendorId": "42",
+      "walletCsvId": "56",
+      "oldRestaurantName": "Sk Restaurant",
+      "oldPhoneLast10": "9807230000",
+      "walletFromLegacy": {
+        "totalEarnings": 29779.63,
+        "totalSettled": 27600,
+        "lockedAmount": 0,
+        "collectedCash": 0,
+        "balance": 2179.63
+      }
+    },
+    {
+      "vendorId": "47",
+      "walletCsvId": "61",
+      "oldRestaurantName": "komalLove",
+      "oldPhoneLast10": "6283000162",
+      "walletFromLegacy": {
+        "totalEarnings": 0,
+        "totalSettled": 0,
+        "lockedAmount": 0,
+        "collectedCash": 0,
+        "balance": 0
+      }
+    },
+    {
+      "vendorId": "52",
+      "walletCsvId": "65",
+      "oldRestaurantName": "Urban Grill",
+      "oldPhoneLast10": "6280006191",
+      "walletFromLegacy": {
+        "totalEarnings": 0,
+        "totalSettled": 0,
+        "lockedAmount": 0,
+        "collectedCash": 0,
+        "balance": 0
+      }
+    },
+    {
+      "vendorId": "54",
+      "walletCsvId": "68",
+      "oldRestaurantName": "Mr Sanders Island",
+      "oldPhoneLast10": "9563656000",
+      "walletFromLegacy": {
+        "totalEarnings": 95045.79,
+        "totalSettled": 95044.86,
+        "lockedAmount": 0,
+        "collectedCash": 0,
+        "balance": 0.93
+      }
+    },
+    {
+      "vendorId": "56",
+      "walletCsvId": "69",
+      "oldRestaurantName": "Kaleka Haveli Dugal",
+      "oldPhoneLast10": "8699614864",
+      "walletFromLegacy": {
+        "totalEarnings": 15370.71,
+        "totalSettled": 10900,
+        "lockedAmount": 0,
+        "collectedCash": 0,
+        "balance": 4470.71
+      }
+    },
+    {
+      "vendorId": "4",
+      "walletCsvId": "71",
+      "oldRestaurantName": "Vegetable Mart",
+      "oldPhoneLast10": "9898989878",
+      "walletFromLegacy": {
+        "totalEarnings": 0,
+        "totalSettled": 0,
+        "lockedAmount": 0,
+        "collectedCash": 0,
+        "balance": 0
+      }
+    },
+    {
+      "vendorId": "1",
+      "walletCsvId": "72",
+      "oldRestaurantName": "Grocery Store",
+      "oldPhoneLast10": "1511111111",
+      "walletFromLegacy": {
+        "totalEarnings": 0,
+        "totalSettled": 0,
+        "lockedAmount": 0,
+        "collectedCash": 0,
+        "balance": 0
+      }
+    },
+    {
+      "vendorId": "57",
+      "walletCsvId": "73",
+      "oldRestaurantName": "RedGo Grocery Store",
+      "oldPhoneLast10": "1906932200",
+      "walletFromLegacy": {
+        "totalEarnings": 5,
+        "totalSettled": 0,
+        "lockedAmount": 0,
+        "collectedCash": 0,
+        "balance": 5
+      }
+    },
+    {
+      "vendorId": "59",
+      "walletCsvId": "75",
+      "oldRestaurantName": "Sher E Punjab Dhaba",
+      "oldPhoneLast10": "9501413179",
+      "walletFromLegacy": {
+        "totalEarnings": 24287.79,
+        "totalSettled": 21500,
+        "lockedAmount": 0,
+        "collectedCash": 0,
+        "balance": 2787.79
+      }
+    },
+    {
+      "vendorId": "60",
+      "walletCsvId": "76",
+      "oldRestaurantName": "Jindal Plastic and Crockery House",
+      "oldPhoneLast10": "6239173548",
+      "walletFromLegacy": {
+        "totalEarnings": 0,
+        "totalSettled": 0,
+        "lockedAmount": 0,
+        "collectedCash": 0,
+        "balance": 0
+      }
+    },
+    {
+      "vendorId": "8",
+      "walletCsvId": "77",
+      "oldRestaurantName": "Fashion Store",
+      "oldPhoneLast10": "8989898976",
+      "walletFromLegacy": {
+        "totalEarnings": 0,
+        "totalSettled": 0,
+        "lockedAmount": 0,
+        "collectedCash": 0,
+        "balance": 0
+      }
+    },
+    {
+      "vendorId": "7",
+      "walletCsvId": "78",
+      "oldRestaurantName": "Shoes Fashion",
+      "oldPhoneLast10": "8978987867",
+      "walletFromLegacy": {
+        "totalEarnings": 0,
+        "totalSettled": 0,
+        "lockedAmount": 0,
+        "collectedCash": 0,
+        "balance": 0
+      }
+    },
+    {
+      "vendorId": "61",
+      "walletCsvId": "79",
+      "oldRestaurantName": "RedGo Mart",
+      "oldPhoneLast10": "9877622910",
+      "walletFromLegacy": {
+        "totalEarnings": 70.2,
+        "totalSettled": 0,
+        "lockedAmount": 0,
+        "collectedCash": 0,
+        "balance": 70.2
+      }
+    },
+    {
+      "vendorId": "62",
+      "walletCsvId": "80",
+      "oldRestaurantName": "Shree Shyam Sweets & Bakery",
+      "oldPhoneLast10": "9653199221",
+      "walletFromLegacy": {
+        "totalEarnings": 11011.75,
+        "totalSettled": 10852,
+        "lockedAmount": 0,
+        "collectedCash": 0,
+        "balance": 159.75
+      }
+    },
+    {
+      "vendorId": "65",
+      "walletCsvId": "82",
+      "oldRestaurantName": "RedGo Store",
+      "oldPhoneLast10": "9532156789",
+      "walletFromLegacy": {
+        "totalEarnings": 0,
+        "totalSettled": 0,
+        "lockedAmount": 0,
+        "collectedCash": 0,
+        "balance": 0
+      }
+    },
+    {
+      "vendorId": "64",
+      "walletCsvId": "83",
+      "oldRestaurantName": "ghar di rasoi",
+      "oldPhoneLast10": "9914346208",
+      "walletFromLegacy": {
+        "totalEarnings": 0,
+        "totalSettled": 0,
+        "lockedAmount": 0,
+        "collectedCash": 0,
+        "balance": 0
+      }
+    },
+    {
+      "vendorId": "66",
+      "walletCsvId": "84",
+      "oldRestaurantName": "Grocery",
+      "oldPhoneLast10": "7814135816",
+      "walletFromLegacy": {
+        "totalEarnings": 0,
+        "totalSettled": 0,
+        "lockedAmount": 0,
+        "collectedCash": 0,
+        "balance": 0
+      }
+    },
+    {
+      "vendorId": "67",
+      "walletCsvId": "85",
+      "oldRestaurantName": "WarBrew",
+      "oldPhoneLast10": "9464396623",
+      "walletFromLegacy": {
+        "totalEarnings": 0,
+        "totalSettled": 0,
+        "lockedAmount": 0,
+        "collectedCash": 0,
+        "balance": 0
+      }
+    },
+    {
+      "vendorId": "74",
+      "walletCsvId": "100",
+      "oldRestaurantName": "Burger 86",
+      "oldPhoneLast10": "8558886186",
+      "walletFromLegacy": {
+        "totalEarnings": 0,
+        "totalSettled": 0,
+        "lockedAmount": 0,
+        "collectedCash": 0,
+        "balance": 0
+      }
+    },
+    {
+      "vendorId": "83",
+      "walletCsvId": "101",
+      "oldRestaurantName": "Pizza Haven",
+      "oldPhoneLast10": "7707840295",
+      "walletFromLegacy": {
+        "totalEarnings": 157.5,
+        "totalSettled": 0,
+        "lockedAmount": 0,
+        "collectedCash": 0,
+        "balance": 157.5
+      }
+    },
+    {
+      "vendorId": "90",
+      "walletCsvId": "108",
+      "oldRestaurantName": "Royal Green Restaurant",
+      "oldPhoneLast10": "8872354725",
+      "walletFromLegacy": {
+        "totalEarnings": 0,
+        "totalSettled": 0,
+        "lockedAmount": 0,
+        "collectedCash": 0,
+        "balance": 0
+      }
+    },
+    {
+      "vendorId": "92",
+      "walletCsvId": "110",
+      "oldRestaurantName": "Shahi Dahi Bhalla",
+      "oldPhoneLast10": "9855537620",
+      "walletFromLegacy": {
+        "totalEarnings": 1035,
+        "totalSettled": 995,
+        "lockedAmount": 0,
+        "collectedCash": 0,
+        "balance": 40
+      }
+    },
+    {
+      "vendorId": "93",
+      "walletCsvId": "111",
+      "oldRestaurantName": "D Haveli (Spice Roots)",
+      "oldPhoneLast10": "9958831424",
+      "walletFromLegacy": {
+        "totalEarnings": 8818.75,
+        "totalSettled": 7965,
+        "lockedAmount": 0,
+        "collectedCash": 0,
+        "balance": 853.75
+      }
+    },
+    {
+      "vendorId": "94",
+      "walletCsvId": "112",
+      "oldRestaurantName": "Burger Pound",
+      "oldPhoneLast10": "6284654182",
+      "walletFromLegacy": {
+        "totalEarnings": 1411,
+        "totalSettled": 1411,
+        "lockedAmount": 0,
+        "collectedCash": 0,
+        "balance": 0
+      }
+    },
+    {
+      "vendorId": "98",
+      "walletCsvId": "116",
+      "oldRestaurantName": "Lets bake it",
+      "oldPhoneLast10": "9517070627",
+      "walletFromLegacy": {
+        "totalEarnings": 0,
+        "totalSettled": 0,
+        "lockedAmount": 0,
+        "collectedCash": 0,
+        "balance": 0
+      }
+    },
+    {
+      "vendorId": "101",
+      "walletCsvId": "119",
+      "oldRestaurantName": "American Thugs",
+      "oldPhoneLast10": "7973936462",
+      "walletFromLegacy": {
+        "totalEarnings": 0,
+        "totalSettled": 0,
+        "lockedAmount": 0,
+        "collectedCash": 0,
+        "balance": 0
+      }
+    },
+    {
+      "vendorId": "103",
+      "walletCsvId": "120",
+      "oldRestaurantName": "King Garden Restaurant",
+      "oldPhoneLast10": "8310756268",
+      "walletFromLegacy": {
+        "totalEarnings": 0,
+        "totalSettled": 0,
+        "lockedAmount": 0,
+        "collectedCash": 0,
+        "balance": 0
+      }
+    },
+    {
+      "vendorId": "105",
+      "walletCsvId": "123",
+      "oldRestaurantName": "Town Fusion Fast Food",
+      "oldPhoneLast10": "9872897701",
+      "walletFromLegacy": {
+        "totalEarnings": 221,
+        "totalSettled": 0,
+        "lockedAmount": 0,
+        "collectedCash": 0,
+        "balance": 221
+      }
+    },
+    {
+      "vendorId": "106",
+      "walletCsvId": "124",
+      "oldRestaurantName": "Nepali Dhaba And Fast Food Corner",
+      "oldPhoneLast10": "7340872287",
+      "walletFromLegacy": {
+        "totalEarnings": 35479.8,
+        "totalSettled": 31956,
+        "lockedAmount": 0,
+        "collectedCash": 0,
+        "balance": 3523.8
+      }
+    }
+  ]
+}
