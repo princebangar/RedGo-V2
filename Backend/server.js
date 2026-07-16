@@ -71,9 +71,10 @@ const startServer = async () => {
 
         // 5. Conditionally initialize BullMQ queues.
         // BullMQ requires Redis; skip queue bootstrap when Redis is disabled.
+        // Never block / crash API if Redis is temporarily down.
         if (config.bullmqEnabled && config.redisEnabled) {
             try {
-                initializeQueues();
+                await initializeQueues();
             } catch (err) {
                 logger.error(`BullMQ initialization error (server continues): ${err.message}`);
             }
