@@ -6,6 +6,7 @@ import {
 } from 'lucide-react';
 import { deliveryAPI } from '@food/api';
 import { toast } from 'sonner';
+import { showUserFacingApiError } from '@/shared/utils/apiError';
 import { ActionSlider } from '@/modules/DeliveryV2/components/ui/ActionSlider';
 
 const Backdrop = ({ onClose }) => (
@@ -91,11 +92,7 @@ const OtpModal = ({ order, onVerified, onClose }) => {
         setTimeout(() => onVerified(otpString), 600);
       }
     } catch (err) {
-      toast.error(
-        err?.response?.data?.error ||
-          err?.response?.data?.message ||
-          "Invalid OTP entered",
-      );
+      showUserFacingApiError(err, 'Invalid OTP entered');
       throw err;
     } finally {
       setIsVerifyingOtp(false);
@@ -212,7 +209,7 @@ const PaymentModal = ({ order, otpString, onComplete, onClose }) => {
         toast.error("Could not generate QR code");
       }
     } catch (e) {
-      toast.error("QR Generation failed");
+      showUserFacingApiError(e, "QR Generation failed");
     } finally {
       setIsGeneratingQr(false);
     }

@@ -15,6 +15,7 @@ import {
 } from "lucide-react"
 import { deliveryAPI, authAPI } from "@food/api"
 import { toast } from "sonner"
+import { showUserFacingApiError } from "@/shared/utils/apiError"
 import { showAccountDeletedToast } from "@/shared/utils/customToasts"
 import { clearModuleAuth } from "@food/utils/auth"
 
@@ -397,7 +398,7 @@ export const ProfileV2 = () => {
                       clearModuleAuth("delivery");
                       navigate("/food/delivery/login", { replace: true });
                     } catch (err) {
-                      toast.error(err?.response?.data?.message || "Failed to delete account");
+                      showUserFacingApiError(err, "Failed to delete account");
                     } finally {
                       setIsDeleting(false);
                       setDeleteAccountOpen(false);

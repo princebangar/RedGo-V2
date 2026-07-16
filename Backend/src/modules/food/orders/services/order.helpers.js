@@ -127,18 +127,29 @@ export async function notifyOwnerSafely(target, payload) {
   }
 }
 
+/** Path segments that must never be treated as an order id (legacy Flutter polls). */
+export const RESERVED_DELIVERY_ORDER_PATHS = new Set([
+  "assigned",
+  "active",
+  "pending",
+  "current",
+  "available",
+]);
+
 export function buildOrderIdentityFilter(orderIdOrMongoId) {
   const raw = String(orderIdOrMongoId || "").trim();
   if (!raw) return null;
+  // Prevent GET /orders/assigned|active|pending from becoming orderId lookups → 404 spam
+  if (RESERVED_DELIVERY_ORDER_PATHS.has(raw.toLowerCase())) return null;
   if (mongoose.isValidObjectId(raw))
     return { _id: new mongoose.Types.ObjectId(raw) };
-  
+
   // Search BOTH underscore and camelCase variants for robust lookup
-  return { 
+  return {
     $or: [
-        { order_id: raw },
-        { orderId: raw }
-    ]
+      { order_id: raw },
+      { orderId: raw },
+    ],
   };
 }
 

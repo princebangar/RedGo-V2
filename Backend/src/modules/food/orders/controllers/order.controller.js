@@ -304,6 +304,52 @@ export async function getCurrentTripDeliveryController(req, res, next) {
     }
 }
 
+/**
+ * Legacy Flutter shell polls /orders/assigned and /orders/active.
+ * Always 200 — never "Order not found" when the list is empty.
+ */
+export async function listLegacyAssignedActiveDeliveryController(req, res, next) {
+    try {
+        const deliveryPartnerId = req.user?.userId;
+        const [activeOrders, capacity] = await Promise.all([
+            orderService.getActiveTripsDelivery(deliveryPartnerId),
+            orderService.getPartnerOrderCapacity(deliveryPartnerId),
+        ]);
+        return sendResponse(res, 200, 'Orders retrieved', {
+            orders: activeOrders,
+            activeOrder: activeOrders[0] || null,
+            activeOrders,
+            capacity,
+        });
+    } catch (err) {
+        next(err);
+    }
+}
+
+/**
+ * Legacy Flutter shell polls /orders/pending (feed of available offers).
+ */
+export async function listLegacyPendingDeliveryController(req, res, next) {
+    try {
+        const deliveryPartnerId = req.user?.userId;
+        const result = await orderService.listOrdersAvailableDelivery(
+            deliveryPartnerId,
+            req.query,
+        );
+        const orders = Array.isArray(result?.orders)
+            ? result.orders
+            : Array.isArray(result)
+              ? result
+              : [];
+        return sendResponse(res, 200, 'Orders retrieved', {
+            ...((result && typeof result === 'object' && !Array.isArray(result)) ? result : {}),
+            orders,
+        });
+    } catch (err) {
+        next(err);
+    }
+}
+
 export async function createCollectQrController(req, res, next) {
     try {
         const deliveryPartnerId = req.user?.userId;
@@ -321,8 +367,14 @@ export async function getOrderByIdDeliveryController(req, res, next) {
         const deliveryPartnerId = req.user?.userId;
         const orderId = String(req.params.orderId || '').trim();
         const reserved = new Set(['assigned', 'active', 'pending', 'current', 'available']);
+        // Defense-in-depth if a reserved slug ever hits :orderId
         if (!orderId || reserved.has(orderId.toLowerCase())) {
-            return sendResponse(res, 200, 'Order retrieved', { order: null });
+            return sendResponse(res, 200, 'Orders retrieved', {
+                order: null,
+                orders: [],
+                activeOrders: [],
+                activeOrder: null,
+            });
         }
         const order = await orderService.getOrderById(orderId, { deliveryPartnerId });
         return sendResponse(res, 200, 'Order retrieved', { order });
