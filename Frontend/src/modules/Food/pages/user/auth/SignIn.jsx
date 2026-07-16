@@ -15,8 +15,14 @@ export default function SignIn() {
   const navigate = useNavigate()
   const [searchParams] = useSearchParams()
 
+  const defaultTestPhone =
+    import.meta.env.VITE_USE_DEFAULT_TEST_PHONE === "true"
+      ? String(import.meta.env.VITE_DEFAULT_TEST_PHONE || "").replace(/\D/g, "").slice(0, 10)
+      : ""
+
   const [formData, setFormData] = useState({
-    phone: "",
+    // phone: "",
+    phone: defaultTestPhone,
     countryCode: "+91", // required; default +91 for India
   })
 
