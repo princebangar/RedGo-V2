@@ -162,6 +162,9 @@ window.addEventListener('unhandledrejection', (event) => {
 // ─────────────────────────────────────────────────────────────────────────────
 
 import { AppProviders } from './app/providers.jsx'
+import { installNativeApiErrorBridge } from './shared/utils/apiError.js'
+
+installNativeApiErrorBridge()
 
 const rootElement = document.getElementById('root')
 if (!rootElement) throw new Error('Root element not found')

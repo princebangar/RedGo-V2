@@ -72,24 +72,31 @@ export const useOrderManager = () => {
       }
     } catch (error) {
       console.error('Accept Order Error:', error);
-      const msg =
+      const msg = String(
         error?.response?.data?.error ||
-        error?.response?.data?.message ||
-        'Network error. Please try again.';
+          error?.response?.data?.message ||
+          '',
+      );
+      const lower = msg.toLowerCase();
       if (
         error?.response?.status === 403 ||
-        msg.toLowerCase().includes('already accepted')
+        lower.includes('already accepted')
       ) {
         toast.error('This order was just taken by another delivery partner.', {
           id: 'user-facing-api-error',
           duration: 4000,
         });
-      } else if (msg.toLowerCase().includes('maximum concurrent')) {
+      } else if (lower.includes('maximum concurrent')) {
         toast.error('Maximum concurrent orders reached', {
           id: 'user-facing-api-error',
         });
+      } else if (lower.includes('cash limit')) {
+        showUserFacingApiError(
+          error,
+          'Cash limit is not enough for this order. Please deposit to accept more orders.',
+        );
       } else {
-        showUserFacingApiError(error, 'Network error. Please try again.');
+        showUserFacingApiError(error, 'Could not accept order. Please try again.');
       }
       throw error;
     } finally {

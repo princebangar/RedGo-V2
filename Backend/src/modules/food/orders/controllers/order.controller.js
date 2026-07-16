@@ -319,7 +319,11 @@ export async function createCollectQrController(req, res, next) {
 export async function getOrderByIdDeliveryController(req, res, next) {
     try {
         const deliveryPartnerId = req.user?.userId;
-        const orderId = req.params.orderId;
+        const orderId = String(req.params.orderId || '').trim();
+        const reserved = new Set(['assigned', 'active', 'pending', 'current', 'available']);
+        if (!orderId || reserved.has(orderId.toLowerCase())) {
+            return sendResponse(res, 200, 'Order retrieved', { order: null });
+        }
         const order = await orderService.getOrderById(orderId, { deliveryPartnerId });
         return sendResponse(res, 200, 'Order retrieved', { order });
     } catch (err) {
