@@ -16,22 +16,31 @@ export default function DeliverySignIn() {
   const isOtpStep = location.pathname.endsWith("/otp")
 
   // Step 1 States
+  const defaultTestPhone =
+    import.meta.env.VITE_USE_DEFAULT_TEST_PHONE === "true"
+      ? String(import.meta.env.VITE_DEFAULT_TEST_PHONE || "").replace(/\D/g, "").slice(0, 10)
+      : ""
+
   const [phone, setPhone] = useState(() => {
     try {
       if (sessionStorage.getItem("deliveryClearLoginPhone") === "1") {
         sessionStorage.removeItem("deliveryClearLoginPhone")
         sessionStorage.removeItem("deliveryAuthData")
-        return ""
+        // return ""
+        return defaultTestPhone
       }
       const stored = sessionStorage.getItem("deliveryAuthData")
       if (stored) {
         const data = JSON.parse(stored)
-        return data.phone ? data.phone.replace("+91", "").trim() : ""
+        // return data.phone ? data.phone.replace("+91", "").trim() : ""
+        return data.phone ? data.phone.replace("+91", "").trim() : defaultTestPhone
       }
     } catch (e) {
-      return ""
+      // return ""
+      return defaultTestPhone
     }
-    return ""
+    // return ""
+    return defaultTestPhone
   })
   const [loading, setLoading] = useState(false)
   const submitting = useRef(false)

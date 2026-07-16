@@ -19,7 +19,12 @@ import { Label } from "@food/components/ui/label"
 
 export default function UnifiedOTPFastLogin() {
   const RESEND_COOLDOWN_SECONDS = 59
-  const [phoneNumber, setPhoneNumber] = useState("")
+  const defaultTestPhone =
+    import.meta.env.VITE_USE_DEFAULT_TEST_PHONE === "true"
+      ? String(import.meta.env.VITE_DEFAULT_TEST_PHONE || "").replace(/\D/g, "").slice(0, 10)
+      : ""
+  // const [phoneNumber, setPhoneNumber] = useState("")
+  const [phoneNumber, setPhoneNumber] = useState(defaultTestPhone)
   const [otp, setOtp] = useState("")
   const [otpError, setOtpError] = useState("")
   const [step, setStep] = useState(1)
