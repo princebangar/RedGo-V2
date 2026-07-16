@@ -277,7 +277,8 @@ export default function useAdminNotifications(options = {}) {
 
       setItems(sorted);
     } catch {
-      setItems([]);
+      // Keep the last successful snapshot instead of clearing alerts on transient 429s.
+      setItems((prev) => prev);
     } finally {
       setLoading(false);
     }

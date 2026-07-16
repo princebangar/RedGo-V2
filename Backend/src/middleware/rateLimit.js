@@ -70,6 +70,17 @@ function isHighFrequencyPrivatePoll(req) {
 }
 
 /**
+ * Admin panel read traffic (orders list, reports, etc.) is low-volume and
+ * latency-sensitive. Exempt authenticated admin GETs from the generic private
+ * budget so polling + socket refreshes do not blank the UI. Writes still count.
+ */
+function isAdminAuthenticatedRead(req) {
+    if (String(req.method || 'GET').toUpperCase() !== 'GET') return false;
+    const path = normalizePath(req);
+    return /\/food\/admin(?:\/|$)/.test(path);
+}
+
+/**
  * Public / unauthenticated catalog & CMS routes — no rate limiting.
  */
 export function isPublicApiPath(req) {
@@ -187,7 +198,10 @@ export const privateRateLimiter = rateLimit({
         res.status(options.statusCode).json(options.message);
     },
     message: rateLimitJson('Too many requests, please try again later.'),
-    skip: (req) => !config.rateLimitEnabled || isHighFrequencyPrivatePoll(req),
+    skip: (req) =>
+        !config.rateLimitEnabled ||
+        isHighFrequencyPrivatePoll(req) ||
+        isAdminAuthenticatedRead(req),
 });
 
 /** Auth OTP / login budget — phone-first (not shared Wi‑Fi IP). */
@@ -217,6 +231,7 @@ export function apiRateLimitMiddleware(req, res, next) {
     if (isPublicApiPath(req)) return next();
     if (isAuthCredentialPath(req)) return next();
     if (isHighFrequencyPrivatePoll(req)) return next();
+    if (isAdminAuthenticatedRead(req)) return next();
     return privateRateLimiter(req, res, next);
 }
 
