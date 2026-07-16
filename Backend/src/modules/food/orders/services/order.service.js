@@ -593,7 +593,10 @@ export async function getOrderById(
   { userId, restaurantId, deliveryPartnerId, admin } = {},
 ) {
   const identity = buildOrderIdentityFilter(orderId);
-  if (!identity) throw new ValidationError("Order id required");
+  if (!identity) {
+    // Reserved path words (assigned/active/pending) or empty id — not a real order lookup
+    throw new ValidationError("Invalid order id");
+  }
   const order = await FoodOrder.findOne(identity)
     .populate(
       "restaurantId",

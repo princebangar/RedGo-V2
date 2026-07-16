@@ -8,6 +8,7 @@ import {
 } from "lucide-react"
 import BottomPopup from "@delivery/components/BottomPopup"
 import { toast } from "sonner"
+import { showUserFacingApiError } from "@/shared/utils/apiError"
 import { openCamera, openGallery, isFlutterBridgeAvailable } from "@food/utils/imageUploadUtils"
 import { deliveryAPI } from "@food/api"
 import { motion, AnimatePresence } from "framer-motion"
@@ -115,12 +116,12 @@ export const ProfileDetailsV2 = () => {
       } catch (error) {
         debugError("Error fetching profile:", error)
         if (error.response?.status === 401) {
-          toast.error("Session expired. Please login again.")
+          showUserFacingApiError(error, "Session expired. Please login again.")
           setTimeout(() => {
             navigate("/food/delivery/login", { replace: true })
           }, 2000)
         } else {
-          toast.error(error?.response?.data?.message || "Failed to load profile data")
+          showUserFacingApiError(error, "Failed to load profile data")
         }
       } finally {
         setLoading(false)
@@ -283,10 +284,13 @@ export const ProfileDetailsV2 = () => {
         toast.success("Profile photo updated")
         await refreshProfile()
       } else {
-        toast.error(response?.data?.message || "Update failed")
+        showUserFacingApiError(
+          { response: { data: { message: response?.data?.message } } },
+          "Update failed",
+        )
       }
     } catch (error) {
-      toast.error(error?.response?.data?.message || "Update failed")
+      showUserFacingApiError(error, "Update failed")
     } finally {
       setIsUploadingImage(false)
       setUploadTarget(null)
@@ -324,7 +328,7 @@ export const ProfileDetailsV2 = () => {
         toast.error("Failed to remove photo")
       }
     } catch (error) {
-       toast.error(error?.response?.data?.message || "Delete failed")
+       showUserFacingApiError(error, "Delete failed")
     } finally {
       setIsDeletingImage(false)
     }
@@ -405,7 +409,7 @@ export const ProfileDetailsV2 = () => {
       setUpiQrPreview(null)
       await refreshProfile()
     } catch (error) {
-      toast.error(error?.response?.data?.message || "Update failed")
+      showUserFacingApiError(error, "Update failed")
     } finally {
       setIsUpdatingBankDetails(false)
     }
