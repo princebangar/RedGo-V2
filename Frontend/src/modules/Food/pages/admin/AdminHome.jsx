@@ -75,11 +75,15 @@ export default function AdminHome() {
           setDashboardData(response.data.data)
           debugLog("Dashboard stats fetched:", response.data.data)
         } else {
-          setDashboardData(null)
+          if (!dashboardData) {
+            setDashboardData(null)
+          }
           debugError("Invalid dashboard response format:", response.data)
         }
       } catch (error) {
-        setDashboardData(null)
+        if (!dashboardData && Number(error?.response?.status || 0) !== 429) {
+          setDashboardData(null)
+        }
         debugError("Error fetching dashboard stats:", error)
       } finally {
         setIsLoading(false)

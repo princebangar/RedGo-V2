@@ -68,6 +68,7 @@ export default function OrdersPage({ statusKey = "all" }) {
   const activeOrderAlertRef = useRef(null)
   const alertLoopTimerRef = useRef(null)
   const alertLoopStartedAtRef = useRef(0)
+  const lastSidebarBadgeRefreshAtRef = useRef(0)
   const ALERT_LOOP_INTERVAL_MS = 4500
   const ALERT_LOOP_MAX_MS = 120000
 
@@ -378,11 +379,12 @@ export default function OrdersPage({ statusKey = "all" }) {
           }
         }
 
+        let detectedNewOrder = false
         if (withRingCheck && !isFirstLoadRef.current && statusKey === "all" && currentPage === 1) {
-          const hasNewOrder = [...nextOrderIds].some(
+          detectedNewOrder = [...nextOrderIds].some(
             (id) => !seenOrderIdsRef.current.has(id),
           )
-          if (hasNewOrder) {
+          if (detectedNewOrder) {
             activeOrderAlertRef.current = { orderId: "polling-new-order" }
             playDefaultRing()
             startAlertLoop()
@@ -401,8 +403,14 @@ export default function OrdersPage({ statusKey = "all" }) {
         isFirstLoadRef.current = false
         setOrders(nextOrders)
         setTotalOrders(nextTotal)
-        // Refresh sidebar badges count
-        refreshSidebarBadges()
+
+        if (detectedNewOrder) {
+          const now = Date.now()
+          if (now - lastSidebarBadgeRefreshAtRef.current >= 20000) {
+            lastSidebarBadgeRefreshAtRef.current = now
+            refreshSidebarBadges(undefined, { reloadNotifications: false })
+          }
+        }
       } else {
         debugError("Failed to fetch orders:", response.data)
         if (!silent) toast.error("Failed to fetch orders")
@@ -411,11 +419,14 @@ export default function OrdersPage({ statusKey = "all" }) {
       }
     } catch (error) {
       debugError("Error fetching orders:", error)
-      if (!silent) {
+      const status = Number(error?.response?.status || 0)
+      if (!silent && status !== 429) {
         toast.error(error.response?.data?.message || "Failed to fetch orders")
       }
-      setOrders([])
-      setTotalOrders(0)
+      if (!silent && status !== 429) {
+        setOrders([])
+        setTotalOrders(0)
+      }
     } finally {
       if (!silent) setIsLoading(false)
     }
@@ -644,7 +655,7 @@ export default function OrdersPage({ statusKey = "all" }) {
 
     const pollId = setInterval(() => {
       fetchOrders({ silent: true, withRingCheck: true })
-    }, 5000)
+    }, 8000)
 
     return () => clearInterval(pollId)
   }, [statusKey, fetchOrders])

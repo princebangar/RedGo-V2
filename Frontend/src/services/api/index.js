@@ -140,10 +140,10 @@ export const supportAPI = {
       contextModule: "user",
     }),
   getSupportTicketsAdmin: (params = {}) =>
-    apiClient.get("/food/admin/support-tickets", {
+    adminCachedGet("/food/admin/support-tickets", {
       params,
       contextModule: "admin",
-    }),
+    }, { ttlMs: 5000, staleOn429Ms: 60000 }),
   updateSupportTicketAdmin: (id, body = {}) =>
     apiClient.patch(`/food/admin/support-tickets/${String(id)}`, body ?? {}, {
       contextModule: "admin",
@@ -167,7 +167,7 @@ export const notificationAPI = {
 /** Admin API - new backend only (GET /auth/me, PATCH /auth/admin/profile, POST /auth/admin/change-password) */
 export const adminAPI = {
   getSidebarBadges: () =>
-    apiClient.get("/food/admin/sidebar-badges", { contextModule: "admin" }),
+    adminCachedGet("/food/admin/sidebar-badges", { contextModule: "admin" }, { ttlMs: 12000, staleOn429Ms: 90000 }),
   login: (email, password) => authService.adminLogin(email, password),
   /** POST /auth/admin/forgot-password/request-otp – only accepts registered admin email */
   requestForgotPasswordOtp: (email) =>
@@ -220,9 +220,9 @@ export const adminAPI = {
   },
   // Restaurant approvals and join requests
   getPendingRestaurants: () =>
-    apiClient.get("/food/admin/restaurants/pending", {
+    adminCachedGet("/food/admin/restaurants/pending", {
       contextModule: "admin",
-    }),
+    }, { ttlMs: 10000, staleOn429Ms: 90000 }),
   /** List restaurant complaints (admin). */
   getRestaurantComplaints: (params = {}) =>
     apiClient.get("/food/admin/restaurants/complaints", {
@@ -255,10 +255,10 @@ export const adminAPI = {
     ),
   /** Delivery partner join requests - uses /food/admin/delivery/* (new backend API) */
   getDeliveryPartnerJoinRequests: (params) =>
-    apiClient.get("/food/admin/delivery/join-requests", {
+    adminCachedGet("/food/admin/delivery/join-requests", {
       params,
       contextModule: "admin",
-    }),
+    }, { ttlMs: 10000, staleOn429Ms: 90000 }),
   /** List approved delivery partners (Deliveryman List page) */
   getDeliveryPartners: (params) =>
     apiClient.get("/food/admin/delivery/partners", {
@@ -281,10 +281,10 @@ export const adminAPI = {
     }),
   /** Dashboard summary stats (admin home) */
   getDashboardStats: (params = {}) =>
-    apiClient.get("/food/admin/dashboard-stats", {
+    adminCachedGet("/food/admin/dashboard-stats", {
       params,
       contextModule: "admin",
-    }),
+    }, { ttlMs: 8000, staleOn429Ms: 90000 }),
   /** List restaurant withdrawal requests (admin). */
   getWithdrawals: (params = {}) =>
     apiClient.get("/food/admin/withdrawals", {
@@ -341,15 +341,15 @@ export const adminAPI = {
     ),
   /** GET /food/admin/delivery/support-tickets - list all delivery support tickets (query: status, priority, search, page, limit). */
   getDeliverySupportTickets: (params) =>
-    apiClient.get("/food/admin/delivery/support-tickets", {
+    adminCachedGet("/food/admin/delivery/support-tickets", {
       params,
       contextModule: "admin",
-    }),
+    }, { ttlMs: 5000, staleOn429Ms: 60000 }),
   getExpiredFssaiNotifications: (params = {}) =>
-    apiClient.get("/food/admin/notifications/fssai-expired", {
+    adminCachedGet("/food/admin/notifications/fssai-expired", {
       params,
       contextModule: "admin",
-    }),
+    }, { ttlMs: 10000, staleOn429Ms: 90000 }),
   // Customization Settings
   getCustomizationSettings: () =>
     apiClient.get("/food/admin/customization-settings", { contextModule: "admin" }),
@@ -529,10 +529,10 @@ export const adminAPI = {
     apiClient.delete(`/food/admin/foods/${id}`, { contextModule: "admin" }),
   /** Food approvals (admin) - pending items created by restaurants */
   getPendingFoodApprovals: (params = {}) =>
-    apiClient.get("/food/admin/foods/pending-approvals", {
+    adminCachedGet("/food/admin/foods/pending-approvals", {
       params,
       contextModule: "admin",
-    }),
+    }, { ttlMs: 10000, staleOn429Ms: 90000 }),
   approveFoodItem: (id) =>
     apiClient.patch(
       `/food/admin/foods/${String(id)}/approve`,
@@ -560,14 +560,15 @@ export const adminAPI = {
     ),
   /** Orders (admin) – list, get by id, assign delivery partner */
   getOrders: (params = {}) =>
-    apiClient.get("/food/admin/orders", {
+    adminCachedGet("/food/admin/orders", {
       params: { limit: 50, page: 1, ...params },
       contextModule: "admin",
-    }),
-  getOrderById: (orderId) =>
-    apiClient.get(`/food/admin/orders/${String(orderId)}`, {
+    }, { ttlMs: 2500, staleOn429Ms: 120000 }),
+  getOrderById: (orderId, config = {}) =>
+    adminCachedGet(`/food/admin/orders/${String(orderId)}`, {
       contextModule: "admin",
-    }),
+      ...config,
+    }, { ttlMs: 3000, staleOn429Ms: 60000 }),
   deleteOrder: (orderId) =>
     apiClient.delete(`/food/admin/orders/${String(orderId)}`, {
       contextModule: "admin",
@@ -592,10 +593,10 @@ export const adminAPI = {
     }),
   /** List delivery zones. Query: limit, page, isActive, search */
   getZones: (params = {}) =>
-    apiClient.get("/food/admin/zones", {
+    adminCachedGet("/food/admin/zones", {
       params: { limit: 1000, ...params },
       contextModule: "admin",
-    }),
+    }, { ttlMs: 30000, staleOn429Ms: 120000 }),
   /** Top Restaurants (per zone + type). Query: zoneId, type (delivery|takeaway) */
   getTopRestaurants: (params = {}) =>
     apiClient.get("/food/admin/top-restaurants", {
@@ -1553,6 +1554,57 @@ const publicRestaurantsUnder250Cache = createInFlightCache({ ttlMs: 3000 });
 const publicRestaurantMenuCache = createInFlightCache({ ttlMs: 3000 });
 const publicRestaurantOutletTimingsCache = createInFlightCache({ ttlMs: 3000 });
 const publicGenericGetCache = createInFlightCache({ ttlMs: 3000 });
+const adminReadCache = new Map();
+const adminReadInFlight = new Map();
+
+const buildAdminReadKey = (url, params = {}) => {
+  const safeParams = params && typeof params === "object" ? { ...params } : params;
+  if (safeParams && typeof safeParams === "object") {
+    delete safeParams._ts;
+  }
+  return `admin:${String(url || "").trim()}:${stableStringify(safeParams)}`;
+};
+
+const adminCachedGet = (url, config = {}, options = {}) => {
+  const { noCache, params, ...axiosConfig } = config || {};
+  const ttlMs = Number(options?.ttlMs || 0) || 5000;
+  const staleOn429Ms = Number(options?.staleOn429Ms || 0) || 60000;
+
+  if (noCache) {
+    return apiClient.get(url, { params, ...axiosConfig });
+  }
+
+  const key = buildAdminReadKey(url, params);
+  const now = Date.now();
+  const cached = adminReadCache.get(key);
+  if (cached && now - cached.at < ttlMs) {
+    return Promise.resolve(cached.res);
+  }
+
+  const pending = adminReadInFlight.get(key);
+  if (pending) return pending;
+
+  const request = apiClient
+    .get(url, { params, ...axiosConfig })
+    .then((res) => {
+      adminReadCache.set(key, { at: Date.now(), res });
+      return res;
+    })
+    .catch((err) => {
+      const status = Number(err?.response?.status || 0);
+      const fallback = adminReadCache.get(key);
+      if (status === 429 && fallback && now - fallback.at < staleOn429Ms) {
+        return fallback.res;
+      }
+      throw err;
+    })
+    .finally(() => {
+      adminReadInFlight.delete(key);
+    });
+
+  adminReadInFlight.set(key, request);
+  return request;
+};
 
 export const publicGetOnce = (url, config = {}) => {
   const safeUrl = typeof url === "string" ? url.trim() : "";

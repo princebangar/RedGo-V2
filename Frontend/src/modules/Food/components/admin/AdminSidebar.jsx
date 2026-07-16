@@ -148,13 +148,15 @@ const SidebarSkeleton = ({ isCollapsed }) => {
 
 
 /** Dispatch refresh for sidebar notification badges. Optional key optimistically decrements before refetch. */
-export function refreshSidebarBadges(decrement) {
+export function refreshSidebarBadges(decrement, options = {}) {
   window.dispatchEvent(
     new CustomEvent("refresh-sidebar-badges", {
       detail: decrement ? { decrement } : undefined,
     }),
   )
-  dispatchAdminNotificationsUpdated()
+  if (options.reloadNotifications !== false) {
+    dispatchAdminNotificationsUpdated()
+  }
 }
 
 function dispatchAdminListRefresh(counts, changedKeys) {
