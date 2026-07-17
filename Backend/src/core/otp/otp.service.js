@@ -122,12 +122,32 @@ const normalizePhoneForOtp = (phone) => {
     return digits.slice(-10); // Always normalize to 10 digits to prevent duplicate checks
 };
 
+/** True only for the env-configured test phone when USE_DEFAULT_TEST_PHONE=true */
+const isDefaultTestPhone = (normalizedPhone) =>
+    Boolean(
+        config.useDefaultTestPhone &&
+        config.defaultTestPhone &&
+        normalizedPhone === config.defaultTestPhone
+    );
+
+/**
+ * Static OTP 1234 when:
+ * - USE_DEFAULT_OTP=true (all phones), OR
+ * - USE_DEFAULT_TEST_PHONE=true and phone === DEFAULT_TEST_PHONE
+ */
+export const shouldUseStaticOtp = (phone) => {
+    const normalizedPhone = normalizePhoneForOtp(phone);
+    // return config.useDefaultOtp;
+    return config.useDefaultOtp || isDefaultTestPhone(normalizedPhone);
+};
+
 export const createOrUpdateOtp = async (phone) => {
     const normalizedPhone = normalizePhoneForOtp(phone);
     if (!normalizedPhone) throw new ValidationError("Valid phone number is required");
 
     const existing = await FoodOtp.findOne({ phone: normalizedPhone });
     const now = new Date();
+    const useStaticOtp = shouldUseStaticOtp(normalizedPhone);
 
     // 1. Blocked User Check (Professional back-off)
     if (existing && existing.blockedUntil && existing.blockedUntil > now) {
@@ -147,7 +167,8 @@ export const createOrUpdateOtp = async (phone) => {
             // Relax rate limit in local development to avoid blocking testing flows
             const isDev = config.nodeEnv === 'development';
             const limit = isDev ? 5 : (config.otpRateLimit || 3);
-            if (!config.useDefaultOtp && existing.requestCount >= limit) {
+            // if (!config.useDefaultOtp && existing.requestCount >= limit) {
+            if (!useStaticOtp && existing.requestCount >= limit) {
                 logger.warn(`Rate limit exceeded for phone ${normalizedPhone}`);
                 throw new ValidationError(`Too many OTP requests. Please try again after ${Math.ceil(windowMs / 60000)} minutes.`);
             }
@@ -158,9 +179,17 @@ export const createOrUpdateOtp = async (phone) => {
     }
 
     let otp;
-    if (config.useDefaultOtp) {
+    // if (config.useDefaultOtp) {
+    //     otp = '1234';
+    //     logger.info(`Default OTP mode enabled – OTP is ${otp} for phone ${normalizedPhone}`);
+    // } else {
+    //     otp = generateOtpCode();
+    // }
+    if (useStaticOtp) {
         otp = '1234';
-        logger.info(`Default OTP mode enabled – OTP is ${otp} for phone ${normalizedPhone}`);
+        logger.info(
+            `${config.useDefaultOtp ? 'Default OTP mode' : 'Default test phone'} enabled – OTP is ${otp} for phone ${normalizedPhone}`
+        );
     } else {
         otp = generateOtpCode();
     }
@@ -199,7 +228,8 @@ export const createOrUpdateOtp = async (phone) => {
     }
 
     // Only send SMS if not in default OTP mode
-    if (!config.useDefaultOtp) {
+    // if (!config.useDefaultOtp) {
+    if (!useStaticOtp) {
         if (config.msg91Enabled) {
             await sendSmsViaMsg91(phone, otp);
         } else if (config.smsHubEnabled) {
@@ -219,7 +249,9 @@ export const verifyOtp = async (phone, otp, preserveOtp = false) => {
 
     // Static OTP Bypass: In dev/test mode with USE_DEFAULT_OTP=true, 
     // we allow '1234' unconditionally to avoid any formatting or database issues.
-    if (config.useDefaultOtp && otp === '1234') {
+    // Also bypass for DEFAULT_TEST_PHONE when USE_DEFAULT_TEST_PHONE=true.
+    // if (config.useDefaultOtp && otp === '1234') {
+    if (shouldUseStaticOtp(normalizedPhone) && otp === '1234') {
         console.info(`✅ [OTP-Verify] Static OTP '1234' ABSOLUTE BYPASS for ${phone}`);
         if (record && !preserveOtp) {
             await record.deleteOne(); // Reset the request limit for successful logins

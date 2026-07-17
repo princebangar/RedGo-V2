@@ -8,7 +8,7 @@ import { FoodDeliveryPartner } from "../../modules/food/delivery/models/delivery
 import { findDeliveryPartnerByPhone } from "../../modules/food/delivery/services/delivery.service.js";
 import { FoodReferralSettings } from "../../modules/food/admin/models/referralSettings.model.js";
 import { FoodReferralLog } from "../../modules/food/admin/models/referralLog.model.js";
-import { createOrUpdateOtp, verifyOtp } from "../otp/otp.service.js";
+import { createOrUpdateOtp, verifyOtp, shouldUseStaticOtp } from "../otp/otp.service.js";
 import { signAccessToken, signRefreshToken } from "./token.util.js";
 import { FoodRefreshToken } from "../refreshTokens/refreshToken.model.js";
 import { ValidationError, AuthError } from "./errors.js";
@@ -116,7 +116,8 @@ export const requestUserOtp = async (phone) => {
   // TODO: integrate SMS provider here
   // ONLY expose OTP in response when USE_DEFAULT_OTP=true explicitly.
   // In development with real SMS, OTP must come via SMS, NOT in API response.
-  const shouldExposeOtp = config.useDefaultOtp === true;
+  // const shouldExposeOtp = config.useDefaultOtp === true;
+  const shouldExposeOtp = shouldUseStaticOtp(phone);
   return shouldExposeOtp ? { otp } : {};
 };
 export const verifyUserOtpAndLogin = async (
@@ -389,7 +390,8 @@ export const requestRestaurantOtp = async (phone) => {
   const otp = await createOrUpdateOtp(phone);
   // ONLY expose OTP in response when USE_DEFAULT_OTP=true explicitly.
   // In development with real SMS, OTP must come via SMS, NOT in API response.
-  const shouldExposeOtp = config.useDefaultOtp === true;
+  // const shouldExposeOtp = config.useDefaultOtp === true;
+  const shouldExposeOtp = shouldUseStaticOtp(phone);
   return shouldExposeOtp ? { otp } : {};
 };
 
@@ -560,7 +562,8 @@ export const requestDeliveryOtp = async (phone) => {
   const otp = await createOrUpdateOtp(phone);
   // ONLY expose OTP in response when USE_DEFAULT_OTP=true explicitly.
   // In development with real SMS, OTP must come via SMS, NOT in API response.
-  const shouldExposeOtp = config.useDefaultOtp === true;
+  // const shouldExposeOtp = config.useDefaultOtp === true;
+  const shouldExposeOtp = shouldUseStaticOtp(phone);
   return shouldExposeOtp ? { otp } : {};
 };
 
