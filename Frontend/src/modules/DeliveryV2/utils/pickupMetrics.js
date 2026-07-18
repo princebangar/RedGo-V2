@@ -3,6 +3,8 @@ import { getHaversineDistance } from './geo';
 /** Backend sends 999 km when rider GPS is missing/stale — never show this to drivers. */
 const DISPATCH_FALLBACK_DISTANCE_KM = 999;
 const MAX_TRUSTED_DISTANCE_KM = 100;
+/** Hard client-side gate — matches backend offer radius. */
+export const MAX_OFFER_DISTANCE_KM = 40;
 const MAX_TRUSTED_ETA_MINS = 500;
 const RIDER_SPEED_M_PER_MIN = 416; // ~25 km/h to restaurant
 
@@ -10,7 +12,42 @@ export const PICKUP_METRICS_SOURCE = {
   GPS: 'gps',
   DISPATCH: 'dispatch',
   LOCATING: 'locating',
+  OUT_OF_RANGE: 'out_of_range',
 };
+
+export function getOrderRestaurantLatLng(order) {
+  if (!order) return null;
+  const rest = order.restaurantLocation || order.restaurantId?.location || {};
+  const lat = parseFloat(
+    order.restaurant_lat || order.restaurantLat || rest.latitude || rest.lat,
+  );
+  const lng = parseFloat(
+    order.restaurant_lng || order.restaurantLng || rest.longitude || rest.lng,
+  );
+  if (Number.isFinite(lat) && Number.isFinite(lng)) return { lat, lng };
+  return null;
+}
+
+/** Drop cross-city / absurd offers when rider GPS is known. */
+export function isOrderWithinOfferRange(order, riderLocation, maxKm = MAX_OFFER_DISTANCE_KM) {
+  if (
+    !riderLocation ||
+    !Number.isFinite(riderLocation.lat) ||
+    !Number.isFinite(riderLocation.lng)
+  ) {
+    return true;
+  }
+  const restaurant = getOrderRestaurantLatLng(order);
+  if (!restaurant) return false;
+  const km =
+    getHaversineDistance(
+      riderLocation.lat,
+      riderLocation.lng,
+      restaurant.lat,
+      restaurant.lng,
+    ) / 1000;
+  return Number.isFinite(km) && km <= maxKm;
+}
 
 export function isTrustedDispatchDistance(km) {
   const value = Number(km);
@@ -66,6 +103,15 @@ function buildLocatingMetrics() {
   };
 }
 
+function buildOutOfRangeMetrics(distanceKm) {
+  return {
+    source: PICKUP_METRICS_SOURCE.OUT_OF_RANGE,
+    isReady: false,
+    distanceKm: Number.isFinite(distanceKm) ? Number(distanceKm) : null,
+    etaMins: null,
+  };
+}
+
 /**
  * Pickup distance & ETA for delivery-boy new-order cards.
  * 1. Live rider GPS → restaurant (instant, updates when GPS moves)
@@ -76,31 +122,23 @@ export function computePickupMetrics(order, riderLocation) {
   if (!order) return buildLocatingMetrics();
 
   const prepBuffer = Number(order.prepTime || order.preparationTime || 5);
-
-  const rest = order.restaurantLocation || order.restaurantId?.location || {};
-  const resLat = parseFloat(
-    order.restaurant_lat || order.restaurantLat || rest.latitude || rest.lat,
-  );
-  const resLng = parseFloat(
-    order.restaurant_lng || order.restaurantLng || rest.longitude || rest.lng,
-  );
+  const restaurant = getOrderRestaurantLatLng(order);
 
   if (
     riderLocation &&
     Number.isFinite(riderLocation.lat) &&
     Number.isFinite(riderLocation.lng) &&
-    Number.isFinite(resLat) &&
-    Number.isFinite(resLng)
+    restaurant
   ) {
     const distM = getHaversineDistance(
       riderLocation.lat,
       riderLocation.lng,
-      resLat,
-      resLng,
+      restaurant.lat,
+      restaurant.lng,
     );
     const km = distM / 1000;
-    if (km > MAX_TRUSTED_DISTANCE_KM) {
-      return buildLocatingMetrics();
+    if (km > MAX_OFFER_DISTANCE_KM) {
+      return buildOutOfRangeMetrics(Number(km.toFixed(1)));
     }
     const mins = Math.max(1, Math.ceil(distM / RIDER_SPEED_M_PER_MIN) + prepBuffer);
     return buildReadyMetrics(PICKUP_METRICS_SOURCE.GPS, Number(km.toFixed(1)), mins);
@@ -111,6 +149,9 @@ export function computePickupMetrics(order, riderLocation) {
 
   if (isTrustedDispatchDistance(rawDist)) {
     const km = Number(rawDist);
+    if (km > MAX_OFFER_DISTANCE_KM) {
+      return buildOutOfRangeMetrics(km);
+    }
     const mins = isTrustedDispatchEta(rawEta)
       ? Math.ceil(Number(rawEta))
       : Math.max(1, Math.ceil((km * 1000) / RIDER_SPEED_M_PER_MIN) + prepBuffer);
@@ -122,6 +163,9 @@ export function computePickupMetrics(order, riderLocation) {
 
 /** Compact line for order card header, e.g. "2.4 km · 9 min" or "Locating route…" */
 export function formatPickupRouteSummary(metrics) {
+  if (metrics?.source === PICKUP_METRICS_SOURCE.OUT_OF_RANGE) {
+    return 'Outside your area';
+  }
   if (!metrics?.isReady) {
     return 'Locating route…';
   }

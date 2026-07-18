@@ -12,6 +12,15 @@ import { toast } from 'sonner';
 import useDeliveryBackNavigation from '../../hooks/useDeliveryBackNavigation';
 import { Skeleton } from '@food/components/ui/skeleton';
 
+const toLocalDateKey = (date) => {
+  const d = date instanceof Date ? date : new Date(date);
+  if (Number.isNaN(d.getTime())) return null;
+  const year = d.getFullYear();
+  const month = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+};
+
 /**
  * PocketStatementV2 - 1:1 Match with Old PocketStatement UI.
  * Background: White/Sand
@@ -20,12 +29,14 @@ import { Skeleton } from '@food/components/ui/skeleton';
 export const PocketStatementV2 = () => {
   const goBack = useDeliveryBackNavigation();
 
-  // Current week range (Sunday - Saturday)
+  // Monday → Sunday (matches backend weekly range)
   const getInitialWeekRange = () => {
     const now = new Date();
+    const day = now.getDay();
+    const mondayOffset = (day + 6) % 7;
     const start = new Date(now);
-    start.setDate(now.getDate() - now.getDay());
     start.setHours(0, 0, 0, 0);
+    start.setDate(now.getDate() - mondayOffset);
     const end = new Date(start);
     end.setDate(start.getDate() + 6);
     end.setHours(23, 59, 59, 999);
@@ -37,7 +48,7 @@ export const PocketStatementV2 = () => {
   const [bonusTransactions, setBonusTransactions] = useState([]);
   const [loading, setLoading] = useState(true);
 
-  // Load trips (orders) and bonus for selected day
+  // Load trips (orders) and bonus for selected week
   useEffect(() => {
     const fetchData = async () => {
       try {
@@ -45,7 +56,7 @@ export const PocketStatementV2 = () => {
 
         const params = {
           period: 'weekly',
-          date: weekRange.start.toISOString().split('T')[0],
+          date: toLocalDateKey(weekRange.start),
           status: 'Completed',
           limit: 1000
         };
@@ -134,7 +145,7 @@ export const PocketStatementV2 = () => {
 
        {/* Main Content */}
        <div className="px-4 py-6">
-          <WeekSelector onChange={setWeekRange} />
+          <WeekSelector onChange={setWeekRange} weekStartsOn={1} />
 
           {/* Summary (Original Grid Style) */}
           <div className="bg-white rounded-xl border border-gray-100 p-5 mt-4 mb-6 shadow-sm">
@@ -147,21 +158,21 @@ export const PocketStatementV2 = () => {
              <div className="grid grid-cols-3 gap-4 text-center">
                 <div className="text-left">
                    <p className="text-[10px] text-gray-400 font-bold uppercase mb-1">Orders</p>
-                   <p className="text-base font-bold text-black leading-none min-h-[1.25rem]">
+                   <div className="text-base font-bold text-black leading-none min-h-[1.25rem]">
                       {loading ? <Skeleton className="h-4 w-14" /> : `₹${summary.totalEarning.toFixed(0)}`}
-                   </p>
+                   </div>
                 </div>
                 <div>
                    <p className="text-[10px] text-gray-400 font-bold uppercase mb-1">Bonus</p>
-                   <p className="text-base font-bold text-black leading-none min-h-[1.25rem] flex justify-center">
+                   <div className="text-base font-bold text-black leading-none min-h-[1.25rem] flex justify-center">
                       {loading ? <Skeleton className="h-4 w-14" /> : `₹${summary.totalBonus.toFixed(0)}`}
-                   </p>
+                   </div>
                 </div>
                 <div className="text-right">
                    <p className="text-[10px] text-gray-400 font-bold uppercase mb-1">Total</p>
-                   <p className="text-base font-bold text-[#ff8100] leading-none min-h-[1.25rem] flex justify-end">
+                   <div className="text-base font-bold text-[#ff8100] leading-none min-h-[1.25rem] flex justify-end">
                       {loading ? <Skeleton className="h-4 w-14" /> : `₹${summary.grandTotal.toFixed(0)}`}
-                   </p>
+                   </div>
                 </div>
              </div>
           </div>

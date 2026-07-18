@@ -831,7 +831,7 @@ export const adminAPI = {
       contextModule: "admin",
     }),
 
-  /** Delivery Boy Commission Rules (admin) */
+  /** Delivery Boy Payout Rules (admin) */
   getCommissionRules: () =>
     apiClient.get("/food/admin/delivery/commission-rules", {
       contextModule: "admin",

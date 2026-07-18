@@ -81,12 +81,10 @@ export const PocketV2 = () => {
       payoutAmount:
         wallet.lastPayout?.amount != null
           ? Number(wallet.lastPayout.amount)
-          : wallet.totalWithdrawn != null
-            ? Number(wallet.totalWithdrawn)
-            : prev.payoutAmount,
-      payoutPeriod: wallet.lastPayout
+          : 0,
+      payoutPeriod: wallet.lastPayout?.date
         ? new Date(wallet.lastPayout.date).toLocaleDateString()
-        : prev.payoutPeriod,
+        : 'No recent payout',
     }));
     window.dispatchEvent(new CustomEvent("deliveryWalletStateUpdated"));
   };
@@ -152,8 +150,10 @@ export const PocketV2 = () => {
               : Math.max(0, Number(wallet.cashInHand) || 0),
           weeklyEarnings: Number(summary.totalEarnings) || 0,
           weeklyOrders: Number(summary.totalOrders) || 0,
-          payoutAmount: Number(wallet.lastPayout?.amount || wallet.totalWithdrawn || 0),
-          payoutPeriod: wallet.lastPayout ? new Date(wallet.lastPayout.date).toLocaleDateString() : 'No recent payout',
+          payoutAmount: Number(wallet.lastPayout?.amount) || 0,
+          payoutPeriod: wallet.lastPayout?.date
+            ? new Date(wallet.lastPayout.date).toLocaleDateString()
+            : 'No recent payout',
           bankDetailsFilled: isFilled
         });
 
@@ -340,7 +340,7 @@ export const PocketV2 = () => {
           
           {/* 2. WEEKLY EARNINGS CARD */}
           <div 
-            onClick={() => navigate('/food/delivery/earnings')}
+            onClick={() => navigate('/food/delivery/pocket/details')}
             className="bg-white rounded-xl p-6 shadow-sm border border-gray-100 text-center mb-5 transition-all active:scale-[0.98]"
           >
              <p className="text-gray-500 text-[11px] font-bold uppercase tracking-widest mb-2">Earnings: {getCurrentWeekRange()}</p>
@@ -473,9 +473,9 @@ export const PocketV2 = () => {
                       <IndianRupee className="w-5 h-5" />
                    </div>
                    <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-1.5">Last Payout</p>
-                   <p className="text-xl font-black text-black leading-none mb-1 min-h-[1.5rem]">
+                   <div className="text-xl font-black text-black leading-none mb-1 min-h-[1.5rem]">
                       {loading ? <Skeleton className="h-6 w-16" /> : `₹${walletState.payoutAmount}`}
-                   </p>
+                   </div>
                    <p className="text-[9px] text-gray-400 font-bold uppercase tracking-tight">Prev Week Info</p>
                 </div>
 

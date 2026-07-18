@@ -565,14 +565,7 @@ export default function DeliveryHomeV2({ tab = 'feed' }) {
 
         const newOffers = Array.isArray(availablePayload.newOffers)
           ? availablePayload.newOffers
-          : (Array.isArray(availablePayload?.docs) ? availablePayload.docs : []).filter((order) => {
-              const dispatchStatus = String(order?.dispatch?.status || '').toLowerCase();
-              const orderStatus = String(order?.orderStatus || order?.status || '').toLowerCase();
-              return (
-                ['unassigned', 'assigned'].includes(dispatchStatus) &&
-                ['preparing', 'ready_for_pickup'].includes(orderStatus)
-              );
-            });
+          : [];
 
         if (!cancelled) {
           newOffers.forEach((order) => useDeliveryStore.getState().addNewOrder(order));

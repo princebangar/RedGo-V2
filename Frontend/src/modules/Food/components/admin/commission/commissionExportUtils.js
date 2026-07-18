@@ -62,7 +62,7 @@ export const exportCommissionToPDF = (commissions, filename = "delivery-boy-comm
     <!DOCTYPE html>
     <html>
     <head>
-      <title>Delivery Boy Commission Report</title>
+      <title>Delivery Boy Payout Report</title>
       <style>
         body { font-family: Arial, sans-serif; margin: 20px; }
         table { width: 100%; border-collapse: collapse; margin-top: 20px; }
@@ -73,7 +73,7 @@ export const exportCommissionToPDF = (commissions, filename = "delivery-boy-comm
       </style>
     </head>
     <body>
-      <h1>Delivery Boy Commission Report</h1>
+      <h1>Delivery Boy Payout Report</h1>
       <p>Generated on: ${new Date().toLocaleString()}</p>
       <table>
         <thead>

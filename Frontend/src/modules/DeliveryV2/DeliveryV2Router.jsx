@@ -112,6 +112,7 @@ const DeliveryV2Router = () => {
           <Route path="pocket/balance" element={<PocketBalanceV2 />} />
           <Route path="pocket/cash-limit" element={<CashLimitInfoV2 />} />
           <Route path="pocket/details" element={<PocketDetailsV2 />} />
+          <Route path="earnings" element={<Navigate to="/food/delivery/pocket/details" replace />} />
         </Route>
 
         {/* Fallback */}

@@ -23,7 +23,7 @@ export default function OrdersV2() {
   const setFocusedOrder = useDeliveryStore((state) => state.setFocusedOrder);
 
   const { acceptOrder } = useOrderManager();
-  const { isOrderAlertMuted, toggleOrderAlertMuted, clearNewOrder } = useDeliveryNotificationsContext();
+  const { isOrderAlertMuted, toggleOrderAlertMuted, clearNewOrder, stopSound } = useDeliveryNotificationsContext();
   const [activeTab, setActiveTab] = useState('new');
   const [expandedOrderId, setExpandedOrderId] = useState(null);
   const prevNewCountRef = useRef(visibleNewOrders.length);
@@ -57,14 +57,7 @@ export default function OrdersV2() {
 
       const offers = Array.isArray(availablePayload.newOffers)
         ? availablePayload.newOffers
-        : (availablePayload.docs || []).filter((order) => {
-            const dispatchStatus = String(order?.dispatch?.status || '').toLowerCase();
-            const orderStatus = String(order?.orderStatus || '').toLowerCase();
-            return (
-              ['unassigned', 'assigned'].includes(dispatchStatus) &&
-              ['preparing', 'ready_for_pickup'].includes(orderStatus)
-            );
-          });
+        : [];
 
       offers.forEach((order) => addNewOrder(order));
     } catch (error) {
@@ -97,6 +90,9 @@ export default function OrdersV2() {
     const orderId = resolveOrderKey(order);
     const isFirstAcceptedOrder = acceptedOrders.length === 0;
 
+    // Stop alert instantly on tap — don't wait for API
+    stopSound?.();
+
     try {
       await acceptOrder(order);
       clearNewOrder(order);
@@ -119,6 +115,7 @@ export default function OrdersV2() {
   const handleReject = async (order) => {
     const orderId = resolveOrderKey(order);
     if (!orderId) return;
+    stopSound?.();
     try {
       await deliveryAPI.rejectOrder(orderId);
     } catch (error) {

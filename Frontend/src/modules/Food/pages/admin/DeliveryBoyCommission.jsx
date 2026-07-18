@@ -136,7 +136,7 @@ export default function DeliveryBoyCommission() {
         return
       }
       
-      const errorMessage = error.response?.data?.message || error.message || 'Failed to fetch commission rules'
+      const errorMessage = error.response?.data?.message || error.message || 'Failed to fetch payout rules'
       toast.error(errorMessage)
       setCommissions([])
     } finally {
@@ -151,7 +151,7 @@ export default function DeliveryBoyCommission() {
       setCommissions(commissions.map(c =>
         c._id === commission._id ? { ...c, status: newStatus } : c
       ))
-      toast.success('Commission rule status updated successfully')
+      toast.success('Payout rule status updated successfully')
     } catch (error) {
       debugError('Error toggling status:', error)
       toast.error(error.response?.data?.message || 'Failed to update status')
@@ -194,10 +194,10 @@ export default function DeliveryBoyCommission() {
       setCommissions(commissions.filter(commission => commission._id !== selectedCommission._id))
       setIsDeleteOpen(false)
       setSelectedCommission(null)
-      toast.success('Commission rule deleted successfully')
+      toast.success('Payout rule deleted successfully')
     } catch (error) {
       debugError('Error deleting commission rule:', error)
-      toast.error(error.response?.data?.message || 'Failed to delete commission rule')
+      toast.error(error.response?.data?.message || 'Failed to delete payout rule')
     } finally {
       setDeleting(false)
     }
@@ -212,7 +212,7 @@ export default function DeliveryBoyCommission() {
       errors.maxDistance = "Max distance must be greater than or equal to min distance"
     }
     if (!formData.commissionPerKm.trim() || parseFloat(formData.commissionPerKm) < 0) {
-      errors.commissionPerKm = "Commission per km must be 0 or greater"
+      errors.commissionPerKm = "Amount per km must be 0 or greater"
     }
     if (!formData.basePayout.trim() || parseFloat(formData.basePayout) < 0) {
       errors.basePayout = "Base payout must be 0 or greater"
@@ -258,7 +258,7 @@ export default function DeliveryBoyCommission() {
           setCommissions(commissions.map(c =>
             c._id === selectedCommission._id ? updatedCommission : c
           ))
-          toast.success('Commission rule updated successfully')
+          toast.success('Payout rule updated successfully')
         }
       } else {
         const response = await adminAPI.createCommissionRule(commissionData)
@@ -277,7 +277,7 @@ export default function DeliveryBoyCommission() {
             sl: commissions.length + 1
           }
           setCommissions([...commissions, newCommission])
-          toast.success('Commission rule created successfully')
+          toast.success('Payout rule created successfully')
         }
       }
       
@@ -314,7 +314,7 @@ export default function DeliveryBoyCommission() {
       }
       
       // Handle other errors - extract message from different possible response structures
-      let errorMessage = 'Failed to save commission rule'
+      let errorMessage = 'Failed to save payout rule'
       if (error.response?.data) {
         if (error.response.data.message) {
           errorMessage = error.response.data.message
@@ -377,16 +377,47 @@ export default function DeliveryBoyCommission() {
     si: "Serial Number",
     name: "Name",
     distanceSlab: "Distance Slab (km)",
-    commissionPerKm: "Commission/Km",
+    commissionPerKm: "Amount Per/Km",
     basePayout: "Base Payout",
     status: "Status",
     actions: "Actions",
   }
 
-  const configuredMinDistance = Number(
+  // Info-card formula must use the active base slab (minDistance = 0), not the add/edit form.
+  const baseSlab = useMemo(() => {
+    const active = (commissions || []).filter((c) => c && c.status !== false)
+    return (
+      [...active]
+        .sort((a, b) => (Number(a.minDistance) || 0) - (Number(b.minDistance) || 0))
+        .find((c) => Number(c.minDistance || 0) === 0) || null
+    )
+  }, [commissions])
+
+  const baseSlabMax = baseSlab?.maxDistance == null || baseSlab?.maxDistance === ""
+    ? null
+    : Number(baseSlab.maxDistance)
+  const baseCoverageLabel =
+    baseSlabMax != null && Number.isFinite(baseSlabMax) ? `0-${baseSlabMax}` : "0"
+  const baseEndsAtKm =
+    baseSlabMax != null && Number.isFinite(baseSlabMax) ? baseSlabMax : 0
+  const exampleExtraKm = Math.max(0, 6 - baseEndsAtKm)
+  const exampleTotal = 25 + exampleExtraKm * 5
+
+  // Dialog labels follow the rule currently being edited.
+  const formMinDistance = Number(
     formData.minDistance !== "" ? formData.minDistance : selectedCommission?.minDistance
   )
-  const formulaMinDistance = Number.isFinite(configuredMinDistance) ? configuredMinDistance : 0
+  const dialogMinDistance = Number.isFinite(formMinDistance) ? formMinDistance : 0
+  const formMaxRaw =
+    formData.maxDistanceUnlimited || formData.maxDistance === ""
+      ? null
+      : Number(formData.maxDistance)
+  const dialogBaseCoverage =
+    dialogMinDistance === 0 && formMaxRaw != null && Number.isFinite(formMaxRaw)
+      ? `0-${formMaxRaw}`
+      : dialogMinDistance === 0
+        ? "0"
+        : String(dialogMinDistance)
 
   return (
     <div className="p-4 lg:p-6 bg-slate-50 min-h-screen">
@@ -396,7 +427,7 @@ export default function DeliveryBoyCommission() {
             <div className="flex items-center gap-3">
               <IndianRupee className="w-5 h-5 text-slate-600" />
               <div className="flex items-center gap-2">
-                <h1 className="text-2xl font-bold text-slate-900">Delivery Boy Commission</h1>
+                <h1 className="text-2xl font-bold text-slate-900">Delivery Boy Payout</h1>
                 <span className="px-3 py-1 rounded-full text-sm font-semibold bg-slate-100 text-slate-700 flex items-center justify-center min-w-[2.5rem] h-7">
                   {loading ? (
                     <span className="w-5 h-3 rounded bg-slate-300/80 animate-pulse" />
@@ -428,10 +459,15 @@ export default function DeliveryBoyCommission() {
             <div className="flex items-start gap-3">
               <MapPin className="w-5 h-5 text-blue-600 mt-0.5" />
               <div className="text-sm text-slate-700">
-                <p className="font-semibold text-blue-900 mb-1">Fixed + Extra Distance Commission</p>
+                <p className="font-semibold text-blue-900 mb-1">Fixed + Extra Distance Payout</p>
                 <p className="text-slate-600">
-                  Commission is calculated as: <strong>Base payout for 0-{formulaMinDistance} km + Extra per km after {formulaMinDistance} km</strong>.
-                  Example: if base is ₹25 and extra is ₹5/km, then 6 km earns ₹25 + (2 x ₹5) = ₹35.
+                  Payout is calculated as:{" "}
+                  <strong>
+                    Base payout ({baseCoverageLabel} km slab) + (km in each slab × that slab&apos;s amount per km)
+                  </strong>
+                  .
+                  Example: base ₹25 for {baseCoverageLabel} km, then ₹5/km after {baseEndsAtKm} km → 6 km
+                  earns ₹25 + ({exampleExtraKm} × ₹5) = ₹{exampleTotal}.
                 </p>
                 <p className="text-slate-600 mt-1">
                   Only the slab with <strong>min distance = 0</strong> can have a base payout. All other slabs should keep base payout set to 0 and use only amount per km.
@@ -487,14 +523,14 @@ export default function DeliveryBoyCommission() {
                     <td colSpan={Object.values(visibleColumns).filter(v => v).length} className="px-6 py-8 text-center">
                       <div className="flex items-center justify-center gap-2 text-slate-500">
                         <Loader2 className="w-5 h-5 animate-spin" />
-                        <span>Loading commission rules...</span>
+                        <span>Loading payout rules...</span>
                       </div>
                     </td>
                   </tr>
                 ) : filteredCommissions.length === 0 ? (
                   <tr>
                     <td colSpan={Object.values(visibleColumns).filter(v => v).length} className="px-6 py-8 text-center text-slate-500">
-                      No commission rules found
+                      No payout rules found
                     </td>
                   </tr>
                 ) : (
@@ -578,7 +614,7 @@ export default function DeliveryBoyCommission() {
       <Dialog open={isAddEditOpen} onOpenChange={setIsAddEditOpen}>
         <DialogContent className="max-w-md bg-white p-0 opacity-0 data-[state=open]:opacity-100 data-[state=closed]:opacity-0 transition-opacity duration-200 data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=open]:fade-in-0 data-[state=closed]:fade-out-0 data-[state=open]:scale-100 data-[state=closed]:scale-100">
           <DialogHeader className="px-6 pt-6 pb-4">
-            <DialogTitle>{selectedCommission ? "Edit Commission Rule" : "Add Commission Rule"}</DialogTitle>
+            <DialogTitle>{selectedCommission ? "Edit Payout Rule" : "Add Payout Rule"}</DialogTitle>
           </DialogHeader>
           <div className="px-6 pb-6 space-y-4">
             <div>
@@ -592,7 +628,7 @@ export default function DeliveryBoyCommission() {
                 className={`w-full px-4 py-2.5 border rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm ${
                   formErrors.name ? "border-red-500" : "border-slate-300"
                 }`}
-                placeholder={`e.g., Base (0-${formulaMinDistance} km)`}
+                placeholder={`e.g., Base (${dialogBaseCoverage} km)`}
               />
               {formErrors.name && <p className="text-xs text-red-500 mt-1">{formErrors.name}</p>}
             </div>
@@ -666,7 +702,7 @@ export default function DeliveryBoyCommission() {
             </div>
             <div>
               <label className="block text-sm font-semibold text-slate-700 mb-2">
-                Extra Per Kilometer after {formulaMinDistance} km (₹) <span className="text-red-500">*</span>
+                Extra Per Kilometer (₹) <span className="text-red-500">*</span>
               </label>
               <input
                 type="number"
@@ -683,7 +719,8 @@ export default function DeliveryBoyCommission() {
             </div>
             <div>
               <label className="block text-sm font-semibold text-slate-700 mb-2">
-                Fixed Payout for 0-{formulaMinDistance} km (₹) <span className="text-red-500">*</span>
+                Fixed Base Payout{dialogMinDistance === 0 ? ` for ${dialogBaseCoverage} km` : ""} (₹){" "}
+                <span className="text-red-500">*</span>
               </label>
               <input
                 type="number"
@@ -698,7 +735,9 @@ export default function DeliveryBoyCommission() {
               />
               {formErrors.basePayout && <p className="text-xs text-red-500 mt-1">{formErrors.basePayout}</p>}
               <p className="text-xs text-slate-500 mt-1">
-                Formula: Base payout + (max(0, distance - {formulaMinDistance}) * extra per km)
+                {dialogMinDistance === 0
+                  ? "Base payout is flat for the 0-km slab. Amount per km applies only to km that fall inside each slab."
+                  : "Non-base slabs must keep base payout at 0. Only amount per km is used for km inside this slab."}
               </p>
             </div>
           </div>
@@ -725,7 +764,7 @@ export default function DeliveryBoyCommission() {
       <Dialog open={isDeleteOpen} onOpenChange={setIsDeleteOpen}>
         <DialogContent className="max-w-md bg-white p-0 opacity-0 data-[state=open]:opacity-100 data-[state=closed]:opacity-0 transition-opacity duration-200 data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=open]:fade-in-0 data-[state=closed]:fade-out-0 data-[state=open]:scale-100 data-[state=closed]:scale-100">
           <DialogHeader className="px-6 pt-6 pb-4">
-            <DialogTitle>Delete Commission Rule</DialogTitle>
+            <DialogTitle>Delete Payout Rule</DialogTitle>
           </DialogHeader>
           <div className="px-6 pb-6">
             <p className="text-sm text-slate-700">
