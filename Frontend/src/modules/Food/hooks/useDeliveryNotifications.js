@@ -7,11 +7,15 @@ const originalSound = '/restaurant_alert.mp3';
 import { dispatchNotificationInboxRefresh } from '@food/hooks/useNotificationInbox';
 import { useDeliveryStore, resolveOrderKey, ordersShareIdentity } from '@/modules/DeliveryV2/store/useDeliveryStore';
 import { mapOrderLocations } from '@/modules/DeliveryV2/utils/orderMapping';
-import { sanitizeOrderDispatchMetrics } from '@/modules/DeliveryV2/utils/pickupMetrics';
+import {
+  isOrderWithinOfferRange,
+  sanitizeOrderDispatchMetrics,
+} from '@/modules/DeliveryV2/utils/pickupMetrics';
 import {
   isNativeAppWebView,
   shouldSkipDuplicateOsNotification,
 } from '@food/utils/firebaseMessaging';
+import { toast } from 'sonner';
 
 const shouldLogDeliverySocket = () => {
   if (typeof window === 'undefined') return import.meta.env.DEV;
@@ -352,21 +356,26 @@ export const useDeliveryNotifications = () => {
     return true;
   };
 
-  const stopAlertLoop = useCallback(() => {
+  const clearAlertLoopTimer = useCallback(() => {
     if (alertLoopTimerRef.current) {
       clearInterval(alertLoopTimerRef.current);
       alertLoopTimerRef.current = null;
     }
+  }, []);
+
+  const stopAlertLoop = useCallback(() => {
+    clearAlertLoopTimer();
     alertLoopStartedAtRef.current = 0;
 
     if (audioRef.current) {
       audioRef.current.pause();
       audioRef.current.currentTime = 0;
     }
-  }, []);
+  }, [clearAlertLoopTimer]);
 
   const startAlertLoop = useCallback((playSoundFn) => {
-    stopAlertLoop();
+    // Clear only the timer — do NOT pause audio (that delayed the first ring by ~4.5s)
+    clearAlertLoopTimer();
     alertLoopStartedAtRef.current = Date.now();
 
     alertLoopTimerRef.current = setInterval(() => {
@@ -380,24 +389,21 @@ export const useDeliveryNotifications = () => {
         playSoundFn(activeOrderRef.current);
       }
     }, ALERT_LOOP_INTERVAL_MS);
-  }, [isOrderAlertMuted, stopAlertLoop]);
+  }, [clearAlertLoopTimer, isOrderAlertMuted, stopAlertLoop]);
   
-  const playNotificationSound = useCallback(async (orderData = {}) => {
+  const playNotificationSound = useCallback((orderData = {}) => {
     if (isOrderAlertMuted(orderData)) {
       return;
     }
 
-    try {
-      const usedNativeBridge = await triggerWebViewNativeNotification(orderData);
+    // Native bridge must not block the first web ring
+    void triggerWebViewNativeNotification(orderData).catch(() => {});
 
+    try {
       if (typeof window !== 'undefined' && window.__userHasInteracted && typeof navigator !== 'undefined' && typeof navigator.vibrate === 'function') {
         try {
           navigator.vibrate([200, 100, 200, 100, 300]);
         } catch (_) {}
-      }
-
-      if (usedNativeBridge) {
-        return;
       }
 
       const selectedSound = localStorage.getItem('delivery_alert_sound') || 'zomato_tone';
@@ -555,8 +561,16 @@ export const useDeliveryNotifications = () => {
     }
 
     const mappedOrder = sanitizeOrderDispatchMetrics(mapOrderLocations(orderData) || orderData);
+    const riderLocation = useDeliveryStore.getState().riderLocation;
+    if (!isOrderWithinOfferRange(mappedOrder, riderLocation)) {
+      debugLog('Ignored out-of-range order offer', {
+        orderId: mappedOrder?.orderId || mappedOrder?._id,
+      });
+      return;
+    }
     activeOrderRef.current = mappedOrder || { id: Date.now() };
     useDeliveryStore.getState().addNewOrder(mappedOrder);
+    // Play first, then schedule loop (loop must not pause the first play)
     playNotificationSound(mappedOrder);
     startAlertLoop(playNotificationSound);
 
@@ -1084,7 +1098,7 @@ export const useDeliveryNotifications = () => {
       handleIncomingOrderAlert(orderData);
     });
 
-    // Same payload as new_order — only refresh UI state, queue dedupes by order identity
+    // Same payload as new_order — also ring so retry-only offers are not silent
     socketRef.current.on('new_order_available', (orderData) => {
       debugLog('New order available received via socket', {
         orderId: orderData?.orderId || orderData?.orderMongoId || orderData?._id,
@@ -1095,7 +1109,7 @@ export const useDeliveryNotifications = () => {
         return;
       }
       setNewOrder(orderData);
-      useDeliveryStore.getState().addNewOrder(orderData);
+      handleIncomingOrderAlert(orderData);
     });
 
     socketRef.current.on('active_orders', (orders = []) => {
@@ -1168,29 +1182,55 @@ export const useDeliveryNotifications = () => {
       });
     });
 
-    socketRef.current.on('order_reassigned_elsewhere', (data) => {
-      debugLog('?? Order reassigned to another partner:', data);
-      stopAlertLoop();
-      activeOrderRef.current = null;
-      setNewOrder(null);
+    const handleOfferTakenElsewhere = (data, { showToast }) => {
       const claimedId = data?.orderId || data?.orderMongoId || data?.order_id;
+      const claimedBy = String(data?.claimedBy || '');
+      const isSelf =
+        Boolean(claimedBy) &&
+        Boolean(deliveryPartnerId) &&
+        claimedBy === String(deliveryPartnerId);
+
       if (claimedId) {
+        markOrderIdsProcessed({ _id: claimedId, orderId: claimedId, orderMongoId: claimedId });
         useDeliveryStore.getState().removeNewOrder(claimedId);
         setClaimedOrderId(claimedId);
       }
+
+      if (showToast && !isSelf) {
+        toast.info('This request accepted by another rider', {
+          id: `order-claimed-${claimedId || 'unknown'}`,
+          duration: 4000,
+        });
+      }
+
+      const remaining = useDeliveryStore.getState().newOrders || [];
+      if (remaining.length > 0) {
+        const nextOffer = remaining[0];
+        activeOrderRef.current = nextOffer;
+        setNewOrder(nextOffer);
+        if (!isOrderAlertMuted(nextOffer)) {
+          playNotificationSound(nextOffer);
+          startAlertLoop(playNotificationSound);
+        } else {
+          stopAlertLoop();
+        }
+        return;
+      }
+
+      stopAlertLoop();
+      activeOrderRef.current = null;
+      setNewOrder(null);
+    };
+
+    socketRef.current.on('order_reassigned_elsewhere', (data) => {
+      debugLog('?? Order reassigned to another partner:', data);
+      handleOfferTakenElsewhere(data, { showToast: true });
     });
 
     // Backend emits 'order_claimed' when another delivery boy accepts an offered order
     socketRef.current.on('order_claimed', (data) => {
       debugLog('?? order_claimed received - order taken by another partner:', data);
-      stopAlertLoop();
-      activeOrderRef.current = null;
-      setNewOrder(null);
-      const claimedId = data?.orderId || data?.orderMongoId || data?.order_id;
-      if (claimedId) {
-        useDeliveryStore.getState().removeNewOrder(claimedId);
-        setClaimedOrderId(claimedId);
-      }
+      handleOfferTakenElsewhere(data, { showToast: true });
     });
 
     socketRef.current.on('admin_notification', (payload) => {

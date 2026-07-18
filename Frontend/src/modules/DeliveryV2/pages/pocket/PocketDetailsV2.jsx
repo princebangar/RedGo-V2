@@ -17,15 +17,26 @@ import { motion, AnimatePresence } from "framer-motion";
 import useDeliveryBackNavigation from "../../hooks/useDeliveryBackNavigation";
 import { Skeleton } from "@food/components/ui/skeleton";
 
+const toLocalDateKey = (date) => {
+  const d = date instanceof Date ? date : new Date(date);
+  if (Number.isNaN(d.getTime())) return null;
+  const year = d.getFullYear();
+  const month = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+};
+
 export const PocketDetailsV2 = () => {
   const goBack = useDeliveryBackNavigation();
 
-  // Current week range (Sunday–Saturday)
+  // Monday → Sunday (matches backend getWeekRange / Pocket earnings card)
   const getInitialWeekRange = () => {
     const now = new Date();
+    const day = now.getDay(); // Sun=0 ... Sat=6
+    const mondayOffset = (day + 6) % 7;
     const start = new Date(now);
-    start.setDate(now.getDate() - now.getDay());
     start.setHours(0, 0, 0, 0);
+    start.setDate(now.getDate() - mondayOffset);
     const end = new Date(start);
     end.setDate(start.getDate() + 6);
     end.setHours(23, 59, 59, 999);
@@ -43,8 +54,9 @@ export const PocketDetailsV2 = () => {
     const fetchData = async () => {
       try {
         setLoading(true);
+        const dateKey = toLocalDateKey(weekRange.start);
         const response = await deliveryAPI.getPocketDetails({
-          date: weekRange.start.toISOString(),
+          date: dateKey,
           limit: 2000
         });
 
@@ -121,7 +133,7 @@ export const PocketDetailsV2 = () => {
         <div className="bg-white p-4 rounded-2xl shadow-sm border border-gray-100">
            <WeekSelector 
              onChange={setWeekRange}
-             weekStartsOn={0}
+             weekStartsOn={1}
            />
         </div>
 
@@ -147,15 +159,15 @@ export const PocketDetailsV2 = () => {
               <div className="grid grid-cols-2 gap-4">
                  <div className="bg-gray-50 dark:bg-white/5 p-4 rounded-2xl border border-gray-100 dark:border-white/5">
                     <p className="text-[9px] font-bold text-gray-400 uppercase tracking-widest mb-1">Trip Earnings</p>
-                    <p className="text-lg font-black text-gray-950 dark:text-white min-h-[1.5rem]">
+                    <div className="text-lg font-black text-gray-950 dark:text-white min-h-[1.5rem]">
                       {loading ? <Skeleton className="h-5 w-20" /> : formatCurrency(summary.totalEarning)}
-                    </p>
+                    </div>
                  </div>
                  <div className="bg-gray-50 dark:bg-white/5 p-4 rounded-2xl border border-gray-100 dark:border-white/5">
                     <p className="text-[9px] font-bold text-gray-400 uppercase tracking-widest mb-1">Weekly Bonus</p>
-                    <p className="text-lg font-black text-green-500 min-h-[1.5rem]">
+                    <div className="text-lg font-black text-green-500 min-h-[1.5rem]">
                       {loading ? <Skeleton className="h-5 w-20" /> : `+${formatCurrency(summary.totalBonus)}`}
-                    </p>
+                    </div>
                  </div>
               </div>
            </div>

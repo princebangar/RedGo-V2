@@ -30,13 +30,17 @@ import {
   emitDeliveryDropOtpToUser,
   enqueueOrderEvent,
   generateFourDigitDeliveryOtp,
+  haversineKm,
   notifyOwnerSafely,
   notifyOwnersSafely,
   pushStatusHistory,
   sanitizeOrderForExternal,
   isStatusAdvance,
 } from './order.helpers.js';
-import { detectZoneIdForPoint } from '../../utils/zoneGeo.js';
+import { detectZoneIdForPoint, getActiveZoneById, isPointInZonePolygon } from '../../utils/zoneGeo.js';
+
+/** Match dispatch hard cap — never list/accept cross-city absurd distances. */
+const HARD_MAX_OFFER_DISTANCE_KM = 40;
 
 function normalizeOtpValue(value) {
   return String(value ?? '').replace(/\D/g, '').trim();
@@ -387,8 +391,9 @@ export async function listOrdersAvailableDelivery(deliveryPartnerId, query) {
     },
   };
 
-  // Zone-scope new offers: partner must be inside the same service zone as the order.
+  // Zone-scope new offers: partner must be inside the same service zone as the restaurant GPS.
   const partnerZoneId = await detectZoneIdForPoint(partner?.lastLat, partner?.lastLng);
+  const partnerZoneDoc = partnerZoneId ? await getActiveZoneById(partnerZoneId) : null;
 
   let unassignedOfferFilter = null;
   if (
@@ -441,17 +446,32 @@ export async function listOrdersAvailableDelivery(deliveryPartnerId, query) {
     };
   });
 
+  const isRestaurantInPartnerZone = (order) => {
+    const coords = order?.restaurantId?.location?.coordinates;
+    if (!Array.isArray(coords) || coords.length < 2 || !partnerZoneDoc) return false;
+    const [rLng, rLat] = coords;
+    return isPointInZonePolygon(rLat, rLng, partnerZoneDoc.coordinates || []);
+  };
+
+  const isWithinOfferDistance = (order) => {
+    const coords = order?.restaurantId?.location?.coordinates;
+    if (!Array.isArray(coords) || coords.length < 2) return false;
+    if (partner?.lastLat == null || partner?.lastLng == null) return false;
+    const [rLng, rLat] = coords;
+    const d = haversineKm(partner.lastLat, partner.lastLng, rLat, rLng);
+    return Number.isFinite(d) && d <= HARD_MAX_OFFER_DISTANCE_KM;
+  };
+
   const newOffers = enriched.filter((order) => {
     const dispatchStatus = String(order?.dispatch?.status || '').toLowerCase();
     const orderStatus = String(order?.orderStatus || '').toLowerCase();
-    const orderZoneId = String(order?.zoneId || order?.restaurantId?.zoneId || '');
-    const sameZone = partnerZoneId && orderZoneId && partnerZoneId === orderZoneId;
     const isOwnAccepted =
       String(order?.dispatch?.deliveryPartnerId || '') === String(deliveryPartnerId);
-    // New offers must be same-zone; own active trips always included above.
     if (isOwnAccepted) return false;
     return (
-      sameZone &&
+      partnerZoneId &&
+      isRestaurantInPartnerZone(order) &&
+      isWithinOfferDistance(order) &&
       ['unassigned', 'assigned'].includes(dispatchStatus) &&
       ['preparing', 'ready_for_pickup'].includes(orderStatus)
     );
@@ -489,8 +509,13 @@ export async function acceptOrderDelivery(orderId, deliveryPartnerId) {
     .select('lastLat lastLng lastLocationAt')
     .lean();
   const partnerZoneId = await detectZoneIdForPoint(partner?.lastLat, partner?.lastLng);
+  const restaurantCoords = existingOrder?.restaurantId?.location?.coordinates;
+  const restaurantZoneId =
+    Array.isArray(restaurantCoords) && restaurantCoords.length >= 2
+      ? await detectZoneIdForPoint(restaurantCoords[1], restaurantCoords[0])
+      : String(existingOrder?.zoneId || existingOrder?.restaurantId?.zoneId || '').trim() || null;
   const orderZoneId = String(
-    existingOrder?.zoneId || existingOrder?.restaurantId?.zoneId || '',
+    restaurantZoneId || existingOrder?.zoneId || existingOrder?.restaurantId?.zoneId || '',
   ).trim();
 
   const alreadyAcceptedByPartnerEarly =
@@ -500,6 +525,22 @@ export async function acceptOrderDelivery(orderId, deliveryPartnerId) {
   if (!alreadyAcceptedByPartnerEarly) {
     if (!partnerZoneId || !orderZoneId || partnerZoneId !== orderZoneId) {
       throw new ForbiddenError('This order is outside your service zone');
+    }
+    if (
+      Array.isArray(restaurantCoords) &&
+      restaurantCoords.length >= 2 &&
+      partner?.lastLat != null &&
+      partner?.lastLng != null
+    ) {
+      const d = haversineKm(
+        partner.lastLat,
+        partner.lastLng,
+        restaurantCoords[1],
+        restaurantCoords[0],
+      );
+      if (!Number.isFinite(d) || d > HARD_MAX_OFFER_DISTANCE_KM) {
+        throw new ForbiddenError('This order is too far from your current location');
+      }
     }
   }
 
@@ -620,6 +661,35 @@ export async function acceptOrderDelivery(orderId, deliveryPartnerId) {
 
   const responseOrder = sanitizeOrderForExternal(order);
 
+  // Notify other riders IMMEDIATELY — do not wait for Firebase/polyline work
+  try {
+    const io = getIO();
+    if (io) {
+      const claimedPayload = {
+        orderId: order._id.toString(),
+        orderMongoId: order._id?.toString?.(),
+        claimedBy: deliveryPartnerId.toString(),
+        message: 'This request accepted by another rider',
+      };
+      io.to('all_delivery').emit('order_claimed', claimedPayload);
+      logger.info(
+        `[DeliveryDispatch] Broadcasted order_claimed immediately for order ${order._id.toString()}`,
+      );
+
+      const payload = {
+        orderMongoId: order._id?.toString?.(),
+        orderId: order._id.toString(),
+        orderStatus: order.orderStatus,
+        dispatchStatus: order.dispatch?.status,
+      };
+      io.to(rooms.delivery(deliveryPartnerId)).emit('order_status_update', payload);
+      io.to(rooms.restaurant(order.restaurantId)).emit('order_status_update', payload);
+      io.to(rooms.user(order.userId)).emit('order_status_update', payload);
+    }
+  } catch (error) {
+    logger.error(`Error emitting order_claimed on accept: ${error?.message || error}`);
+  }
+
   void (async () => {
     try {
       const rest = order.restaurantId;
@@ -671,30 +741,6 @@ export async function acceptOrderDelivery(orderId, deliveryPartnerId) {
     }
 
     try {
-      const io = getIO();
-      if (io) {
-        const payload = {
-          orderMongoId: order._id?.toString?.(),
-          orderId: order._id.toString(),
-          orderStatus: order.orderStatus,
-          dispatchStatus: order.dispatch?.status,
-        };
-        io.to(rooms.delivery(deliveryPartnerId)).emit('order_status_update', payload);
-        io.to(rooms.restaurant(order.restaurantId)).emit('order_status_update', payload);
-        io.to(rooms.user(order.userId)).emit('order_status_update', payload);
-
-        // Broadcast order_claimed to ALL online delivery partners so every popup is dismissed
-        const claimedPayload = {
-          orderId: order._id.toString(),
-          orderMongoId: order._id?.toString?.(),
-          claimedBy: deliveryPartnerId.toString(),
-        };
-        // 1. Global broadcast to all_delivery room — covers every online delivery boy
-        io.to('all_delivery').emit('order_claimed', claimedPayload);
-        logger.info(`[DeliveryDispatch] Broadcasted order_claimed globally (all_delivery room) for order ${order._id.toString()}`);
-
-      }
-
       await notifyOwnerSafely(
         { ownerType: 'USER', ownerId: order.userId },
         {

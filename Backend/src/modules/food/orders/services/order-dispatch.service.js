@@ -18,7 +18,12 @@ import {
 import {
   getActiveZoneById,
   isPartnerInsideZone,
+  detectZoneIdForPoint,
+  isPointInZonePolygon,
 } from '../../utils/zoneGeo.js';
+
+/** Never offer a job farther than this, even inside a large/misdrawn zone. */
+const HARD_MAX_OFFER_DISTANCE_KM = 40;
 
 async function filterPartnersByCashLimit(partners = [], options = {}) {
   if (!Array.isArray(partners) || partners.length === 0) return [];
@@ -139,7 +144,15 @@ async function listNearbyOnlineDeliveryPartners(
     .select('location zoneId')
     .lean();
 
-  const resolvedZoneId = String(zoneId || restaurant?.zoneId || '').trim() || null;
+  const [rLng, rLat] = restaurant?.location?.coordinates?.length === 2
+    ? restaurant.location.coordinates
+    : [null, null];
+
+  // Prefer zone from restaurant GPS so a wrong restaurant.zoneId cannot leak cross-city.
+  const gpsZoneId =
+    rLat != null && rLng != null ? await detectZoneIdForPoint(rLat, rLng) : null;
+  const resolvedZoneId =
+    gpsZoneId || String(zoneId || restaurant?.zoneId || '').trim() || null;
   const zoneDoc = resolvedZoneId ? await getActiveZoneById(resolvedZoneId) : null;
 
   // Without a service zone we must not broadcast globally (cross-city leak).
@@ -150,9 +163,25 @@ async function listNearbyOnlineDeliveryPartners(
     return { restaurant: restaurant || null, partners: [] };
   }
 
+  // If restaurant pin is outside the resolved zone polygon, do not dispatch.
+  if (
+    rLat != null &&
+    rLng != null &&
+    !isPointInZonePolygon(rLat, rLng, zoneDoc.coordinates || [])
+  ) {
+    logger.warn(
+      `listNearbyOnlineDeliveryPartners: restaurant ${rId} GPS outside zone ${resolvedZoneId}; skipping`,
+    );
+    return { restaurant: restaurant || null, partners: [] };
+  }
+
   const allowedStatuses =
     process.env.NODE_ENV === 'production' ? ['approved'] : ['approved', 'pending'];
   const STALE_GPS_MS = 10 * 60 * 1000;
+  const offerRadiusKm = Math.min(
+    Math.max(Number(maxKm) || 15, 1),
+    HARD_MAX_OFFER_DISTANCE_KM,
+  );
 
   const allOnline = await FoodDeliveryPartner.find({
     availabilityStatus: 'online',
@@ -173,39 +202,21 @@ async function listNearbyOnlineDeliveryPartners(
     return { restaurant: restaurant || null, partners: [] };
   }
 
-  const [rLng, rLat] = restaurant?.location?.coordinates?.length === 2
-    ? restaurant.location.coordinates
-    : [null, null];
-
   let scored = [];
   if (rLat != null && rLng != null) {
     for (const p of inZonePartners) {
       const d = haversineKm(rLat, rLng, p.lastLat, p.lastLng);
-      if (Number.isFinite(d) && d <= maxKm) {
+      if (Number.isFinite(d) && d <= offerRadiusKm) {
         scored.push({ partnerId: p._id, distanceKm: d, status: p.status });
       }
     }
     scored.sort((a, b) => a.distanceKm - b.distanceKm);
   } else {
-    // Restaurant GPS missing — still only zone partners (no global fallback).
-    scored = inZonePartners.map((p) => ({
-      partnerId: p._id,
-      distanceKm: null,
-      status: p.status,
-    }));
-  }
-
-  // If nobody within radius, keep zone partners (sorted by distance if available)
-  // instead of offering to other cities.
-  if (scored.length === 0 && rLat != null && rLng != null) {
-    scored = inZonePartners
-      .map((p) => ({
-        partnerId: p._id,
-        distanceKm: haversineKm(rLat, rLng, p.lastLat, p.lastLng),
-        status: p.status,
-      }))
-      .filter((p) => Number.isFinite(p.distanceKm))
-      .sort((a, b) => a.distanceKm - b.distanceKm);
+    // No restaurant GPS — refuse dispatch rather than guessing city-wide.
+    logger.warn(
+      `listNearbyOnlineDeliveryPartners: restaurant ${rId} missing GPS; skipping`,
+    );
+    return { restaurant: restaurant || null, partners: [] };
   }
 
   const picked = scored.slice(0, Math.max(1, limit));
@@ -372,7 +383,9 @@ export async function tryAutoAssign(orderId, options = {}) {
         const payload = buildDeliverySocketPayload(order, order.restaurantId);
         for (const p of partners) {
           const roomName = rooms.delivery(p.partnerId);
-          io.to(roomName).emit('new_order_available', { ...payload, pickupDistanceKm: p.distanceKm });
+          const eventPayload = { ...payload, pickupDistanceKm: p.distanceKm };
+          io.to(roomName).emit('new_order', eventPayload);
+          io.to(roomName).emit('new_order_available', eventPayload);
         }
       }
 

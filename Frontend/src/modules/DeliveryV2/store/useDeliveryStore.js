@@ -1,7 +1,10 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import { mapOrderLocations } from '@/modules/DeliveryV2/utils/orderMapping';
-import { sanitizeOrderDispatchMetrics } from '@/modules/DeliveryV2/utils/pickupMetrics';
+import {
+  isOrderWithinOfferRange,
+  sanitizeOrderDispatchMetrics,
+} from '@/modules/DeliveryV2/utils/pickupMetrics';
 
 const collectOrderKeys = (order) => {
   if (!order) return [];
@@ -89,7 +92,17 @@ export const useDeliveryStore = create(
 
       toggleOnline: () => set((state) => ({ isOnline: !state.isOnline })),
       setOnline: (online) => set({ isOnline: online }),
-      setRiderLocation: (location) => set({ riderLocation: location }),
+      setRiderLocation: (location) => {
+        set((state) => {
+          const next = { riderLocation: location };
+          if (location && Array.isArray(state.newOrders) && state.newOrders.length) {
+            next.newOrders = state.newOrders.filter((order) =>
+              isOrderWithinOfferRange(order, location),
+            );
+          }
+          return next;
+        });
+      },
       setSettings: (newSettings) =>
         set((state) => ({
           settings: { ...state.settings, ...newSettings },
@@ -127,6 +140,8 @@ export const useDeliveryStore = create(
         const normalized = sanitizeOrderDispatchMetrics(mapOrderLocations(order) || order);
         const incomingKeys = collectOrderKeys(normalized);
         if (!incomingKeys.length) return;
+        const riderLocation = get().riderLocation;
+        if (!isOrderWithinOfferRange(normalized, riderLocation)) return;
         set((state) => {
           const acceptedExists = state.acceptedOrders.some((item) => ordersShareIdentity(item, normalized));
           if (acceptedExists) return state;

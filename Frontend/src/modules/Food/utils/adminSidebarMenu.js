@@ -143,7 +143,7 @@ export const adminSidebarMenu = [
       { type: "link", label: "Cash limit settlement", path: "/admin/food/cash-limit-settlement", icon: "Receipt" },
       { type: "link", label: "Delivery Withdrawal", path: "/admin/food/delivery-withdrawal", icon: "Wallet" },
       { type: "link", label: "Delivery boy Wallet", path: "/admin/food/delivery-boy-wallet", icon: "PiggyBank" },
-      { type: "link", label: "Delivery Boy Commission", path: "/admin/food/delivery-boy-commission", icon: "DollarSign" },
+      { type: "link", label: "Delivery Boy Payout", path: "/admin/food/delivery-boy-commission", icon: "DollarSign" },
       { type: "link", label: "Delivery Emergency Help", path: "/admin/food/delivery-emergency-help", icon: "Phone" },
       { type: "link", label: "Delivery Support Tickets", path: "/admin/food/delivery-support-tickets", icon: "MessageSquare" },
       {

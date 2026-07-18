@@ -31,7 +31,10 @@ export const PayoutV2 = () => {
         });
         
         if (response?.data?.success) {
-          const transactions = response.data.data.transactions || [];
+          // Only real withdrawal requests — never treat delivery earnings as payouts
+          const transactions = (response.data.data.transactions || []).filter(
+            (t) => String(t?.type || '').toLowerCase() === 'withdrawal'
+          );
           setWithdrawals(transactions.map(t => ({
             id: t._id || t.id,
             amount: t.amount || 0,
@@ -107,7 +110,7 @@ export const PayoutV2 = () => {
         >
           <ArrowLeft className="w-5 h-5 text-gray-600" />
         </button>
-        <h1 className="text-lg font-bold text-gray-900">Withdrawal History</h1>
+        <h1 className="text-lg font-bold text-gray-900">Payout History</h1>
       </div>
 
       {/* Main Content */}
@@ -115,7 +118,7 @@ export const PayoutV2 = () => {
         {loading ? (
           <div className="flex flex-col items-center justify-center py-12">
             <Loader2 className="w-8 h-8 animate-spin text-gray-400 mb-4" />
-            <p className="text-gray-600 text-base">Loading withdrawal history...</p>
+            <p className="text-gray-600 text-base">Loading payout history...</p>
           </div>
         ) : withdrawals.length > 0 ? (
           <div className="space-y-4">
@@ -163,9 +166,9 @@ export const PayoutV2 = () => {
             <div className="w-16 h-16 rounded-full bg-white flex items-center justify-center mb-6 shadow-sm">
               <Clock className="w-8 h-8 text-gray-200" />
             </div>
-            <p className="text-gray-900 text-lg font-bold mb-2">No withdrawal history</p>
+            <p className="text-gray-900 text-lg font-bold mb-2">No payout history</p>
             <p className="text-gray-400 text-sm font-medium">
-              You haven't made any withdrawal requests yet. Your withdrawal history will appear here.
+              You haven't made any payout/withdrawal requests yet. Your history will appear here.
             </p>
           </div>
         )}

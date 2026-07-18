@@ -36,6 +36,7 @@ import { calculateOrderPricing } from './order-pricing.service.js';
 import * as dispatchService from './order-dispatch.service.js';
 import * as deliveryService from './order-delivery.service.js';
 import * as paymentService from './order-payment.service.js';
+import { detectZoneIdForPoint } from '../../utils/zoneGeo.js';
 import {
   enqueueOrderEvent,
   assertRestaurantDeliversToZone,
@@ -296,12 +297,28 @@ export async function createOrder(userId, dto) {
       riderEarning,
   );
 
+  const [restaurantLng, restaurantLat] =
+    restaurant?.location?.coordinates?.length === 2
+      ? restaurant.location.coordinates
+      : [null, null];
+  const restaurantGpsZoneId =
+    restaurantLat != null && restaurantLng != null
+      ? await detectZoneIdForPoint(restaurantLat, restaurantLng)
+      : null;
+
+  // Always prefer restaurant GPS zone over client/restaurant.zoneId (prevents cross-city dispatch).
+  const resolvedOrderZoneId = restaurantGpsZoneId
+    ? new mongoose.Types.ObjectId(restaurantGpsZoneId)
+    : restaurant.zoneId
+      ? new mongoose.Types.ObjectId(restaurant.zoneId)
+      : dto.zoneId
+        ? new mongoose.Types.ObjectId(dto.zoneId)
+        : undefined;
+
   const order = new FoodOrder({
     userId: new mongoose.Types.ObjectId(userId),
     restaurantId: new mongoose.Types.ObjectId(dto.restaurantId),
-    zoneId: dto.zoneId
-      ? new mongoose.Types.ObjectId(dto.zoneId)
-      : restaurant.zoneId,
+    zoneId: resolvedOrderZoneId,
     items: dto.items,
     deliveryAddress: orderType === "takeaway" ? undefined : deliveryAddress,
     orderType,

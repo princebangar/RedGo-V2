@@ -110,6 +110,16 @@ export const getDeliveryPartnerWalletEnhanced = async (deliveryPartnerId) => {
     // Wait, usually pocket balance subtracts pending too so user knows how much is "left" to request.
     const pocketBalance = Math.max(0, (totalEarned + totalBonus) - (totalWithdrawn + pendingWithdrawals));
 
+    // Most recent approved withdrawal for "Last Payout" on Pocket
+    const lastApprovedWithdrawal = (withdrawalsList || []).find((w) => w.status === 'approved') || null;
+    const lastPayout = lastApprovedWithdrawal
+        ? {
+            amount: Number(lastApprovedWithdrawal.amount) || 0,
+            date: lastApprovedWithdrawal.processedAt || lastApprovedWithdrawal.createdAt,
+            id: lastApprovedWithdrawal._id,
+          }
+        : null;
+
     // Fetch transactions for UI (Orders, Bonuses, Withdrawals)
     const [ordersTx] = await Promise.all([
         FoodOrder.find({ 'dispatch.deliveryPartnerId': partnerId, orderStatus: 'delivered' })
@@ -135,6 +145,8 @@ export const getDeliveryPartnerWalletEnhanced = async (deliveryPartnerId) => {
             amount: w.amount,
             status: w.status === 'pending' ? 'Pending' : (w.status === 'approved' ? 'Completed' : 'Rejected'),
             date: w.createdAt,
+            processedAt: w.processedAt || null,
+            failureReason: w.rejectionReason || null,
             description: `Withdrawal Request - ${w.paymentMethod}`,
             payoutMethod: w.paymentMethod
         })),
@@ -157,6 +169,7 @@ export const getDeliveryPartnerWalletEnhanced = async (deliveryPartnerId) => {
         cashInHand, // COD to be deposited/deducted
         totalWithdrawn, // Actually paid out
         pendingWithdrawals, // In process
+        lastPayout,
         totalEarned,
         totalBonus,
         totalCashLimit,
