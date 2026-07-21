@@ -2361,8 +2361,27 @@ export default function Home({ homeMode = null, isTabActive = true }) {
       }
     }
 
-    return result;
-  }, [restaurantsData, matchesVegMode, effectiveOrderType, isTakeawayPage, heroSearch, matchesTakeawayName]);
+    // Sort so that offline (closed) restaurants are pushed to the bottom.
+    // Preserves the relative order of open restaurants.
+    const sortedResult = result
+      .map((restaurant, index) => ({ restaurant, index }))
+      .sort((a, b) => {
+        const aAvail = getRestaurantAvailabilityStatus(a.restaurant, new Date(availabilityTick));
+        const bAvail = getRestaurantAvailabilityStatus(b.restaurant, new Date(availabilityTick));
+        
+        const aOpen = aAvail?.isOpen ? 1 : 0;
+        const bOpen = bAvail?.isOpen ? 1 : 0;
+        
+        if (aOpen !== bOpen) {
+          return bOpen - aOpen; // open (1) comes before closed (0)
+        }
+        
+        return a.index - b.index; // maintain stable sorting order
+      })
+      .map((item) => item.restaurant);
+
+    return sortedResult;
+  }, [restaurantsData, matchesVegMode, effectiveOrderType, isTakeawayPage, heroSearch, matchesTakeawayName, availabilityTick]);
 
   const restaurantLazyLoadResetKey = useMemo(() => {
     const activeFilterKey = Array.from(activeFilters).sort().join("|");

@@ -589,7 +589,22 @@ export default function CategoryPage({ embeddedCategorySlug = null, hideHeader =
       })
     }
 
-    return uniqueByRestaurant(nextRows)
+    const uniqueList = uniqueByRestaurant(nextRows)
+    const sortedList = uniqueList
+      .map((row, index) => ({ row, index }))
+      .sort((a, b) => {
+        const aAvail = getRestaurantAvailabilityStatus(a.row)
+        const bAvail = getRestaurantAvailabilityStatus(b.row)
+        const aOpen = aAvail?.isOpen ? 1 : 0
+        const bOpen = bAvail?.isOpen ? 1 : 0
+        if (aOpen !== bOpen) {
+          return bOpen - aOpen
+        }
+        return a.index - b.index
+      })
+      .map(item => item.row)
+
+    return sortedList
   }
 
   // Fetch categories from admin API

@@ -123,8 +123,44 @@ export default function Cart() {
 
   const [showCouponSheet, setShowCouponSheet] = useState(false)
   const [appliedCoupon, setAppliedCoupon] = useState(null)
-  const [couponCode, setCouponCode] = useState("")
-  const [manualCouponCode, setManualCouponCode] = useState("")
+  const [couponCode, setCouponCode] = useState(() => {
+    try {
+      if (typeof window === "undefined") return ""
+      return localStorage.getItem("appliedCouponCode") || ""
+    } catch {
+      return ""
+    }
+  })
+  const [manualCouponCode, setManualCouponCode] = useState(() => {
+    try {
+      if (typeof window === "undefined") return ""
+      return localStorage.getItem("appliedCouponCode") || ""
+    } catch {
+      return ""
+    }
+  })
+
+  // Persist coupon code to localStorage
+  useEffect(() => {
+    try {
+      if (typeof window !== "undefined") {
+        if (couponCode) {
+          localStorage.setItem("appliedCouponCode", couponCode)
+        } else {
+          localStorage.removeItem("appliedCouponCode")
+        }
+      }
+    } catch {}
+  }, [couponCode])
+
+  // Clear coupon code if cart is empty
+  useEffect(() => {
+    if (cart.length === 0) {
+      setAppliedCoupon(null)
+      setCouponCode("")
+      setManualCouponCode("")
+    }
+  }, [cart.length])
   const [selectedPaymentMethod, setSelectedPaymentMethod] = useState(() => {
     try {
       if (typeof window === "undefined") return "cash"
@@ -1142,7 +1178,7 @@ export default function Cart() {
 
     calculatePricing()
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [cart, defaultAddress, restaurantId, orderType])
+  }, [cart, defaultAddress, restaurantId, orderType, zoneId])
 
   // Fetch wallet balance
   useEffect(() => {
@@ -1372,6 +1408,7 @@ export default function Cart() {
       cart.length > 0 &&
       filteredCoupons.length > 0 &&
       !appliedCoupon &&
+      !couponCode &&
       !hasShownPromoPopupRef.current[currentOrderType] &&
       !loadingCoupons
     ) {
@@ -1387,7 +1424,7 @@ export default function Cart() {
         hasShownPromoPopupRef.current[currentOrderType] = true
       }
     }
-  }, [filteredCoupons, appliedCoupon, loadingCoupons, subtotal, cart.length, orderType, isCartUnavailable])
+  }, [filteredCoupons, appliedCoupon, loadingCoupons, subtotal, cart.length, orderType, isCartUnavailable, couponCode])
 
   const handleShare = async () => {
     const restaurantNameStr = restaurantName || companyName || "this restaurant"
@@ -1610,6 +1647,17 @@ export default function Cart() {
       return
     }
 
+    // Save previous state for rollback
+    const prevAppliedCoupon = appliedCoupon
+    const prevCouponCode = couponCode
+    const prevManualCouponCode = manualCouponCode
+
+    // Optimistically update states & close sheet instantly
+    setAppliedCoupon(coupon)
+    setCouponCode(coupon.code)
+    setManualCouponCode(coupon.code)
+    setShowCouponSheet(false)
+
     // Validate with backend first; only set applied if backend accepts
     if (cart.length > 0 && (orderType === "takeaway" || hasSavedAddress)) {
       try {
@@ -1637,18 +1685,18 @@ export default function Cart() {
 
         const pricingData = response?.data?.data?.pricing
         if (!pricingData || !pricingData.appliedCoupon) {
-          toast.error("Coupon not applicable")
-          return
+          throw new Error("Coupon not applicable")
         }
 
         setPricing(pricingData)
-        setAppliedCoupon(coupon)
-        setCouponCode(coupon.code)
-        setManualCouponCode(coupon.code)
-        setShowCouponSheet(false)
+        toast.success("Coupon applied")
       } catch (error) {
         debugError("Error recalculating pricing:", error)
-        toast.error("Failed to apply coupon")
+        // Rollback states
+        setAppliedCoupon(prevAppliedCoupon)
+        setCouponCode(prevCouponCode)
+        setManualCouponCode(prevManualCouponCode)
+        toast.error(error?.response?.data?.error || error?.message || "Failed to apply coupon")
       }
     }
   }
@@ -1690,6 +1738,25 @@ export default function Cart() {
       return
     }
 
+    // Save previous state for rollback
+    const prevAppliedCoupon = appliedCoupon
+    const prevCouponCode = couponCode
+    const prevManualCouponCode = manualCouponCode
+
+    // Optimistically update states & close sheet instantly
+    setCouponCode(inputCode)
+    setManualCouponCode(inputCode)
+    setAppliedCoupon(
+      matchedCoupon || {
+        code: inputCode,
+        discount: 0,
+        minOrder: 0,
+        customerGroup: "all",
+        couponType: "all",
+      },
+    )
+    setShowCouponSheet(false)
+
     try {
       const items = cart.map(item => ({
         itemId: item.itemId || item.id,
@@ -1715,18 +1782,14 @@ export default function Cart() {
 
       const pricingData = response?.data?.data?.pricing
       if (!pricingData) {
-        toast.error("Unable to validate coupon")
-        return
+        throw new Error("Unable to validate coupon")
       }
 
       if (!pricingData.appliedCoupon) {
-        toast.error("Invalid or unavailable coupon code")
-        setCouponCode("")
-        return
+        throw new Error("Invalid or unavailable coupon code")
       }
 
       setPricing(pricingData)
-      setCouponCode(inputCode)
       setAppliedCoupon(
         matchedCoupon || {
           code: inputCode,
@@ -1736,11 +1799,14 @@ export default function Cart() {
           couponType: "all",
         },
       )
-      setShowCouponSheet(false)
       toast.success("Coupon applied")
     } catch (error) {
       debugError("Error applying coupon code:", error)
-      toast.error("Failed to apply coupon")
+      // Rollback states
+      setAppliedCoupon(prevAppliedCoupon)
+      setCouponCode(prevCouponCode)
+      setManualCouponCode(prevManualCouponCode)
+      toast.error(error?.response?.data?.error || error?.message || "Failed to apply coupon")
     }
   }
 
@@ -2496,9 +2562,9 @@ export default function Cart() {
                               </div>
                             )}
                             <div className="min-w-0 flex-1">
-                              <h3 className="text-sm md:text-base font-bold text-gray-900 dark:text-gray-100 leading-tight truncate">{item.name}</h3>
+                              <h3 className="text-sm md:text-base font-bold text-gray-900 dark:text-gray-100 leading-tight">{item.name}</h3>
                               {item.variantName ? (
-                                <p className="text-[10px] md:text-xs text-red-600 dark:text-red-300 mt-1 font-semibold bg-red-50 dark:bg-red-950/20 border border-red-100/50 dark:border-red-900/30 w-fit px-2.5 py-0.5 rounded-full">
+                                <p className="text-[10px] md:text-xs text-red-600 dark:text-red-300 mt-1 font-semibold bg-red-50 dark:bg-red-950/20 border border-red-100/50 dark:border-red-900/30 w-fit px-2.5 py-0.5 rounded-full whitespace-nowrap">
                                   {item.variantName}
                                 </p>
                               ) : null}
@@ -2685,7 +2751,7 @@ export default function Cart() {
                 </div>
 
                 {/* Cart coupon preview */}
-                {!appliedCoupon && (
+                {!appliedCoupon && !couponCode && (
                   <div className="px-4 pb-4 md:px-6 md:pb-5 pt-1 animate-in fade-in duration-300">
                     {filteredCoupons.length > 0 ? (
                       <div className="space-y-2.5">
@@ -2748,25 +2814,38 @@ export default function Cart() {
                   </div>
                 )}
 
-                {appliedCoupon && (
-                  <div className="px-4 py-3.5 md:px-6 bg-green-50/40 dark:bg-green-950/10 border-t border-dashed border-gray-100 dark:border-gray-800/60 flex items-center justify-between">
+                {couponCode && !appliedCoupon && (
+                  <div className="px-4 py-4 md:px-6 flex items-center justify-between bg-slate-50/50 dark:bg-zinc-900/30 border-t border-dashed border-slate-100 dark:border-zinc-800/60 animate-pulse">
                     <div className="flex items-center gap-3">
-                      <div className="w-7 h-7 rounded-full bg-green-100 dark:bg-green-900/30 flex items-center justify-center flex-shrink-0">
-                        <Check className="h-4.5 w-4.5 text-green-600" />
-                      </div>
+                      <div className="w-8 h-8 rounded-full bg-slate-200 dark:bg-zinc-800" />
                       <div>
-                        <div className="flex items-center gap-1.5">
-                          <span className="text-[11px] font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-wider">Applied:</span>
-                          <span className="text-[11px] font-bold text-green-600 dark:text-green-400 bg-green-100/60 dark:bg-green-900/30 px-1.5 py-0.5 rounded border border-dashed border-green-500/30 uppercase tracking-wider">{appliedCoupon.code}</span>
+                        <div className="h-3 w-16 bg-slate-200 dark:bg-zinc-800 rounded animate-pulse" />
+                        <div className="h-4 w-28 bg-slate-200 dark:bg-zinc-800 rounded mt-1.5 animate-pulse" />
+                      </div>
+                    </div>
+                    <div className="h-8 w-16 bg-slate-200 dark:bg-zinc-800 rounded-lg animate-pulse" />
+                  </div>
+                )}
+
+                {appliedCoupon && (
+                  <div className="px-4 py-3.5 md:px-6 bg-emerald-50/50 dark:bg-emerald-950/10 border-t border-emerald-100/60 dark:border-emerald-900/30 flex items-center justify-between">
+                    <div className="flex items-center gap-3 flex-1 min-w-0">
+                      <div className="w-8 h-8 rounded-full bg-emerald-500 text-white flex items-center justify-center flex-shrink-0 shadow-sm shadow-emerald-500/10">
+                        <Check className="h-4 w-4 text-white stroke-[3px]" />
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-center gap-1.5 flex-wrap">
+                          <span className="text-[10px] font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider">Applied:</span>
+                          <span className="text-[10px] font-extrabold text-emerald-700 dark:text-emerald-300 bg-emerald-100/60 dark:bg-emerald-900/40 px-2 py-0.5 rounded-md border border-dashed border-emerald-500/30 uppercase tracking-wider">{appliedCoupon.code}</span>
                         </div>
-                        <p className="text-[13px] font-bold text-green-600 dark:text-green-400 mt-0.5">
+                        <p className="text-sm font-extrabold text-emerald-600 dark:text-emerald-400 mt-0.5">
                           You saved {RUPEE_SYMBOL}{Math.round(discount)}
                         </p>
                       </div>
                     </div>
                     <button 
                       onClick={handleRemoveCoupon} 
-                      className="text-[#DC2626] hover:text-[#991B1B] text-xs font-bold uppercase tracking-wider px-3 py-1.5 hover:bg-[#DC2626]/5 rounded-lg active:scale-95 transition-all"
+                      className="text-xs font-black text-red-600 hover:text-red-700 dark:text-red-400 dark:hover:text-red-300 px-3 py-1.5 bg-red-50 hover:bg-red-100/70 dark:bg-red-950/20 dark:hover:bg-red-950/40 border border-red-100 dark:border-red-900/30 rounded-lg active:scale-95 transition-all duration-200 flex-shrink-0"
                     >
                       REMOVE
                     </button>
