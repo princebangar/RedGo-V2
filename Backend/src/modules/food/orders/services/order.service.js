@@ -583,7 +583,14 @@ export async function processDispatchTimeout(orderId, partnerId, options = {}) {
 // ----- User: list, get, cancel -----
 export async function listOrdersUser(userId, query) {
   const { page, limit, skip } = buildPaginationOptions(query);
-  const filter = { userId: new mongoose.Types.ObjectId(userId) };
+  const filter = {
+    userId: new mongoose.Types.ObjectId(userId),
+    // Exclude active online orders that have incomplete payments
+    $or: [
+      { "payment.method": { $ne: "razorpay" } },
+      { "payment.status": { $in: ["paid", "authorized", "captured", "settled", "refunded"] } }
+    ]
+  };
   const [docs, total] = await Promise.all([
     FoodOrder.find(filter)
       .populate(
@@ -637,6 +644,15 @@ export async function getOrderById(
     throw new ForbiddenError("Not your restaurant order");
   if (deliveryPartnerId && orderPartnerId !== deliveryPartnerId.toString())
     throw new ForbiddenError("Not assigned to you");
+
+  // Exclude active online orders that have incomplete payments from user view
+  if (userId) {
+    const isOnline = String(order.payment?.method || "").toLowerCase() === "razorpay";
+    const isPaid = ["paid", "authorized", "captured", "settled", "refunded"].includes(String(order.payment?.status || "").toLowerCase());
+    if (isOnline && !isPaid) {
+      throw new NotFoundError("Order not found");
+    }
+  }
 
   if (deliveryPartnerId || restaurantId) {
     return sanitizeOrderForExternal(order);
@@ -827,6 +843,17 @@ export async function cancelOrder(orderId, userId, reason, refundDestination = "
     userId: new mongoose.Types.ObjectId(userId),
   });
   if (!order) throw new NotFoundError("Order not found");
+
+  // If order is an unpaid online payment order in 'created' status, delete it instead of cancelling
+  if (
+    order.orderStatus === "created" &&
+    String(order.payment?.method || "").toLowerCase() === "razorpay" &&
+    String(order.payment?.status || "").toLowerCase() === "created"
+  ) {
+    await FoodOrder.deleteOne({ _id: order._id });
+    await FoodTransaction.deleteOne({ orderId: order._id });
+    return null;
+  }
 
   const allowed = ["created", "confirmed"];
   if (!allowed.includes(order.orderStatus))
