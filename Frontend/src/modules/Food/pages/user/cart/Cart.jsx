@@ -15,7 +15,7 @@ import { useZone } from "@food/hooks/useZone"
 import { useLocationSelector } from "@food/components/user/UserLayout"
 import { orderAPI, restaurantAPI, adminAPI, userAPI, API_ENDPOINTS } from "@food/api"
 import { API_BASE_URL } from "@food/api/config"
-import { initRazorpayPayment } from "@food/utils/razorpay"
+import { initRazorpayPayment, preloadRazorpayScript } from "@food/utils/razorpay"
 import { toast } from "sonner"
 import { getCompanyNameAsync } from "@food/utils/businessSettings"
 import { calculateDistance } from "@food/utils/common"
@@ -397,6 +397,11 @@ export default function Cart() {
   }, [availableCoupons, orderType, cart, pricing, userOrderCount])
 
   // Lock body scroll when auto coupon popup or coupon sheet is open
+  // Preload Razorpay SDK as soon as cart opens so the modal appears instantly
+  useEffect(() => {
+    preloadRazorpayScript()
+  }, [])
+
   useEffect(() => {
     if (showAutoCouponPopup || showCouponSheet) {
       document.body.style.overflow = "hidden"

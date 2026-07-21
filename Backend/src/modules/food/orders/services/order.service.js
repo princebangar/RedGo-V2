@@ -228,56 +228,126 @@ export async function createOrder(userId, dto) {
   let distanceKm = null;
   let riderEarning = 0;
 
+  // For Razorpay (online) orders, run geocoding non-blocking so the Razorpay
+  // order is created fast and the modal opens instantly. The geocode result is
+  // applied to the saved order in the background after the response is sent.
+  const isRazorpayOrder = paymentMethod === 'razorpay';
+
   if (orderType !== 'takeaway') {
-    const earningResolved = await resolveRiderEarningForDelivery({
-      restaurant,
-      deliveryAddress,
-      orderType,
-    });
-    distanceKm = earningResolved.distanceKm;
-    riderEarning = earningResolved.riderEarning;
+    if (isRazorpayOrder) {
+      // Fire-and-forget: don't await geocoding for online payment orders.
+      // The order will be updated with distance/riderEarning after geocode resolves.
+      resolveRiderEarningForDelivery({
+        restaurant,
+        deliveryAddress: { ...deliveryAddress },
+        orderType,
+      })
+        .then(async (earningResolved) => {
+          try {
+            const updateFields = {};
+            if (earningResolved.distanceKm != null) {
+              updateFields['distanceKm'] = earningResolved.distanceKm;
+              updateFields['riderEarning'] = earningResolved.riderEarning ?? 0;
+              updateFields['pricing.platformProfit'] = Math.max(
+                0,
+                (normalizedPricing.deliveryFee ?? 0) +
+                  (normalizedPricing.platformFee ?? 0) +
+                  (normalizedPricing.restaurantCommission ?? 0) -
+                  (earningResolved.riderEarning ?? 0),
+              );
+            }
+            if (earningResolved.deliveryGeocoded && earningResolved.deliveryPoint) {
+              updateFields['deliveryAddress.location'] = toGeoJsonPoint(earningResolved.deliveryPoint);
+            }
+            if (Object.keys(updateFields).length > 0) {
+              await FoodOrder.updateOne({ _id: order._id }, { $set: updateFields });
+            }
+            // Backfill restaurant coords when missing
+            if (earningResolved.restaurantGeocoded && earningResolved.restaurantPoint) {
+              await FoodRestaurant.updateOne(
+                {
+                  _id: restaurant._id,
+                  $or: [
+                    { 'location.coordinates': { $exists: false } },
+                    { 'location.coordinates': { $size: 0 } },
+                    { 'location.coordinates.0': { $exists: false } },
+                  ],
+                },
+                {
+                  $set: {
+                    location: {
+                      ...(restaurant.location || {}),
+                      type: 'Point',
+                      coordinates: [
+                        earningResolved.restaurantPoint.lng,
+                        earningResolved.restaurantPoint.lat,
+                      ],
+                      latitude: earningResolved.restaurantPoint.lat,
+                      longitude: earningResolved.restaurantPoint.lng,
+                    },
+                  },
+                },
+              ).catch((err) => logger.warn(`Restaurant coord backfill failed: ${err?.message || err}`));
+            }
+          } catch (err) {
+            logger.warn(`Background geocode update failed for order ${order._id}: ${err?.message || err}`);
+          }
+        })
+        .catch((err) => {
+          logger.warn(`Background geocode failed for Razorpay order ${order._id}: ${err?.message || err}`);
+        });
+    } else {
+      // COD / wallet: wait for geocode so riderEarning is accurate before saving
+      const earningResolved = await resolveRiderEarningForDelivery({
+        restaurant,
+        deliveryAddress,
+        orderType,
+      });
+      distanceKm = earningResolved.distanceKm;
+      riderEarning = earningResolved.riderEarning;
 
-    // Persist geocoded delivery coords so later map/dispatch don't miss them again
-    if (earningResolved.deliveryGeocoded && earningResolved.deliveryPoint) {
-      deliveryAddress.location = toGeoJsonPoint(earningResolved.deliveryPoint);
-    }
+      // Persist geocoded delivery coords so later map/dispatch don't miss them again
+      if (earningResolved.deliveryGeocoded && earningResolved.deliveryPoint) {
+        deliveryAddress.location = toGeoJsonPoint(earningResolved.deliveryPoint);
+      }
 
-    // Backfill restaurant coords when missing (helps future orders)
-    if (earningResolved.restaurantGeocoded && earningResolved.restaurantPoint) {
-      try {
-        await FoodRestaurant.updateOne(
-          {
-            _id: restaurant._id,
-            $or: [
-              { 'location.coordinates': { $exists: false } },
-              { 'location.coordinates': { $size: 0 } },
-              { 'location.coordinates.0': { $exists: false } },
-            ],
-          },
-          {
-            $set: {
-              location: {
-                ...(restaurant.location || {}),
-                type: 'Point',
-                coordinates: [
-                  earningResolved.restaurantPoint.lng,
-                  earningResolved.restaurantPoint.lat,
-                ],
-                latitude: earningResolved.restaurantPoint.lat,
-                longitude: earningResolved.restaurantPoint.lng,
+      // Backfill restaurant coords when missing (helps future orders)
+      if (earningResolved.restaurantGeocoded && earningResolved.restaurantPoint) {
+        try {
+          await FoodRestaurant.updateOne(
+            {
+              _id: restaurant._id,
+              $or: [
+                { 'location.coordinates': { $exists: false } },
+                { 'location.coordinates': { $size: 0 } },
+                { 'location.coordinates.0': { $exists: false } },
+              ],
+            },
+            {
+              $set: {
+                location: {
+                  ...(restaurant.location || {}),
+                  type: 'Point',
+                  coordinates: [
+                    earningResolved.restaurantPoint.lng,
+                    earningResolved.restaurantPoint.lat,
+                  ],
+                  latitude: earningResolved.restaurantPoint.lat,
+                  longitude: earningResolved.restaurantPoint.lng,
+                },
               },
             },
-          },
-        );
-      } catch (err) {
-        logger.warn(`Restaurant coord backfill failed: ${err?.message || err}`);
+          );
+        } catch (err) {
+          logger.warn(`Restaurant coord backfill failed: ${err?.message || err}`);
+        }
       }
-    }
 
-    if (!distanceKm) {
-      logger.warn(
-        `Food order: distance still unavailable after geocode; riderEarning=${riderEarning}`,
-      );
+      if (!distanceKm) {
+        logger.warn(
+          `Food order: distance still unavailable after geocode; riderEarning=${riderEarning}`,
+        );
+      }
     }
   }
  
