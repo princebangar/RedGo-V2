@@ -269,7 +269,24 @@ export default function Under250({ isTabActive = true }) {
       })
     }
 
-    return filtered
+    const sortedResult = filtered
+      .map((restaurant, index) => ({ restaurant, index }))
+      .sort((a, b) => {
+        const aAvail = getRestaurantAvailabilityStatus(a.restaurant)
+        const bAvail = getRestaurantAvailabilityStatus(b.restaurant)
+        
+        const aOpen = aAvail?.isOpen ? 1 : 0
+        const bOpen = bAvail?.isOpen ? 1 : 0
+        
+        if (aOpen !== bOpen) {
+          return bOpen - aOpen
+        }
+        
+        return a.index - b.index
+      })
+      .map(item => item.restaurant)
+
+    return sortedResult
   }, [
     under250Restaurants,
     selectedSort,
