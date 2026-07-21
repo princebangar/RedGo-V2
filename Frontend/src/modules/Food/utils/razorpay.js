@@ -36,6 +36,16 @@ export const loadRazorpayScript = () => {
 };
 
 /**
+ * Preload the Razorpay SDK in the background (call early, e.g. on cart mount)
+ * so that when the user clicks "Place Order", the script is already ready.
+ */
+export const preloadRazorpayScript = () => {
+  loadRazorpayScript().catch(() => {
+    // Silently ignore — will retry when payment is initiated
+  });
+};
+
+/**
  * Initialize Razorpay payment
  * @param {Object} options - Payment options
  * @param {String} options.key - Razorpay key ID
@@ -50,7 +60,7 @@ export const loadRazorpayScript = () => {
  * @param {Object} options.notes - Additional notes
  * @param {Function} options.handler - Success callback
  * @param {Function} options.onError - Error callback
- * @param {Function} options.onClose - Close callback
+ * @param {Function} options.onClose - Close/cancel callback
  */
 export const initRazorpayPayment = async (options) => {
   try {
@@ -60,6 +70,45 @@ export const initRazorpayPayment = async (options) => {
     if (!window.Razorpay) {
       throw new Error('Razorpay SDK not available');
     }
+
+    let paymentCompleted = false;
+    let closeFired = false;
+
+    // Fire the onClose callback exactly once
+    const fireClose = () => {
+      if (!paymentCompleted && !closeFired) {
+        closeFired = true;
+        if (options.onClose) {
+          options.onClose();
+        }
+      }
+    };
+
+    // -------------------------------------------------------------------------
+    // visibilitychange listener:
+    // When the user leaves the app for a UPI app (PhonePe / GPay), the page
+    // becomes hidden. When they return (cancel or back in UPI app), the page
+    // becomes visible again. If payment wasn't confirmed, fire onClose so the
+    // user is automatically returned to the cart.
+    // -------------------------------------------------------------------------
+    let leftForUpiApp = false;
+    const handleVisibilityChange = () => {
+      if (document.hidden) {
+        // Page went to background — user probably went to a UPI app
+        leftForUpiApp = true;
+      } else if (leftForUpiApp) {
+        // App came back to foreground — wait briefly for Razorpay success callback
+        leftForUpiApp = false;
+        setTimeout(() => {
+          // If the success handler wasn't called, the user cancelled in UPI app
+          if (!paymentCompleted) {
+            fireClose();
+          }
+        }, 1500);
+      }
+    };
+
+    document.addEventListener('visibilitychange', handleVisibilityChange);
 
     const razorpayOptions = {
       key: options.key,
@@ -79,54 +128,44 @@ export const initRazorpayPayment = async (options) => {
         color: '#E23744'
       },
       handler: function(response) {
+        paymentCompleted = true;
+        closeFired = true; // Prevent onClose from also firing after success
+        document.removeEventListener('visibilitychange', handleVisibilityChange);
         if (options.handler) {
           options.handler(response);
         }
       },
       modal: {
         ondismiss: function() {
-          if (options.onClose) {
-            options.onClose();
-          }
+          document.removeEventListener('visibilitychange', handleVisibilityChange);
+          fireClose();
         },
-        // Ensure modal is clickable
         escape: true,
-        animation: true
+        animation: true,
+        // Handle Android back button — dismiss modal instead of staying stuck
+        handleback: true,
       },
-      // Ensure proper z-index
+      // Disable auto-retry — user should NOT need to cancel twice
       retry: {
-        enabled: true,
-        max_count: 3
-      }
+        enabled: false,
+      },
     };
 
     const razorpay = new window.Razorpay(razorpayOptions);
-    
+
     // Handle payment failures
     razorpay.on('payment.failed', function(response) {
       console.error('Razorpay payment failed:', response);
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
       if (options.onError) {
         options.onError(response.error || { description: 'Payment failed. Please try again.' });
       }
     });
 
-    // Handle payment method selection failures
-    razorpay.on('payment.method_selection_failed', function(response) {
-      console.error('Razorpay payment method selection failed:', response);
-      if (options.onError) {
-        options.onError(response.error || { description: 'Please select another payment method.' });
-      }
-    });
-
     // Open Razorpay modal
     razorpay.open();
-    
+
     console.log('✅ Razorpay checkout opened successfully');
-    console.log('Razorpay options:', {
-      key: razorpayOptions.key ? 'Present' : 'Missing',
-      amount: razorpayOptions.amount,
-      order_id: razorpayOptions.order_id
-    });
 
     return razorpay;
   } catch (error) {
@@ -146,4 +185,3 @@ export const initRazorpayPayment = async (options) => {
 export const formatAmount = (amount) => {
   return `₹${(amount / 100).toFixed(2)}`;
 };
-
