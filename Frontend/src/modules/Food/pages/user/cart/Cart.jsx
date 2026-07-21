@@ -1631,7 +1631,8 @@ export default function Cart() {
           restaurantId: restaurantData?.restaurantId || restaurantData?._id || restaurantId || null,
           deliveryAddress: orderType === "takeaway" ? undefined : defaultAddress,
           couponCode: coupon.code,
-          orderType: orderType
+          orderType: orderType,
+          zoneId: zoneId || undefined
         })
 
         const pricingData = response?.data?.data?.pricing
@@ -1708,7 +1709,8 @@ export default function Cart() {
         restaurantId: restaurantData?.restaurantId || restaurantData?._id || restaurantId || null,
         deliveryAddress: orderType === "takeaway" ? undefined : defaultAddress,
         couponCode: inputCode,
-        orderType: orderType
+        orderType: orderType,
+        zoneId: zoneId || undefined
       })
 
       const pricingData = response?.data?.data?.pricing
@@ -1768,7 +1770,9 @@ export default function Cart() {
           items,
           restaurantId: restaurantData?.restaurantId || restaurantData?._id || restaurantId || null,
           deliveryAddress: orderType === "takeaway" ? undefined : defaultAddress,
-          couponCode: undefined
+          couponCode: undefined,
+          orderType: orderType,
+          zoneId: zoneId || undefined
         })
 
         if (response?.data?.success && response?.data?.data?.pricing) {
