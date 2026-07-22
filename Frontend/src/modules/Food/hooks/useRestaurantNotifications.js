@@ -59,8 +59,6 @@ const buildRestaurantOrderNotification = (orderData = {}) => {
 };
 
 const triggerWebViewNativeNotification = async (orderData = {}) => {
-  if (isNativeAppWebView()) return false;
-
   if (typeof window === 'undefined') return false;
 
   const bridgePayload = {
@@ -80,6 +78,7 @@ const triggerWebViewNativeNotification = async (orderData = {}) => {
         'playNotificationSound',
         'triggerNotificationFeedback',
         'onPushNotification',
+        'onNewOrder'
       ];
 
       for (const handlerName of handlerNames) {
@@ -96,6 +95,27 @@ const triggerWebViewNativeNotification = async (orderData = {}) => {
   }
 
   return false;
+};
+
+const stopWebViewNativeNotification = async () => {
+  if (typeof window === 'undefined') return;
+  try {
+    if (
+      window.flutter_inappwebview &&
+      typeof window.flutter_inappwebview.callHandler === 'function'
+    ) {
+      const handlerNames = ['stopNotificationSound', 'stopOrderRingtone', 'dismissNotification'];
+      for (const handlerName of handlerNames) {
+        try {
+          await window.flutter_inappwebview.callHandler(handlerName, {});
+        } catch {
+          // Try next handler
+        }
+      }
+    }
+  } catch {
+    // Ignore bridge failures
+  }
 };
 
 // --------------------------------------------------------------------------
@@ -147,8 +167,28 @@ let globalSocketConnected = false;
 let globalActiveRestaurantId = null;
 let globalPollingIntervalId = null;
 
-// Processed IDs and alert deduping
-const processedOrderIds = new Set();
+let processedOrderIds = new Set();
+if (typeof window !== 'undefined') {
+  try {
+    const saved = localStorage.getItem('restaurant_processed_order_ids');
+    if (saved) {
+      const parsed = JSON.parse(saved);
+      if (Array.isArray(parsed)) {
+        processedOrderIds = new Set(parsed);
+      }
+    }
+  } catch (e) {}
+}
+
+const saveProcessedOrderIds = () => {
+  if (typeof window !== 'undefined') {
+    try {
+      const arr = Array.from(processedOrderIds).slice(-200);
+      localStorage.setItem('restaurant_processed_order_ids', JSON.stringify(arr));
+    } catch (e) {}
+  }
+};
+
 const lastAlertAtByOrder = new Map();
 const lastBrowserNotificationAtByOrder = new Map();
 
@@ -219,11 +259,12 @@ const stopGlobalAlertLoop = () => {
     } catch (_) {}
     globalFallbackAudio = null;
   }
+  stopWebViewNativeNotification();
 };
 
 const playGlobalNotificationSound = async (orderData = {}) => {
   try {
-    if (globalIsMuted) return;
+    if (globalIsMuted || isOrderMuted(orderData)) return;
     const usedNativeBridge = await triggerWebViewNativeNotification(orderData);
     if (typeof window !== 'undefined' && window.__userHasInteracted && typeof navigator !== 'undefined' && typeof navigator.vibrate === 'function') {
       try {
@@ -844,24 +885,25 @@ export const useRestaurantNotifications = () => {
     const handleUserInteraction = async () => {
       if (typeof window === 'undefined') return;
 
-      if (!globalAudio) {
-        globalAudio = new Audio();
-        globalAudio.preload = 'auto';
-        globalAudio.volume = 1;
-        preloadAudio().then(src => {
-          if (globalAudio) globalAudio.src = src;
-        });
-      }
-
       try {
-        globalAudio.muted = true;
-        await globalAudio.play();
-        globalAudio.pause();
-        globalAudio.currentTime = 0;
-        globalAudio.muted = false;
+        window.__userHasInteracted = true;
+
+        // Unlock WebAudio silently without playing the actual ringtone audio file
+        const AudioCtx = window.AudioContext || window.webkitAudioContext;
+        if (AudioCtx) {
+          const ctx = new AudioCtx();
+          if (ctx.state === 'suspended') {
+            await ctx.resume();
+          }
+          const buf = ctx.createBuffer(1, 1, 22050);
+          const srcNode = ctx.createBufferSource();
+          srcNode.buffer = buf;
+          srcNode.connect(ctx.destination);
+          srcNode.start(0);
+        }
 
         // If there's an active order pending that isn't muted, resume the alarm immediately!
-        if (globalActiveOrder && !globalIsMuted) {
+        if (globalActiveOrder && !globalIsMuted && !isOrderMuted(globalActiveOrder)) {
           playGlobalNotificationSound(globalActiveOrder);
           startGlobalAlertLoop(globalActiveOrder);
         }
@@ -923,6 +965,7 @@ export const useRestaurantNotifications = () => {
         processedOrderIds.add(targetId);
         globalMutedOrderIds.delete(targetId);
       }
+      saveProcessedOrderIds();
       saveMutedOrderIds();
     }
     stopGlobalAlertLoop();

@@ -1269,7 +1269,7 @@ function OrdersMainInner() {
   const deliveryAcceptOrderTimeoutSecondsRef = useRef(null);
   const takeawayAcceptOrderTimeoutSecondsRef = useRef(null);
   const [countdown, setCountdown] = useState(0);
-  const [isDetailsExpanded, setIsDetailsExpanded] = useState(true);
+  const [isDetailsExpanded, setIsDetailsExpanded] = useState(false);
   const [showRejectPopup, setShowRejectPopup] = useState(false);
   const [rejectReason, setRejectReason] = useState("");
   const [showCancelPopup, setShowCancelPopup] = useState(false);
@@ -2186,6 +2186,11 @@ function OrdersMainInner() {
     // Accept order only from the explicit popup payload.
     let orderId = resolveOrderActionId(orderToAccept);
 
+    // Synchronously stop ringtone & mark as processed before API call
+    if (clearNewOrder) {
+      clearNewOrder(orderToAccept || orderId);
+    }
+
     if (orderId) {
       try {
         const response = await restaurantAPI.acceptOrder(orderId, prepTime);
@@ -3060,15 +3065,15 @@ function OrdersMainInner() {
         {showNewOrderPopup && (
           <>
             <motion.div
-              className="fixed inset-0 z-[100] bg-black/60 flex items-start sm:items-center justify-center overflow-y-auto overscroll-contain p-3 sm:p-4 pt-[max(0.75rem,env(safe-area-inset-top))] pb-[max(0.75rem,env(safe-area-inset-bottom))]"
+              className="fixed inset-0 z-[100] bg-black/60 flex items-center justify-center overflow-hidden p-4"
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}>
               <motion.div
-                className="w-full max-w-md max-h-[min(92dvh,calc(100dvh-1.5rem))] my-auto bg-white rounded-2xl sm:rounded-[2rem] shadow-2xl overflow-hidden flex flex-col"
-                initial={{ scale: 0.9, opacity: 0 }}
+                className="w-full max-w-md max-h-[85dvh] bg-white rounded-2xl shadow-2xl overflow-hidden flex flex-col"
+                initial={{ scale: 0.95, opacity: 0 }}
                 animate={{ scale: 1, opacity: 1 }}
-                exit={{ scale: 0.9, opacity: 0 }}
+                exit={{ scale: 0.95, opacity: 0 }}
                 transition={{ type: "spring", damping: 25, stiffness: 300 }}
                 onClick={(e) => e.stopPropagation()}>
                 {/* Header */}
@@ -3123,7 +3128,7 @@ function OrdersMainInner() {
                 </div>
 
                 {/* Content */}
-                <div className="px-4 pt-4 pb-4 flex-1 overflow-y-auto min-h-0">
+                <div className="px-4 pt-4 pb-4 flex-1 overflow-y-auto min-h-0 overscroll-contain" style={{ scrollbarWidth: 'thin', scrollbarColor: '#e5e7eb transparent' }}>
                   {/* Order Type Banner/Card */}
                   {(() => {
                     const activeOrder = popupOrder || newOrder;
@@ -3224,7 +3229,7 @@ function OrdersMainInner() {
                           hour: "2-digit",
                           minute: "2-digit",
                           hour12: true,
-                        })
+                        }).replace(/ am/i, ' AM').replace(/ pm/i, ' PM')
                         : "Just now"}
                     </p>
                   </div>
@@ -3244,84 +3249,89 @@ function OrdersMainInner() {
                     </div>
                   )}
 
-                  {/* Details Accordion */}
-                  <div className="mb-4">
-                    <button
-                      onClick={() => setIsDetailsExpanded(!isDetailsExpanded)}
-                      className="w-full flex items-center justify-between py-2 border-b border-gray-200">
-                      <div className="flex items-center gap-2">
-                        <svg
-                          className="w-5 h-5 text-gray-700"
-                          fill="none"
-                          stroke="currentColor"
-                          viewBox="0 0 24 24">
-                          <path
-                            strokeLinecap="round"
-                            strokeLinejoin="round"
-                            strokeWidth={2}
-                            d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"
-                          />
-                        </svg>
-                        <span className="text-sm font-semibold text-gray-900">
-                          Details
-                        </span>
-                        <span className="text-xs text-gray-500">
-                          {(popupOrder || newOrder)?.items?.length || 0} item
-                          {(popupOrder || newOrder)?.items?.length !== 1
-                            ? "s"
-                            : ""}
-                        </span>
-                      </div>
-                      {isDetailsExpanded ? (
-                        <ChevronUp className="w-4 h-4 text-gray-600" />
-                      ) : (
-                        <ChevronDown className="w-4 h-4 text-gray-600" />
-                      )}
-                    </button>
+                  {/* Details Section — first 4 always visible, extra items expandable */}
+                  {(() => {
+                    const orderItems = (popupOrder || newOrder)?.items || [];
+                    const ALWAYS_SHOW = 4;
+                    const visibleItems = orderItems.slice(0, ALWAYS_SHOW);
+                    const extraItems = orderItems.slice(ALWAYS_SHOW);
+                    const hasExtra = extraItems.length > 0;
 
-                    <AnimatePresence>
-                      {isDetailsExpanded && (
-                        <motion.div
-                          initial={{ height: 0, opacity: 0 }}
-                          animate={{ height: "auto", opacity: 1 }}
-                          exit={{ height: 0, opacity: 0 }}
-                          transition={{ duration: 0.2 }}
-                          className="overflow-hidden">
-                          <div className="py-3 space-y-3">
-                            {(popupOrder || newOrder)?.items?.map(
-                              (item, index) => (
-                                <div
-                                  key={index}
-                                  className="flex items-start gap-3">
-                                  <div
-                                    className={`w-2 h-2 rounded-full mt-1.5 shrink-0 ${item.isVeg ? "bg-green-500" : "bg-gradient-to-br from-[#B80B3D] to-[#66001D]"}`}></div>
-                                  <div className="flex-1">
-                                    <div className="flex items-start justify-between">
-                                      <div>
-                                        <p className="text-sm font-medium text-gray-900">
-                                          {item.quantity} x {item.name}
-                                        </p>
-                                        {item.variantName && (
-                                          <p className="text-[10px] text-gray-500 font-semibold bg-gray-50 px-1.5 py-0.5 rounded border border-gray-100 mt-0.5 inline-block">
-                                            {item.variantName}
-                                          </p>
-                                        )}
-                                      </div>
-                                      <p className="text-xs text-gray-600 ml-2">
-                                        ₹{item.price * item.quantity}
-                                      </p>
-                                    </div>
-                                  </div>
-                                </div>
-                              ),
-                            ) || (
-                                <p className="text-sm text-gray-500">No items</p>
+                    const renderItem = (item, index) => (
+                      <div key={index} className="flex items-start gap-3">
+                        <div
+                          className={`w-2 h-2 rounded-full mt-1.5 shrink-0 ${item.isVeg ? "bg-green-500" : "bg-gradient-to-br from-[#B80B3D] to-[#66001D]"}`}
+                        />
+                        <div className="flex-1">
+                          <div className="flex items-start justify-between">
+                            <div>
+                              <p className="text-sm font-semibold text-gray-900">
+                                {item.quantity} x {item.name}
+                              </p>
+                              {item.variantName && (
+                                <span className="text-[10px] text-orange-700 font-semibold bg-orange-50 px-1.5 py-0.5 rounded-full border border-orange-100 mt-0.5 inline-block">
+                                  {item.variantName}
+                                </span>
                               )}
+                            </div>
+                            <p className="text-sm font-bold text-gray-800 ml-2 whitespace-nowrap">
+                              ₹{item.price * item.quantity}
+                            </p>
                           </div>
-                        </motion.div>
-                      )}
-                    </AnimatePresence>
-                  </div>
+                        </div>
+                      </div>
+                    );
+
+                    return (
+                      <div className="mb-4">
+                        {/* Header */}
+                        <div className="flex items-center gap-2 py-2 border-b border-gray-200 mb-3">
+                          <svg className="w-5 h-5 text-gray-700" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                          </svg>
+                          <span className="text-sm font-semibold text-gray-900">Details</span>
+                          <span className="text-xs text-gray-500">{orderItems.length} item{orderItems.length !== 1 ? 's' : ''}</span>
+                        </div>
+
+                        {/* Always-visible first 4 items */}
+                        <div className="space-y-3">
+                          {visibleItems.map(renderItem)}
+                        </div>
+
+                        {/* Expand/collapse extra items */}
+                        {hasExtra && (
+                          <>
+                            <AnimatePresence>
+                              {isDetailsExpanded && (
+                                <motion.div
+                                  initial={{ height: 0, opacity: 0 }}
+                                  animate={{ height: "auto", opacity: 1 }}
+                                  exit={{ height: 0, opacity: 0 }}
+                                  transition={{ duration: 0.2 }}
+                                  className="overflow-hidden"
+                                >
+                                  <div className="mt-3 space-y-3">
+                                    {extraItems.map((item, i) => renderItem(item, ALWAYS_SHOW + i))}
+                                  </div>
+                                </motion.div>
+                              )}
+                            </AnimatePresence>
+
+                            <button
+                              onClick={() => setIsDetailsExpanded(!isDetailsExpanded)}
+                              className="mt-3 w-full flex items-center justify-center gap-1.5 py-1.5 rounded-lg border border-dashed border-gray-300 text-gray-500 hover:bg-gray-50 text-xs font-semibold transition-colors"
+                            >
+                              {isDetailsExpanded ? (
+                                <><ChevronUp className="w-4 h-4" /> Show less</>
+                              ) : (
+                                <><ChevronDown className="w-4 h-4" /> +{extraItems.length} more item{extraItems.length !== 1 ? 's' : ''}</>
+                              )}
+                            </button>
+                          </>
+                        )}
+                      </div>
+                    );
+                  })()}
 
                   {/* Total bill */}
                   <div className="mb-4 flex items-center justify-between py-3 border-y border-gray-200">

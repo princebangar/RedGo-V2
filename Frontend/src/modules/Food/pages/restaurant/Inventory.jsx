@@ -767,6 +767,7 @@ export default function Inventory() {
   const [expandedCategories, setExpandedCategories] = useState([])
   const [togglePopupOpen, setTogglePopupOpen] = useState(false)
   const [toggleTarget, setToggleTarget] = useState(null)
+  const [isConfirming, setIsConfirming] = useState(false)
   const [isMenuOpen, setIsMenuOpen] = useState(false)
   // Toggle popup state
   const [selectedOption, setSelectedOption] = useState("specific-time")
@@ -1607,10 +1608,7 @@ export default function Inventory() {
 
   // Handle toggle confirm
   const handleToggleConfirm = async () => {
-    if (!toggleTarget) {
-      setTogglePopupOpen(false)
-      return
-    }
+    if (!toggleTarget || isConfirming) return
 
     const { type, categoryId, itemId } = toggleTarget
     const targetItemIds = getTargetItemIds(type, categoryId, itemId)
@@ -1633,6 +1631,11 @@ export default function Inventory() {
         return
       }
     }
+
+    // Close popup immediately to prevent double-clicks
+    setTogglePopupOpen(false)
+    setToggleTarget(null)
+    setIsConfirming(true)
 
     // Apply OFF state for item or category
     setCategories(prev =>
@@ -1659,8 +1662,6 @@ export default function Inventory() {
             ? { ...item, inStock: false, isAvailable: false, stockRule: nextRule }
             : item
         )
-        // Don't automatically update category inStock when item is toggled
-        // Category toggle should be independent
         return {
           ...category,
           items: updatedItems,
@@ -1677,14 +1678,15 @@ export default function Inventory() {
     })
 
     // Update menu API
-    if (type === "category") {
-      await updateAvailabilityAPI(categoryId, null, false)
-    } else {
-      await updateAvailabilityAPI(categoryId, itemId, false)
+    try {
+      if (type === "category") {
+        await updateAvailabilityAPI(categoryId, null, false)
+      } else {
+        await updateAvailabilityAPI(categoryId, itemId, false)
+      }
+    } finally {
+      setIsConfirming(false)
     }
-
-    setTogglePopupOpen(false)
-    setToggleTarget(null)
   }
 
   // Get category data for popup
@@ -2696,9 +2698,10 @@ export default function Inventory() {
                   </button>
                   <button
                     onClick={handleToggleConfirm}
-                    className="flex-1 bg-gradient-to-br from-[#B80B3D] to-[#66001D] text-white py-3 rounded-lg font-medium hover:bg-[#66001D] transition-colors"
+                    disabled={isConfirming}
+                    className="flex-1 bg-gradient-to-br from-[#B80B3D] to-[#66001D] text-white py-3 rounded-lg font-medium hover:bg-[#66001D] transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
                   >
-                    Confirm
+                    {isConfirming ? 'Confirming...' : 'Confirm'}
                   </button>
                 </div>
               </div>

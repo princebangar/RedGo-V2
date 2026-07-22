@@ -1,5 +1,6 @@
+import { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Bell, X, ShoppingBag, MapPin, Clock, IndianRupee } from 'lucide-react';
+import { Bell, X, ShoppingBag, MapPin, Clock, IndianRupee, ChevronDown, ChevronUp } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 
 /**
@@ -8,6 +9,8 @@ import { useNavigate } from 'react-router-dom';
  */
 export default function NewOrderNotification({ order, onClose, onViewOrder }) {
   const navigate = useNavigate();
+  const [showAllItems, setShowAllItems] = useState(false);
+  const VISIBLE_LIMIT = 4;
 
   if (!order) return null;
 
@@ -80,34 +83,58 @@ export default function NewOrderNotification({ order, onClose, onViewOrder }) {
 
               {/* Items */}
               <div>
-                <h4 className="text-sm font-semibold text-gray-700 mb-2">Items:</h4>
-                <div className="space-y-2">
-                  {order.items?.slice(0, 3).map((item, index) => (
-                    <div key={index} className="flex items-center justify-between text-sm gap-3">
-                      <div className="flex items-center gap-3">
+                <h4 className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-3">Order Items ({order.items?.length || 0})</h4>
+                <div className="space-y-2.5">
+                  {(showAllItems ? order.items : order.items?.slice(0, VISIBLE_LIMIT))?.map((item, index) => (
+                    <div
+                      key={index}
+                      className="flex items-start justify-between gap-3 bg-gray-50 rounded-xl px-3 py-2.5 border border-gray-100"
+                    >
+                      {/* Left: image + name/variant/qty */}
+                      <div className="flex items-start gap-2.5 flex-1 min-w-0">
                         {item.image && (
-                          <div className="w-8 h-8 rounded-md overflow-hidden bg-gray-100 flex-shrink-0">
-                            <img 
-                              src={item.image} 
-                              alt={item.name} 
+                          <div className="w-9 h-9 rounded-lg overflow-hidden bg-gray-200 flex-shrink-0 mt-0.5">
+                            <img
+                              src={item.image}
+                              alt={item.name}
                               className="w-full h-full object-cover"
                               onError={(e) => { e.target.style.display = 'none'; }}
                             />
                           </div>
                         )}
-                        <span className="text-gray-600 font-medium">
-                          {item.name} × {item.quantity}
-                        </span>
+                        <div className="flex flex-col min-w-0">
+                          <span className="text-gray-900 font-bold text-sm leading-tight truncate">
+                            {item.name}
+                          </span>
+                          {item.variantName && (
+                            <span className="mt-0.5 inline-flex self-start items-center px-2 py-0.5 rounded-full bg-orange-100 text-orange-700 text-[11px] font-semibold">
+                              {item.variantName}
+                            </span>
+                          )}
+                          <span className="text-gray-500 text-xs font-medium mt-0.5">
+                            Qty: {item.quantity}
+                          </span>
+                        </div>
                       </div>
-                      <span className="text-gray-800 font-bold whitespace-nowrap">
+                      {/* Right: price */}
+                      <span className="text-green-700 font-extrabold text-sm whitespace-nowrap mt-0.5">
                         ₹{(item.price * item.quantity).toFixed(2)}
                       </span>
                     </div>
                   ))}
-                  {order.items?.length > 3 && (
-                    <p className="text-xs text-gray-500 mt-2">
-                      +{order.items.length - 3} more items
-                    </p>
+
+                  {/* Expand / Collapse button */}
+                  {order.items?.length > VISIBLE_LIMIT && (
+                    <button
+                      onClick={() => setShowAllItems(prev => !prev)}
+                      className="w-full flex items-center justify-center gap-1.5 py-2 rounded-xl border border-dashed border-gray-300 text-gray-500 hover:bg-gray-50 hover:text-gray-700 transition-colors text-xs font-semibold"
+                    >
+                      {showAllItems ? (
+                        <><ChevronUp className="w-4 h-4" /> Show less</>
+                      ) : (
+                        <><ChevronDown className="w-4 h-4" /> +{order.items.length - VISIBLE_LIMIT} more items</>
+                      )}
+                    </button>
                   )}
                 </div>
               </div>
