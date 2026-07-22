@@ -84,8 +84,14 @@ const resolveBackPath = ({ pathname, search, state, orderType }) => {
     return "/food/user/dining"
   }
 
-  if (/^\/user\/orders\/[^/]+(\/invoice|\/details)?$/.test(normalizedPath)) {
-    return "/food/user/orders"
+  if (
+    normalizedPath === "/user/orders" ||
+    /^\/user\/orders\/[^/]+(\/invoice|\/details)?$/.test(normalizedPath)
+  ) {
+    if (state?.from === "profile" || state?.backTo?.includes("profile") || explicitBackPath?.includes("profile")) {
+      return "/food/user/profile"
+    }
+    return defaultHomePath
   }
 
   if (
@@ -146,9 +152,16 @@ export default function useAppBackNavigation() {
       toFoodPath(location.state?.from) ||
       toFoodPath(location.state?.returnTo)
 
+    const normalizedPath = getNormalizedUserPath(location.pathname)
+    const isOrderPage = normalizedPath.startsWith("/user/orders")
+    const isFromCartOrPlaced =
+      location.state?.fromOrderPlaced ||
+      location.state?.from === "cart" ||
+      location.state?.from === "checkout"
+
     if (explicitBackPath && explicitBackPath !== location.pathname) {
       navigate(explicitBackPath, { replace: true })
-    } else if (window.history.state && window.history.state.idx > 0) {
+    } else if (!isOrderPage && !isFromCartOrPlaced && window.history.state && window.history.state.idx > 0) {
       navigate(-1)
     } else {
       navigate(resolveBackPath({ ...location, orderType }), { replace: true })

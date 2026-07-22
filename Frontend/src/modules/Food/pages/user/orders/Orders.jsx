@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react"
 import { Link, useNavigate } from "react-router-dom"
+import useAppBackNavigation from "@food/hooks/useAppBackNavigation"
 import { ArrowLeft, Search, MoreVertical, ChevronRight, Star, RotateCcw, AlertCircle, Loader2, Clock, X, Share2, MessageCircle, Send, Copy, Mail, MessagesSquare, Link2 } from "lucide-react"
 import { orderAPI } from "@food/api"
 import { useCart } from "@food/context/CartContext"
@@ -12,6 +13,7 @@ const debugError = (...args) => {}
 
 export default function Orders() {
   const navigate = useNavigate()
+  const goBack = useAppBackNavigation()
   const { replaceCart } = useCart()
   const [orders, setOrders] = useState([])
   const [loading, setLoading] = useState(true)
@@ -588,7 +590,7 @@ Order again from this restaurant in the ${companyName} app.`
     return (
       <div className="min-h-screen bg-gray-50 dark:bg-[#0a0a0a] pb-10">
         <div className="bg-white dark:bg-[#121212] p-4 flex items-center shadow-sm sticky top-0 z-10 border-b dark:border-gray-800">
-          <ArrowLeft className="w-6 h-6 text-gray-700 dark:text-gray-300 cursor-pointer" onClick={() => navigate(-1)} />
+          <ArrowLeft className="w-6 h-6 text-gray-700 dark:text-gray-300 cursor-pointer" onClick={goBack} />
           <h1 className="ml-4 text-xl font-semibold text-gray-800 dark:text-gray-100">Your Orders</h1>
         </div>
         <div className="flex items-center justify-center py-20">
@@ -602,7 +604,7 @@ Order again from this restaurant in the ${companyName} app.`
     return (
       <div className="min-h-screen bg-gray-50 dark:bg-[#0a0a0a] pb-10">
         <div className="bg-white dark:bg-[#121212] p-4 flex items-center shadow-sm sticky top-0 z-10 border-b dark:border-gray-800">
-          <ArrowLeft className="w-6 h-6 text-gray-700 dark:text-gray-300 cursor-pointer" onClick={() => navigate(-1)} />
+          <ArrowLeft className="w-6 h-6 text-gray-700 dark:text-gray-300 cursor-pointer" onClick={goBack} />
           <h1 className="ml-4 text-xl font-semibold text-gray-800 dark:text-gray-100">Your Orders</h1>
         </div>
         <div className="px-4 py-8 text-center text-gray-600 dark:text-gray-400">
@@ -619,7 +621,7 @@ Order again from this restaurant in the ${companyName} app.`
     <div className="min-h-screen bg-gray-50 dark:bg-[#0a0a0a] pb-10 font-sans">
       {/* Header */}
       <div className="bg-white dark:bg-[#121212] p-4 flex items-center shadow-sm sticky top-0 z-10 border-b dark:border-gray-800">
-        <ArrowLeft className="w-6 h-6 text-gray-700 dark:text-gray-300 cursor-pointer" onClick={() => navigate(-1)} />
+        <ArrowLeft className="w-6 h-6 text-gray-700 dark:text-gray-300 cursor-pointer" onClick={goBack} />
         <h1 className="ml-4 text-xl font-semibold text-gray-800 dark:text-gray-100">Your Orders</h1>
       </div>
 
