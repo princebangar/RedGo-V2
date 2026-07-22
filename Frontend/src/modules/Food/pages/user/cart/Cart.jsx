@@ -2403,13 +2403,17 @@ export default function Cart() {
   }
 
   const handleGoToOrders = () => {
-    // Keep showOrderSuccess as true during transition to prevent rendering empty cart page
     setShowSavingsCongrats(false)
     setCongratssSavingsAmount(0)
     setCongratssSavingsPercentage(0)
     setCongratssSavingsItems([])
     setOrderSuccessSavingsAmount(0)
-    navigate(`/user/orders/${placedOrderId}?confirmed=true`)
+    setShowOrderSuccess(false)
+    setShowPlacingOrder(false)
+    navigate(`/user/orders/${placedOrderId}?confirmed=true`, {
+      replace: true,
+      state: { fromOrderPlaced: true, from: 'cart' }
+    })
   }
 
   // Empty cart state - but don't show if order success or placing order modal is active

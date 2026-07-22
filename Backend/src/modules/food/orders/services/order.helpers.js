@@ -331,8 +331,11 @@ export async function notifyRestaurantNewOrder(orderDoc) {
     await notifyOwnersSafely(
       [{ ownerType: "RESTAURANT", ownerId: orderDoc.restaurantId }],
       {
-        title: "New order received",
+        title: "🔔 New order received",
         body: `Order #${orderDoc.order_id || orderDoc._id} is waiting for review.`,
+        sound: "default",
+        channelId: "restaurant_orders",
+        sendToAllDevices: true,
         data: {
           type: "new_order",
           orderId: orderDoc._id.toString(),

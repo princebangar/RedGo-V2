@@ -106,8 +106,10 @@ export default function Checkout() {
       })
 
       clearCart()
-      setIsPlacingOrder(false)
-      navigate(`/user/orders/${orderId}?confirmed=true`)
+      navigate(`/user/orders/${orderId}?confirmed=true`, {
+        replace: true,
+        state: { fromOrderPlaced: true, from: 'checkout' }
+      })
     }, 1500)
   }
 

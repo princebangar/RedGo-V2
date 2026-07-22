@@ -173,14 +173,16 @@ const buildMessagePayload = (payload = {}, token) => {
         message.data = data;
     }
 
+    const soundFile = payload.sound || 'default';
+
     message.android = {
         priority: 'high',
         ...(isDataOnly
             ? {}
             : {
                 notification: {
-                    channel_id: 'default',
-                    sound: 'default',
+                    channel_id: payload.channelId || 'restaurant_orders',
+                    sound: soundFile,
                     default_vibrate_timings: true,
                     default_light_settings: true,
                     ...(image ? { image } : {}),
@@ -190,8 +192,8 @@ const buildMessagePayload = (payload = {}, token) => {
 
     message.apns = {
         headers: {
-            'apns-priority': isDataOnly ? '5' : '10',
-            ...(isDataOnly ? { 'apns-push-type': 'background' } : { 'apns-push-type': 'alert' }),
+            'apns-priority': '10',
+            'apns-push-type': isDataOnly ? 'background' : 'alert',
         },
         payload: {
             aps: isDataOnly
@@ -203,8 +205,10 @@ const buildMessagePayload = (payload = {}, token) => {
                         title: notification.title,
                         body: notification.body,
                     },
-                    sound: 'default',
+                    sound: soundFile,
+                    badge: 1,
                     'content-available': 1,
+                    'mutable-content': 1,
                 },
         },
     };

@@ -265,14 +265,11 @@ const stopGlobalAlertLoop = () => {
 const playGlobalNotificationSound = async (orderData = {}) => {
   try {
     if (globalIsMuted || isOrderMuted(orderData)) return;
-    const usedNativeBridge = await triggerWebViewNativeNotification(orderData);
-    if (typeof window !== 'undefined' && window.__userHasInteracted && typeof navigator !== 'undefined' && typeof navigator.vibrate === 'function') {
+    void triggerWebViewNativeNotification(orderData).catch(() => {});
+    if (typeof window !== 'undefined' && typeof navigator !== 'undefined' && typeof navigator.vibrate === 'function') {
       try {
         navigator.vibrate([200, 100, 200, 100, 300]);
       } catch (_) {}
-    }
-    if (usedNativeBridge) {
-      return;
     }
 
     if (!globalAudio && typeof window !== 'undefined') {
@@ -888,18 +885,45 @@ export const useRestaurantNotifications = () => {
       try {
         window.__userHasInteracted = true;
 
-        // Unlock WebAudio silently without playing the actual ringtone audio file
+        // Unlock WebAudio silently
         const AudioCtx = window.AudioContext || window.webkitAudioContext;
         if (AudioCtx) {
-          const ctx = new AudioCtx();
-          if (ctx.state === 'suspended') {
-            await ctx.resume();
-          }
-          const buf = ctx.createBuffer(1, 1, 22050);
-          const srcNode = ctx.createBufferSource();
-          srcNode.buffer = buf;
-          srcNode.connect(ctx.destination);
-          srcNode.start(0);
+          try {
+            const ctx = new AudioCtx();
+            if (ctx.state === 'suspended') {
+              await ctx.resume();
+            }
+            const buf = ctx.createBuffer(1, 1, 22050);
+            const srcNode = ctx.createBufferSource();
+            srcNode.buffer = buf;
+            srcNode.connect(ctx.destination);
+            srcNode.start(0);
+          } catch (_) {}
+        }
+
+        // Unlock HTML5 Audio element specifically for iOS WebKit
+        if (!globalAudio && typeof window !== 'undefined') {
+          globalAudio = new Audio();
+          globalAudio.preload = 'auto';
+          globalAudio.volume = 1;
+          preloadAudio().then(src => {
+            if (globalAudio) globalAudio.src = src;
+          });
+        }
+        if (globalAudio) {
+          try {
+            globalAudio.muted = true;
+            const p = globalAudio.play();
+            if (p && typeof p.then === 'function') {
+              p.then(() => {
+                globalAudio.pause();
+                globalAudio.currentTime = 0;
+                globalAudio.muted = false;
+              }).catch(() => {
+                globalAudio.muted = false;
+              });
+            }
+          } catch (_) {}
         }
 
         // If there's an active order pending that isn't muted, resume the alarm immediately!
