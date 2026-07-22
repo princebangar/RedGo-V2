@@ -243,13 +243,37 @@ export async function createRestaurantFood(restaurantId, body = {}) {
 }
 
 export async function updateRestaurantFood(restaurantId, foodId, body = {}) {
-    const context = await getRestaurantContext(restaurantId);
+    if (!restaurantId || !mongoose.Types.ObjectId.isValid(String(restaurantId))) {
+        throw new ValidationError('Invalid restaurant id');
+    }
     if (!foodId || !mongoose.Types.ObjectId.isValid(String(foodId))) {
         throw new ValidationError('Invalid food id');
     }
 
+    // ⚡ Fast path: isAvailable / isRecommended only — skip heavy context + findOne
+    const bodyKeys = Object.keys(body).filter(k => body[k] !== undefined);
+    const isSimpleToggle = bodyKeys.length > 0 && bodyKeys.every(k => k === 'isAvailable' || k === 'isRecommended');
+
+    if (isSimpleToggle) {
+        const fastUpdate = {};
+        if (body.isAvailable !== undefined) fastUpdate.isAvailable = body.isAvailable !== false;
+        if (body.isRecommended !== undefined) fastUpdate.isRecommended = body.isRecommended === true;
+
+        const updated = await FoodItem.findOneAndUpdate(
+            { _id: foodId, restaurantId },
+            { $set: fastUpdate },
+            { new: true }
+        ).lean();
+
+        return updated;
+    }
+
+    // Full path for content changes
+    const context = await getRestaurantContext(restaurantId);
+
     const existing = await FoodItem.findOne({ _id: foodId, restaurantId }).lean();
     if (!existing) return null;
+
 
     const update = {};
 
@@ -287,7 +311,12 @@ export async function updateRestaurantFood(restaurantId, foodId, body = {}) {
         update.categoryName = categoryName || '';
     }
 
-    const shouldResubmitForApproval = Object.keys(update).length > 0;
+    // Content-only fields that require admin re-approval
+    const contentUpdate = { ...update };
+    delete contentUpdate.isAvailable;
+    delete contentUpdate.isRecommended;
+
+    const shouldResubmitForApproval = Object.keys(contentUpdate).length > 0;
 
     if (shouldResubmitForApproval) {
         update.approvalStatus = 'pending';
@@ -296,9 +325,22 @@ export async function updateRestaurantFood(restaurantId, foodId, body = {}) {
         update.approvedAt = null;
         update.rejectedAt = null;
         update.actionType = 'UPDATED';
-        update.oldData = existing;
-        update.newData = { ...existing, ...update };
+        // Only store safe serializable fields (avoid Buffer/binary spread errors)
+        const safeExisting = {
+            name: existing.name,
+            description: existing.description,
+            image: existing.image,
+            price: existing.price,
+            variants: existing.variants,
+            foodType: existing.foodType,
+            categoryName: existing.categoryName,
+            isRecommended: existing.isRecommended,
+            preparationTime: existing.preparationTime,
+        };
+        update.oldData = safeExisting;
+        update.newData = { ...safeExisting, ...contentUpdate };
     }
+
 
     const updated = await FoodItem.findOneAndUpdate(
         { _id: foodId, restaurantId },

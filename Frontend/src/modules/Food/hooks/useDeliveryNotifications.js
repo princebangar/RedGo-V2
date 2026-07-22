@@ -140,8 +140,6 @@ const buildDeliveryOrderNotification = (orderData = {}) => {
 }
 
 const triggerWebViewNativeNotification = async (orderData = {}) => {
-  if (isNativeAppWebView()) return false;
-
   if (typeof window === 'undefined') return false;
 
   const bridgePayload = {
