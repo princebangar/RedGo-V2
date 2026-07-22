@@ -2238,16 +2238,8 @@ function OrdersMainInner() {
     // No need to manually refresh here as the component polls every 10 seconds
   };
 
-  // Handle reject order
+  // Handle reject order modal opening
   const handleRejectClick = () => {
-    const orderToReject = popupOrder || newOrder;
-    const orderId = orderToReject?.orderMongoId || orderToReject?.orderId || orderToReject?._id || orderToReject?.id;
-    if (stopSound) {
-      stopSound();
-    }
-    if (clearNewOrder) {
-      clearNewOrder(orderId);
-    }
     setShowRejectPopup(true);
   };
 
@@ -2261,7 +2253,7 @@ function OrdersMainInner() {
       stopSound();
     }
 
-    const orderId = orderToReject.orderMongoId || orderToReject.orderId || orderToReject._id || orderToReject.id;
+    const orderId = orderToReject?.orderMongoId || orderToReject?.orderId || orderToReject?._id || orderToReject?.id;
 
     // Reject order via API if we have a real order
     if (orderToReject?.orderMongoId || orderToReject?.orderId) {
@@ -2289,16 +2281,8 @@ function OrdersMainInner() {
   };
 
   const handleRejectCancel = () => {
-    const orderToReject = popupOrder || newOrder;
-    const orderId = orderToReject?.orderMongoId || orderToReject?.orderId || orderToReject?._id || orderToReject?.id;
-    const targetId = resolveOrderActionId(orderToReject);
-    setOrderQueue((prev) => prev.filter((o) => resolveOrderActionId(o) !== targetId));
     setShowRejectPopup(false);
-    setShowNewOrderPopup(false);
-    setPopupOrder(null);
-    clearNewOrder(orderId);
     setRejectReason("");
-    setCountdown(0);
   };
 
   // Handle cancel order (for preparing orders)
@@ -3062,7 +3046,7 @@ function OrdersMainInner() {
 
       {/* New Order Popup */}
       <AnimatePresence>
-        {showNewOrderPopup && (
+        {showNewOrderPopup && Boolean(popupOrder || newOrder) && (
           <>
             <motion.div
               className="fixed inset-0 z-[100] bg-black/60 flex items-center justify-center overflow-hidden p-4"
