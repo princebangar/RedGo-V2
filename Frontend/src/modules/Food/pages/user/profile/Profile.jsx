@@ -853,6 +853,7 @@ export default function Profile() {
               Food Orders
             </h3>
           </div>
+          <div className="space-y-2">
             <Link to="/user/orders" state={{ from: "profile", backTo: "/food/user/profile" }} className="block">
               <motion.div
                 whileHover={{ x: 4, scale: 1.01 }}
