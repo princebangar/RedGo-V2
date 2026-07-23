@@ -662,6 +662,64 @@ export async function getDashboardStats(query = {}) {
                         $sum: {
                             $cond: [OPEN_COD_ORDER_EXPR, 1, 0]
                         }
+                    },
+                    cashOrderCount: {
+                        $sum: {
+                            $cond: [IS_CASH_COD_METHOD_EXPR, 1, 0]
+                        }
+                    },
+                    onlineOrderCount: {
+                        $sum: {
+                            $cond: [
+                                {
+                                    $and: [
+                                        { $not: [IS_CASH_COD_METHOD_EXPR] },
+                                        ADMIN_VISIBLE_PAYMENT_EXPR
+                                    ]
+                                },
+                                1,
+                                0
+                            ]
+                        }
+                    },
+                    deliveryBoyEarningTotal: {
+                        $sum: {
+                            $cond: [
+                                {
+                                    $and: [
+                                        DELIVERED_ORDER_STATUS_EXPR,
+                                        { $ne: [{ $ifNull: ['$dispatch.deliveryPartnerId', null] }, null] }
+                                    ]
+                                },
+                                DASHBOARD_RIDER_EARNING_EXPR,
+                                0
+                            ]
+                        }
+                    },
+                    // Same basis as Transaction Report: subtotal + packaging − commission
+                    restaurantEarningTotal: {
+                        $sum: {
+                            $cond: [
+                                DELIVERED_ORDER_STATUS_EXPR,
+                                {
+                                    $max: [
+                                        0,
+                                        {
+                                            $subtract: [
+                                                {
+                                                    $add: [
+                                                        { $ifNull: ['$pricing.subtotal', 0] },
+                                                        { $ifNull: ['$pricing.packagingFee', 0] }
+                                                    ]
+                                                },
+                                                { $ifNull: ['$pricing.restaurantCommission', 0] }
+                                            ]
+                                        }
+                                    ]
+                                },
+                                0
+                            ]
+                        }
                     }
                 }
             }
@@ -885,12 +943,16 @@ export async function getDashboardStats(query = {}) {
             collected: Number(totals.codCollectedTotal || 0),
             open: Number(totals.codOpenTotal || 0),
             total: Number(totals.codCollectedTotal || 0) + Number(totals.codOpenTotal || 0),
-            openOrders: Number(totals.codOpenOrders || 0)
+            openOrders: Number(totals.codOpenOrders || 0),
+            cashOrders: Number(totals.cashOrderCount || 0),
+            onlineOrders: Number(totals.onlineOrderCount || 0)
         },
         commission: { total: commissionTotal },
         platformFee: { total: platformFeeTotal },
         deliveryFee: { total: deliveryFeeTotal },
         riderEarnings: { total: riderEarningTotal },
+        deliveryBoyEarning: Number(totals.deliveryBoyEarningTotal || 0),
+        restaurantEarning: Number(totals.restaurantEarningTotal || 0),
         gst: { total: gstTotal },
         totalAdminEarnings,
         deliveryProfit,

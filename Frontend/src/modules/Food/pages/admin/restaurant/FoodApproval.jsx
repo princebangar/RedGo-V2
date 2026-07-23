@@ -133,13 +133,16 @@ export default function FoodApproval() {
         page: currentPage,
         limit: pageSize,
       })
-      const data = response?.data?.data?.requests || response?.data?.requests || []
+      const payload = response?.data?.data ?? response?.data
+      const data = Array.isArray(payload?.requests)
+        ? payload.requests
+        : Array.isArray(payload)
+          ? payload
+          : []
       if (!isMountedRef.current) return
       setFoodRequests(data)
       setTotalItems(
-        response?.data?.data?.total ??
-        response?.data?.total ??
-        data.length,
+        Number(payload?.total ?? response?.data?.total ?? data.length) || 0,
       )
     } catch (error) {
       debugError('Error fetching food approval requests:', error)
@@ -377,7 +380,7 @@ export default function FoodApproval() {
                       filteredRequests.map((request, index) => (
                         <tr key={request._id || request.id} className="hover:bg-gray-50">
                           <td className="px-3 py-3 whitespace-nowrap text-sm text-gray-700 font-semibold !text-center">
-                            {index + 1}
+                            {(currentPage - 1) * pageSize + index + 1}
                           </td>
                           <td className="px-3 py-3 !text-center max-w-[200px]">
                             <div className="text-sm truncate" title={request.restaurantName}>
