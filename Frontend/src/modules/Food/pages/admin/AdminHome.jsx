@@ -295,7 +295,7 @@ export default function AdminHome() {
               helper={totalRevenueHelper}
               icon={<DollarSign className="h-5 w-5 text-green-600" />}
               accent="bg-green-200/40"
-              path="/admin/food/transaction-report"
+              path="/admin/food/transaction-report?focus=platform-total"
               loading={isLoading}
             />
             <MetricCard

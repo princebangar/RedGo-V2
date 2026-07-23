@@ -1203,6 +1203,10 @@ export async function getTransactionReport(query = {}) {
     let completedTransaction = 0;
     let refundedTransaction = 0;
     let adminEarning = 0;
+    let adminCommission = 0;
+    let adminPlatformFee = 0;
+    let adminDeliveryNet = 0;
+    let adminGst = 0;
     let restaurantEarning = 0;
     let deliverymanEarning = 0;
 
@@ -1224,6 +1228,10 @@ export async function getTransactionReport(query = {}) {
             completedTransaction += orderTotal;
             // Align with dashboard Platform Total components
             adminEarning += commission + platformFee + deliveryNet + tax;
+            adminCommission += commission;
+            adminPlatformFee += platformFee;
+            adminDeliveryNet += deliveryNet;
+            adminGst += tax;
             restaurantEarning += Math.max(0, subtotal + packaging - commission);
             // Same as Delivery Earning page: delivered + assigned partner + riderEarning
             if (order?.dispatch?.deliveryPartnerId) {
@@ -1248,7 +1256,15 @@ export async function getTransactionReport(query = {}) {
         summary: {
             completedTransaction: Math.round(completedTransaction * 100) / 100,
             refundedTransaction: Math.round(refundedTransaction * 100) / 100,
+            // Same as dashboard "Platform Total"
             adminEarning: Math.round(adminEarning * 100) / 100,
+            platformTotal: Math.round(adminEarning * 100) / 100,
+            platformTotalBreakdown: {
+                commission: Math.round(adminCommission * 100) / 100,
+                platformFee: Math.round(adminPlatformFee * 100) / 100,
+                deliveryNet: Math.round(adminDeliveryNet * 100) / 100,
+                gst: Math.round(adminGst * 100) / 100,
+            },
             restaurantEarning: Math.round(restaurantEarning * 100) / 100,
             deliverymanEarning: Math.round(deliverymanEarning * 100) / 100,
         },
