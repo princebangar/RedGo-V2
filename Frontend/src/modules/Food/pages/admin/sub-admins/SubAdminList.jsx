@@ -17,6 +17,7 @@ import {
 } from "lucide-react"
 import { toast } from "sonner"
 import { adminAPI } from "@food/api"
+import AdminListPagination from "@food/components/admin/AdminListPagination"
 import {
   Dialog,
   DialogContent,
@@ -40,6 +41,15 @@ export default function SubAdminList() {
   const [loading, setLoading] = useState(() => !Array.isArray(subAdminsListCache))
   const [refreshing, setRefreshing] = useState(false)
   const [searchQuery, setSearchQuery] = useState("")
+  const [currentPage, setCurrentPage] = useState(1)
+  const [pageSize, setPageSize] = useState(() => {
+    try {
+      return Number(localStorage.getItem("admin_sub_admins_pageSize")) || 20
+    } catch {
+      return 20
+    }
+  })
+  const [totalItems, setTotalItems] = useState(0)
   const [subAdmins, setSubAdmins] = useState(() =>
     Array.isArray(subAdminsListCache) ? subAdminsListCache : []
   )
@@ -65,6 +75,8 @@ export default function SubAdminList() {
     try {
       const res = await adminAPI.getSubAdmins({
         search: searchQuery.trim() || undefined,
+        page: currentPage,
+        limit: pageSize,
       })
       if (reqId !== requestIdRef.current) return
 
@@ -74,9 +86,10 @@ export default function SubAdminList() {
         []
       const next = Array.isArray(list) ? list : []
       setSubAdmins(next)
+      setTotalItems(res?.data?.data?.pagination?.total ?? next.length)
       hasLoadedOnceRef.current = true
-      // Only cache unfiltered full list
-      if (!searchQuery.trim()) {
+      // Only cache unfiltered first page
+      if (!searchQuery.trim() && currentPage === 1) {
         subAdminsListCache = next
       }
     } catch (err) {
@@ -88,6 +101,10 @@ export default function SubAdminList() {
         setRefreshing(false)
       }
     }
+  }, [searchQuery, currentPage, pageSize])
+
+  useEffect(() => {
+    setCurrentPage(1)
   }, [searchQuery])
 
   useEffect(() => {
@@ -97,10 +114,9 @@ export default function SubAdminList() {
     }, delay)
     return () => {
       clearTimeout(t)
-      // Invalidate in-flight response when search changes / unmount
       requestIdRef.current += 1
     }
-  }, [searchQuery, fetchSubAdmins])
+  }, [searchQuery, currentPage, pageSize, fetchSubAdmins])
 
   const handleFormChange = (field, value) => {
     setForm((prev) => ({ ...prev, [field]: value }))
@@ -349,7 +365,7 @@ export default function SubAdminList() {
                 />
               ) : (
                 <span className="px-2 py-0.5 rounded-full text-xs font-semibold bg-slate-100 text-slate-600 min-w-[1.5rem] text-center">
-                  {subAdmins.length}
+                  {totalItems}
                 </span>
               )}
             </div>
@@ -476,6 +492,21 @@ export default function SubAdminList() {
               })}
             </div>
           )}
+
+          <AdminListPagination
+            currentPage={currentPage}
+            pageSize={pageSize}
+            totalItems={totalItems}
+            onPageChange={setCurrentPage}
+            onPageSizeChange={(size) => {
+              setPageSize(size)
+              try {
+                localStorage.setItem("admin_sub_admins_pageSize", String(size))
+              } catch {}
+              setCurrentPage(1)
+            }}
+            itemLabel="sub admins"
+          />
         </div>
       </div>
 

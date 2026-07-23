@@ -1,10 +1,11 @@
 import { useState, useEffect } from "react"
-import { Download, ChevronDown, FileText, DollarSign, Settings, FileSpreadsheet, Code, Loader2 } from "lucide-react"
+import { Download, ChevronDown, FileText, DollarSign, Settings, FileSpreadsheet, Code, Loader2, Search } from "lucide-react"
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from "@food/components/ui/dropdown-menu"
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@food/components/ui/dialog"
 import { exportReportsToCSV, exportReportsToExcel, exportReportsToPDF, exportReportsToJSON } from "@food/components/admin/reports/reportsExportUtils"
 import { adminAPI } from "@food/api"
 import { toast } from "sonner"
+import AdminListPagination from "@food/components/admin/AdminListPagination"
 
 const debugLog = (...args) => {}
 const debugWarn = (...args) => {}
@@ -12,6 +13,17 @@ const debugError = (...args) => {}
 
 
 export default function TaxReport() {
+  const [searchQuery, setSearchQuery] = useState("")
+  const [debouncedSearch, setDebouncedSearch] = useState("")
+  const [currentPage, setCurrentPage] = useState(1)
+  const [pageSize, setPageSize] = useState(() => {
+    try {
+      return Number(localStorage.getItem("admin_tax_report_pageSize")) || 20
+    } catch {
+      return 20
+    }
+  })
+  const [totalItems, setTotalItems] = useState(0)
   const [filters, setFilters] = useState({
     dateRangeType: "All Time",
     calculateTax: "Percentage",
@@ -23,6 +35,7 @@ export default function TaxReport() {
     totalTax: "₹0.00"
   })
   const [loading, setLoading] = useState(true)
+  const [isRefreshing, setIsRefreshing] = useState(false)
   const [isSettingsOpen, setIsSettingsOpen] = useState(false)
   const [selectedReport, setSelectedReport] = useState(null)
   const [detailLoading, setDetailLoading] = useState(false)
@@ -30,7 +43,7 @@ export default function TaxReport() {
 
   const fetchTaxReport = async () => {
     try {
-      setLoading(true)
+      setIsRefreshing(true)
       
       let fromDate = null
       let toDate = null
@@ -55,19 +68,24 @@ export default function TaxReport() {
       const params = {
         fromDate: fromDate ? fromDate.toISOString() : undefined,
         toDate: toDate ? toDate.toISOString() : undefined,
-        limit: 1000
+        search: debouncedSearch || undefined,
+        page: currentPage,
+        limit: pageSize,
       }
 
       const response = await adminAPI.getTaxReport(params)
 
       if (response?.data?.success && response.data.data) {
-        setReports(response.data.data.reports || [])
-        setStats(response.data.data.stats || {
+        const data = response.data.data
+        setReports(data.reports || [])
+        setTotalItems(data.pagination?.total ?? 0)
+        setStats(data.stats || {
           totalIncome: "₹0.00",
           totalTax: "₹0.00"
         })
       } else {
         setReports([])
+        setTotalItems(0)
         if (response?.data?.message) {
           toast.error(response.data.message)
         }
@@ -76,14 +94,25 @@ export default function TaxReport() {
       debugError("Error fetching tax report:", error)
       toast.error("Failed to fetch tax report")
       setReports([])
+      setTotalItems(0)
     } finally {
+      setIsRefreshing(false)
       setLoading(false)
     }
   }
 
   useEffect(() => {
+    const t = setTimeout(() => setDebouncedSearch(searchQuery.trim()), 300)
+    return () => clearTimeout(t)
+  }, [searchQuery])
+
+  useEffect(() => {
+    setCurrentPage(1)
+  }, [filters.dateRangeType, debouncedSearch])
+
+  useEffect(() => {
     fetchTaxReport()
-  }, [filters.dateRangeType])
+  }, [filters.dateRangeType, debouncedSearch, currentPage, pageSize])
 
   const handleReset = () => {
     setFilters({
@@ -91,6 +120,8 @@ export default function TaxReport() {
       calculateTax: "Percentage",
       taxRate: "Select Tax Rate",
     })
+    setSearchQuery("")
+    setCurrentPage(1)
   }
 
   const handleSubmit = () => {
@@ -159,7 +190,7 @@ export default function TaxReport() {
     }
   }
 
-  if (loading) {
+  if (loading && reports.length === 0) {
     return (
       <div className="p-4 lg:p-6 bg-slate-50 min-h-screen flex items-center justify-center">
         <div className="flex flex-col items-center gap-4">
@@ -288,9 +319,23 @@ export default function TaxReport() {
         {/* Tax Report List Section */}
         <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-6">
           <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-6">
-            <h2 className="text-xl font-bold text-slate-900">Tax Report List ({reports.length})</h2>
+            <h2 className="text-xl font-bold text-slate-900">Tax Report List ({totalItems})</h2>
 
             <div className="flex items-center gap-3">
+              <div className="relative flex-1 sm:flex-initial min-w-[220px]">
+                <input
+                  type="text"
+                  placeholder="Search income source..."
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  className="pl-4 pr-10 py-2.5 w-full text-sm rounded-lg border border-slate-300 bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                />
+                <Search className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+                {isRefreshing && (
+                  <Loader2 className="absolute right-9 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 animate-spin" />
+                )}
+              </div>
+
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
                   <button className="px-4 py-2.5 text-sm font-medium rounded-lg border border-slate-300 bg-white hover:bg-slate-50 text-slate-700 flex items-center gap-2 transition-all">
@@ -393,6 +438,21 @@ export default function TaxReport() {
               </table>
             </div>
           )}
+
+          <AdminListPagination
+            currentPage={currentPage}
+            pageSize={pageSize}
+            totalItems={totalItems}
+            onPageChange={setCurrentPage}
+            onPageSizeChange={(size) => {
+              setPageSize(size)
+              try {
+                localStorage.setItem("admin_tax_report_pageSize", String(size))
+              } catch {}
+              setCurrentPage(1)
+            }}
+            itemLabel="sources"
+          />
         </div>
       </div>
 

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react"
+import { useEffect, useRef, useState } from "react"
 import { createPortal } from "react-dom"
 import { AnimatePresence, motion } from "framer-motion"
 import {
@@ -18,6 +18,7 @@ import { API_BASE_URL } from "@food/api/config"
 import { toast } from "sonner"
 import jsPDF from "jspdf"
 import autoTable from "jspdf-autotable"
+import AdminListPagination from "@food/components/admin/AdminListPagination"
 
 const defaultFormData = {
   name: "",
@@ -53,6 +54,16 @@ const zoneLabel = (zone) => {
 
 export default function Category() {
   const [searchQuery, setSearchQuery] = useState("")
+  const [debouncedSearch, setDebouncedSearch] = useState("")
+  const [currentPage, setCurrentPage] = useState(1)
+  const [pageSize, setPageSize] = useState(() => {
+    try {
+      return Number(localStorage.getItem("admin_categories_pageSize")) || 20
+    } catch {
+      return 20
+    }
+  })
+  const [totalItems, setTotalItems] = useState(0)
   const [categories, setCategories] = useState([])
   const [loading, setLoading] = useState(true)
   const [showPendingOnly, setShowPendingOnly] = useState(false)
@@ -101,36 +112,36 @@ export default function Category() {
   }, [])
 
   useEffect(() => {
-    const timer = window.setTimeout(() => {
-      fetchCategories()
-    }, 300)
+    const timer = window.setTimeout(() => setDebouncedSearch(searchQuery.trim()), 300)
     return () => window.clearTimeout(timer)
-  }, [searchQuery, showPendingOnly])
+  }, [searchQuery])
 
-  const filteredCategories = useMemo(() => {
-    const query = String(searchQuery || "").trim().toLowerCase()
-    if (!query) return categories
-    return categories.filter((category) => {
-      const creator = category?.createdByRestaurant?.name || category?.restaurant?.name || ""
-      return (
-        String(category?.name || "").toLowerCase().includes(query) ||
-        String(category?.foodTypeScope || "").toLowerCase().includes(query) ||
-        String(creator || "").toLowerCase().includes(query) ||
-        String(category?.id || "").toLowerCase().includes(query)
-      )
-    })
-  }, [categories, searchQuery])
+  useEffect(() => {
+    setCurrentPage(1)
+  }, [debouncedSearch, showPendingOnly])
+
+  useEffect(() => {
+    fetchCategories()
+  }, [debouncedSearch, showPendingOnly, currentPage, pageSize])
 
   const fetchCategories = async ({ silent = false } = {}) => {
     try {
       if (!silent) setLoading(true)
-      const params = {}
-      if (searchQuery) params.search = searchQuery
+      const params = {
+        page: currentPage,
+        limit: pageSize,
+      }
+      if (debouncedSearch) params.search = debouncedSearch
       if (showPendingOnly) params.approvalStatus = "pending"
 
       const response = await adminAPI.getCategories(params)
       const list = response?.data?.data?.categories || response?.data?.categories || []
       setCategories(Array.isArray(list) ? list : [])
+      setTotalItems(
+        response?.data?.data?.total ??
+        response?.data?.total ??
+        (Array.isArray(list) ? list.length : 0),
+      )
     } catch (error) {
       if (error?.response?.status === 401) {
         toast.error("Authentication required. Please login again.")
@@ -144,6 +155,7 @@ export default function Category() {
         toast.error(error?.response?.data?.message || "Failed to load categories")
       }
       if (!silent) setCategories([])
+      setTotalItems(0)
     } finally {
       if (!silent) setLoading(false)
     }
@@ -296,8 +308,8 @@ export default function Category() {
       doc.setTextColor(100, 100, 100)
       doc.text(`Generated on: ${new Date().toLocaleDateString("en-US", { year: "numeric", month: "long", day: "numeric" })}`, 14, 28)
 
-      const tableData = filteredCategories.map((category, index) => [
-        index + 1,
+      const tableData = categories.map((category, index) => [
+        (currentPage - 1) * pageSize + index + 1,
         category?.name || "N/A",
         category?.foodTypeScope || "Both",
         category?.isGlobal ? "Global" : "Private",
@@ -417,7 +429,7 @@ export default function Category() {
 
             <button
               onClick={handleExportPDF}
-              disabled={filteredCategories.length === 0}
+              disabled={categories.length === 0}
               className="inline-flex items-center gap-2 rounded-xl border border-slate-300 bg-white px-4 py-2.5 text-sm font-medium text-slate-700 disabled:cursor-not-allowed disabled:opacity-50"
             >
               <Download className="h-4 w-4" />
@@ -457,7 +469,7 @@ export default function Category() {
                     <p className="mt-2 text-sm text-slate-500">Loading categories...</p>
                   </td>
                 </tr>
-              ) : filteredCategories.length === 0 ? (
+              ) : categories.length === 0 ? (
                 <tr>
                   <td colSpan={7} className="px-6 py-20 text-center">
                     <p className="text-lg font-semibold text-slate-700">No categories found</p>
@@ -465,7 +477,7 @@ export default function Category() {
                   </td>
                 </tr>
               ) : (
-                filteredCategories.map((category) => {
+                categories.map((category) => {
                   const creatorName = category?.createdByRestaurant?.name || category?.restaurant?.name || "Admin"
                   const approvalStatus = category?.approvalStatus || "pending"
                   const isRestaurantCategory = Boolean(category?.createdByRestaurantId || category?.restaurantId)
@@ -593,6 +605,21 @@ export default function Category() {
             </tbody>
           </table>
         </div>
+
+        <AdminListPagination
+          currentPage={currentPage}
+          pageSize={pageSize}
+          totalItems={totalItems}
+          onPageChange={setCurrentPage}
+          onPageSizeChange={(size) => {
+            setPageSize(size)
+            try {
+              localStorage.setItem("admin_categories_pageSize", String(size))
+            } catch {}
+            setCurrentPage(1)
+          }}
+          itemLabel="categories"
+        />
       </div>
 
       {typeof window !== "undefined" &&

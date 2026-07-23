@@ -1,10 +1,11 @@
-import { useState, useMemo, useEffect } from "react"
+import { useState, useEffect } from "react"
 import { Search, Download, ChevronDown, Star, ArrowUpDown, Settings, FileText, FileSpreadsheet, Code, Check, Columns, Loader2, Eye, Utensils } from "lucide-react"
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from "@food/components/ui/dropdown-menu"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@food/components/ui/dialog"
 import { exportReviewsToCSV, exportReviewsToExcel, exportReviewsToPDF, exportReviewsToJSON } from "@food/components/admin/deliveryman/deliverymanExportUtils"
 import { adminAPI } from "@food/api"
 import { toast } from "sonner"
+import AdminListPagination from "@food/components/admin/AdminListPagination"
 
 const debugLog = (...args) => {}
 const debugWarn = (...args) => {}
@@ -12,6 +13,16 @@ const debugError = (...args) => {}
 
 export default function RestaurantReviews() {
   const [searchQuery, setSearchQuery] = useState("")
+  const [debouncedSearch, setDebouncedSearch] = useState("")
+  const [currentPage, setCurrentPage] = useState(1)
+  const [pageSize, setPageSize] = useState(() => {
+    try {
+      return Number(localStorage.getItem("admin_restaurant_reviews_pageSize")) || 20
+    } catch {
+      return 20
+    }
+  })
+  const [totalItems, setTotalItems] = useState(0)
   const [reviews, setReviews] = useState([])
   const [isLoading, setIsLoading] = useState(true)
   const [isSettingsOpen, setIsSettingsOpen] = useState(false)
@@ -27,19 +38,49 @@ export default function RestaurantReviews() {
     date: true,
   })
 
-  const filteredReviews = useMemo(() => {
-    if (!searchQuery.trim()) {
-      return reviews
+  const filteredReviews = reviews
+
+  useEffect(() => {
+    const t = setTimeout(() => setDebouncedSearch(searchQuery.trim()), 300)
+    return () => clearTimeout(t)
+  }, [searchQuery])
+
+  useEffect(() => {
+    setCurrentPage(1)
+  }, [debouncedSearch])
+
+  useEffect(() => {
+    const fetchReviews = async () => {
+      try {
+        setIsLoading(true)
+        const response = await adminAPI.getRestaurantReviews({
+          search: debouncedSearch || undefined,
+          page: currentPage,
+          limit: pageSize,
+        })
+        if (response?.data?.success && response?.data?.data?.reviews) {
+          setReviews(response.data.data.reviews)
+          setTotalItems(
+            response?.data?.data?.total ??
+            response?.data?.total ??
+            response.data.data.reviews.length,
+          )
+        } else {
+          setReviews([])
+          setTotalItems(0)
+        }
+      } catch (error) {
+        debugError('Error fetching restaurant reviews:', error)
+        setReviews([])
+        setTotalItems(0)
+        toast.error('Failed to load restaurant reviews')
+      } finally {
+        setIsLoading(false)
+      }
     }
-    
-    const query = searchQuery.toLowerCase().trim()
-    return reviews.filter(review =>
-      review.restaurant.toLowerCase().includes(query) ||
-      review.customer.toLowerCase().includes(query) ||
-      review.review.toLowerCase().includes(query) ||
-      (review.orderId && review.orderId.toLowerCase().includes(query))
-    )
-  }, [reviews, searchQuery])
+
+    fetchReviews()
+  }, [debouncedSearch, currentPage, pageSize])
 
   const handleExport = (format) => {
     if (filteredReviews.length === 0) {
@@ -120,28 +161,6 @@ export default function RestaurantReviews() {
     }
   }
 
-  useEffect(() => {
-    const fetchReviews = async () => {
-      try {
-        setIsLoading(true)
-        const response = await adminAPI.getRestaurantReviews({ limit: 1000 })
-        if (response?.data?.success && response?.data?.data?.reviews) {
-          setReviews(response.data.data.reviews)
-        } else {
-          setReviews([])
-        }
-      } catch (error) {
-        debugError('Error fetching restaurant reviews:', error)
-        setReviews([])
-        toast.error('Failed to load restaurant reviews')
-      } finally {
-        setIsLoading(false)
-      }
-    }
-
-    fetchReviews()
-  }, [])
-
   return (
     <div className="p-4 lg:p-6 bg-slate-50 min-h-screen">
       <div className="max-w-7xl mx-auto">
@@ -155,7 +174,7 @@ export default function RestaurantReviews() {
                   {isLoading ? (
                     <span className="w-5 h-3 rounded bg-slate-300/80 animate-pulse" />
                   ) : (
-                    filteredReviews.length
+                    totalItems
                   )}
                 </span>
               </div>
@@ -275,6 +294,21 @@ export default function RestaurantReviews() {
               </table>
             )}
           </div>
+
+          <AdminListPagination
+            currentPage={currentPage}
+            pageSize={pageSize}
+            totalItems={totalItems}
+            onPageChange={setCurrentPage}
+            onPageSizeChange={(size) => {
+              setPageSize(size)
+              try {
+                localStorage.setItem("admin_restaurant_reviews_pageSize", String(size))
+              } catch {}
+              setCurrentPage(1)
+            }}
+            itemLabel="reviews"
+          />
         </div>
       </div>
 

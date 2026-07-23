@@ -1,10 +1,11 @@
-import { useState, useMemo, useEffect } from "react"
+import { useState, useEffect } from "react"
 import { Search, Download, ChevronDown, Filter, Star, RefreshCw, Calendar, Trash2, Eye, User, Mail, Phone, MessageSquare } from "lucide-react"
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from "@food/components/ui/dropdown-menu"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@food/components/ui/dialog"
 import { adminAPI } from "@food/api"
 import { toast } from "sonner"
 import { exportReportsToCSV, exportReportsToExcel, exportReportsToPDF, exportReportsToJSON } from "@food/components/admin/reports/reportsExportUtils"
+import AdminListPagination from "@food/components/admin/AdminListPagination"
 const debugLog = (...args) => {}
 const debugWarn = (...args) => {}
 const debugError = (...args) => {}
@@ -12,6 +13,16 @@ const debugError = (...args) => {}
 
 export default function FeedbackExperienceReport() {
   const [searchQuery, setSearchQuery] = useState("")
+  const [debouncedSearch, setDebouncedSearch] = useState("")
+  const [currentPage, setCurrentPage] = useState(1)
+  const [pageSize, setPageSize] = useState(() => {
+    try {
+      return Number(localStorage.getItem("admin_feedback_report_pageSize")) || 20
+    } catch {
+      return 20
+    }
+  })
+  const [totalItems, setTotalItems] = useState(0)
   const [feedbackExperiences, setFeedbackExperiences] = useState([])
   const [loading, setLoading] = useState(true)
   const [statistics, setStatistics] = useState(null)
@@ -28,17 +39,27 @@ export default function FeedbackExperienceReport() {
 
   const today = new Date().toISOString().split("T")[0]
 
+  useEffect(() => {
+    const t = setTimeout(() => setDebouncedSearch(searchQuery.trim()), 300)
+    return () => clearTimeout(t)
+  }, [searchQuery])
+
+  useEffect(() => {
+    setCurrentPage(1)
+  }, [filters, debouncedSearch])
+
   // Fetch feedback experiences
   useEffect(() => {
     fetchFeedbackExperiences()
-  }, [filters])
+  }, [filters, debouncedSearch, currentPage, pageSize])
 
   const fetchFeedbackExperiences = async () => {
     try {
       setLoading(true)
       const params = {
-        page: 1,
-        limit: 1000,
+        page: currentPage,
+        limit: pageSize,
+        search: debouncedSearch || undefined,
         ...(filters.fromDate && { startDate: filters.fromDate }),
         ...(filters.toDate && { endDate: filters.toDate }),
         ...(filters.rating && { rating: filters.rating }),
@@ -54,12 +75,13 @@ export default function FeedbackExperienceReport() {
           userEmail: fb.userEmail || 'N/A',
           userPhone: fb.userPhone || 'N/A',
           restaurantName: fb.restaurantId?.restaurantName || 'N/A',
-          rating: fb.rating, // keep 1-5 scale for UI
+          rating: fb.rating,
           experience: fb.comment || 'N/A',
           module: fb.module,
           createdAt: fb.createdAt
         }))
         setFeedbackExperiences(formattedData)
+        setTotalItems(response.data.data.pagination?.total ?? 0)
         setStatistics(response.data.data.statistics || null)
       }
     } catch (error) {
@@ -72,22 +94,6 @@ export default function FeedbackExperienceReport() {
     }
   }
 
-  const filteredFeedback = useMemo(() => {
-    let result = [...feedbackExperiences]
-    
-    if (searchQuery.trim()) {
-      const query = searchQuery.toLowerCase().trim()
-      result = result.filter(feedback =>
-        feedback.userName?.toLowerCase().includes(query) ||
-        feedback.userEmail?.toLowerCase().includes(query) ||
-        feedback.userPhone?.includes(query) ||
-        feedback._id?.toString().includes(query)
-      )
-    }
-
-    return result
-  }, [feedbackExperiences, searchQuery])
-
   const handleReset = () => {
     setFilters({
       fromDate: "",
@@ -97,10 +103,11 @@ export default function FeedbackExperienceReport() {
       module: "",
     })
     setSearchQuery("")
+    setCurrentPage(1)
   }
 
   const handleExport = (format) => {
-    if (filteredFeedback.length === 0) {
+    if (feedbackExperiences.length === 0) {
       toast.error("No data to export")
       return
     }
@@ -114,8 +121,8 @@ export default function FeedbackExperienceReport() {
       { key: "module", label: "Module" },
       { key: "createdAt", label: "Date" },
     ]
-    const exportData = filteredFeedback.map((fb, idx) => ({
-      sl: idx + 1,
+    const exportData = feedbackExperiences.map((fb, idx) => ({
+      sl: (currentPage - 1) * pageSize + idx + 1,
       userName: fb.userName || 'N/A',
       userEmail: fb.userEmail || 'N/A',
       userPhone: fb.userPhone || 'N/A',
@@ -411,7 +418,7 @@ export default function FeedbackExperienceReport() {
         <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-6">
           <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-6">
             <h2 className="text-xl font-bold text-slate-900">Feedback Experiences</h2>
-            <p className="text-sm text-slate-600">Total: {filteredFeedback.length}</p>
+            <p className="text-sm text-slate-600">Total: {totalItems}</p>
           </div>
 
           {loading ? (
@@ -433,7 +440,7 @@ export default function FeedbackExperienceReport() {
                   </tr>
                 </thead>
                 <tbody className="bg-white divide-y divide-slate-100">
-                  {filteredFeedback.length === 0 ? (
+                  {feedbackExperiences.length === 0 ? (
                     <tr>
                       <td colSpan={7} className="px-6 py-20 text-center">
                         <div className="flex flex-col items-center justify-center">
@@ -443,10 +450,10 @@ export default function FeedbackExperienceReport() {
                       </td>
                     </tr>
                   ) : (
-                    filteredFeedback.map((feedback, idx) => (
+                    feedbackExperiences.map((feedback, idx) => (
                       <tr key={feedback._id} className="hover:bg-slate-50 transition-colors">
                         <td className="px-4 py-3 whitespace-nowrap">
-                          <span className="text-sm font-medium text-slate-700">{idx + 1}</span>
+                          <span className="text-sm font-medium text-slate-700">{(currentPage - 1) * pageSize + idx + 1}</span>
                         </td>
                         <td className="px-4 py-3">
                           <div className="flex flex-col">
@@ -502,6 +509,21 @@ export default function FeedbackExperienceReport() {
               </table>
             </div>
           )}
+
+          <AdminListPagination
+            currentPage={currentPage}
+            pageSize={pageSize}
+            totalItems={totalItems}
+            onPageChange={setCurrentPage}
+            onPageSizeChange={(size) => {
+              setPageSize(size)
+              try {
+                localStorage.setItem("admin_feedback_report_pageSize", String(size))
+              } catch {}
+              setCurrentPage(1)
+            }}
+            itemLabel="feedbacks"
+          />
         </div>
       </div>
 

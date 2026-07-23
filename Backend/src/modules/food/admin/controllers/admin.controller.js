@@ -644,11 +644,11 @@ export async function updateSupportTicketController(req, res, next) {
 
 export async function getPendingRestaurants(req, res, next) {
     try {
-        const pending = await adminService.getPendingRestaurants();
+        const data = await adminService.getPendingRestaurants(req.query || {});
         res.status(200).json({
             success: true,
             message: 'Pending restaurants fetched successfully',
-            data: pending
+            data
         });
     } catch (error) {
         next(error);

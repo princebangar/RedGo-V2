@@ -12,38 +12,43 @@ const toRestaurantDisplayId = (mongoId) => {
 };
 
 export async function listPendingFoodApprovals(query = {}) {
-    const limit = Math.min(Math.max(parseInt(query.limit, 10) || 200, 1), 1000);
+    const limit = Math.min(Math.max(parseInt(query.limit, 10) || 20, 1), 100);
     const page = Math.max(parseInt(query.page, 10) || 1, 1);
     const skip = (page - 1) * limit;
 
-    const filter = { approvalStatus: 'pending' };
+    const foodFilter = { approvalStatus: 'pending' };
+    const addonFilter = { approvalStatus: 'pending' };
+
     if (query.restaurantId && mongoose.Types.ObjectId.isValid(String(query.restaurantId))) {
-        filter.restaurantId = query.restaurantId;
+        foodFilter.restaurantId = query.restaurantId;
+        addonFilter.restaurantId = query.restaurantId;
     }
+
     if (query.search && String(query.search).trim()) {
         const term = String(query.search).trim().slice(0, 80);
-        filter.$or = [
+        foodFilter.$or = [
             { name: { $regex: term, $options: 'i' } },
-            { categoryName: { $regex: term, $options: 'i' } }
+            { categoryName: { $regex: term, $options: 'i' } },
         ];
+        addonFilter['draft.name'] = { $regex: term, $options: 'i' };
     }
 
-    const foodList = await FoodItem.find(filter)
-        .sort({ requestedAt: -1, createdAt: -1 })
-        .skip(skip)
-        .limit(limit)
-        .select('restaurantId categoryName name price variants image foodType approvalStatus requestedAt createdAt actionType oldData newData description preparationTime')
-        .lean();
-
-    const addonList = await FoodAddon.find({ approvalStatus: 'pending' })
-        .sort({ requestedAt: -1, createdAt: -1 })
-        .limit(limit)
-        .select('restaurantId draft isAvailable requestedAt createdAt')
-        .lean();
+    const [foodList, addonList, foodTotal, addonTotal] = await Promise.all([
+        FoodItem.find(foodFilter)
+            .sort({ requestedAt: -1, createdAt: -1 })
+            .select('restaurantId categoryName name price variants image foodType approvalStatus requestedAt createdAt actionType oldData newData description preparationTime')
+            .lean(),
+        FoodAddon.find(addonFilter)
+            .sort({ requestedAt: -1, createdAt: -1 })
+            .select('restaurantId draft isAvailable requestedAt createdAt')
+            .lean(),
+        FoodItem.countDocuments(foodFilter),
+        FoodAddon.countDocuments(addonFilter),
+    ]);
 
     const restaurantIds = Array.from(new Set([
         ...foodList.map((f) => String(f.restaurantId)),
-        ...addonList.map((a) => String(a.restaurantId))
+        ...addonList.map((a) => String(a.restaurantId)),
     ].filter(Boolean)));
 
     const restaurants = restaurantIds.length
@@ -74,7 +79,7 @@ export async function listPendingFoodApprovals(query = {}) {
         oldData: f.oldData,
         newData: f.newData,
         description: f.description || '',
-        preparationTime: f.preparationTime || ''
+        preparationTime: f.preparationTime || '',
     }));
 
     const addonRequests = addonList.map((a) => ({
@@ -95,14 +100,17 @@ export async function listPendingFoodApprovals(query = {}) {
         images: a.draft?.images || (a.draft?.image ? [a.draft.image] : []),
         requestedAt: a.requestedAt || a.createdAt,
         isActionable: true,
-        description: a.draft?.description || ''
+        description: a.draft?.description || '',
     }));
 
-    const allRequests = [...foodRequests, ...addonRequests].sort((a, b) => 
-        new Date(b.requestedAt).getTime() - new Date(a.requestedAt).getTime()
+    const allRequests = [...foodRequests, ...addonRequests].sort(
+        (a, b) => new Date(b.requestedAt).getTime() - new Date(a.requestedAt).getTime(),
     );
 
-    return { requests: allRequests, page, limit, total: allRequests.length };
+    const total = foodTotal + addonTotal;
+    const requests = allRequests.slice(skip, skip + limit);
+
+    return { requests, page, limit, total };
 }
 
 export async function approveFoodItem(id) {
@@ -184,4 +192,3 @@ export async function rejectFoodItem(id, reason) {
     }
     return updated;
 }
-
