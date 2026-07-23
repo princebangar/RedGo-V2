@@ -1739,6 +1739,23 @@ export async function listOrdersAdmin(query) {
     filter.restaurantId = new mongoose.Types.ObjectId(restaurantIdRaw);
   }
 
+  const userIdRaw =
+    typeof query.userId === "string" ? query.userId.trim() : "";
+  if (userIdRaw && mongoose.Types.ObjectId.isValid(userIdRaw)) {
+    filter.userId = new mongoose.Types.ObjectId(userIdRaw);
+  }
+
+  const zoneIdRaw =
+    typeof query.zoneId === "string" ? query.zoneId.trim() : "";
+  if (zoneIdRaw && mongoose.Types.ObjectId.isValid(zoneIdRaw) && !filter.restaurantId) {
+    const zoneRestaurants = await FoodRestaurant.find({
+      zoneId: new mongoose.Types.ObjectId(zoneIdRaw),
+    })
+      .select("_id")
+      .lean();
+    filter.restaurantId = { $in: zoneRestaurants.map((r) => r._id) };
+  }
+
   if (startDateRaw || endDateRaw) {
     const createdAt = {};
     const start = startDateRaw ? new Date(startDateRaw) : null;
@@ -1848,7 +1865,56 @@ export async function listOrdersAdmin(query) {
     FoodOrder.countDocuments(filter),
   ]);
   const paginated = buildPaginatedResult({ docs: docs.map(d => normalizeOrderForClient(d)), total, page, limit });
-  return { ...paginated, orders: paginated.data };
+
+  let statusCounts = null;
+  const wantCounts =
+    query.includeStatusCounts === true ||
+    query.includeStatusCounts === "1" ||
+    String(query.includeStatusCounts || "").toLowerCase() === "true";
+  if (wantCounts) {
+    const grouped = await FoodOrder.aggregate([
+      { $match: filter },
+      {
+        $group: {
+          _id: {
+            orderStatus: "$orderStatus",
+            paymentStatus: "$payment.status",
+            scheduled: { $cond: [{ $ifNull: ["$scheduledAt", false] }, true, false] },
+          },
+          count: { $sum: 1 },
+        },
+      },
+    ]);
+
+    statusCounts = {
+      total,
+      Scheduled: 0,
+      Pending: 0,
+      Accepted: 0,
+      Processing: 0,
+      "Food On The Way": 0,
+      Delivered: 0,
+      Canceled: 0,
+      "Payment Failed": 0,
+      Refunded: 0,
+    };
+
+    for (const row of grouped) {
+      const os = String(row?._id?.orderStatus || "").toLowerCase();
+      const pay = String(row?._id?.paymentStatus || "").toLowerCase();
+      const count = Number(row.count || 0);
+      if (row?._id?.scheduled) statusCounts.Scheduled += count;
+      if (pay === "failed") statusCounts["Payment Failed"] += count;
+      if (pay === "refunded") statusCounts.Refunded += count;
+      if (!os || os === "created" || os === "confirmed") statusCounts.Pending += count;
+      else if (os === "preparing" || os === "ready_for_pickup") statusCounts.Processing += count;
+      else if (os === "picked_up" || os === "out_for_delivery") statusCounts["Food On The Way"] += count;
+      else if (os === "delivered") statusCounts.Delivered += count;
+      else if (os.startsWith("cancelled")) statusCounts.Canceled += count;
+    }
+  }
+
+  return { ...paginated, orders: paginated.data, ...(statusCounts ? { statusCounts } : {}) };
 }
 
 export async function assignDeliveryPartnerAdmin(

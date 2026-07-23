@@ -4,6 +4,7 @@ import { Switch } from "@food/components/ui/switch"
 import { adminAPI, uploadAPI } from "@food/api"
 import { toast } from "sonner"
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@food/components/ui/dialog"
+import AdminListPagination from "@food/components/admin/AdminListPagination"
 
 const debugError = (...args) => {}
 
@@ -33,6 +34,16 @@ const getAddonImage = (addon) =>
 
 export default function AddonsList() {
   const [searchQuery, setSearchQuery] = useState("")
+  const [debouncedSearch, setDebouncedSearch] = useState("")
+  const [currentPage, setCurrentPage] = useState(1)
+  const [pageSize, setPageSize] = useState(() => {
+    try {
+      return Number(localStorage.getItem("admin_addons_pageSize")) || 20
+    } catch {
+      return 20
+    }
+  })
+  const [totalItems, setTotalItems] = useState(0)
   const [addons, setAddons] = useState([])
   const [loading, setLoading] = useState(true)
   const [submittingAction, setSubmittingAction] = useState(false)
@@ -46,33 +57,46 @@ export default function AddonsList() {
   const [editImageFile, setEditImageFile] = useState(null)
 
   useEffect(() => {
+    const t = setTimeout(() => setDebouncedSearch(searchQuery.trim()), 300)
+    return () => clearTimeout(t)
+  }, [searchQuery])
+
+  useEffect(() => {
+    setCurrentPage(1)
+  }, [debouncedSearch])
+
+  useEffect(() => {
     const fetchAddons = async () => {
       try {
         setLoading(true)
         const response = await adminAPI.getRestaurantAddons({
-          // only approved items should be visible in this list
           approvalStatus: "approved",
-          search: searchQuery?.trim() ? searchQuery.trim() : undefined,
-          limit: 200,
-          page: 1,
+          search: debouncedSearch || undefined,
+          page: currentPage,
+          limit: pageSize,
         })
         const data = response?.data?.data?.addons || response?.data?.addons || []
         const approvedOnly = Array.isArray(data)
           ? data.filter((addon) => String(addon.approvalStatus || "").toLowerCase() === "approved")
           : []
         setAddons(approvedOnly)
+        setTotalItems(
+          response?.data?.data?.total ??
+          response?.data?.total ??
+          approvedOnly.length
+        )
       } catch (error) {
         debugError("Error fetching addons:", error)
         toast.error("Failed to load restaurant add-ons")
         setAddons([])
+        setTotalItems(0)
       } finally {
         setLoading(false)
       }
     }
 
-    const t = setTimeout(fetchAddons, 250)
-    return () => clearTimeout(t)
-  }, [searchQuery])
+    fetchAddons()
+  }, [debouncedSearch, currentPage, pageSize])
 
   const filteredAddons = useMemo(() => {
     const result = Array.isArray(addons) ? [...addons] : []
@@ -80,7 +104,7 @@ export default function AddonsList() {
     return result
   }, [addons])
 
-  const countLabel = filteredAddons.length
+  const countLabel = totalItems
 
   const handleViewDetails = (addon) => {
     setSelectedAddon(addon)
@@ -264,7 +288,7 @@ export default function AddonsList() {
                 filteredAddons.map((addon, index) => (
                   <tr key={String(addon.id || addon._id)} className="hover:bg-slate-50 transition-colors">
                     <td className="px-6 py-4 whitespace-nowrap">
-                      <span className="text-sm font-medium text-slate-700">{index + 1}</span>
+                      <span className="text-sm font-medium text-slate-700">{(currentPage - 1) * pageSize + index + 1}</span>
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap">
                       <div className="w-10 h-10 rounded-full overflow-hidden bg-slate-100 flex items-center justify-center">
@@ -328,6 +352,21 @@ export default function AddonsList() {
             </tbody>
           </table>
         </div>
+
+        <AdminListPagination
+          currentPage={currentPage}
+          pageSize={pageSize}
+          totalItems={totalItems}
+          onPageChange={setCurrentPage}
+          onPageSizeChange={(size) => {
+            setPageSize(size)
+            try {
+              localStorage.setItem("admin_addons_pageSize", String(size))
+            } catch {}
+            setCurrentPage(1)
+          }}
+          itemLabel="add-ons"
+        />
       </div>
 
       <Dialog open={showDetailModal} onOpenChange={setShowDetailModal}>

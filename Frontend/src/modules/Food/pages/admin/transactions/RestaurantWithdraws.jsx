@@ -1,10 +1,11 @@
-import { useState, useMemo, useEffect } from "react"
+import { useState, useEffect } from "react"
 import { Search, Download, ChevronDown, Eye, Settings, Building, ArrowUpDown, FileText, FileSpreadsheet, Code, Check, Columns, CheckCircle, XCircle, Loader2 } from "lucide-react"
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from "@food/components/ui/dropdown-menu"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@food/components/ui/dialog"
 import { exportTransactionsToExcel, exportTransactionsToPDF } from "@food/components/admin/transactions/transactionsExportUtils"
 import { adminAPI } from "@food/api"
 import { toast } from "sonner"
+import AdminListPagination from "@food/components/admin/AdminListPagination"
 const debugLog = (...args) => {}
 const debugWarn = (...args) => {}
 const debugError = (...args) => {}
@@ -13,6 +14,16 @@ const debugError = (...args) => {}
 export default function RestaurantWithdraws() {
   const [activeTab, setActiveTab] = useState("All")
   const [searchQuery, setSearchQuery] = useState("")
+  const [debouncedSearch, setDebouncedSearch] = useState("")
+  const [currentPage, setCurrentPage] = useState(1)
+  const [pageSize, setPageSize] = useState(() => {
+    try {
+      return Number(localStorage.getItem("admin_restaurant_withdraws_pageSize")) || 20
+    } catch {
+      return 20
+    }
+  })
+  const [totalItems, setTotalItems] = useState(0)
   const [withdraws, setWithdraws] = useState([])
   const [loading, setLoading] = useState(true)
   const [isSettingsOpen, setIsSettingsOpen] = useState(false)
@@ -32,54 +43,53 @@ export default function RestaurantWithdraws() {
     actions: true,
   })
 
-  // Fetch withdrawal requests
+  useEffect(() => {
+    const t = setTimeout(() => setDebouncedSearch(searchQuery.trim()), 300)
+    return () => clearTimeout(t)
+  }, [searchQuery])
+
+  useEffect(() => {
+    setCurrentPage(1)
+  }, [debouncedSearch, activeTab])
+
   useEffect(() => {
     fetchWithdrawals()
-  }, [activeTab])
+  }, [activeTab, debouncedSearch, currentPage, pageSize])
 
   const fetchWithdrawals = async () => {
     try {
       setLoading(true)
       const status = activeTab === "All" ? undefined : activeTab
-      const response = await adminAPI.getWithdrawalRequests({ status, search: searchQuery || undefined })
+      const response = await adminAPI.getWithdrawalRequests({
+        status,
+        search: debouncedSearch || undefined,
+        page: currentPage,
+        limit: pageSize,
+      })
       if (response.data?.success) {
         setWithdraws(response.data.data?.requests || [])
+        setTotalItems(
+          response.data.data?.total ??
+          response.data?.total ??
+          (response.data.data?.requests || []).length,
+        )
       } else {
         debugError('Failed to fetch withdrawals:', response.data?.message)
         toast.error('Failed to fetch withdrawal requests')
+        setWithdraws([])
+        setTotalItems(0)
       }
     } catch (error) {
       debugError('Error fetching withdrawals:', error)
       toast.error('Failed to fetch withdrawal requests')
+      setWithdraws([])
+      setTotalItems(0)
     } finally {
       setLoading(false)
     }
   }
 
-  // Refetch when search changes (with debounce)
-  useEffect(() => {
-    const timer = setTimeout(() => {
-      if (searchQuery !== undefined) {
-        fetchWithdrawals()
-      }
-    }, 500)
-    return () => clearTimeout(timer)
-  }, [searchQuery])
-
-  const filteredWithdraws = useMemo(() => {
-    let result = [...withdraws]
-
-    if (searchQuery.trim()) {
-      const query = searchQuery.toLowerCase().trim()
-      result = result.filter(w =>
-        w.restaurantName?.toLowerCase().includes(query) ||
-        w.restaurantIdString?.toLowerCase().includes(query) ||
-        w.amount?.toString().includes(query)
-      )
-    }
-
-    return result
-  }, [withdraws, searchQuery])
+  const filteredWithdraws = withdraws
 
   const getStatusBadge = (status) => {
     if (status === "Approved") {
@@ -271,7 +281,7 @@ export default function RestaurantWithdraws() {
                 {loading ? (
                   <span className="w-5 h-3 rounded bg-slate-300/80 animate-pulse" />
                 ) : (
-                  filteredWithdraws.length
+                  totalItems
                 )}
               </span>
             </div>
@@ -422,6 +432,21 @@ export default function RestaurantWithdraws() {
               </table>
             </div>
           )}
+
+          <AdminListPagination
+            currentPage={currentPage}
+            pageSize={pageSize}
+            totalItems={totalItems}
+            onPageChange={setCurrentPage}
+            onPageSizeChange={(size) => {
+              setPageSize(size)
+              try {
+                localStorage.setItem("admin_restaurant_withdraws_pageSize", String(size))
+              } catch {}
+              setCurrentPage(1)
+            }}
+            itemLabel="withdrawals"
+          />
         </div>
 
         {/* View Withdraw Dialog */}

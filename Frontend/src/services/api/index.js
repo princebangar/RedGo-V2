@@ -219,8 +219,9 @@ export const adminAPI = {
     return authService.logout(token, fcmToken, "web");
   },
   // Restaurant approvals and join requests
-  getPendingRestaurants: () =>
+  getPendingRestaurants: (params = {}) =>
     adminCachedGet("/food/admin/restaurants/pending", {
+      params,
       contextModule: "admin",
     }, { ttlMs: 10000, staleOn429Ms: 90000 }),
   /** List restaurant complaints (admin). */

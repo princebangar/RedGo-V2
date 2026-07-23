@@ -1,7 +1,8 @@
-import { useState, useEffect, useMemo, useCallback } from "react"
+import { useState, useEffect, useCallback, useMemo } from "react"
 import { Search } from "lucide-react"
 import { adminAPI } from "@food/api"
 import { toast } from "sonner"
+import AdminListPagination from "@food/components/admin/AdminListPagination"
 const debugLog = (...args) => {}
 const debugWarn = (...args) => {}
 const debugError = (...args) => {}
@@ -11,6 +12,16 @@ const RequiredMark = () => <span className="text-red-500">*</span>
 
 export default function Coupons() {
   const [searchQuery, setSearchQuery] = useState("")
+  const [debouncedSearch, setDebouncedSearch] = useState("")
+  const [currentPage, setCurrentPage] = useState(1)
+  const [pageSize, setPageSize] = useState(() => {
+    try {
+      return Number(localStorage.getItem("admin_coupons_pageSize")) || 20
+    } catch {
+      return 20
+    }
+  })
+  const [totalItems, setTotalItems] = useState(0)
   const [offers, setOffers] = useState([])
   const [restaurants, setRestaurants] = useState([])
   const [loading, setLoading] = useState(true)
@@ -49,20 +60,42 @@ export default function Coupons() {
     try {
       setLoading(true)
       setError(null)
-      const response = await adminAPI.getAllOffers({})
+      const response = await adminAPI.getAllOffers({
+        search: debouncedSearch || undefined,
+        page: currentPage,
+        limit: pageSize,
+      })
 
       if (response?.data?.success) {
-        setOffers(response.data.data.offers || [])
+        const list = response.data.data.offers || []
+        setOffers(Array.isArray(list) ? list : [])
+        setTotalItems(
+          response?.data?.data?.total ??
+          response?.data?.total ??
+          (Array.isArray(list) ? list.length : 0),
+        )
       } else {
         setError("Failed to fetch offers")
+        setTotalItems(0)
       }
     } catch (err) {
       debugError("Error fetching offers:", err)
       setError(err?.response?.data?.message || "Failed to fetch offers")
+      setOffers([])
+      setTotalItems(0)
     } finally {
       setLoading(false)
     }
-  }, [])
+  }, [debouncedSearch, currentPage, pageSize])
+
+  useEffect(() => {
+    const t = setTimeout(() => setDebouncedSearch(searchQuery.trim()), 300)
+    return () => clearTimeout(t)
+  }, [searchQuery])
+
+  useEffect(() => {
+    setCurrentPage(1)
+  }, [debouncedSearch])
 
   useEffect(() => {
     fetchOffers()
@@ -327,18 +360,7 @@ export default function Coupons() {
   }
 
   // Filter offers based on search query
-  const filteredOffers = useMemo(() => {
-    if (!searchQuery.trim()) {
-      return offers
-    }
-    
-    const query = searchQuery.toLowerCase().trim()
-    return offers.filter(offer =>
-      offer.restaurantName?.toLowerCase().includes(query) ||
-      offer.dishName?.toLowerCase().includes(query) ||
-      offer.couponCode?.toLowerCase().includes(query)
-    )
-  }, [offers, searchQuery])
+  const filteredOffers = offers
 
   return (
     <div className="p-4 lg:p-6 bg-slate-50 min-h-screen">
@@ -629,7 +651,7 @@ export default function Coupons() {
               {loading ? (
                 <span className="w-5 h-3 rounded bg-slate-300/80 animate-pulse" />
               ) : (
-                `${filteredOffers.length} ${filteredOffers.length === 1 ? 'offer' : 'offers'}`
+                `${totalItems} ${totalItems === 1 ? 'offer' : 'offers'}`
               )}
             </span>
           </div>
@@ -815,6 +837,21 @@ export default function Coupons() {
               </table>
             </div>
           )}
+
+          <AdminListPagination
+            currentPage={currentPage}
+            pageSize={pageSize}
+            totalItems={totalItems}
+            onPageChange={setCurrentPage}
+            onPageSizeChange={(size) => {
+              setPageSize(size)
+              try {
+                localStorage.setItem("admin_coupons_pageSize", String(size))
+              } catch {}
+              setCurrentPage(1)
+            }}
+            itemLabel="offers"
+          />
         </div>
       </div>
     </div>

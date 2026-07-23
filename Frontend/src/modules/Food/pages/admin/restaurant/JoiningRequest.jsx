@@ -9,6 +9,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "
 import { refreshSidebarBadges } from "@food/components/admin/AdminSidebar"
 import { useAdminBadgeListRefresh } from "@food/hooks/useAdminBadgeListRefresh"
 import { getRestaurantDisplayAddress } from "@food/utils/restaurantLocation"
+import AdminListPagination from "@food/components/admin/AdminListPagination"
 const debugLog = (...args) => {}
 const debugWarn = (...args) => {}
 const debugError = (...args) => {}
@@ -25,6 +26,16 @@ const formatTime12Hour = (timeStr) => {
 
 export default function JoiningRequest() {
   const [searchQuery, setSearchQuery] = useState("")
+  const [debouncedSearch, setDebouncedSearch] = useState("")
+  const [currentPage, setCurrentPage] = useState(1)
+  const [pageSize, setPageSize] = useState(() => {
+    try {
+      return Number(localStorage.getItem("admin_joining_requests_pageSize")) || 20
+    } catch {
+      return 20
+    }
+  })
+  const [totalItems, setTotalItems] = useState(0)
   const [sortConfig, setSortConfig] = useState({ key: "createdAt", direction: "desc" })
   const [pendingRequests, setPendingRequests] = useState([])
   const [loading, setLoading] = useState(true)
@@ -54,26 +65,47 @@ export default function JoiningRequest() {
       if (!silent) setLoading(true)
       setError(null)
 
-      const response = await adminAPI.getPendingRestaurants()
-      const list = response?.data?.data || []
+      const response = await adminAPI.getPendingRestaurants({
+        search: debouncedSearch || undefined,
+        page: currentPage,
+        limit: pageSize,
+      })
+      const payload = response?.data?.data
+      const list = Array.isArray(payload)
+        ? payload
+        : (payload?.restaurants || [])
       setPendingRequests(list.filter((r) => String(r.status || "").toLowerCase() === "pending"))
+      setTotalItems(
+        payload?.total ??
+        response?.data?.total ??
+        list.length,
+      )
     } catch (err) {
       debugError("Error fetching restaurant requests:", err)
       if (!silent) {
         setError(err.message || "Failed to fetch restaurant requests")
         setPendingRequests([])
+        setTotalItems(0)
       }
     } finally {
       if (!silent) setLoading(false)
     }
   }
 
-  useAdminBadgeListRefresh("restaurants", fetchRequests, [])
+  useEffect(() => {
+    const t = setTimeout(() => setDebouncedSearch(searchQuery.trim()), 300)
+    return () => clearTimeout(t)
+  }, [searchQuery])
 
-  // Fetch restaurant join requests
+  useEffect(() => {
+    setCurrentPage(1)
+  }, [debouncedSearch])
+
+  useAdminBadgeListRefresh("restaurants", fetchRequests, [debouncedSearch, currentPage, pageSize])
+
   useEffect(() => {
     fetchRequests()
-  }, [])
+  }, [debouncedSearch, currentPage, pageSize])
 
   useEffect(() => {
     const onFocus = () => fetchRequests({ silent: true })
@@ -88,7 +120,7 @@ export default function JoiningRequest() {
       window.removeEventListener("focus", onFocus)
       document.removeEventListener("visibilitychange", onVisibility)
     }
-  }, [])
+  }, [debouncedSearch, currentPage, pageSize])
 
   const currentRequests = pendingRequests
 
@@ -101,23 +133,10 @@ export default function JoiningRequest() {
   const filteredRequests = useMemo(() => {
     let filtered = currentRequests
 
-    // Apply search filter
-    if (searchQuery.trim()) {
-      const query = searchQuery.toLowerCase().trim()
-      filtered = filtered.filter(request =>
-        request.restaurantName?.toLowerCase().includes(query) ||
-        request.ownerName?.toLowerCase().includes(query) ||
-        request.ownerPhone?.includes(query)
-      )
-    }
-
-    // Apply zone filter
     if (filters.zone) {
       filtered = filtered.filter(request => request.zone === filters.zone)
     }
 
-
-    // Apply date range filter
     if (filters.dateFrom || filters.dateTo) {
       filtered = filtered.filter(request => {
         if (!request.createdAt) return false
@@ -135,7 +154,7 @@ export default function JoiningRequest() {
     }
 
     return filtered
-  }, [currentRequests, searchQuery, filters])
+  }, [currentRequests, filters])
 
   const sortedRequests = useMemo(() => {
     const requests = [...filteredRequests]
@@ -548,6 +567,21 @@ export default function JoiningRequest() {
               </tbody>
             </table>
           </div>
+
+          <AdminListPagination
+            currentPage={currentPage}
+            pageSize={pageSize}
+            totalItems={filters.zone || filters.dateFrom || filters.dateTo ? sortedRequests.length : totalItems}
+            onPageChange={setCurrentPage}
+            onPageSizeChange={(size) => {
+              setPageSize(size)
+              try {
+                localStorage.setItem("admin_joining_requests_pageSize", String(size))
+              } catch {}
+              setCurrentPage(1)
+            }}
+            itemLabel="requests"
+          />
         </div>
       </div>
 

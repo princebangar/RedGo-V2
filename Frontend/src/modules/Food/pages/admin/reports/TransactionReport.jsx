@@ -1,10 +1,11 @@
-import { useState, useMemo, useEffect, useRef } from "react"
-import { BarChart3, ChevronDown, Info, FileText, FileSpreadsheet, Code, Loader2, X } from "lucide-react"
+import { useState, useEffect, useRef } from "react"
+import { BarChart3, ChevronDown, Info, FileText, FileSpreadsheet, Code, Loader2, X, RefreshCw } from "lucide-react"
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from "@food/components/ui/dropdown-menu"
 import { exportTransactionReportToCSV, exportTransactionReportToExcel, exportTransactionReportToPDF, exportTransactionReportToJSON } from "@food/components/admin/reports/reportsExportUtils"
 import { adminAPI } from "@food/api"
 import { toast } from "sonner"
 import { Skeleton } from "@food/components/ui/skeleton"
+import AdminListPagination from "@food/components/admin/AdminListPagination"
 
 // Import icons from Transaction-report-icons
 import completedIcon from "@food/assets/Transaction-report-icons/trx1.svg"
@@ -92,6 +93,17 @@ function InfoTip({ tipKey, colorClass = "bg-green-500", align = "right" }) {
 
 export default function TransactionReport() {
   const [searchQuery, setSearchQuery] = useState("")
+  const [debouncedSearch, setDebouncedSearch] = useState("")
+  const [currentPage, setCurrentPage] = useState(1)
+  const [pageSize, setPageSize] = useState(() => {
+    try {
+      return Number(localStorage.getItem("admin_txn_report_pageSize")) || 20
+    } catch {
+      return 20
+    }
+  })
+  const [totalItems, setTotalItems] = useState(0)
+  const [refreshKey, setRefreshKey] = useState(0)
   const [transactions, setTransactions] = useState([])
   const [loading, setLoading] = useState(true)
   const [isRefreshing, setIsRefreshing] = useState(false)
@@ -132,6 +144,15 @@ export default function TransactionReport() {
     fetchFilterData()
   }, [])
 
+  useEffect(() => {
+    const t = setTimeout(() => setDebouncedSearch(searchQuery.trim()), 300)
+    return () => clearTimeout(t)
+  }, [searchQuery])
+
+  useEffect(() => {
+    setCurrentPage(1)
+  }, [filters, debouncedSearch])
+
   // Fetch transaction report data
   useEffect(() => {
     const fetchTransactionReport = async () => {
@@ -157,20 +178,27 @@ export default function TransactionReport() {
         }
 
         const params = {
-          search: searchQuery || undefined,
+          search: debouncedSearch || undefined,
           zone: filters.zone !== "All Zones" ? filters.zone : undefined,
           restaurant: filters.restaurant !== "All restaurants" ? filters.restaurant : undefined,
           time: filters.time || "All Time",
           fromDate: fromDate ? fromDate.toISOString() : undefined,
           toDate: toDate ? toDate.toISOString() : undefined,
-          limit: 1000
+          page: currentPage,
+          limit: pageSize,
         }
 
         const response = await adminAPI.getTransactionReport(params)
 
         if (response?.data?.success && response.data.data) {
-          setTransactions(response.data.data.transactions || [])
-          setSummary(response.data.data.summary || {
+          const data = response.data.data
+          setTransactions(data.transactions || [])
+          setTotalItems(
+            data.pagination?.total ??
+            data.meta?.total ??
+            0
+          )
+          setSummary(data.summary || {
             completedTransaction: 0,
             refundedTransaction: 0,
             adminEarning: 0,
@@ -179,6 +207,7 @@ export default function TransactionReport() {
           })
         } else {
           setTransactions([])
+          setTotalItems(0)
           if (response?.data?.message) {
             toast.error(response.data.message)
           }
@@ -187,6 +216,7 @@ export default function TransactionReport() {
         debugError("Error fetching transaction report:", error)
         toast.error("Failed to fetch transaction report")
         setTransactions([])
+        setTotalItems(0)
       } finally {
         setIsRefreshing(false)
         setLoading(false)
@@ -194,28 +224,23 @@ export default function TransactionReport() {
     }
 
     fetchTransactionReport()
-  }, [searchQuery, filters])
-
-  const filteredTransactions = useMemo(() => {
-    return transactions
-  }, [transactions])
+  }, [debouncedSearch, filters, currentPage, pageSize, refreshKey])
 
   const handleExport = (format) => {
-    if (filteredTransactions.length === 0) {
+    if (transactions.length === 0) {
       alert("No data to export")
       return
     }
     switch (format) {
-      case "csv": exportTransactionReportToCSV(filteredTransactions); break
-      case "excel": exportTransactionReportToExcel(filteredTransactions); break
-      case "pdf": exportTransactionReportToPDF(filteredTransactions); break
-      case "json": exportTransactionReportToJSON(filteredTransactions); break
+      case "csv": exportTransactionReportToCSV(transactions); break
+      case "excel": exportTransactionReportToExcel(transactions); break
+      case "pdf": exportTransactionReportToPDF(transactions); break
+      case "json": exportTransactionReportToJSON(transactions); break
     }
   }
 
-  const handleFilterApply = () => {
-    // Filters already live-bound via selects; force a light re-fetch by cloning state
-    setFilters((prev) => ({ ...prev }))
+  const handleRefresh = () => {
+    setRefreshKey((k) => k + 1)
   }
 
   const handleResetFilters = () => {
@@ -225,12 +250,8 @@ export default function TransactionReport() {
       time: "All Time",
     })
     setSearchQuery("")
+    setCurrentPage(1)
   }
-
-  const activeFiltersCount =
-    (filters.zone !== "All Zones" ? 1 : 0) +
-    (filters.restaurant !== "All restaurants" ? 1 : 0) +
-    (filters.time !== "All Time" ? 1 : 0)
 
   const formatCurrency = (amount) => {
     if (amount >= 1000) {
@@ -334,20 +355,18 @@ export default function TransactionReport() {
               <ChevronDown className="absolute right-1.5 top-1/2 -translate-y-1/2 w-3 h-3 text-slate-500 pointer-events-none" />
             </div>
 
-            <button 
-              onClick={handleFilterApply}
-              className={`px-3 py-1.5 text-xs font-medium rounded-lg bg-blue-600 text-white hover:bg-blue-700 transition-all whitespace-nowrap relative ${
-                activeFiltersCount > 0 ? "ring-2 ring-blue-300" : ""
-              }`}
+            <button
+              type="button"
+              onClick={handleRefresh}
+              disabled={isRefreshing}
+              title="Refresh"
+              aria-label="Refresh"
+              className="p-1.5 rounded-lg border border-slate-300 bg-white text-slate-700 hover:bg-slate-50 transition-all disabled:opacity-50"
             >
-              Filter
-              {activeFiltersCount > 0 && (
-                <span className="absolute -top-1 -right-1 w-4 h-4 bg-emerald-500 text-white rounded-full text-[8px] flex items-center justify-center font-bold">
-                  {activeFiltersCount}
-                </span>
-              )}
+              <RefreshCw className={`w-3.5 h-3.5 ${isRefreshing ? "animate-spin" : ""}`} />
             </button>
-            <button 
+            <button
+              type="button"
               onClick={handleResetFilters}
               className="px-3 py-1.5 text-xs font-medium rounded-lg border border-slate-300 bg-white text-slate-700 hover:bg-slate-50 transition-all whitespace-nowrap"
             >
@@ -456,7 +475,7 @@ export default function TransactionReport() {
               {amountsLoading ? (
                 <AmountSkeleton className="inline-block h-4 w-8 align-middle" />
               ) : (
-                filteredTransactions.length
+                totalItems
               )}
               <span className="ml-2 text-xs font-medium text-slate-500">({filters.time})</span>
             </h2>
@@ -465,7 +484,7 @@ export default function TransactionReport() {
               <div className="relative flex-1 sm:flex-initial min-w-[180px]">
                 <input
                   type="text"
-                  placeholder="Search by Order ID"
+                  placeholder="Search by Order ID, customer, restaurant"
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
                   className="pl-7 pr-2 py-1.5 w-full text-[11px] rounded-lg border border-slate-300 bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
@@ -537,7 +556,7 @@ export default function TransactionReport() {
                       ))}
                     </tr>
                   ))
-                ) : filteredTransactions.length === 0 ? (
+                ) : transactions.length === 0 ? (
                   <tr>
                     <td colSpan={11} className="px-6 py-20 text-center">
                       <div className="flex flex-col items-center justify-center">
@@ -547,13 +566,13 @@ export default function TransactionReport() {
                     </td>
                   </tr>
                 ) : (
-                  filteredTransactions.map((transaction, index) => (
+                  transactions.map((transaction, index) => (
                     <tr
                       key={transaction.id}
                       className="hover:bg-slate-50 transition-colors"
                     >
                       <td className="px-1.5 py-1">
-                        <span className="text-[10px] font-medium text-slate-700">{index + 1}</span>
+                        <span className="text-[10px] font-medium text-slate-700">{(currentPage - 1) * pageSize + index + 1}</span>
                       </td>
                       <td className="px-1.5 py-1">
                         <span className="text-[10px] text-slate-700">{transaction.orderId}</span>
@@ -608,6 +627,21 @@ export default function TransactionReport() {
               </tbody>
             </table>
           </div>
+
+          <AdminListPagination
+            currentPage={currentPage}
+            pageSize={pageSize}
+            totalItems={totalItems}
+            onPageChange={setCurrentPage}
+            onPageSizeChange={(size) => {
+              setPageSize(size)
+              try {
+                localStorage.setItem("admin_txn_report_pageSize", String(size))
+              } catch {}
+              setCurrentPage(1)
+            }}
+            itemLabel="transactions"
+          />
         </div>
       </div>
 

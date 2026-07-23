@@ -13,6 +13,7 @@ import { adminAPI } from "@food/api"
 import { refreshSidebarBadges } from "@food/components/admin/AdminSidebar"
 import { useAdminBadgeListRefresh } from "@food/hooks/useAdminBadgeListRefresh"
 import { toast } from "sonner"
+import AdminListPagination from "@food/components/admin/AdminListPagination"
 const debugLog = (...args) => {}
 const debugWarn = (...args) => {}
 const debugError = (...args) => {}
@@ -104,6 +105,16 @@ export default function FoodApproval() {
   const [foodRequests, setFoodRequests] = useState([])
   const [loading, setLoading] = useState(true)
   const [searchQuery, setSearchQuery] = useState("")
+  const [debouncedSearch, setDebouncedSearch] = useState("")
+  const [currentPage, setCurrentPage] = useState(1)
+  const [pageSize, setPageSize] = useState(() => {
+    try {
+      return Number(localStorage.getItem("admin_food_approval_pageSize")) || 20
+    } catch {
+      return 20
+    }
+  })
+  const [totalItems, setTotalItems] = useState(0)
   const [selectedRequest, setSelectedRequest] = useState(null)
   const [showDetailModal, setShowDetailModal] = useState(false)
   const [showRejectModal, setShowRejectModal] = useState(false)
@@ -117,10 +128,19 @@ export default function FoodApproval() {
       if (!silent) {
         setLoading(true)
       }
-      const response = await adminAPI.getPendingFoodApprovals()
+      const response = await adminAPI.getPendingFoodApprovals({
+        search: debouncedSearch || undefined,
+        page: currentPage,
+        limit: pageSize,
+      })
       const data = response?.data?.data?.requests || response?.data?.requests || []
       if (!isMountedRef.current) return
       setFoodRequests(data)
+      setTotalItems(
+        response?.data?.data?.total ??
+        response?.data?.total ??
+        data.length,
+      )
     } catch (error) {
       debugError('Error fetching food approval requests:', error)
       if (!isMountedRef.current) return
@@ -128,14 +148,24 @@ export default function FoodApproval() {
         toast.error('Failed to load food approval requests')
       }
       setFoodRequests([])
+      setTotalItems(0)
     } finally {
       if (!silent && isMountedRef.current) {
         setLoading(false)
       }
     }
-  }, [])
+  }, [debouncedSearch, currentPage, pageSize])
 
-  useAdminBadgeListRefresh("foodApprovals", fetchFoodRequests, [fetchFoodRequests])
+  useEffect(() => {
+    const t = setTimeout(() => setDebouncedSearch(searchQuery.trim()), 300)
+    return () => clearTimeout(t)
+  }, [searchQuery])
+
+  useEffect(() => {
+    setCurrentPage(1)
+  }, [debouncedSearch])
+
+  useAdminBadgeListRefresh("foodApprovals", fetchFoodRequests, [debouncedSearch, currentPage, pageSize])
 
   useEffect(() => {
     isMountedRef.current = true
@@ -166,25 +196,10 @@ export default function FoodApproval() {
       window.removeEventListener("pageshow", onPageShow)
       document.removeEventListener("visibilitychange", onVisibility)
     }
-  }, [fetchFoodRequests])
+  }, [fetchFoodRequests, debouncedSearch, currentPage, pageSize])
 
-  // Filter requests based on search query
-  const filteredRequests = useMemo(() => {
-    if (!searchQuery.trim()) {
-      return foodRequests
-    }
-    const query = searchQuery.toLowerCase().trim()
-    return foodRequests.filter((request) =>
-      request.itemName?.toLowerCase().includes(query) ||
-      request.category?.toLowerCase().includes(query) ||
-      request.restaurantName?.toLowerCase().includes(query) ||
-      request.restaurantId?.toLowerCase().includes(query) ||
-      request.approvalStatus?.toLowerCase().includes(query) ||
-      request.entityType?.toLowerCase().includes(query)
-    )
-  }, [foodRequests, searchQuery])
-
-  const totalRequests = filteredRequests.length
+  const filteredRequests = foodRequests
+  const totalRequests = totalItems
 
   // Handle approve food item or addon
   const handleApprove = async (request) => {
@@ -443,6 +458,21 @@ export default function FoodApproval() {
                   </tbody>
                 </table>
               </div>
+
+              <AdminListPagination
+                currentPage={currentPage}
+                pageSize={pageSize}
+                totalItems={totalItems}
+                onPageChange={setCurrentPage}
+                onPageSizeChange={(size) => {
+                  setPageSize(size)
+                  try {
+                    localStorage.setItem("admin_food_approval_pageSize", String(size))
+                  } catch {}
+                  setCurrentPage(1)
+                }}
+                itemLabel="requests"
+              />
             </div>
           )}
         </div>

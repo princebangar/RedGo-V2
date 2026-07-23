@@ -903,7 +903,9 @@ function formatTimeAgo(date) {
 
 export async function getTransactionReport(query = {}) {
     const { fromDate, toDate, zone, restaurant, search, time } = query;
-    const limit = Math.min(Math.max(parseInt(query.limit, 10) || 1000, 1), 5000);
+    const limit = Math.min(Math.max(parseInt(query.limit, 10) || 20, 1), 5000);
+    const page = Math.max(parseInt(query.page, 10) || 1, 1);
+    const skip = (page - 1) * limit;
     const match = {};
 
     // Prefer explicit ISO range from client; else compute Asia/Kolkata ranges from `time`
@@ -926,8 +928,43 @@ export async function getTransactionReport(query = {}) {
         }
     }
 
-    if (search) {
-        match.orderId = { $regex: new RegExp(String(search).trim(), 'i') };
+    const searchRaw = String(search || '').trim().slice(0, 80);
+    if (searchRaw) {
+        const escaped = searchRaw.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+        const searchRegex = new RegExp(escaped, 'i');
+        const [matchedUsers, matchedRestaurants] = await Promise.all([
+            FoodUser.find({
+                $or: [{ name: searchRegex }, { phone: searchRegex }, { email: searchRegex }],
+            })
+                .select('_id')
+                .limit(100)
+                .lean(),
+            FoodRestaurant.find({
+                $or: [
+                    { restaurantName: searchRegex },
+                    { ownerPhone: searchRegex },
+                    { primaryContactNumber: searchRegex },
+                ],
+            })
+                .select('_id')
+                .limit(100)
+                .lean(),
+        ]);
+        const searchOr = [
+            { orderId: searchRegex },
+            { order_id: searchRegex },
+            { customerName: searchRegex },
+        ];
+        if (mongoose.Types.ObjectId.isValid(searchRaw)) {
+            searchOr.push({ _id: new mongoose.Types.ObjectId(searchRaw) });
+        }
+        if (matchedUsers.length) {
+            searchOr.push({ userId: { $in: matchedUsers.map((u) => u._id) } });
+        }
+        if (matchedRestaurants.length) {
+            searchOr.push({ restaurantId: { $in: matchedRestaurants.map((r) => r._id) } });
+        }
+        match.$or = searchOr;
     }
 
     if ((zone && zone !== 'All Zones') || (restaurant && restaurant !== 'All restaurants')) {
@@ -970,12 +1007,19 @@ export async function getTransactionReport(query = {}) {
     }
 
     // Source of truth = FoodOrder (same as dashboard GMV). Ledger alone undercounted / drifted.
-    const orders = await FoodOrder.find(match)
-        .populate('userId', 'name')
-        .populate('restaurantId', 'restaurantName')
-        .sort({ createdAt: -1 })
-        .limit(limit)
-        .lean();
+    const [orders, total, summaryOrders] = await Promise.all([
+        FoodOrder.find(match)
+            .populate('userId', 'name')
+            .populate('restaurantId', 'restaurantName')
+            .sort({ createdAt: -1 })
+            .skip(skip)
+            .limit(limit)
+            .lean(),
+        FoodOrder.countDocuments(match),
+        FoodOrder.find(match)
+            .select('pricing orderStatus payment riderEarning')
+            .lean(),
+    ]);
 
     const orderIds = orders.map((o) => o._id).filter(Boolean);
     const txRows = orderIds.length
@@ -1068,9 +1112,9 @@ export async function getTransactionReport(query = {}) {
     let restaurantEarning = 0;
     let deliverymanEarning = 0;
 
-    for (const order of orders) {
+    for (const order of summaryOrders) {
         const pricing = order.pricing || {};
-        const total = toNum(pricing.total);
+        const orderTotal = toNum(pricing.total);
         const commission = toNum(pricing.restaurantCommission);
         const platformFee = toNum(pricing.platformFee);
         const deliveryFee = toNum(pricing.deliveryFee);
@@ -1079,30 +1123,26 @@ export async function getTransactionReport(query = {}) {
         const subtotal = toNum(pricing.subtotal);
         const packaging = toNum(pricing.packagingFee);
         const os = String(order.orderStatus || '').toLowerCase();
-        const tx = txByOrderId.get(String(order._id));
-        const pay = String(order?.payment?.status || tx?.payment?.status || '').toLowerCase();
-        const txStatus = String(tx?.status || '').toLowerCase();
+        const pay = String(order?.payment?.status || '').toLowerCase();
         const deliveryNet = Math.max(0, deliveryFee - rider);
 
         if (os === 'delivered') {
-            completedTransaction += total;
+            completedTransaction += orderTotal;
             // Align with dashboard Platform Total components
             adminEarning += commission + platformFee + deliveryNet + tax;
             restaurantEarning += Math.max(0, subtotal + packaging - commission);
             deliverymanEarning += rider;
         }
 
-        const method = String(order?.payment?.method || tx?.paymentMethod || '').toLowerCase();
+        const method = String(order?.payment?.method || '').toLowerCase();
         const isCashCod =
             method === 'cash' ||
             method === 'cod' ||
             method === 'cash on delivery';
         // Real money refunds only (online/wallet). Never count COD cancels.
-        const isActuallyRefunded =
-            !isCashCod &&
-            (pay === 'refunded' || txStatus === 'refunded');
+        const isActuallyRefunded = !isCashCod && pay === 'refunded';
         if (isActuallyRefunded) {
-            refundedTransaction += total;
+            refundedTransaction += orderTotal;
         }
     }
 
@@ -1118,6 +1158,16 @@ export async function getTransactionReport(query = {}) {
         meta: {
             orderCount: orders.length,
             source: 'food_orders',
+            page,
+            limit,
+            total,
+            totalPages: Math.ceil(total / limit) || 1,
+        },
+        pagination: {
+            page,
+            limit,
+            total,
+            totalPages: Math.ceil(total / limit) || 1,
         },
     };
 }
@@ -1165,7 +1215,7 @@ export async function getRestaurantReport(query = {}) {
 
     const formatCurrency = (value) => `\u20B9${Number(value || 0).toFixed(2)}`;
 
-    const limit = Math.min(Math.max(parseInt(query.limit, 10) || 1000, 1), 5000);
+    const limit = Math.min(Math.max(parseInt(query.limit, 10) || 20, 1), 5000);
     const page = Math.max(parseInt(query.page, 10) || 1, 1);
     const skip = (page - 1) * limit;
 
@@ -1332,6 +1382,9 @@ export async function getRestaurantReport(query = {}) {
 
 export async function getTaxReport(query = {}) {
     const { fromDate, toDate, search } = query;
+    const limit = Math.min(Math.max(parseInt(query.limit, 10) || 20, 1), 5000);
+    const page = Math.max(parseInt(query.page, 10) || 1, 1);
+    const skip = (page - 1) * limit;
     const match = {
         orderStatus: 'delivered' // Typically tax is reported on delivered/completed orders
     };
@@ -1340,14 +1393,8 @@ export async function getTaxReport(query = {}) {
         match.createdAt = { $gte: new Date(fromDate), $lte: new Date(toDate) };
     }
 
-    if (search) {
-        // Search by order ID if provided
-        match.orderId = { $regex: search, $options: 'i' };
-    }
-
-    // Aggregate tax by income source (Restaurants, Delivery, Platform)
-    // For now, we'll group by Restaurant as the primary income source
-    const taxData = await FoodOrder.aggregate([
+    const searchRaw = String(search || '').trim().slice(0, 80);
+    const pipeline = [
         { $match: match },
         {
             $group: {
@@ -1374,33 +1421,61 @@ export async function getTaxReport(query = {}) {
                 orderCount: 1
             }
         },
-        { $sort: { totalTax: -1 } }
-    ]);
+    ];
 
-    const stats = {
-        totalIncome: 0,
-        totalTax: 0
-    };
+    if (searchRaw) {
+        const escaped = searchRaw.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+        pipeline.push({
+            $match: {
+                incomeSource: { $regex: escaped, $options: 'i' },
+            },
+        });
+    }
 
-    const reports = taxData.map((item, index) => {
-        stats.totalIncome += item.totalIncome;
-        stats.totalTax += item.totalTax;
-        return {
-            sl: index + 1,
-            id: item._id,
-            incomeSource: item.incomeSource,
-            totalIncome: `\u20B9${item.totalIncome.toFixed(2)}`,
-            totalTax: `\u20B9${item.totalTax.toFixed(2)}`,
-            orderCount: item.orderCount
-        };
-    });
+    pipeline.push(
+        { $sort: { totalTax: -1 } },
+        {
+            $facet: {
+                rows: [{ $skip: skip }, { $limit: limit }],
+                totals: [
+                    {
+                        $group: {
+                            _id: null,
+                            count: { $sum: 1 },
+                            totalIncome: { $sum: '$totalIncome' },
+                            totalTax: { $sum: '$totalTax' },
+                        },
+                    },
+                ],
+            },
+        }
+    );
+
+    const [facet] = await FoodOrder.aggregate(pipeline);
+    const taxData = facet?.rows || [];
+    const totals = facet?.totals?.[0] || { count: 0, totalIncome: 0, totalTax: 0 };
+
+    const reports = taxData.map((item, index) => ({
+        sl: skip + index + 1,
+        id: item._id,
+        incomeSource: item.incomeSource,
+        totalIncome: `\u20B9${Number(item.totalIncome || 0).toFixed(2)}`,
+        totalTax: `\u20B9${Number(item.totalTax || 0).toFixed(2)}`,
+        orderCount: item.orderCount
+    }));
 
     return {
         reports,
         stats: {
-            totalIncome: `\u20B9${stats.totalIncome.toFixed(2)}`,
-            totalTax: `\u20B9${stats.totalTax.toFixed(2)}`
-        }
+            totalIncome: `\u20B9${Number(totals.totalIncome || 0).toFixed(2)}`,
+            totalTax: `\u20B9${Number(totals.totalTax || 0).toFixed(2)}`
+        },
+        pagination: {
+            page,
+            limit,
+            total: Number(totals.count || 0),
+            totalPages: Math.ceil(Number(totals.count || 0) / limit) || 1,
+        },
     };
 }
 
@@ -2728,16 +2803,40 @@ export async function updateRestaurantMenuById(id, menu) {
     return doc.menu || { sections: [] };
 }
 
-export async function getPendingRestaurants() {
-    const restaurants = await FoodRestaurant.find({ status: { $in: ['pending', 'rejected'] } })
-        .populate('zoneId', 'name zoneName')
-        .sort({ createdAt: -1 })
-        .lean();
-    return restaurants.map((r, i) => ({
+export async function getPendingRestaurants(query = {}) {
+    const limit = Math.min(Math.max(parseInt(query.limit, 10) || 20, 1), 500);
+    const page = Math.max(parseInt(query.page, 10) || 1, 1);
+    const skip = (page - 1) * limit;
+
+    const filter = { status: { $in: ['pending', 'rejected'] } };
+    if (query.search && String(query.search).trim()) {
+        const term = String(query.search).trim().replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+        const searchRegex = new RegExp(term, 'i');
+        filter.$or = [
+            { restaurantName: searchRegex },
+            { ownerName: searchRegex },
+            { ownerPhone: searchRegex },
+            { ownerEmail: searchRegex },
+        ];
+    }
+
+    const [restaurants, total] = await Promise.all([
+        FoodRestaurant.find(filter)
+            .populate('zoneId', 'name zoneName')
+            .sort({ createdAt: -1 })
+            .skip(skip)
+            .limit(limit)
+            .lean(),
+        FoodRestaurant.countDocuments(filter),
+    ]);
+
+    const list = restaurants.map((r, i) => ({
         ...r,
-        sl: i + 1,
+        sl: skip + i + 1,
         zone: r.zoneId?.zoneName || r.zoneId?.name || null,
     }));
+
+    return { restaurants: list, total, page, limit };
 }
 
 export async function updateRestaurantById(id, body = {}) {
@@ -4079,11 +4178,31 @@ export async function deleteRestaurant(id) {
 }
 
 // ----- Offers & Coupons -----
-export async function getAllOffers(_query = {}) {
-    const list = await FoodOffer.find({})
-        .sort({ createdAt: -1 })
-        .populate({ path: 'restaurantId', select: 'restaurantName' })
-        .lean();
+export async function getAllOffers(query = {}) {
+    const limit = Math.min(Math.max(parseInt(query.limit, 10) || 20, 1), 500);
+    const page = Math.max(parseInt(query.page, 10) || 1, 1);
+    const skip = (page - 1) * limit;
+
+    const filter = {};
+    if (query.search && String(query.search).trim()) {
+        const term = String(query.search).trim().replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+        const searchRegex = new RegExp(term, 'i');
+        const restaurants = await FoodRestaurant.find({ restaurantName: searchRegex }).select('_id').lean();
+        filter.$or = [{ couponCode: searchRegex }];
+        if (restaurants.length) {
+            filter.$or.push({ restaurantId: { $in: restaurants.map((r) => r._id) } });
+        }
+    }
+
+    const [list, total] = await Promise.all([
+        FoodOffer.find(filter)
+            .sort({ createdAt: -1 })
+            .skip(skip)
+            .limit(limit)
+            .populate({ path: 'restaurantId', select: 'restaurantName' })
+            .lean(),
+        FoodOffer.countDocuments(filter),
+    ]);
 
     const offers = list.map((o, index) => {
         const now = Date.now();
@@ -4100,7 +4219,7 @@ export async function getAllOffers(_query = {}) {
         const discountedPrice = 0;
 
         return {
-            sl: index + 1,
+            sl: skip + index + 1,
             offerId: String(o._id),
             dishId: 'all',
             restaurantName,
@@ -4129,7 +4248,7 @@ export async function getAllOffers(_query = {}) {
         };
     });
 
-    return { offers };
+    return { offers, total, page, limit };
 }
 
 export async function createAdminOffer(body) {
@@ -5450,6 +5569,19 @@ export async function getWithdrawals(query = {}) {
         filter.restaurantId = new mongoose.Types.ObjectId(query.restaurantId);
     }
 
+    if (query.search && String(query.search).trim()) {
+        const term = String(query.search).trim();
+        if (!Number.isNaN(Number(term))) {
+            filter.amount = Number(term);
+        } else {
+            const escaped = term.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+            const restaurants = await FoodRestaurant.find({
+                restaurantName: { $regex: escaped, $options: 'i' },
+            }).select('_id').lean();
+            filter.restaurantId = { $in: restaurants.map((r) => r._id) };
+        }
+    }
+
     const [withdrawals, total] = await Promise.all([
         FoodRestaurantWithdrawal.find(filter)
             .populate('restaurantId', 'restaurantName profileImage ownerName phone ownerPhone accountHolderName accountNumber ifscCode accountType upiId upiQrImage')
@@ -5511,10 +5643,20 @@ export async function getDeliveryWithdrawals(query = {}) {
         filter.status = query.status.toLowerCase();
     }
 
-    if (query.search) {
-        // Search by amount or placeholder for name (name requires join usually)
-        if (!isNaN(query.search)) {
-            filter.amount = Number(query.search);
+    if (query.search && String(query.search).trim()) {
+        const term = String(query.search).trim();
+        if (!Number.isNaN(Number(term))) {
+            filter.amount = Number(term);
+        } else {
+            const escaped = term.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+            const partners = await FoodDeliveryPartner.find({
+                $or: [
+                    { name: { $regex: escaped, $options: 'i' } },
+                    { phone: { $regex: escaped, $options: 'i' } },
+                    { profilePartnerId: { $regex: escaped, $options: 'i' } },
+                ],
+            }).select('_id').lean();
+            filter.deliveryPartnerId = { $in: partners.map((p) => p._id) };
         }
     }
 

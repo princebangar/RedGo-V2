@@ -8,6 +8,7 @@ import ViewOrderDetectDeliveryDialog from "@food/components/admin/orders/ViewOrd
 import SettingsDialog from "@food/components/admin/orders/SettingsDialog"
 import FilterPanel from "@food/components/admin/orders/FilterPanel"
 import { useGenericTableManagement } from "@food/components/admin/orders/useGenericTableManagement"
+import AdminListPagination from "@food/components/admin/AdminListPagination"
 const debugLog = (...args) => {}
 const debugWarn = (...args) => {}
 const debugError = (...args) => {}
@@ -276,43 +277,66 @@ export default function OrderDetectDelivery() {
   const [orders, setOrders] = useState([])
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState(null)
-
-  // Fetch orders from backend
-  useEffect(() => {
-    const fetchOrders = async () => {
-      try {
-        setIsLoading(true)
-        setError(null)
-        const params = {
-          page: 1,
-          limit: 1000, // Fetch all orders for now
-        }
-        
-        const response = await adminAPI.getOrders(params)
-        
-        if (response.data?.success && response.data?.data?.orders) {
-          const transformedOrders = response.data.data.orders.map((order, index) => 
-            transformOrder(order, index)
-          )
-          setOrders(transformedOrders)
-        } else {
-          debugError("Failed to fetch orders:", response.data)
-          setError(response.data?.message || "Failed to fetch orders")
-          toast.error("Failed to fetch orders")
-          setOrders([])
-        }
-      } catch (error) {
-        debugError("Error fetching orders:", error)
-        setError(error.response?.data?.message || "Failed to fetch orders")
-        toast.error(error.response?.data?.message || "Failed to fetch orders")
-        setOrders([])
-      } finally {
-        setIsLoading(false)
-      }
+  const [currentPage, setCurrentPage] = useState(1)
+  const [pageSize, setPageSize] = useState(() => {
+    try {
+      return Number(localStorage.getItem("admin_order_detect_pageSize")) || 20
+    } catch {
+      return 20
     }
+  })
+  const [totalOrders, setTotalOrders] = useState(0)
+  const [debouncedSearch, setDebouncedSearch] = useState("")
 
+  const fetchOrders = async () => {
+    try {
+      setIsLoading(true)
+      setError(null)
+      const params = {
+        page: currentPage,
+        limit: pageSize,
+        search: debouncedSearch || undefined,
+      }
+
+      const response = await adminAPI.getOrders(params)
+
+      const payload = response?.data?.data || response?.data || {}
+      const rawOrders =
+        payload?.orders ??
+        payload?.docs ??
+        payload?.data ??
+        (Array.isArray(payload) ? payload : [])
+      const nextOrders = Array.isArray(rawOrders) ? rawOrders : []
+      const meta = payload?.meta || payload?.pagination || {}
+      const nextTotal = Number(meta.total ?? payload?.total ?? nextOrders.length) || 0
+
+      if (response.data?.success && nextOrders.length >= 0) {
+        const transformedOrders = nextOrders.map((order, index) =>
+          transformOrder(order, (currentPage - 1) * pageSize + index),
+        )
+        setOrders(transformedOrders)
+        setTotalOrders(nextTotal)
+      } else {
+        debugError("Failed to fetch orders:", response.data)
+        setError(response.data?.message || "Failed to fetch orders")
+        toast.error("Failed to fetch orders")
+        setOrders([])
+        setTotalOrders(0)
+      }
+    } catch (error) {
+      debugError("Error fetching orders:", error)
+      setError(error.response?.data?.message || "Failed to fetch orders")
+      toast.error(error.response?.data?.message || "Failed to fetch orders")
+      setOrders([])
+      setTotalOrders(0)
+    } finally {
+      setIsLoading(false)
+    }
+  }
+
+  useEffect(() => {
     fetchOrders()
-  }, [])
+  }, [currentPage, pageSize, debouncedSearch])
 
   const {
     searchQuery,
@@ -337,12 +361,21 @@ export default function OrderDetectDelivery() {
   } = useGenericTableManagement(
     orders,
     "Order Detect Delivery",
-    ["orderId", "userName", "userNumber", "restaurantName", "deliveryBoyName", "status"]
+    [],
   )
+
+  useEffect(() => {
+    const t = setTimeout(() => setDebouncedSearch(searchQuery.trim()), 300)
+    return () => clearTimeout(t)
+  }, [searchQuery])
+
+  useEffect(() => {
+    setCurrentPage(1)
+  }, [debouncedSearch])
 
   // Statistics
   const stats = useMemo(() => {
-    const total = orders.length
+    const total = totalOrders
     const ordered = filteredData.filter(o => o.status === "Ordered").length
     const restaurantAccepted = filteredData.filter(o => o.status === "Restaurant Accepted" || o.status === "Accepted").length
     const rejected = filteredData.filter(o => o.status === "Rejected").length
@@ -353,7 +386,7 @@ export default function OrderDetectDelivery() {
     const delivered = filteredData.filter(o => o.status === "Ordered Delivered").length
     
     return { total, ordered, restaurantAccepted, rejected, deliveryBoyAssigned, reachedPickup, orderIdAccepted, reachedDrop, delivered }
-  }, [filteredData, orders.length])
+  }, [filteredData, totalOrders])
 
   const resetColumns = () => {
     setVisibleColumns({
@@ -411,7 +444,7 @@ export default function OrderDetectDelivery() {
     <div className="p-4 lg:p-6 bg-slate-50 min-h-screen">
       <OrdersTopbar 
         title="Order Detect Delivery" 
-        count={count} 
+        count={totalOrders} 
         searchQuery={searchQuery}
         setSearchQuery={setSearchQuery}
         onFilterClick={() => setIsFilterOpen(true)}
@@ -549,6 +582,20 @@ export default function OrderDetectDelivery() {
         visibleColumns={visibleColumns}
         onViewOrder={handleViewOrder}
         onPrintOrder={handlePrintOrder}
+      />
+      <AdminListPagination
+        currentPage={currentPage}
+        pageSize={pageSize}
+        totalItems={totalOrders}
+        onPageChange={setCurrentPage}
+        onPageSizeChange={(size) => {
+          setPageSize(size)
+          try {
+            localStorage.setItem("admin_order_detect_pageSize", String(size))
+          } catch {}
+          setCurrentPage(1)
+        }}
+        itemLabel="orders"
       />
       <FilterPanel
         isOpen={isFilterOpen}
