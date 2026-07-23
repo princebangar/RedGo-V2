@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from "react"
+import { useSearchParams } from "react-router-dom"
 import { BarChart3, ChevronDown, Info, FileText, FileSpreadsheet, Code, Loader2, X, RefreshCw } from "lucide-react"
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from "@food/components/ui/dropdown-menu"
 import { exportTransactionReportToCSV, exportTransactionReportToExcel, exportTransactionReportToPDF, exportTransactionReportToJSON } from "@food/components/admin/reports/reportsExportUtils"
@@ -31,7 +32,7 @@ const METRIC_INFO = {
   refunded:
     "Total amount actually refunded to customers (online/wallet payments where payment status is refunded). COD cancels are excluded — no money was collected, so nothing is refunded.",
   admin:
-    "Platform earnings = restaurant commission + platform fee + delivery net (delivery fee − rider earning) + GST, for delivered orders only.",
+    "Platform Total (same as dashboard) = restaurant commission + platform fee + delivery net (delivery fee − rider earning) + GST, for delivered orders only.",
   restaurant:
     "Restaurant share = (item subtotal + packaging) − restaurant commission, for delivered orders only.",
   deliveryman:
@@ -92,6 +93,9 @@ function InfoTip({ tipKey, colorClass = "bg-green-500", align = "right" }) {
 
 
 export default function TransactionReport() {
+  const [searchParams] = useSearchParams()
+  const focusPlatformTotal = searchParams.get("focus") === "platform-total"
+  const platformTotalRef = useRef(null)
   const [searchQuery, setSearchQuery] = useState("")
   const [debouncedSearch, setDebouncedSearch] = useState("")
   const [currentPage, setCurrentPage] = useState(1)
@@ -111,6 +115,13 @@ export default function TransactionReport() {
     completedTransaction: 0,
     refundedTransaction: 0,
     adminEarning: 0,
+    platformTotal: 0,
+    platformTotalBreakdown: {
+      commission: 0,
+      platformFee: 0,
+      deliveryNet: 0,
+      gst: 0,
+    },
     restaurantEarning: 0,
     deliverymanEarning: 0
   })
@@ -198,12 +209,27 @@ export default function TransactionReport() {
             data.meta?.total ??
             0
           )
-          setSummary(data.summary || {
+          setSummary({
             completedTransaction: 0,
             refundedTransaction: 0,
             adminEarning: 0,
+            platformTotal: 0,
+            platformTotalBreakdown: {
+              commission: 0,
+              platformFee: 0,
+              deliveryNet: 0,
+              gst: 0,
+            },
             restaurantEarning: 0,
-            deliverymanEarning: 0
+            deliverymanEarning: 0,
+            ...(data.summary || {}),
+            platformTotalBreakdown: {
+              commission: 0,
+              platformFee: 0,
+              deliveryNet: 0,
+              gst: 0,
+              ...(data.summary?.platformTotalBreakdown || {}),
+            },
           })
         } else {
           setTransactions([])
@@ -225,6 +251,16 @@ export default function TransactionReport() {
 
     fetchTransactionReport()
   }, [debouncedSearch, filters, currentPage, pageSize, refreshKey])
+
+  const amountsLoading = loading || isRefreshing
+
+  useEffect(() => {
+    if (!focusPlatformTotal || amountsLoading) return
+    const t = setTimeout(() => {
+      platformTotalRef.current?.scrollIntoView({ behavior: "smooth", block: "center" })
+    }, 150)
+    return () => clearTimeout(t)
+  }, [focusPlatformTotal, amountsLoading, summary.platformTotal, summary.adminEarning])
 
   const handleExport = (format) => {
     if (transactions.length === 0) {
@@ -295,7 +331,21 @@ export default function TransactionReport() {
       .join(' ')
   }
 
-  const amountsLoading = loading || isRefreshing
+  const platformTotalValue = Number(
+    summary.platformTotal ?? summary.adminEarning ?? 0,
+  )
+  const platformBreakdown = summary.platformTotalBreakdown || {
+    commission: 0,
+    platformFee: 0,
+    deliveryNet: 0,
+    gst: 0,
+  }
+  const platformTotalHelper = [
+    `Comm: ${formatCurrency(platformBreakdown.commission)}`,
+    `Platform: ${formatCurrency(platformBreakdown.platformFee)}`,
+    `Delivery Net: ${formatCurrency(platformBreakdown.deliveryNet)}`,
+    `GST: ${formatCurrency(platformBreakdown.gst)}`,
+  ].join(" + ")
 
   return (
     <div className="p-2 lg:p-3 bg-slate-50 min-h-screen">
@@ -414,19 +464,33 @@ export default function TransactionReport() {
           </div>
 
           <div className="space-y-3">
-            <div className="rounded-lg shadow-sm border border-slate-200 p-3" style={{ backgroundColor: '#f1f5f9' }}>
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 rounded-lg bg-green-100 flex items-center justify-center">
-                    <img src={adminEarningIcon} alt="Admin Earning" className="w-6 h-6" />
+            <div
+              ref={platformTotalRef}
+              id="platform-total"
+              className={`rounded-lg shadow-sm border p-3 transition-shadow ${
+                focusPlatformTotal
+                  ? "border-green-400 bg-green-50 ring-2 ring-green-200"
+                  : "border-slate-200"
+              }`}
+              style={focusPlatformTotal ? undefined : { backgroundColor: "#f1f5f9" }}
+            >
+              <div className="flex items-center justify-between gap-3">
+                <div className="flex items-center gap-3 min-w-0">
+                  <div className="w-10 h-10 rounded-lg bg-green-100 flex items-center justify-center shrink-0">
+                    <img src={adminEarningIcon} alt="Platform Total" className="w-6 h-6" />
                   </div>
-                  <div className="flex items-center gap-2">
-                    <p className="text-sm font-semibold text-slate-900">Admin Earning</p>
-                    <InfoTip tipKey="admin" colorClass="bg-green-500" align="left" />
+                  <div className="min-w-0">
+                    <div className="flex items-center gap-2">
+                      <p className="text-sm font-semibold text-slate-900">Platform Total</p>
+                      <InfoTip tipKey="admin" colorClass="bg-green-500" align="left" />
+                    </div>
+                    <p className="text-[10px] text-slate-500 leading-snug mt-0.5 truncate" title={platformTotalHelper}>
+                      {amountsLoading ? "Calculating…" : platformTotalHelper}
+                    </p>
                   </div>
                 </div>
-                <div className="text-base font-bold text-slate-900 min-w-[4.5rem] flex justify-end">
-                  {amountsLoading ? <AmountSkeleton className="h-5 w-16" /> : formatCurrency(summary.adminEarning)}
+                <div className="text-base font-bold text-slate-900 min-w-[4.5rem] flex justify-end shrink-0">
+                  {amountsLoading ? <AmountSkeleton className="h-5 w-16" /> : formatCurrency(platformTotalValue)}
                 </div>
               </div>
             </div>
