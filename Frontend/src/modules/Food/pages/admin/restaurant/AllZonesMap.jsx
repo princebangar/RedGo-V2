@@ -71,7 +71,6 @@ export default function AllZonesMap() {
     try {
       setLoading(true)
       const response = await adminAPI.getZones({ limit: 1000 })
-      const response = await adminAPI.getZones({ limit: 1000 })
       const zoneData = response?.data?.data
       const list = Array.isArray(zoneData?.zones)
         ? zoneData.zones
@@ -91,7 +90,6 @@ export default function AllZonesMap() {
 
   const fetchRestaurants = async () => {
     try {
-      const response = await adminAPI.getRestaurants({ limit: 1000 })
       const response = await adminAPI.getRestaurants({ limit: 1000 })
       const restaurantData = response?.data?.data
       const list = Array.isArray(restaurantData?.restaurants)
