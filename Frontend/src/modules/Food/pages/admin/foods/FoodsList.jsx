@@ -173,12 +173,16 @@ export default function FoodsList() {
         adminAPI.getRestaurants({ limit: 1000, status: "inactive" }),
       ])
 
-      const activeRestaurants = activeRestaurantsResponse?.data?.data?.restaurants ||
-        activeRestaurantsResponse?.data?.restaurants ||
-        []
-      const inactiveRestaurants = inactiveRestaurantsResponse?.data?.data?.restaurants ||
-        inactiveRestaurantsResponse?.data?.restaurants ||
-        []
+      const extractRestaurants = (response) => {
+        const data = response?.data?.data ?? response?.data
+        return Array.isArray(data?.restaurants)
+          ? data.restaurants
+          : Array.isArray(data)
+            ? data
+            : []
+      }
+      const activeRestaurants = extractRestaurants(activeRestaurantsResponse)
+      const inactiveRestaurants = extractRestaurants(inactiveRestaurantsResponse)
 
       const restaurantsMap = new Map()
       ;[...activeRestaurants, ...inactiveRestaurants].forEach((restaurant) => {
@@ -232,9 +236,13 @@ export default function FoodsList() {
       }
 
       const foodsRes = await adminAPI.getFoods(params)
-      const data = foodsRes?.data?.data || foodsRes?.data || {}
-      const list = data.foods || []
-      const total = data.total || list.length
+      const data = foodsRes?.data?.data ?? foodsRes?.data
+      const list = Array.isArray(data?.foods)
+        ? data.foods
+        : Array.isArray(data)
+          ? data
+          : []
+      const total = data?.total ?? list.length
 
       const approvedOnly = Array.isArray(list)
         ? list.filter((f) => String(f?.approvalStatus || "").toLowerCase() === "approved")
@@ -443,7 +451,12 @@ export default function FoodsList() {
     const loadCategoryOptions = async () => {
       try {
         const res = await adminAPI.getCategories({ limit: 1000 })
-        const list = res?.data?.data?.categories || []
+        const categoryData = res?.data?.data ?? res?.data
+        const list = Array.isArray(categoryData?.categories)
+          ? categoryData.categories
+          : Array.isArray(categoryData)
+            ? categoryData
+            : []
         let options = Array.isArray(list)
           ? list
               .map((c) => ({

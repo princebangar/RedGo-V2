@@ -207,7 +207,12 @@ export default function PointOfSale() {
       setListLoading(true)
       const response = await adminAPI.getRestaurants({ limit: 1000, isActive: true })
       if (response?.data?.success) {
-        const rawRestaurants = response.data.data?.restaurants || response.data.data || []
+        const data = response.data.data
+        const rawRestaurants = Array.isArray(data?.restaurants)
+          ? data.restaurants
+          : Array.isArray(data)
+            ? data
+            : []
         setRestaurants(normalizeRestaurants(rawRestaurants))
       }
     } catch (error) {

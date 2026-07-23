@@ -50,8 +50,13 @@ export default function AdminHome() {
     const fetchZones = async () => {
       try {
         const response = await adminAPI.getZones({ page: 1, limit: 1000 })
-        const list = response?.data?.data?.zones || []
-        setZones(Array.isArray(list) ? list : [])
+        const zoneData = response?.data?.data
+        const list = Array.isArray(zoneData?.zones)
+          ? zoneData.zones
+          : Array.isArray(zoneData)
+            ? zoneData
+            : []
+        setZones(list)
       } catch (error) {
         debugError("Error fetching zones:", error)
         setZones([])
@@ -101,6 +106,8 @@ export default function AdminHome() {
         { label: "Cancelled", value: 0, color: "#ef4444" },
         { label: "Refunded", value: 0, color: "#f59e0b" },
         { label: "Pending", value: 0, color: "#10b981" },
+        { label: "Processing", value: 0, color: "#f97316" },
+        { label: "In Transit", value: 0, color: "#8b5cf6" },
       ]
     }
 
@@ -108,8 +115,10 @@ export default function AdminHome() {
     return [
       { label: "Delivered", value: byStatus.delivered || 0, color: "#0ea5e9" },
       { label: "Cancelled", value: byStatus.cancelled || 0, color: "#ef4444" },
-      { label: "Refunded", value: 0, color: "#f59e0b" }, // Refunded not tracked separately
+      { label: "Refunded", value: byStatus.refunded || 0, color: "#f59e0b" },
       { label: "Pending", value: byStatus.pending || 0, color: "#10b981" },
+      { label: "Processing", value: byStatus.processing || 0, color: "#f97316" },
+      { label: "In Transit", value: byStatus.inTransit || 0, color: "#8b5cf6" },
     ]
   }
 
@@ -184,14 +193,6 @@ export default function AdminHome() {
   return (
     <div className="px-4 pb-10 lg:px-6 pt-4">
       <div className="relative overflow-hidden rounded-3xl border border-neutral-200 bg-white shadow-[0_30px_120px_-60px_rgba(0,0,0,0.28)]">
-        {isLoading && dashboardData && (
-          <div className="absolute inset-0 z-20 flex items-center justify-center bg-white/70 backdrop-blur-sm">
-            <div className="flex items-center gap-3 rounded-full bg-white px-4 py-2 text-sm text-neutral-700 ring-1 ring-neutral-200">
-              <span className="h-3 w-3 animate-ping rounded-full bg-neutral-800/70" />
-              Updating metrics...
-            </div>
-          </div>
-        )}
 
         <div className="flex flex-col gap-4 border-b border-neutral-200 bg-linear-to-br from-white via-neutral-50 to-neutral-100 px-6 py-5 lg:flex-row lg:items-center lg:justify-between">
           <div className="flex items-center gap-4">
@@ -495,7 +496,9 @@ export default function AdminHome() {
                           'Delivered': '/admin/food/orders/delivered',
                           'Cancelled': '/admin/food/orders/canceled',
                           'Refunded': '/admin/food/orders/refunded',
-                          'Pending': '/admin/food/orders/pending'
+                          'Pending': '/admin/food/orders/pending',
+                          'Processing': '/admin/food/orders/processing',
+                          'In Transit': '/admin/food/orders/food-on-the-way',
                         }
                         navigate(routes[item.label] || '/admin/food/orders/all')
                       }}
@@ -625,7 +628,9 @@ export default function AdminHome() {
                         'Delivered': '/admin/food/orders/delivered',
                         'Cancelled': '/admin/food/orders/canceled',
                         'Refunded': '/admin/food/orders/refunded',
-                        'Pending': '/admin/food/orders/pending'
+                        'Pending': '/admin/food/orders/pending',
+                        'Processing': '/admin/food/orders/processing',
+                        'In Transit': '/admin/food/orders/food-on-the-way',
                       }
                       navigate(routes[item.label] || '/admin/food/orders/all')
                     }}

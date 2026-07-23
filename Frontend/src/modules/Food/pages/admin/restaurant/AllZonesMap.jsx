@@ -71,8 +71,15 @@ export default function AllZonesMap() {
     try {
       setLoading(true)
       const response = await adminAPI.getZones({ limit: 1000 })
-      if (response.data?.success && response.data.data?.zones) {
-        setZones(response.data.data.zones)
+      const response = await adminAPI.getZones({ limit: 1000 })
+      const zoneData = response?.data?.data
+      const list = Array.isArray(zoneData?.zones)
+        ? zoneData.zones
+        : Array.isArray(zoneData)
+          ? zoneData
+          : []
+      if (response.data?.success) {
+        setZones(list)
       }
     } catch (error) {
       debugError("Error fetching zones:", error)
@@ -85,8 +92,15 @@ export default function AllZonesMap() {
   const fetchRestaurants = async () => {
     try {
       const response = await adminAPI.getRestaurants({ limit: 1000 })
-      if (response.data?.success && response.data.data?.restaurants) {
-        setRestaurants(response.data.data.restaurants)
+      const response = await adminAPI.getRestaurants({ limit: 1000 })
+      const restaurantData = response?.data?.data
+      const list = Array.isArray(restaurantData?.restaurants)
+        ? restaurantData.restaurants
+        : Array.isArray(restaurantData)
+          ? restaurantData
+          : []
+      if (response.data?.success) {
+        setRestaurants(list)
       }
     } catch (error) {
       debugError("Error fetching restaurants:", error)

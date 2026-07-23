@@ -120,7 +120,13 @@ export default function Customers() {
         const response = await adminAPI.getCustomers(params)
         const data = response?.data?.data || response?.data?.data || response?.data
 
-        const list = data?.customers || data?.users || []
+        const list = Array.isArray(data?.customers)
+          ? data.customers
+          : Array.isArray(data?.users)
+            ? data.users
+            : Array.isArray(data)
+              ? data
+              : []
         if (!cancelled && Array.isArray(list)) {
           setCustomers(list)
           setTotalCustomers(data?.total || list.length)

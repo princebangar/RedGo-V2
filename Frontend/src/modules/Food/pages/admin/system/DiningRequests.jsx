@@ -22,7 +22,13 @@ export default function DiningRequests() {
             setLoading(true)
             const response = await adminAPI.getDiningRequests()
             if (response.data.success) {
-                setRequests(response.data.data || [])
+                const data = response.data.data
+                const list = Array.isArray(data?.requests)
+                  ? data.requests
+                  : Array.isArray(data)
+                    ? data
+                    : []
+                setRequests(list)
             }
         } catch (err) {
             debugError("Error fetching dining requests:", err)

@@ -75,10 +75,13 @@ export default function AddonsList() {
           page: currentPage,
           limit: pageSize,
         })
-        const data = response?.data?.data?.addons || response?.data?.addons || []
-        const approvedOnly = Array.isArray(data)
-          ? data.filter((addon) => String(addon.approvalStatus || "").toLowerCase() === "approved")
-          : []
+        const data = response?.data?.data ?? response?.data
+        const list = Array.isArray(data?.addons)
+          ? data.addons
+          : Array.isArray(data)
+            ? data
+            : []
+        const approvedOnly = list.filter((addon) => String(addon.approvalStatus || "").toLowerCase() === "approved")
         setAddons(approvedOnly)
         setTotalItems(
           response?.data?.data?.total ??
