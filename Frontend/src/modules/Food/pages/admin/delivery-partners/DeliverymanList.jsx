@@ -5,6 +5,7 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel,
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@food/components/ui/dialog"
 import { exportDeliverymenToExcel, exportDeliverymenToPDF } from "@food/components/admin/deliveryman/deliverymanExportUtils"
 import { toast } from "sonner"
+import AdminListPagination from "@food/components/admin/AdminListPagination"
 const debugError = () => {}
 
 
@@ -16,11 +17,18 @@ const formatCurrency = (amount) => {
 
 export default function DeliverymanList() {
   const [searchQuery, setSearchQuery] = useState("")
+  const [debouncedSearch, setDebouncedSearch] = useState("")
   const [deliverymen, setDeliverymen] = useState([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
   const [currentPage, setCurrentPage] = useState(1)
-  const [pageSize, setPageSize] = useState(() => Number(localStorage.getItem('admin_deliverymen_pageSize')) || 20)
+  const [pageSize, setPageSize] = useState(() => {
+    try {
+      return Number(localStorage.getItem("admin_deliverymen_pageSize")) || 20
+    } catch {
+      return 20
+    }
+  })
   const [totalDeliverymen, setTotalDeliverymen] = useState(0)
   const [isSettingsOpen, setIsSettingsOpen] = useState(false)
   const [isViewOpen, setIsViewOpen] = useState(false)
@@ -73,13 +81,13 @@ export default function DeliverymanList() {
       }
 
       // Add search to params if provided
-      if (searchQuery.trim()) {
-        params.search = searchQuery.trim()
+      if (debouncedSearch.trim()) {
+        params.search = debouncedSearch.trim()
       }
 
       const [partnersResponse, walletRowsResult] = await Promise.allSettled([
         adminAPI.getDeliveryPartners(params),
-        fetchAllWalletRows(searchQuery.trim(), currentPage, pageSize),
+        fetchAllWalletRows(debouncedSearch.trim(), currentPage, pageSize),
       ])
 
       if (partnersResponse.status === "fulfilled" && partnersResponse.value?.data?.success) {
@@ -141,13 +149,13 @@ export default function DeliverymanList() {
   const fetchDeliverymenQuietly = async () => {
     try {
       const params = { page: currentPage, limit: pageSize }
-      if (searchQuery.trim()) {
-        params.search = searchQuery.trim()
+      if (debouncedSearch.trim()) {
+        params.search = debouncedSearch.trim()
       }
 
       const [partnersResponse, walletRowsResult] = await Promise.allSettled([
         adminAPI.getDeliveryPartners(params),
-        fetchAllWalletRows(searchQuery.trim(), currentPage, pageSize),
+        fetchAllWalletRows(debouncedSearch.trim(), currentPage, pageSize),
       ])
 
       if (partnersResponse.status === "fulfilled" && partnersResponse.value?.data?.success) {
@@ -177,22 +185,27 @@ export default function DeliverymanList() {
     }
   }
 
+  useEffect(() => {
+    const t = setTimeout(() => setDebouncedSearch(searchQuery.trim()), 300)
+    return () => clearTimeout(t)
+  }, [searchQuery])
+
+  useEffect(() => {
+    setCurrentPage(1)
+  }, [debouncedSearch])
+
   // Fetch data on page or search change, and setup polling for updates
   useEffect(() => {
-    const delay = searchQuery ? 250 : 0
-    const t = setTimeout(() => {
-      fetchDeliverymen()
-    }, delay)
+    fetchDeliverymen()
 
     const interval = setInterval(() => {
       fetchDeliverymenQuietly()
     }, 8000)
 
     return () => {
-      clearTimeout(t)
       clearInterval(interval)
     }
-  }, [currentPage, pageSize, searchQuery])
+  }, [currentPage, pageSize, debouncedSearch])
 
   const filteredDeliverymen = useMemo(() => {
     // Backend already handles search; apply client-side sorting on top.
@@ -853,96 +866,22 @@ availableCashLimit: deliveryman.availableCashLimit || 0,
             )}
           </div>
 
-          {/* Pagination Controls */}
-          {totalDeliverymen > 0 && (
-            <div className="flex flex-col sm:flex-row items-center justify-between gap-4 border-t border-slate-100 bg-white px-4 py-4 sm:px-6 mt-4">
-              <div className="flex items-center gap-3">
-                <span className="text-sm text-slate-500 font-medium">Rows per page:</span>
-                <select
-                  value={pageSize}
-                  onChange={(e) => {
-                    const size = Number(e.target.value)
-                    setPageSize(size)
-                    localStorage.setItem('admin_deliverymen_pageSize', size)
-                    setCurrentPage(1)
-                  }}
-                  className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-sm font-semibold text-slate-700 focus:outline-none focus:ring-2 focus:ring-slate-400 focus:border-slate-400 cursor-pointer shadow-sm"
-                >
-                  <option value={10}>10</option>
-                  <option value={20}>20</option>
-                  <option value={50}>50</option>
-                  <option value={100}>100</option>
-                </select>
-              </div>
-
-              <div className="flex flex-1 justify-between sm:hidden w-full">
-                <button
-                  onClick={() => setCurrentPage((prev) => Math.max(prev - 1, 1))}
-                  disabled={currentPage === 1}
-                  className="relative inline-flex items-center rounded-md border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-50 transition-colors"
-                >
-                  Previous
-                </button>
-                <button
-                  onClick={() => setCurrentPage((prev) => Math.min(prev + 1, Math.ceil(totalDeliverymen / pageSize)))}
-                  disabled={currentPage >= Math.ceil(totalDeliverymen / pageSize)}
-                  className="relative ml-3 inline-flex items-center rounded-md border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-50 transition-colors"
-                >
-                  Next
-                </button>
-              </div>
-
-              <div className="hidden sm:flex sm:flex-1 sm:items-center sm:justify-between w-full">
-                <div className="pl-4">
-                  <p className="text-sm text-slate-600">
-                    Showing <span className="font-semibold text-slate-900">{Math.min(totalDeliverymen, (currentPage - 1) * pageSize + 1)}</span> to{" "}
-                    <span className="font-semibold text-slate-900">{Math.min(totalDeliverymen, currentPage * pageSize)}</span> of{" "}
-                    <span className="font-semibold text-slate-900">{totalDeliverymen}</span> delivery partners
-                  </p>
-                </div>
-                <div>
-                  <nav className="isolate inline-flex -space-x-px rounded-md shadow-sm gap-1" aria-label="Pagination">
-                    <button
-                      onClick={() => setCurrentPage((prev) => Math.max(prev - 1, 1))}
-                      disabled={currentPage === 1}
-                      className="relative inline-flex items-center rounded-md px-2.5 py-1.5 text-slate-500 border border-slate-200 hover:bg-slate-50 disabled:opacity-50 transition-colors"
-                    >
-                      &lt;
-                    </button>
-                    {Array.from({ length: Math.ceil(totalDeliverymen / pageSize) }, (_, i) => i + 1)
-                      .filter(page => page === 1 || page === Math.ceil(totalDeliverymen / pageSize) || (page >= currentPage - 2 && page <= currentPage + 2))
-                      .map((page, index, arr) => {
-                        const showEllipsisBefore = index > 0 && page - arr[index - 1] > 1;
-                        return (
-                          <React.Fragment key={page}>
-                            {showEllipsisBefore && (
-                              <span className="px-3 py-1.5 text-slate-400 text-sm">...</span>
-                            )}
-                            <button
-                              onClick={() => setCurrentPage(page)}
-                              className={`relative inline-flex items-center px-3.5 py-1.5 text-sm font-semibold rounded-md transition-colors ${
-                                currentPage === page
-                                  ? "bg-slate-900 text-white"
-                                  : "text-slate-700 border border-slate-200 hover:bg-slate-50"
-                              }`}
-                            >
-                              {page}
-                            </button>
-                          </React.Fragment>
-                        );
-                      })}
-                    <button
-                      onClick={() => setCurrentPage((prev) => Math.min(prev + 1, Math.ceil(totalDeliverymen / pageSize)))}
-                      disabled={currentPage >= Math.ceil(totalDeliverymen / pageSize)}
-                      className="relative inline-flex items-center rounded-md px-2.5 py-1.5 text-slate-500 border border-slate-200 hover:bg-slate-50 disabled:opacity-50 transition-colors"
-                    >
-                      &gt;
-                    </button>
-                  </nav>
-                </div>
-              </div>
-            </div>
-          )}
+          <AdminListPagination
+            currentPage={currentPage}
+            pageSize={pageSize}
+            totalItems={totalDeliverymen}
+            onPageChange={setCurrentPage}
+            onPageSizeChange={(size) => {
+              setPageSize(size)
+              try {
+                localStorage.setItem("admin_deliverymen_pageSize", String(size))
+              } catch {
+                /* ignore */
+              }
+            }}
+            itemLabel="delivery partners"
+            className="mt-4"
+          />
         </div>
       </div>
 

@@ -1,8 +1,9 @@
-import { useState, useMemo, useEffect, useCallback } from "react"
+import { useState, useEffect, useCallback } from "react"
 import { Search, Download, ChevronDown, DollarSign, Calendar, Filter, Loader2, FileText, FileSpreadsheet, Code } from "lucide-react"
 import { adminAPI } from "@food/api"
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from "@food/components/ui/dropdown-menu"
 import { toast } from "sonner"
+import AdminListPagination from "@food/components/admin/AdminListPagination"
 const debugLog = (...args) => {}
 const debugWarn = (...args) => {}
 const debugError = (...args) => {}
@@ -26,10 +27,19 @@ const formatDate = (dateString) => {
 
 export default function DeliveryEarnings() {
   const [searchQuery, setSearchQuery] = useState("")
+  const [debouncedSearch, setDebouncedSearch] = useState("")
   const [earnings, setEarnings] = useState([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
-  const [pagination, setPagination] = useState({ page: 1, limit: 50, total: 0, pages: 1 })
+  const [currentPage, setCurrentPage] = useState(1)
+  const [pageSize, setPageSize] = useState(() => {
+    try {
+      return Number(localStorage.getItem("admin_delivery_earnings_pageSize")) || 20
+    } catch {
+      return 20
+    }
+  })
+  const [totalItems, setTotalItems] = useState(0)
   const [summary, setSummary] = useState({
     totalDeliveryPartners: 0,
     totalEarnings: 0,
@@ -55,31 +65,41 @@ export default function DeliveryEarnings() {
     }
   }, [])
 
+  useEffect(() => {
+    const t = setTimeout(() => setDebouncedSearch(searchQuery.trim()), 300)
+    return () => clearTimeout(t)
+  }, [searchQuery])
+
+  useEffect(() => {
+    setCurrentPage(1)
+  }, [debouncedSearch, filters])
+
   // Fetch earnings from API
   const fetchEarnings = useCallback(async () => {
     try {
       setLoading(true)
       setError(null)
-      
+
       const params = {
-        page: pagination.page,
-        limit: pagination.limit,
+        page: currentPage,
+        limit: pageSize,
         period: filters.period,
         ...(filters.deliveryPartnerId && { deliveryPartnerId: filters.deliveryPartnerId }),
         ...(filters.fromDate && { fromDate: filters.fromDate }),
         ...(filters.toDate && { toDate: filters.toDate }),
-        ...(searchQuery.trim() && { search: searchQuery.trim() })
+        ...(debouncedSearch && { search: debouncedSearch })
       }
 
       const response = await adminAPI.getDeliveryEarnings(params)
-      
+
       if (response.data?.success) {
         setEarnings(response.data.data.earnings || [])
         setSummary(response.data.data.summary || {})
-        setPagination(response.data.data.pagination || pagination)
+        setTotalItems(response.data.data.pagination?.total ?? (response.data.data.earnings || []).length)
       } else {
         setError(response.data?.message || "Failed to fetch earnings")
         setEarnings([])
+        setTotalItems(0)
       }
     } catch (err) {
       debugError("Error fetching earnings:", err)
@@ -87,10 +107,11 @@ export default function DeliveryEarnings() {
       setError(errorMessage)
       toast.error(errorMessage)
       setEarnings([])
+      setTotalItems(0)
     } finally {
       setLoading(false)
     }
-  }, [pagination.page, pagination.limit, filters, searchQuery])
+  }, [currentPage, pageSize, filters, debouncedSearch])
 
   useEffect(() => {
     fetchDeliveryPartners()
@@ -102,11 +123,7 @@ export default function DeliveryEarnings() {
 
   const handleFilterChange = (key, value) => {
     setFilters(prev => ({ ...prev, [key]: value }))
-    setPagination(prev => ({ ...prev, page: 1 }))
-  }
-
-  const handlePageChange = (newPage) => {
-    setPagination(prev => ({ ...prev, page: newPage }))
+    setCurrentPage(1)
   }
 
   const handleExport = (format) => {
@@ -129,7 +146,7 @@ export default function DeliveryEarnings() {
     ]
 
     const data = earnings.map((earning, index) => ({
-      sl: (pagination.page - 1) * pagination.limit + index + 1,
+      sl: (currentPage - 1) * pageSize + index + 1,
       deliveryPartnerName: earning.deliveryPartnerName || 'N/A',
       deliveryPartnerPhone: earning.deliveryPartnerPhone || 'N/A',
       orderId: earning.orderId || 'N/A',
@@ -300,10 +317,7 @@ export default function DeliveryEarnings() {
                 type="text"
                 placeholder="Search by name, phone, order ID..."
                 value={searchQuery}
-                onChange={(e) => {
-                  setSearchQuery(e.target.value)
-                  setPagination(prev => ({ ...prev, page: 1 }))
-                }}
+                onChange={(e) => setSearchQuery(e.target.value)}
                 className="w-full pl-10 pr-4 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
               />
             </div>
@@ -372,7 +386,7 @@ export default function DeliveryEarnings() {
                   earnings.map((earning, index) => (
                     <tr key={earning.transactionId || index} className="hover:bg-slate-50">
                       <td className="px-4 py-3 text-sm text-slate-700">
-                        {(pagination.page - 1) * pagination.limit + index + 1}
+                        {(currentPage - 1) * pageSize + index + 1}
                       </td>
                       <td className="px-4 py-3 text-sm font-medium text-slate-900">
                         {earning.deliveryPartnerName || 'N/A'}
@@ -411,51 +425,21 @@ export default function DeliveryEarnings() {
             </table>
           </div>
 
-          {/* Pagination */}
-          {pagination.pages > 1 && (
-            <div className="flex items-center justify-between mt-4 pt-4 border-t border-slate-200">
-              <p className="text-sm text-slate-600">
-                Showing {(pagination.page - 1) * pagination.limit + 1} to {Math.min(pagination.page * pagination.limit, pagination.total)} of {pagination.total} earnings
-              </p>
-              <div className="flex items-center gap-2">
-                <button
-                  onClick={() => handlePageChange(pagination.page - 1)}
-                  disabled={pagination.page === 1}
-                  className="px-3 py-1 text-sm rounded border border-slate-300 text-slate-600 disabled:opacity-50 disabled:cursor-not-allowed hover:bg-slate-50"
-                >
-                  Previous
-                </button>
-                {Array.from({ length: Math.min(5, pagination.pages) }).map((_, idx) => {
-                  const pageNum = pagination.page <= 3 
-                    ? idx + 1 
-                    : pagination.page >= pagination.pages - 2 
-                      ? pagination.pages - 4 + idx 
-                      : pagination.page - 2 + idx
-                  if (pageNum < 1 || pageNum > pagination.pages) return null
-                  return (
-                    <button
-                      key={idx}
-                      onClick={() => handlePageChange(pageNum)}
-                      className={`px-3 py-1 text-sm rounded border ${
-                        pagination.page === pageNum
-                          ? "bg-blue-600 border-blue-600 text-white"
-                          : "border-slate-300 text-slate-700 hover:bg-slate-50"
-                      }`}
-                    >
-                      {pageNum}
-                    </button>
-                  )
-                })}
-                <button
-                  onClick={() => handlePageChange(pagination.page + 1)}
-                  disabled={pagination.page === pagination.pages}
-                  className="px-3 py-1 text-sm rounded border border-slate-300 text-slate-600 disabled:opacity-50 disabled:cursor-not-allowed hover:bg-slate-50"
-                >
-                  Next
-                </button>
-              </div>
-            </div>
-          )}
+          <AdminListPagination
+            currentPage={currentPage}
+            pageSize={pageSize}
+            totalItems={totalItems}
+            onPageChange={setCurrentPage}
+            onPageSizeChange={(size) => {
+              setPageSize(size)
+              try {
+                localStorage.setItem("admin_delivery_earnings_pageSize", String(size))
+              } catch {
+                /* ignore */
+              }
+            }}
+            itemLabel="earnings"
+          />
         </div>
       </div>
     </div>

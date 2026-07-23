@@ -687,7 +687,7 @@ export async function getDeliveryEarnings(req, res, next) {
 // ----- Earning Addon (admin) -----
 export async function getEarningAddons(req, res, next) {
     try {
-        const data = await adminService.getEarningAddons();
+        const data = await adminService.getEarningAddons(req.query || {});
         res.status(200).json({ success: true, message: 'Earning addons fetched successfully', data });
     } catch (error) {
         next(error);

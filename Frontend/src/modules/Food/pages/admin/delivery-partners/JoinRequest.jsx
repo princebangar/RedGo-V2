@@ -6,6 +6,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "
 import { exportJoinRequestsToExcel, exportJoinRequestsToPDF } from "@food/components/admin/deliveryman/joinRequestExportUtils"
 import { refreshSidebarBadges } from "@food/components/admin/AdminSidebar"
 import { useAdminBadgeListRefresh } from "@food/hooks/useAdminBadgeListRefresh"
+import AdminListPagination from "@food/components/admin/AdminListPagination"
 const debugLog = (...args) => {}
 const debugWarn = (...args) => {}
 const debugError = (...args) => {}
@@ -32,12 +33,25 @@ export default function JoinRequest() {
   })
   const [isFilterOpen, setIsFilterOpen] = useState(false)
   const [debouncedSearch, setDebouncedSearch] = useState("")
+  const [currentPage, setCurrentPage] = useState(1)
+  const [pageSize, setPageSize] = useState(() => {
+    try {
+      return Number(localStorage.getItem("admin_delivery_join_requests_pageSize")) || 20
+    } catch {
+      return 20
+    }
+  })
+  const [totalItems, setTotalItems] = useState(0)
 
   // Debounce search so we don't fetch on every keystroke
   useEffect(() => {
-    const timer = setTimeout(() => setDebouncedSearch(searchQuery), 500)
+    const timer = setTimeout(() => setDebouncedSearch(searchQuery.trim()), 300)
     return () => clearTimeout(timer)
   }, [searchQuery])
+
+  useEffect(() => {
+    setCurrentPage(1)
+  }, [debouncedSearch, activeTab, filters])
 
   // Fetch join requests from API (single source of truth for when to fetch)
   const fetchJoinRequests = async ({ silent = false } = {}) => {
@@ -47,8 +61,8 @@ export default function JoinRequest() {
 
       const params = {
         status: activeTab === "pending" ? "pending" : "denied",
-        page: 1,
-        limit: 1000,
+        page: currentPage,
+        limit: pageSize,
       }
 
       if (debouncedSearch.trim()) {
@@ -65,9 +79,11 @@ export default function JoinRequest() {
       
       if (response.data && response.data.success) {
         setRequests(response.data.data.requests || [])
+        setTotalItems(response.data.data.pagination?.total ?? (response.data.data.requests || []).length)
       } else {
         setError("Failed to fetch join requests")
         setRequests([])
+        setTotalItems(0)
       }
     } catch (err) {
       debugError("Error fetching join requests:", err)
@@ -90,6 +106,7 @@ export default function JoinRequest() {
       if (!silent) {
         setError(errorMessage)
         setRequests([])
+        setTotalItems(0)
       }
     } finally {
       if (!silent) setLoading(false)
@@ -102,13 +119,15 @@ export default function JoinRequest() {
       fetchJoinRequests()
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeTab, debouncedSearch, filters, isFilterOpen])
+  }, [activeTab, debouncedSearch, filters, isFilterOpen, currentPage, pageSize])
 
   useAdminBadgeListRefresh("deliveryPartners", fetchJoinRequests, [
     activeTab,
     debouncedSearch,
     filters,
     isFilterOpen,
+    currentPage,
+    pageSize,
   ])
 
   useEffect(() => {
@@ -124,7 +143,7 @@ export default function JoinRequest() {
       window.removeEventListener("focus", onFocus)
       document.removeEventListener("visibilitychange", onVisibility)
     }
-  }, [activeTab, debouncedSearch, filters, isFilterOpen])
+  }, [activeTab, debouncedSearch, filters, isFilterOpen, currentPage, pageSize])
 
   const filteredRequests = useMemo(() => {
     return [...requests]
@@ -242,8 +261,9 @@ export default function JoinRequest() {
 
   const handleTabChange = (tab) => {
     setActiveTab(tab)
-    setSearchQuery("") // Reset search when changing tabs
-    setFilters({ zone: "", vehicleType: "" }) // Reset filters
+    setSearchQuery("")
+    setFilters({ zone: "", vehicleType: "" })
+    setCurrentPage(1)
   }
 
   const activeFiltersCount = Object.values(filters).filter(v => v).length
@@ -407,12 +427,12 @@ export default function JoinRequest() {
                       </td>
                     </tr>
                   ) : (
-                    filteredRequests.map((request) => {
+                    filteredRequests.map((request, index) => {
                       const isRowProcessing = processingRequestId === request._id
                       return (
                       <tr key={request._id} className={`hover:bg-slate-50 transition-colors ${isRowProcessing ? "bg-blue-50/50" : ""}`}>
                         <td className="px-6 py-4 whitespace-nowrap">
-                          <span className="text-sm font-medium text-slate-700">{request.sl}</span>
+                          <span className="text-sm font-medium text-slate-700">{(currentPage - 1) * pageSize + index + 1}</span>
                         </td>
                         <td className="px-6 py-4">
                           <div className="flex items-center gap-3">
@@ -517,6 +537,22 @@ export default function JoinRequest() {
               </table>
             )}
           </div>
+
+          <AdminListPagination
+            currentPage={currentPage}
+            pageSize={pageSize}
+            totalItems={totalItems}
+            onPageChange={setCurrentPage}
+            onPageSizeChange={(size) => {
+              setPageSize(size)
+              try {
+                localStorage.setItem("admin_delivery_join_requests_pageSize", String(size))
+              } catch {
+                /* ignore */
+              }
+            }}
+            itemLabel="requests"
+          />
         </div>
       </div>
 
