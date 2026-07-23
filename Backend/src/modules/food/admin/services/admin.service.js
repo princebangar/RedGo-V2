@@ -2651,17 +2651,54 @@ export async function getRestaurantById(id) {
         .lean();
 }
 
+function posDeliveredOrderMoneyBreakdown(order) {
+    const pricing = order?.pricing || {};
+    const toNum = (v) => {
+        const n = Number(v);
+        return Number.isFinite(n) ? n : 0;
+    };
+
+    const subtotal = toNum(pricing.subtotal);
+    const packagingFee = toNum(pricing.packagingFee);
+    const deliveryFee = toNum(pricing.deliveryFee);
+    const tax = toNum(pricing.tax);
+    const discount = toNum(pricing.discount);
+    const total = toNum(pricing.total);
+    const commission = toNum(pricing.restaurantCommission);
+    const platformFeeStored = pricing.platformFee;
+    const platformFee =
+        platformFeeStored !== undefined && platformFeeStored !== null
+            ? toNum(platformFeeStored)
+            : Math.max(0, total - subtotal - packagingFee - deliveryFee - tax + discount);
+    const rider = toNum(order?.riderEarning);
+    const riderShare = order?.dispatch?.deliveryPartnerId ? rider : 0;
+    const restaurantShare = Math.max(0, subtotal + packagingFee - commission);
+    const platformNetProfit = Math.max(0, platformFee + deliveryFee + commission - riderShare);
+
+    return {
+        subtotal,
+        packagingFee,
+        deliveryFee,
+        tax,
+        discount,
+        total,
+        commission,
+        platformFee,
+        riderShare,
+        restaurantShare,
+        platformNetProfit,
+    };
+}
+
 export async function getRestaurantAnalytics(restaurantId) {
     if (!restaurantId || !mongoose.Types.ObjectId.isValid(restaurantId)) return null;
     const rId = new mongoose.Types.ObjectId(restaurantId);
 
-    const [restaurant, commissionDoc, orders, txRows] = await Promise.all([
+    const [restaurant, commissionDoc, orders] = await Promise.all([
         FoodRestaurant.findById(rId).lean(),
         FoodRestaurantCommission.findOne({ restaurantId: rId, status: { $ne: false } }).lean(),
-        FoodOrder.find({ restaurantId: rId }).lean(),
-        FoodTransaction.find({ restaurantId: rId })
-            .populate('orderId', 'orderStatus createdAt pricing')
-            .sort({ createdAt: -1 })
+        FoodOrder.find({ restaurantId: rId })
+            .select('orderStatus createdAt userId pricing riderEarning dispatch.deliveryPartnerId')
             .lean(),
     ]);
 
@@ -2670,75 +2707,76 @@ export async function getRestaurantAnalytics(restaurantId) {
     const now = new Date();
     const currentMonth = now.getMonth();
     const currentYear = now.getFullYear();
+    const roundMoney = (value) => Math.round((Number(value) || 0) * 100) / 100;
 
-    const completedOrders = orders.filter(o => o.orderStatus === 'delivered');
-    const cancelledOrders = orders.filter(o => ['cancelled_by_user', 'cancelled_by_restaurant', 'cancelled_by_admin'].includes(o.orderStatus));
+    const cancelledOrders = orders.filter((o) => CANCELLED_ORDER_STATUSES.includes(o.orderStatus));
+    const deliveredOrders = orders.filter((o) => o.orderStatus === 'delivered');
 
-    // Money metrics should come from the ledger (FoodTransaction), not FoodOrder.
-    const completedTx = (txRows || []).filter((tx) => {
-        const orderStatus = tx?.orderId?.orderStatus;
-        if (orderStatus) return orderStatus === 'delivered';
-        return tx?.status === 'captured' || tx?.status === 'authorized' || tx?.status === 'settled';
-    });
+    const sumBreakdown = (list, pick) =>
+        roundMoney(
+            (list || []).reduce((sum, order) => sum + (Number(pick(posDeliveredOrderMoneyBreakdown(order))) || 0), 0),
+        );
 
-    const sum = (arr, pick) => (arr || []).reduce((s, it) => s + (Number(pick(it)) || 0), 0);
-
-    // 1) Total order value (gross customer paid)
-    const totalRevenue = sum(completedTx, (tx) => tx?.amounts?.totalCustomerPaid ?? tx?.pricing?.total ?? tx?.orderId?.pricing?.total);
-
-    // 2) Restaurant share (payout to restaurant)
-    const restaurantEarning = sum(completedTx, (tx) => tx?.amounts?.restaurantShare);
-
-    // 3) Restaurant commission paid to admin
-    const totalCommission = sum(completedTx, (tx) => tx?.amounts?.restaurantCommission ?? tx?.pricing?.restaurantCommission);
-
-    // 4) Restaurant profit (in this system, equals restaurant share)
+    const totalRevenue = sumBreakdown(deliveredOrders, (b) => b.total);
+    const totalCommission = sumBreakdown(deliveredOrders, (b) => b.commission);
+    const restaurantEarning = sumBreakdown(deliveredOrders, (b) => b.restaurantShare);
     const restaurantProfit = restaurantEarning;
 
-    const monthlyOrdersList = orders.filter(o => {
+    const monthlyDelivered = deliveredOrders.filter((o) => {
         const d = new Date(o.createdAt);
         return d.getMonth() === currentMonth && d.getFullYear() === currentYear;
     });
-    const monthlyCompletedTx = completedTx.filter((tx) => {
-        const d = new Date(tx?.createdAt || tx?.orderId?.createdAt || 0);
-        return d.getMonth() === currentMonth && d.getFullYear() === currentYear;
+    const yearlyDelivered = deliveredOrders.filter((o) => {
+        const d = new Date(o.createdAt);
+        return d.getFullYear() === currentYear;
     });
-    const monthlyProfit = sum(monthlyCompletedTx, (tx) => tx?.amounts?.restaurantShare);
 
-    const yearlyOrdersList = orders.filter(o => {
-        const d = new Date(o.createdAt);
-        return d.getFullYear() === currentYear;
-    });
-    const yearlyCompletedTx = completedTx.filter((tx) => {
-        const d = new Date(tx?.createdAt || tx?.orderId?.createdAt || 0);
-        return d.getFullYear() === currentYear;
-    });
-    const yearlyProfit = sum(yearlyCompletedTx, (tx) => tx?.amounts?.restaurantShare);
+    const monthlyProfit = sumBreakdown(monthlyDelivered, (b) => b.restaurantShare);
+    const yearlyProfit = sumBreakdown(yearlyDelivered, (b) => b.restaurantShare);
+
+    const monthlyProfitByKey = {};
+    const yearlyProfitByKey = {};
+    for (const order of deliveredOrders) {
+        const d = new Date(order.createdAt);
+        const monthKey = `${d.getFullYear()}-${d.getMonth()}`;
+        const yearKey = String(d.getFullYear());
+        const share = posDeliveredOrderMoneyBreakdown(order).restaurantShare;
+        monthlyProfitByKey[monthKey] = (monthlyProfitByKey[monthKey] || 0) + share;
+        yearlyProfitByKey[yearKey] = (yearlyProfitByKey[yearKey] || 0) + share;
+    }
+    const activeMonthCount = Object.keys(monthlyProfitByKey).length;
+    const activeYearCount = Object.keys(yearlyProfitByKey).length;
+    const averageMonthlyProfit =
+        activeMonthCount > 0 ? roundMoney(restaurantEarning / activeMonthCount) : 0;
+    const averageYearlyProfit =
+        activeYearCount > 0 ? roundMoney(restaurantEarning / activeYearCount) : 0;
 
     const totalOrdersCount = orders.length;
-    const avgOrderValue = completedTx.length > 0 ? totalRevenue / completedTx.length : 0;
+    const avgOrderValue =
+        deliveredOrders.length > 0 ? roundMoney(totalRevenue / deliveredOrders.length) : 0;
 
-    const uniqueCustomers = new Set(orders.map(o => String(o.userId))).size;
+    const uniqueCustomers = new Set(orders.map((o) => String(o.userId))).size;
     const customerOrderCounts = orders.reduce((acc, o) => {
         const uid = String(o.userId);
         acc[uid] = (acc[uid] || 0) + 1;
         return acc;
     }, {});
-    const repeatCustomers = Object.values(customerOrderCounts).filter(count => count > 1).length;
+    const repeatCustomers = Object.values(customerOrderCounts).filter((count) => count > 1).length;
 
-    // 5) Restaurant commission percent
     const commissionType = commissionDoc?.defaultCommission?.type || 'percentage';
     const commissionValue = Number(commissionDoc?.defaultCommission?.value || 0) || 0;
-    const completedSubtotal = sum(completedTx, (tx) => tx?.pricing?.subtotal ?? tx?.orderId?.pricing?.subtotal);
+    const completedSubtotal = sumBreakdown(deliveredOrders, (b) => b.subtotal);
     const computedCommissionPercent =
         commissionType === 'percentage'
             ? commissionValue
-            : (completedSubtotal > 0 ? (totalCommission / completedSubtotal) * 100 : 0);
+            : completedSubtotal > 0
+              ? roundMoney((totalCommission / completedSubtotal) * 100)
+              : 0;
 
     const analytics = {
         totalOrders: totalOrdersCount,
         cancelledOrders: cancelledOrders.length,
-        completedOrders: completedOrders.length,
+        completedOrders: deliveredOrders.length,
         averageRating: Number(restaurant.rating || 0),
         totalRatings: Number(restaurant.totalRatings || 0),
         commissionPercentage: computedCommissionPercent,
@@ -2747,36 +2785,33 @@ export async function getRestaurantAnalytics(restaurantId) {
         averageOrderValue: avgOrderValue,
         totalRevenue,
         totalCommission,
-        restaurantEarning, // restaurant share
+        restaurantEarning,
         restaurantProfit,
-        monthlyOrders: monthlyOrdersList.length,
-        yearlyOrders: yearlyOrdersList.length,
-        averageMonthlyProfit: monthlyProfit, // Placeholder: can be improved if historical data exists
-        averageYearlyProfit: yearlyProfit,   // Placeholder: can be improved if historical data exists
+        monthlyOrders: monthlyDelivered.length,
+        yearlyOrders: yearlyDelivered.length,
+        averageMonthlyProfit,
+        averageYearlyProfit,
         status: restaurant.status === 'approved' ? 'active' : 'inactive',
         joinDate: restaurant.createdAt,
         totalCustomers: uniqueCustomers,
         repeatCustomers,
-        cancellationRate: totalOrdersCount > 0 ? (cancelledOrders.length / totalOrdersCount) * 100 : 0,
-        completionRate: totalOrdersCount > 0 ? (completedOrders.length / totalOrdersCount) * 100 : 0
+        cancellationRate: totalOrdersCount > 0 ? roundMoney((cancelledOrders.length / totalOrdersCount) * 100) : 0,
+        completionRate: totalOrdersCount > 0 ? roundMoney((deliveredOrders.length / totalOrdersCount) * 100) : 0,
     };
 
     const paymentSummary = {
-        // Pricing (what customer paid components)
-        subtotal: sum(completedTx, (tx) => tx?.pricing?.subtotal ?? tx?.orderId?.pricing?.subtotal),
-        tax: sum(completedTx, (tx) => tx?.pricing?.tax ?? tx?.amounts?.taxAmount ?? tx?.orderId?.pricing?.tax),
-        packagingFee: sum(completedTx, (tx) => tx?.pricing?.packagingFee ?? tx?.orderId?.pricing?.packagingFee),
-        deliveryFee: sum(completedTx, (tx) => tx?.pricing?.deliveryFee ?? tx?.orderId?.pricing?.deliveryFee),
-        platformFee: sum(completedTx, (tx) => tx?.pricing?.platformFee ?? tx?.orderId?.pricing?.platformFee),
-        discount: sum(completedTx, (tx) => tx?.pricing?.discount ?? tx?.orderId?.pricing?.discount),
+        subtotal: sumBreakdown(deliveredOrders, (b) => b.subtotal),
+        tax: sumBreakdown(deliveredOrders, (b) => b.tax),
+        packagingFee: sumBreakdown(deliveredOrders, (b) => b.packagingFee),
+        deliveryFee: sumBreakdown(deliveredOrders, (b) => b.deliveryFee),
+        platformFee: sumBreakdown(deliveredOrders, (b) => b.platformFee),
+        discount: sumBreakdown(deliveredOrders, (b) => b.discount),
         total: totalRevenue,
         currency: 'INR',
-
-        // Split (who got what)
         restaurantShare: restaurantEarning,
         restaurantCommission: totalCommission,
-        riderShare: sum(completedTx, (tx) => tx?.amounts?.riderShare),
-        platformNetProfit: sum(completedTx, (tx) => tx?.amounts?.platformNetProfit),
+        riderShare: sumBreakdown(deliveredOrders, (b) => b.riderShare),
+        platformNetProfit: sumBreakdown(deliveredOrders, (b) => b.platformNetProfit),
     };
 
     return {
