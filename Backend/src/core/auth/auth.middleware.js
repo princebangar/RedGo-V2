@@ -1,12 +1,16 @@
 import { verifyAccessToken } from './token.util.js';
 import { sendError } from '../../utils/response.js';
 import { FoodUser } from '../users/user.model.js';
+import { FoodAdmin } from '../admin/admin.model.js';
 import { FoodRefreshToken } from '../refreshTokens/refreshToken.model.js';
 import { FoodRestaurant } from '../../modules/food/restaurant/models/restaurant.model.js';
 import mongoose from 'mongoose';
 
+const ADMIN_ROLES = new Set(['ADMIN', 'SUB_ADMIN']);
+
 export const requireAdmin = (req, res, next) => {
-    if (req.user?.role !== 'ADMIN') {
+    const role = String(req.user?.role || '').toUpperCase();
+    if (!ADMIN_ROLES.has(role)) {
         return sendError(res, 403, 'Admin access required');
     }
     next();
@@ -68,6 +72,21 @@ export const authMiddleware = (req, res, next) => {
                             return sendError(res, 403, 'Restaurant is not approved yet');
                         }
                     }
+                    next();
+                }).catch(() => sendError(res, 401, 'Authentication failed'));
+                return;
+            }
+
+            if (decoded.role === 'ADMIN' || decoded.role === 'SUB_ADMIN') {
+                FoodAdmin.findById(decoded.userId).select('isActive role permissions').lean().then((doc) => {
+                    if (!doc) {
+                        return sendError(res, 401, 'Admin account not found');
+                    }
+                    if (doc.isActive === false) {
+                        return sendError(res, 401, 'Admin account is disabled');
+                    }
+                    req.user.role = doc.role || decoded.role;
+                    req.user.permissions = doc.permissions || {};
                     next();
                 }).catch(() => sendError(res, 401, 'Authentication failed'));
                 return;

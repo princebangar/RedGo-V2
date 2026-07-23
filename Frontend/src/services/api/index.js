@@ -558,6 +558,39 @@ export const adminAPI = {
       { isActive: isActive !== false },
       { contextModule: "admin" },
     ),
+
+  /** Sub Admins */
+  getSubAdmins: (params = {}) =>
+    apiClient.get("/food/admin/sub-admins", { params, contextModule: "admin" }),
+  getSubAdminById: (id) =>
+    apiClient.get(`/food/admin/sub-admins/${String(id)}`, { contextModule: "admin" }),
+  createSubAdmin: (body) =>
+    apiClient.post("/food/admin/sub-admins", body, { contextModule: "admin" }),
+  updateSubAdmin: (id, body) =>
+    apiClient.patch(`/food/admin/sub-admins/${String(id)}`, body, { contextModule: "admin" }),
+  updateSubAdminStatus: (id, isActive) =>
+    apiClient.patch(
+      `/food/admin/sub-admins/${String(id)}/status`,
+      { isActive: isActive !== false },
+      { contextModule: "admin" },
+    ),
+  resetSubAdminPassword: (id, newPassword) =>
+    apiClient.patch(
+      `/food/admin/sub-admins/${String(id)}/password`,
+      { newPassword },
+      { contextModule: "admin" },
+    ),
+  updateSubAdminPermissions: (id, permissions) =>
+    apiClient.patch(
+      `/food/admin/sub-admins/${String(id)}/permissions`,
+      { permissions },
+      { contextModule: "admin" },
+    ),
+  deleteSubAdmin: (id) =>
+    apiClient.delete(`/food/admin/sub-admins/${String(id)}`, { contextModule: "admin" }),
+  getSubAdminPermissionModules: () =>
+    apiClient.get("/food/admin/sub-admins/permission-modules", { contextModule: "admin" }),
+
   /** Orders (admin) – list, get by id, assign delivery partner */
   getOrders: (params = {}) =>
     adminCachedGet("/food/admin/orders", {

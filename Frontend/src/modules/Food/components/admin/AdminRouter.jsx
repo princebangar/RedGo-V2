@@ -1,6 +1,7 @@
 import React, { Suspense, lazy } from "react";
 import { Routes, Route, Navigate } from "react-router-dom";
 import ProtectedRoute from "./ProtectedRoute";
+import PermissionRoute from "./PermissionRoute";
 import AdminLayout from "./AdminLayout";
 import AuthRedirect from "@food/components/AuthRedirect";
 import Loader from "@food/components/Loader";
@@ -94,6 +95,8 @@ const WithdrawMethod = lazy(() => import("@food/pages/admin/transactions/Withdra
 const EmployeeRole = lazy(() => import("@food/pages/admin/employees/EmployeeRole"));
 const AddEmployee = lazy(() => import("@food/pages/admin/employees/AddEmployee"));
 const EmployeeList = lazy(() => import("@food/pages/admin/employees/EmployeeList"));
+const SubAdminList = lazy(() => import("@food/pages/admin/sub-admins/SubAdminList"));
+const SubAdminPermissions = lazy(() => import("@food/pages/admin/sub-admins/SubAdminPermissions"));
 // Business Settings
 const BusinessSetup = lazy(() => import("@food/pages/admin/settings/BusinessSetup"));
 const EmailTemplate = lazy(() => import("@food/pages/admin/settings/EmailTemplate"));
@@ -269,6 +272,24 @@ export default function AdminRouter() {
             <Route path="employee-role" element={<EmployeeRole />} />
             <Route path="employees" element={<EmployeeList />} />
             <Route path="employees/add" element={<AddEmployee />} />
+
+            {/* SUB ADMIN MANAGEMENT (full ADMIN only) */}
+            <Route
+              path="sub-admins"
+              element={
+                <PermissionRoute requireFullAdmin>
+                  <SubAdminList />
+                </PermissionRoute>
+              }
+            />
+            <Route
+              path="sub-admins/:id/permissions"
+              element={
+                <PermissionRoute requireFullAdmin>
+                  <SubAdminPermissions />
+                </PermissionRoute>
+              }
+            />
 
             {/* SYSTEM & BUSINESS SETTINGS */}
             <Route path="business-setup" element={<BusinessSetup />} />

@@ -54,6 +54,8 @@ import { cn } from "@food/utils/utils"
 import { Input } from "@food/components/ui/input"
 import { adminSidebarMenu } from "@food/utils/adminSidebarMenu"
 import { getCachedSettings, loadBusinessSettings } from "@food/utils/businessSettings"
+import { filterSidebarMenuByPermissions } from "@food/utils/subAdminPermissions"
+import { getCurrentUser } from "@food/utils/auth"
 import { adminAPI } from "@food/api"
 import { dispatchAdminNotificationsUpdated } from "@food/hooks/useAdminNotifications"
 import quickSpicyLogo from "@food/assets/quicky-spicy-logo.png"
@@ -430,16 +432,24 @@ export default function AdminSidebar({ isOpen = false, onClose, onCollapseChange
   // expandedSections state is initialized above in getInitialStates consolidation
 
 
+  // Permission-filtered base menu (full ADMIN sees all; SUB_ADMIN sees allowed only)
+  // Do NOT depend on location.pathname — remounting menu on every route break expandable submenus.
+  const adminUser = getCurrentUser("admin")
+  const permissionSyncKey = `${adminUser?.role || ""}:${JSON.stringify(adminUser?.permissions || {})}`
+  const permissionMenuData = useMemo(() => {
+    return filterSidebarMenuByPermissions(adminSidebarMenu, getCurrentUser("admin"))
+  }, [permissionSyncKey])
+
   // Filter menu items based on search query
   const filteredMenuData = useMemo(() => {
     if (!searchQuery.trim()) {
-      return adminSidebarMenu
+      return permissionMenuData
     }
 
     const query = searchQuery.toLowerCase().trim()
     const filtered = []
 
-    adminSidebarMenu.forEach((item) => {
+    permissionMenuData.forEach((item) => {
       if (item.type === "link") {
         if (item.label.toLowerCase().includes(query)) {
           filtered.push(item)
@@ -477,7 +487,7 @@ export default function AdminSidebar({ isOpen = false, onClose, onCollapseChange
     })
 
     return filtered
-  }, [searchQuery])
+  }, [searchQuery, permissionMenuData])
 
   // Auto-expand sections with matches when searching
   useEffect(() => {
@@ -809,13 +819,13 @@ export default function AdminSidebar({ isOpen = false, onClose, onCollapseChange
               <ChevronDown className="w-4 h-4 shrink-0 text-neutral-300" />
             </div>
           </button>
-          {isExpanded && item.subItems && (
-            <div className="ml-5 mt-1 space-y-1 border-neutral-800/60 pl-3 submenu-animate overflow-hidden">
-              {item.subItems.map((subItem, subIndex) => {
+          {isExpanded && item.subItems && item.subItems.length > 0 && (
+            <div className="ml-5 mt-1 space-y-1 border-neutral-800/60 pl-3 submenu-animate">
+              {item.subItems.map((subItem) => {
                 const allSubPaths = item.subItems.map(si => si.path)
                 return (
                   <Link
-                    key={subIndex}
+                    key={subItem.path || subItem.label}
                     to={subItem.path}
                     data-active={isActive(subItem.path, allSubPaths) ? "true" : undefined}
                     onClick={() => {
@@ -832,7 +842,6 @@ export default function AdminSidebar({ isOpen = false, onClose, onCollapseChange
                         ? "bg-white/10 text-white font-semibold"
                         : "text-neutral-300 hover:bg-white/5 hover:text-white transition-colors duration-200"
                     )}
-                    style={{ animationDelay: `${subIndex * 0.01}s` }}
                   >
                     <span className={cn(
                       "w-1.5 h-1.5 rounded-full shrink-0",
@@ -882,22 +891,20 @@ export default function AdminSidebar({ isOpen = false, onClose, onCollapseChange
         @keyframes expandDown {
           from {
             opacity: 0;
-            max-height: 0;
-            transform: translateY(-10px);
+            transform: translateY(-4px);
           }
           to {
             opacity: 1;
-            max-height: 500px;
             transform: translateY(0);
           }
         }
         
         .menu-item-animate {
-          animation: slideIn 0.3s ease-out forwards;
+          animation: slideIn 0.25s ease-out forwards;
         }
         
         .submenu-animate {
-          animation: expandDown 0.3s ease-out forwards;
+          animation: expandDown 0.2s ease-out forwards;
         }
         
         .admin-sidebar-scroll {
@@ -1053,13 +1060,13 @@ export default function AdminSidebar({ isOpen = false, onClose, onCollapseChange
           ) : (
             filteredMenuData.map((item, index) => {
               if (item.type === "link") {
-                return renderMenuItem(item, index)
+                return renderMenuItem(item, item.path || item.label)
               }
 
               if (item.type === "section") {
                 return (
                   <div
-                    key={index}
+                    key={item.label || index}
                     className={cn(
                       index > 0 ? "mt-4 pt-4 border-t border-neutral-800/60" : "",
                       "animate-[fadeIn_0.4s_ease-out]"
@@ -1082,7 +1089,13 @@ export default function AdminSidebar({ isOpen = false, onClose, onCollapseChange
                         )}
                       </div>
                     <div className="space-y-1">
-                      {item.items.map((subItem, subIndex) => renderMenuItem(subItem, `${index}-${subIndex}`, true))}
+                      {item.items.map((subItem, subIndex) =>
+                        renderMenuItem(
+                          subItem,
+                          subItem.path || subItem.label || `${item.label}-${subIndex}`,
+                          true
+                        )
+                      )}
                     </div>
                   </div>
                 )

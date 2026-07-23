@@ -364,7 +364,16 @@ export const adminLogin = async (email, password) => {
     throw new AuthError("Invalid credentials");
   }
 
-  const payload = { userId: admin._id.toString(), role: admin.role };
+  if (admin.isActive === false) {
+    throw new AuthError("Your account has been disabled. Contact the administrator.");
+  }
+
+  const role = String(admin.role || "ADMIN").toUpperCase();
+  if (role !== "ADMIN" && role !== "SUB_ADMIN") {
+    throw new AuthError("Invalid credentials");
+  }
+
+  const payload = { userId: admin._id.toString(), role };
 
   const accessToken = signAccessToken(payload);
   const refreshToken = signRefreshToken(payload);
@@ -380,6 +389,8 @@ export const adminLogin = async (email, password) => {
 
   const userObj = admin.toObject();
   delete userObj.password;
+  userObj.role = role;
+  userObj.permissions = userObj.permissions || {};
   return { accessToken, refreshToken, user: userObj };
 };
 
@@ -740,6 +751,7 @@ export const getProfile = async (userId, role) => {
       profile = await FoodUser.findById(id).lean();
       break;
     case ROLES.ADMIN:
+    case "SUB_ADMIN":
       profile = await FoodAdmin.findById(id).select("-password").lean();
       break;
     case ROLES.RESTAURANT:

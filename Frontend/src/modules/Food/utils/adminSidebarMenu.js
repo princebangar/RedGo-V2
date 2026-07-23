@@ -226,6 +226,18 @@ export const adminSidebarMenu = [
   },
   {
     type: "section",
+    label: "ADMIN ACCESS",
+    items: [
+      {
+        type: "link",
+        label: "Sub Admin List",
+        path: "/admin/food/sub-admins",
+        icon: "UserCog",
+      },
+    ],
+  },
+  {
+    type: "section",
     label: "PAGES & SOCIAL MEDIA",
     items: [
       { type: "link", label: "About Us", path: "/admin/food/pages-social-media/about", icon: "Globe" },
