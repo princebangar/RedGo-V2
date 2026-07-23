@@ -144,10 +144,12 @@ export default function AdminHome() {
 
   // Calculate totals from real data
   const revenueTotal = dashboardData?.revenue?.total || 0
-  const codCollectedTotal = dashboardData?.cod?.collected || 0
-  const codOpenTotal = dashboardData?.cod?.open || 0
-  const codTotal = dashboardData?.cod?.total || (codCollectedTotal + codOpenTotal)
-  const codOpenOrders = dashboardData?.cod?.openOrders || 0
+  const cashOrdersTotal = dashboardData?.cod?.cashOrders || 0
+  const onlineOrdersTotal = dashboardData?.cod?.onlineOrders || 0
+  const cancelledOrdersTotal = dashboardData?.orders?.byStatus?.cancelled || 0
+  const deliveryBoyEarningTotal =
+    dashboardData?.deliveryBoyEarning ?? dashboardData?.riderEarnings?.total ?? 0
+  const restaurantEarningTotal = dashboardData?.restaurantEarning || 0
   const commissionTotal = dashboardData?.commission?.total || 0
   const ordersTotal = dashboardData?.orders?.total || 0
   const platformFeeTotal = dashboardData?.platformFee?.total || 0
@@ -380,12 +382,48 @@ export default function AdminHome() {
               loading={isLoading}
             />
             <MetricCard
-              title="COD total"
-              value={formatCurrency(codCollectedTotal)}
-              helper="Cash collected from delivered COD orders"
+              title="Total Cash Orders"
+              value={cashOrdersTotal.toLocaleString("en-IN")}
+              helper={`${periodLabel} cash / COD orders`}
               icon={<IndianRupee className="h-5 w-5 text-teal-600" />}
               accent="bg-teal-200/40"
-              path="/admin/food/orders/delivered"
+              path="/admin/food/orders/all"
+              loading={isLoading}
+            />
+            <MetricCard
+              title="Total Online Orders"
+              value={onlineOrdersTotal.toLocaleString("en-IN")}
+              helper={`${periodLabel} online payment orders`}
+              icon={<CreditCard className="h-5 w-5 text-sky-600" />}
+              accent="bg-sky-200/40"
+              path="/admin/food/orders/all"
+              loading={isLoading}
+            />
+            <MetricCard
+              title="Total Cancelled Orders"
+              value={cancelledOrdersTotal.toLocaleString("en-IN")}
+              helper={`${periodLabel} cancelled orders`}
+              icon={<XCircle className="h-5 w-5 text-rose-600" />}
+              accent="bg-rose-200/40"
+              path="/admin/food/orders/canceled"
+              loading={isLoading}
+            />
+            <MetricCard
+              title="Delivery Boy Earning"
+              value={formatCurrency(deliveryBoyEarningTotal)}
+              helper={`${periodLabel} rider payout on delivered orders`}
+              icon={<Truck className="h-5 w-5 text-violet-600" />}
+              accent="bg-violet-200/40"
+              path="/admin/food/delivery-partners/earnings"
+              loading={isLoading}
+            />
+            <MetricCard
+              title="Restaurants Earning"
+              value={formatCurrency(restaurantEarningTotal)}
+              helper={`${periodLabel} restaurant share (subtotal + packaging − commission)`}
+              icon={<Store className="h-5 w-5 text-lime-600" />}
+              accent="bg-lime-200/40"
+              path="/admin/food/transaction-report"
               loading={isLoading}
             />
           </div>

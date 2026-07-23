@@ -1,11 +1,12 @@
 import { useState, useMemo, useEffect, useCallback } from "react"
 import { useSearchParams } from "react-router-dom"
-import { Search, Trash2, Loader2, Eye, Pencil, Plus, Save, ChevronDown, ChevronLeft, ChevronRight } from "lucide-react"
+import { Search, Trash2, Loader2, Eye, Pencil, Plus, Save, ChevronDown } from "lucide-react"
 import { adminAPI, uploadAPI } from "@food/api"
 import { toast } from "sonner"
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@food/components/ui/dialog"
 import { Popover, PopoverContent, PopoverTrigger } from "@food/components/ui/popover"
 import { getFoodDisplayPrice, getFoodVariants } from "@food/utils/foodVariants"
+import AdminListPagination from "@food/components/admin/AdminListPagination"
 const debugLog = (...args) => {}
 const debugWarn = (...args) => {}
 const debugError = (...args) => {}
@@ -811,99 +812,22 @@ export default function FoodsList() {
           </table>
         </div>
 
-        {!loading && totalFoods > 0 && (
-          <div className="flex flex-col sm:flex-row items-center justify-between gap-4 border-t border-slate-100 bg-white px-4 py-4 sm:px-6 mt-4">
-            <div className="flex items-center gap-3">
-              <span className="text-sm text-slate-500 font-medium">Rows per page:</span>
-              <select
-                value={pageSize}
-                onChange={(e) => {
-                  const size = Number(e.target.value)
-                  setPageSize(size)
-                  localStorage.setItem('admin_foods_pageSize', size)
-                  setCurrentPage(1)
-                }}
-                className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-sm font-semibold text-slate-700 focus:outline-none focus:ring-2 focus:ring-slate-400 focus:border-slate-400 cursor-pointer shadow-sm"
-              >
-                <option value={10}>10</option>
-                <option value={20}>20</option>
-                <option value={50}>50</option>
-                <option value={100}>100</option>
-              </select>
-            </div>
-
-            <div className="flex flex-1 justify-between sm:hidden w-full">
-              <button
-                type="button"
-                onClick={() => setCurrentPage((prev) => Math.max(prev - 1, 1))}
-                disabled={currentPage === 1}
-                className="relative inline-flex items-center rounded-md border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-50 transition-colors"
-              >
-                Previous
-              </button>
-              <button
-                type="button"
-                onClick={() => setCurrentPage((prev) => Math.min(prev + 1, Math.ceil(totalFoods / pageSize)))}
-                disabled={currentPage >= Math.ceil(totalFoods / pageSize)}
-                className="relative ml-3 inline-flex items-center rounded-md border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-50 transition-colors"
-              >
-                Next
-              </button>
-            </div>
-
-            <div className="hidden sm:flex sm:flex-1 sm:items-center sm:justify-between w-full">
-              <div className="pl-4">
-                <p className="text-sm text-slate-600">
-                  Showing <span className="font-semibold text-slate-900">{Math.min(totalFoods, (currentPage - 1) * pageSize + 1)}</span> to{" "}
-                  <span className="font-semibold text-slate-900">{Math.min(totalFoods, currentPage * pageSize)}</span> of{" "}
-                  <span className="font-semibold text-slate-900">{totalFoods}</span> foods
-                </p>
-              </div>
-              <div>
-                <nav className="isolate inline-flex -space-x-px rounded-md shadow-sm gap-1" aria-label="Pagination">
-                  <button
-                    type="button"
-                    onClick={() => setCurrentPage((prev) => Math.max(prev - 1, 1))}
-                    disabled={currentPage === 1}
-                    className="relative inline-flex items-center rounded-md px-2.5 py-1.5 text-slate-500 border border-slate-200 hover:bg-slate-50 disabled:opacity-50 transition-colors"
-                  >
-                    &lt;
-                  </button>
-                  {Array.from({ length: Math.ceil(totalFoods / pageSize) }, (_, i) => i + 1)
-                    .filter(page => page === 1 || page === Math.ceil(totalFoods / pageSize) || (page >= currentPage - 2 && page <= currentPage + 2))
-                    .map((page, index, arr) => {
-                      const showEllipsisBefore = index > 0 && page - arr[index - 1] > 1;
-                      return (
-                        <span key={page} className="inline-flex items-center">
-                          {showEllipsisBefore && (
-                            <span className="px-3 py-1.5 text-slate-400 text-sm">...</span>
-                          )}
-                          <button
-                            type="button"
-                            onClick={() => setCurrentPage(page)}
-                            className={`relative inline-flex items-center px-3.5 py-1.5 text-sm font-semibold rounded-md transition-colors ${
-                              currentPage === page
-                                ? "bg-slate-900 text-white"
-                                : "text-slate-700 border border-slate-200 hover:bg-slate-50"
-                            }`}
-                          >
-                            {page}
-                          </button>
-                        </span>
-                      );
-                    })}
-                  <button
-                    type="button"
-                    onClick={() => setCurrentPage((prev) => Math.min(prev + 1, Math.ceil(totalFoods / pageSize)))}
-                    disabled={currentPage >= Math.ceil(totalFoods / pageSize)}
-                    className="relative inline-flex items-center rounded-md px-2.5 py-1.5 text-slate-500 border border-slate-200 hover:bg-slate-50 disabled:opacity-50 transition-colors"
-                  >
-                    &gt;
-                  </button>
-                </nav>
-              </div>
-            </div>
-          </div>
+        {!loading && (
+          <AdminListPagination
+            currentPage={currentPage}
+            pageSize={pageSize}
+            totalItems={totalFoods}
+            onPageChange={setCurrentPage}
+            onPageSizeChange={(size) => {
+              setPageSize(size)
+              try {
+                localStorage.setItem("admin_foods_pageSize", String(size))
+              } catch {}
+              setCurrentPage(1)
+            }}
+            itemLabel="foods"
+            className="mt-4"
+          />
         )}
       </div>
 
