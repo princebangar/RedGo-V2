@@ -88,8 +88,12 @@ const imageUrlToDataUrl = async (url) => {
   }
 }
 
-export function useOrdersManagement(orders, statusKey, title) {
-  const [searchQuery, setSearchQuery] = useState("")
+export function useOrdersManagement(orders, statusKey, title, options = {}) {
+  const serverSideSearch = options.serverSideSearch === true
+  const [internalSearchQuery, setInternalSearchQuery] = useState("")
+  const searchQuery =
+    options.searchQuery !== undefined ? options.searchQuery : internalSearchQuery
+  const setSearchQuery = options.setSearchQuery || setInternalSearchQuery
   const [isFilterOpen, setIsFilterOpen] = useState(false)
   const [isSettingsOpen, setIsSettingsOpen] = useState(false)
   const [isViewOrderOpen, setIsViewOrderOpen] = useState(false)
@@ -129,8 +133,8 @@ export function useOrdersManagement(orders, statusKey, title) {
   const filteredOrders = useMemo(() => {
     let result = [...orders]
 
-    // Apply search query
-    if (searchQuery.trim()) {
+    // Apply search query only when search is client-side
+    if (!serverSideSearch && searchQuery.trim()) {
       const query = searchQuery.toLowerCase().trim()
       result = result.filter(order => {
         const safeTotal =
@@ -233,7 +237,7 @@ export function useOrdersManagement(orders, statusKey, title) {
     }
 
     return result
-  }, [orders, searchQuery, filters])
+  }, [orders, searchQuery, filters, serverSideSearch])
 
   const count = filteredOrders.length
 

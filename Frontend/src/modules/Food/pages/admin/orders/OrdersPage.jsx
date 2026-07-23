@@ -51,6 +51,8 @@ export default function OrdersPage({ statusKey = "all" }) {
     }
   })
   const [totalOrders, setTotalOrders] = useState(0)
+  const [searchQuery, setSearchQuery] = useState("")
+  const [debouncedSearch, setDebouncedSearch] = useState("")
   const [processingRefund, setProcessingRefund] = useState(null)
   const [processingActionOrderId, setProcessingActionOrderId] = useState(null)
   const [actionLoadingType, setActionLoadingType] = useState(null) // 'accept' | 'reject'
@@ -346,6 +348,7 @@ export default function OrdersPage({ statusKey = "all" }) {
               ? "cancelled"
               : statusKey,
         cancelledBy: statusKey === "restaurant-cancelled" ? "restaurant" : undefined,
+        search: debouncedSearch || undefined,
       }
 
       const response = await adminAPI.getOrders(params)
@@ -430,10 +433,26 @@ export default function OrdersPage({ statusKey = "all" }) {
     } finally {
       if (!silent) setIsLoading(false)
     }
-  }, [statusKey, currentPage, pageSize, playDefaultRing, showBrowserNotification, startAlertLoop, stopOrderAlert])
+  }, [statusKey, currentPage, pageSize, debouncedSearch, playDefaultRing, showBrowserNotification, startAlertLoop, stopOrderAlert])
+
+  useEffect(() => {
+    const t = setTimeout(() => {
+      const next = searchQuery.trim()
+      setDebouncedSearch((prev) => {
+        if (prev !== next) {
+          // Reset to first page when the effective search term changes
+          setTimeout(() => setCurrentPage(1), 0)
+        }
+        return next
+      })
+    }, 350)
+    return () => clearTimeout(t)
+  }, [searchQuery])
 
   useEffect(() => {
     setCurrentPage(1)
+    setSearchQuery("")
+    setDebouncedSearch("")
     isFirstLoadRef.current = true
     seenOrderIdsRef.current = new Set()
   }, [statusKey])
@@ -610,8 +629,8 @@ export default function OrdersPage({ statusKey = "all" }) {
   }, [orders])
 
   const {
-    searchQuery,
-    setSearchQuery,
+    searchQuery: _ignoredSearchQuery,
+    setSearchQuery: _ignoredSetSearchQuery,
     isFilterOpen,
     setIsFilterOpen,
     isSettingsOpen,
@@ -634,7 +653,11 @@ export default function OrdersPage({ statusKey = "all" }) {
     handlePrintOrder,
     toggleColumn,
     resetColumns,
-  } = useOrdersManagement(normalizedOrders, statusKey, config.title)
+  } = useOrdersManagement(normalizedOrders, statusKey, config.title, {
+    serverSideSearch: true,
+    searchQuery,
+    setSearchQuery,
+  })
 
   useEffect(() => {
     const handleScroll = () => {
