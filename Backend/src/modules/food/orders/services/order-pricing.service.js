@@ -6,6 +6,7 @@ import { FoodOffer } from '../../admin/models/offer.model.js';
 import { FoodOfferUsage } from '../../admin/models/offerUsage.model.js';
 import { ValidationError } from '../../../../core/auth/errors.js';
 import { haversineKm, assertRestaurantDeliversToZone } from './order.helpers.js';
+import { fetchDrivingDistanceKm } from '../utils/googleMaps.js';
 
 export async function calculateOrderPricing(userId, dto) {
   const restaurant = await FoodRestaurant.findById(dto.restaurantId)
@@ -53,8 +54,16 @@ export async function calculateOrderPricing(userId, dto) {
   ) {
     const [rLng, rLat] = restaurant.location.coordinates;
     const [dLng, dLat] = dto.deliveryAddress.location.coordinates;
-    const d = haversineKm(rLat, rLng, dLat, dLng);
-    distanceKm = Number.isFinite(d) ? d : null;
+    const drivingKm = await fetchDrivingDistanceKm(
+      { lat: rLat, lng: rLng },
+      { lat: dLat, lng: dLng },
+    );
+    if (Number.isFinite(drivingKm) && drivingKm > 0) {
+      distanceKm = drivingKm;
+    } else {
+      const d = haversineKm(rLat, rLng, dLat, dLng);
+      distanceKm = Number.isFinite(d) ? d : null;
+    }
   }
   let deliveryFee = 0;
   let deliveryFeeBreakdown = null;

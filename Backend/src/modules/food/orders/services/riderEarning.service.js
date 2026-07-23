@@ -108,6 +108,7 @@ export async function resolveRiderEarningForDelivery({
   return {
     riderEarning,
     distanceKm: resolved.distanceKm,
+    distanceMode: resolved.distanceMode || null,
     deliveryPoint: resolved.deliveryPoint,
     restaurantPoint: resolved.restaurantPoint,
     restaurantGeocoded: resolved.restaurantGeocoded,
@@ -175,7 +176,7 @@ export async function ensureRiderEarningOnOrder(order) {
   }
 
   logger.info(
-    `Backfilled riderEarning=₹${earningResolved.riderEarning} for order ${order._id} (distanceKm=${earningResolved.distanceKm ?? 'n/a'})`,
+    `Backfilled riderEarning=₹${earningResolved.riderEarning} for order ${order._id} (distanceKm=${earningResolved.distanceKm ?? 'n/a'}, mode=${earningResolved.distanceMode || 'n/a'})`,
   );
 
   return order;
