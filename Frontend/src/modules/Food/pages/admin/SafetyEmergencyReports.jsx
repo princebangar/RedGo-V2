@@ -125,17 +125,9 @@ export default function SafetyEmergencyReports() {
   }
 
   const filteredReports = useMemo(() => {
-    if (!searchQuery.trim()) {
-      return reports
-    }
-    
-    const query = searchQuery.toLowerCase().trim()
-    return reports.filter(report =>
-      report.userName?.toLowerCase().includes(query) ||
-      report.userEmail?.toLowerCase().includes(query) ||
-      report.message?.toLowerCase().includes(query)
-    )
-  }, [reports, searchQuery])
+    // Search is handled by the API globally — use server results as-is
+    return reports
+  }, [reports])
 
   const getStatusBadge = (status) => {
     const statusConfig = {

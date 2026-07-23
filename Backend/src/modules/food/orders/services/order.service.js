@@ -1766,9 +1766,73 @@ export async function listOrdersAdmin(query) {
   if (maxAmountRaw) {
     const maxAmount = parseFloat(maxAmountRaw);
     if (Number.isFinite(maxAmount) && maxAmount >= 0) {
-      filter["pricing.total"] = filter["pricing.total"] || {};
-      filter["pricing.total"].$lte = maxAmount;
+      filter['pricing.total'] = filter['pricing.total'] || {};
+      filter['pricing.total'].$lte = maxAmount;
     }
+  }
+
+  // Global search across all matching orders (not just current page)
+  const searchRaw = String(query.search || '').trim().slice(0, 80);
+  if (searchRaw) {
+    const escaped = searchRaw.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const searchRegex = new RegExp(escaped, 'i');
+
+    const [matchedUsers, matchedRestaurants] = await Promise.all([
+      FoodUser.find({
+        $or: [
+          { name: searchRegex },
+          { phone: searchRegex },
+          { email: searchRegex },
+        ],
+      })
+        .select('_id')
+        .limit(100)
+        .lean(),
+      FoodRestaurant.find({
+        $or: [
+          { restaurantName: searchRegex },
+          { ownerPhone: searchRegex },
+          { primaryContactNumber: searchRegex },
+        ],
+      })
+        .select('_id')
+        .limit(100)
+        .lean(),
+    ]);
+
+    const searchOr = [
+      { order_id: searchRegex },
+      { orderId: searchRegex },
+      { customerName: searchRegex },
+      { 'deliveryAddress.phone': searchRegex },
+      { 'deliveryAddress.name': searchRegex },
+    ];
+
+    if (mongoose.Types.ObjectId.isValid(searchRaw)) {
+      searchOr.push({ _id: new mongoose.Types.ObjectId(searchRaw) });
+    }
+
+    if (matchedUsers.length > 0) {
+      searchOr.push({ userId: { $in: matchedUsers.map((u) => u._id) } });
+    }
+    if (matchedRestaurants.length > 0) {
+      searchOr.push({ restaurantId: { $in: matchedRestaurants.map((r) => r._id) } });
+    }
+
+    if (/^\d+(\.\d+)?$/.test(searchRaw)) {
+      const asNum = Number(searchRaw);
+      if (Number.isFinite(asNum)) {
+        searchOr.push({ 'pricing.total': asNum });
+      }
+    }
+
+    const baseFilter = { ...filter };
+    Object.keys(filter).forEach((key) => {
+      delete filter[key];
+    });
+    Object.assign(filter, {
+      $and: [baseFilter, { $or: searchOr }],
+    });
   }
 
   const [docs, total] = await Promise.all([

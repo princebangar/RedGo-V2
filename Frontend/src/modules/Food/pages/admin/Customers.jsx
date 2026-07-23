@@ -33,15 +33,7 @@ export default function Customers() {
   const filteredCustomers = useMemo(() => {
     let result = [...customers]
 
-    // Filter by search query
-    if (searchQuery.trim()) {
-      const query = searchQuery.toLowerCase().trim()
-      result = result.filter(customer =>
-        customer.name?.toLowerCase().includes(query) ||
-        (customer.email || "NA").toLowerCase().includes(query) ||
-        customer.phone?.includes(query)
-      )
-    }
+    // Search is handled by the API globally — do not re-filter the current page only.
 
     // Filter by order date when that field is available in the API payload.
 
@@ -83,7 +75,7 @@ export default function Customers() {
     }
 
     return result
-  }, [customers, searchQuery, filters])
+  }, [customers, filters])
 
   const handleFilterChange = (field, value) => {
     setFilters(prev => ({ ...prev, [field]: value }))
