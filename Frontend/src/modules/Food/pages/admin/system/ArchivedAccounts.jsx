@@ -34,8 +34,15 @@ export default function ArchivedAccounts() {
     try {
       setLoading(true)
       const response = await adminAPI.getArchivedAccounts()
-      const data = response?.data?.data || []
-      setArchivedAccounts(Array.isArray(data) ? data : [])
+      const data = response?.data?.data
+      const list = Array.isArray(data?.accounts)
+        ? data.accounts
+        : Array.isArray(data?.items)
+          ? data.items
+          : Array.isArray(data)
+            ? data
+            : []
+      setArchivedAccounts(list)
     } catch (error) {
       console.error('Error fetching archived accounts:', error)
       toast.error('Failed to load archived accounts')

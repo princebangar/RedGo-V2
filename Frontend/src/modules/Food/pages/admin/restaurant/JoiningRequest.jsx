@@ -71,9 +71,11 @@ export default function JoiningRequest() {
         limit: pageSize,
       })
       const payload = response?.data?.data
-      const list = Array.isArray(payload)
-        ? payload
-        : (payload?.restaurants || [])
+      const list = Array.isArray(payload?.restaurants)
+        ? payload.restaurants
+        : Array.isArray(payload)
+          ? payload
+          : []
       setPendingRequests(list.filter((r) => String(r.status || "").toLowerCase() === "pending"))
       setTotalItems(
         payload?.total ??

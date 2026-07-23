@@ -80,7 +80,12 @@ export default function TopRestaurants() {
     const fetchZones = async () => {
       try {
         const response = await adminAPI.getZones({ page: 1, limit: 1000 })
-        const list = response?.data?.data?.zones || []
+        const zoneData = response?.data?.data
+        const list = Array.isArray(zoneData?.zones)
+          ? zoneData.zones
+          : Array.isArray(zoneData)
+            ? zoneData
+            : []
         if (!isMountedRef.current) return
         // Sort zones alphabetically by name for the dropdown.
         const arr = (Array.isArray(list) ? [...list] : []).sort((a, b) =>
@@ -132,8 +137,12 @@ export default function TopRestaurants() {
           zoneId: selectedZone,
           type: activeTab,
         })
-        const data = response?.data?.data || {}
-        const list = Array.isArray(data.restaurants) ? data.restaurants : []
+        const data = response?.data?.data
+        const list = Array.isArray(data?.restaurants)
+          ? data.restaurants
+          : Array.isArray(data)
+            ? data
+            : []
         if (cancelled || !isMountedRef.current) return
 
         // Always load the saved (DB) state. Unsaved edits are intentionally NOT

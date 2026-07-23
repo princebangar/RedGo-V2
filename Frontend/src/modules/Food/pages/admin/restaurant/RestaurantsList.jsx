@@ -236,29 +236,36 @@ export default function RestaurantsList() {
           )
         }
 
-        const [response, rejectedResponse, pendingResponse] = await Promise.all([
-          adminAPI.getApprovedRestaurants({ status: "approved" }),
-          adminAPI.getApprovedRestaurants({ status: "banned" }).catch(() => null),
-          adminAPI.getPendingRestaurants().catch(() => null)
+        const extractRestaurantPayload = (apiResponse) => {
+          const body = apiResponse?.data
+          const data = body?.data
+          const list = Array.isArray(data?.restaurants)
+            ? data.restaurants
+            : Array.isArray(data)
+              ? data
+              : Array.isArray(body?.restaurants)
+                ? body.restaurants
+                : []
+          const total = Number(data?.total ?? body?.total ?? list.length) || list.length
+          return { list, total, body }
+        }
+
+        // APIs are paginated — pull a large page so list/stats are not truncated
+        const [response, bannedResponse, pendingResponse, rejectedOnlyResponse] = await Promise.all([
+          adminAPI.getApprovedRestaurants({ status: "approved", limit: 1000, page: 1 }),
+          adminAPI.getApprovedRestaurants({ status: "banned", limit: 1000, page: 1 }).catch(() => null),
+          adminAPI.getPendingRestaurants({ limit: 1000, page: 1 }).catch(() => null),
+          adminAPI.getApprovedRestaurants({ status: "rejected", limit: 1000, page: 1 }).catch(() => null),
         ])
 
         if (cancelled) return
 
-        let mappedRejected = []
-        let rejectedCount = 0
-        if (rejectedResponse?.data) {
-          const rejBody = rejectedResponse.data
-          const rejData = rejBody?.data
-          const rejList = Array.isArray(rejData?.restaurants)
-            ? rejData.restaurants
-            : Array.isArray(rejData)
-              ? rejData
-              : Array.isArray(rejBody?.restaurants)
-                ? rejBody.restaurants
-                : []
-          rejectedCount = rejList.length
-
-          mappedRejected = rejList.map((restaurant, index) => ({
+        let mappedBanned = []
+        let bannedCnt = 0
+        if (bannedResponse?.data) {
+          const { list: bannedList, total } = extractRestaurantPayload(bannedResponse)
+          bannedCnt = total
+          mappedBanned = bannedList.map((restaurant, index) => ({
             id: restaurant._id || restaurant.id || index + 1,
             _id: restaurant._id,
             name: restaurant.name || restaurant.restaurantName || "N/A",
@@ -273,19 +280,37 @@ export default function RestaurantsList() {
           }))
         }
         if (!cancelled) {
-          setBannedCount(rejectedCount)
-          setBannedRestaurants(mappedRejected)
+          setBannedCount(bannedCnt)
+          setBannedRestaurants(mappedBanned)
         }
 
         let pendingCnt = 0
         let rejectedCnt = 0
         let mappedRejectedList = []
         if (pendingResponse?.data) {
-          const list = pendingResponse.data?.data || []
-          pendingCnt = list.filter(r => String(r.status || "").toLowerCase() === "pending").length
-          const rawRejected = list.filter(r => String(r.status || "").toLowerCase() === "rejected")
+          const { list } = extractRestaurantPayload(pendingResponse)
+          pendingCnt = list.filter((r) => String(r.status || "").toLowerCase() === "pending").length
+        }
+        if (rejectedOnlyResponse?.data) {
+          const { list: rawRejected, total } = extractRestaurantPayload(rejectedOnlyResponse)
+          rejectedCnt = total
+          mappedRejectedList = rawRejected.map((restaurant, index) => ({
+            id: restaurant._id || restaurant.id || index + 1,
+            _id: restaurant._id,
+            name: restaurant.restaurantName || restaurant.name || "N/A",
+            ownerName: restaurant.ownerName || "N/A",
+            ownerPhone: restaurant.ownerPhone || restaurant.phone || "N/A",
+            zone: restaurant.zone || zoneLabelFromRestaurant(restaurant),
+            approvalStatus: "rejected",
+            isActive: false,
+            rating: restaurant.ratings?.average || restaurant.rating || 0,
+            logo: getPrimaryRestaurantImage(restaurant, PLACEHOLDER_40),
+            originalData: restaurant,
+          }))
+        } else if (pendingResponse?.data) {
+          const { list } = extractRestaurantPayload(pendingResponse)
+          const rawRejected = list.filter((r) => String(r.status || "").toLowerCase() === "rejected")
           rejectedCnt = rawRejected.length
-
           mappedRejectedList = rawRejected.map((restaurant, index) => ({
             id: restaurant._id || restaurant.id || index + 1,
             _id: restaurant._id,
@@ -306,15 +331,7 @@ export default function RestaurantsList() {
           setRejectedRestaurants(mappedRejectedList)
         }
 
-        const body = response?.data
-        const data = body?.data
-        const rawList = Array.isArray(data?.restaurants)
-          ? data.restaurants
-          : Array.isArray(data)
-            ? data
-            : Array.isArray(body?.restaurants)
-              ? body.restaurants
-              : []
+        const { list: rawList, body } = extractRestaurantPayload(response)
 
         if (rawList.length > 0 || body?.success === true) {
           const mappedRestaurants = rawList.map((restaurant, index) => ({
@@ -770,8 +787,13 @@ export default function RestaurantsList() {
     setZonesLoading(true)
     adminAPI.getZones({ limit: 1000 })
       .then((res) => {
-        const list = res?.data?.data?.zones || res?.data?.data?.data?.zones || res?.data?.data?.zones || res?.data?.data || []
-        setZones(Array.isArray(list) ? list : [])
+        const zoneData = res?.data?.data
+        const list = Array.isArray(zoneData?.zones)
+          ? zoneData.zones
+          : Array.isArray(zoneData)
+            ? zoneData
+            : []
+        setZones(list)
       })
       .catch(() => setZones([]))
       .finally(() => setZonesLoading(false))
@@ -1278,10 +1300,10 @@ export default function RestaurantsList() {
                 <p className="text-sm text-slate-500 mb-4">{error}</p>
                 <button
                   type="button"
-                  onClick={() => navigate("/admin/login", { replace: true, state: { from: "/admin/food/restaurants" } })}
+                  onClick={() => window.location.reload()}
                   className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
                 >
-                  Log in as admin
+                  Retry
                 </button>
               </div>
             ) : (

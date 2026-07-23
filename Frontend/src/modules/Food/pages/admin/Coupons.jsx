@@ -67,8 +67,13 @@ export default function Coupons() {
       })
 
       if (response?.data?.success) {
-        const list = response.data.data.offers || []
-        setOffers(Array.isArray(list) ? list : [])
+        const offerData = response.data.data
+        const list = Array.isArray(offerData?.offers)
+          ? offerData.offers
+          : Array.isArray(offerData)
+            ? offerData
+            : []
+        setOffers(list)
         setTotalItems(
           response?.data?.data?.total ??
           response?.data?.total ??
@@ -106,14 +111,17 @@ export default function Coupons() {
       try {
         const response = await adminAPI.getRestaurants({ page: 1, limit: 200 })
         if (response?.data?.success) {
-          const list = response?.data?.data?.restaurants || []
+          const restaurantData = response?.data?.data
+          const list = Array.isArray(restaurantData?.restaurants)
+            ? restaurantData.restaurants
+            : Array.isArray(restaurantData)
+              ? restaurantData
+              : []
           // Backend returns `restaurantName`; normalize to `name` for this dropdown without affecting other pages.
-          const normalized = Array.isArray(list)
-            ? list.map((r) => ({
-              ...r,
-              name: r?.name || r?.restaurantName || "",
-            }))
-            : []
+          const normalized = list.map((r) => ({
+            ...r,
+            name: r?.name || r?.restaurantName || "",
+          }))
           setRestaurants(normalized)
         }
       } catch (err) {

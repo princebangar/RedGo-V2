@@ -254,10 +254,14 @@ export default function useAdminNotifications(options = {}) {
         fssaiExpiredRes,
       ] = settled.map(pick);
 
-      const restaurantRows =
-        restaurantsRes?.data?.data ||
-        restaurantsRes?.data?.restaurants ||
-        [];
+      const restaurantPayload = restaurantsRes?.data?.data
+      const restaurantRows = Array.isArray(restaurantPayload?.restaurants)
+        ? restaurantPayload.restaurants
+        : Array.isArray(restaurantPayload)
+          ? restaurantPayload
+          : Array.isArray(restaurantsRes?.data?.restaurants)
+            ? restaurantsRes.data.restaurants
+            : []
 
       const aggregated = uniqueById([
         ...mapPendingRestaurants(restaurantRows),

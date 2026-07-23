@@ -1914,7 +1914,118 @@ export async function listOrdersAdmin(query) {
     }
   }
 
-  return { ...paginated, orders: paginated.data, ...(statusCounts ? { statusCounts } : {}) };
+  // Order Detect Delivery dashboard cards — global counts (not current page)
+  let detectDeliveryCounts = null;
+  const wantDetectCounts =
+    query.includeDetectDeliveryCounts === true ||
+    query.includeDetectDeliveryCounts === "1" ||
+    String(query.includeDetectDeliveryCounts || "").toLowerCase() === "true";
+  if (wantDetectCounts) {
+    const detectGrouped = await FoodOrder.aggregate([
+      { $match: filter },
+      {
+        $addFields: {
+          _os: { $toLower: { $ifNull: ["$orderStatus", ""] } },
+          _phase: { $ifNull: ["$deliveryState.currentPhase", ""] },
+          _ds: { $ifNull: ["$deliveryState.status", ""] },
+          _hasPartner: {
+            $cond: [{ $ifNull: ["$dispatch.deliveryPartnerId", false] }, true, false],
+          },
+          _hasOrderIdConfirm: {
+            $cond: [{ $ifNull: ["$deliveryState.orderIdConfirmedAt", false] }, true, false],
+          },
+        },
+      },
+      {
+        $addFields: {
+          detectStatus: {
+            $switch: {
+              branches: [
+                {
+                  case: {
+                    $in: [
+                      "$_os",
+                      [
+                        "cancelled",
+                        "cancelled_by_user",
+                        "cancelled_by_restaurant",
+                        "cancelled_by_admin",
+                      ],
+                    ],
+                  },
+                  then: "Rejected",
+                },
+                { case: { $eq: ["$_os", "delivered"] }, then: "Ordered Delivered" },
+                {
+                  case: { $in: ["$_phase", ["at_delivery", "at_drop"]] },
+                  then: "Reached Drop",
+                },
+                {
+                  case: { $eq: ["$_phase", "at_pickup"] },
+                  then: "Delivery Boy Reached Pickup",
+                },
+                {
+                  case: {
+                    $or: [
+                      { $eq: ["$_ds", "order_confirmed"] },
+                      { $eq: ["$_phase", "en_route_to_delivery"] },
+                      { $eq: ["$_hasOrderIdConfirm", true] },
+                      { $in: ["$_os", ["picked_up", "out_for_delivery"]] },
+                    ],
+                  },
+                  then: "Order ID Accepted",
+                },
+                {
+                  case: { $eq: ["$_hasPartner", true] },
+                  then: "Delivery Boy Assigned",
+                },
+                {
+                  case: {
+                    $in: [
+                      "$_os",
+                      ["confirmed", "preparing", "ready_for_pickup", "ready"],
+                    ],
+                  },
+                  then: "Restaurant Accepted",
+                },
+                {
+                  case: { $in: ["$_os", ["created", "pending", ""]] },
+                  then: "Ordered",
+                },
+              ],
+              default: "Ordered",
+            },
+          },
+        },
+      },
+      { $group: { _id: "$detectStatus", count: { $sum: 1 } } },
+    ]);
+
+    detectDeliveryCounts = {
+      total,
+      Ordered: 0,
+      "Restaurant Accepted": 0,
+      Rejected: 0,
+      "Delivery Boy Assigned": 0,
+      "Delivery Boy Reached Pickup": 0,
+      "Order ID Accepted": 0,
+      "Reached Drop": 0,
+      "Ordered Delivered": 0,
+    };
+    for (const row of detectGrouped) {
+      const key = String(row?._id || "");
+      if (Object.prototype.hasOwnProperty.call(detectDeliveryCounts, key)) {
+        detectDeliveryCounts[key] = Number(row.count || 0);
+      }
+    }
+  }
+
+  return {
+    ...paginated,
+    orders: paginated.data,
+    ...(statusCounts ? { statusCounts } : {}),
+    ...(detectDeliveryCounts ? { detectDeliveryCounts } : {}),
+  };
 }
 
 export async function assignDeliveryPartnerAdmin(

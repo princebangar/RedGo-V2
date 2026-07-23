@@ -33,6 +33,8 @@ import {
     toEndOfDayInTimeZone,
     getWeekRangeInTimeZone,
     getMonthRangeInTimeZone,
+    getZonedParts,
+    zonedWallTimeToUtc,
 } from '../../../../utils/timezone.js';
 import { FoodTransaction } from '../../orders/models/foodTransaction.model.js';
 import { FoodRestaurantWithdrawal } from '../../restaurant/models/foodRestaurantWithdrawal.model.js';
@@ -403,11 +405,13 @@ const PENDING_ORDER_STATUSES = ['created', 'confirmed', 'preparing', 'ready_for_
 const DASHBOARD_PENDING_ORDER_STATUSES = ['created'];
 // Confirmed + kitchen stages (pending page is only brand-new `created` orders).
 const DASHBOARD_PROCESSING_ORDER_STATUSES = ['confirmed', 'preparing', 'ready_for_pickup'];
+// Matches admin Food On The Way page (`listOrdersAdmin` status=food-on-the-way).
+const DASHBOARD_IN_TRANSIT_ORDER_STATUSES = ['picked_up', 'reached_drop'];
 const DELIVERED_ORDER_STATUS_EXPR = { $eq: ['$orderStatus', 'delivered'] };
 /** Same visibility rule as listOrdersAdmin base filter (exclude unpaid online checkouts). */
 const ADMIN_VISIBLE_PAYMENT_EXPR = {
     $or: [
-        { $in: [{ $toLower: { $ifNull: ['$payment.method', ''] } }, ['cash', 'wallet', 'cod', 'cash on delivery']] },
+        { $in: [{ $toLower: { $ifNull: ['$payment.method', ''] } }, ['cash', 'wallet']] },
         {
             $in: [
                 { $toLower: { $ifNull: ['$payment.status', ''] } },
@@ -457,34 +461,27 @@ const getDateRangeByPeriod = (periodRaw) => {
     if (!period || period === 'overall' || period === 'all') return null;
 
     const now = new Date();
-    const start = new Date(now);
-    const end = new Date(now);
 
     if (period === 'today') {
-        start.setHours(0, 0, 0, 0);
-        end.setHours(23, 59, 59, 999);
-        return { start, end };
+        return { start: toStartOfDayInTimeZone(now), end: toEndOfDayInTimeZone(now) };
     }
 
     if (period === 'week') {
-        start.setHours(0, 0, 0, 0);
-        start.setDate(start.getDate() - start.getDay());
-        end.setTime(start.getTime());
-        end.setDate(start.getDate() + 6);
-        end.setHours(23, 59, 59, 999);
-        return { start, end };
+        const range = getWeekRangeInTimeZone(now);
+        return { start: range.start, end: range.end };
     }
 
     if (period === 'month') {
-        const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
-        const monthEnd = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59, 999);
-        return { start: monthStart, end: monthEnd };
+        const range = getMonthRangeInTimeZone(now);
+        return { start: range.start, end: range.end };
     }
 
     if (period === 'year') {
-        const yearStart = new Date(now.getFullYear(), 0, 1);
-        const yearEnd = new Date(now.getFullYear(), 11, 31, 23, 59, 59, 999);
-        return { start: yearStart, end: yearEnd };
+        const p = getZonedParts(now);
+        return {
+            start: zonedWallTimeToUtc({ year: p.year, month: 1, day: 1, hour: 0, minute: 0, second: 0, ms: 0 }),
+            end: zonedWallTimeToUtc({ year: p.year, month: 12, day: 31, hour: 23, minute: 59, second: 59, ms: 999 }),
+        };
     }
 
     return null;
@@ -499,14 +496,19 @@ export async function getDashboardStats(query = {}) {
         ? new mongoose.Types.ObjectId(query.zoneId)
         : null;
 
+    const zoneRestaurantIds = zoneId
+        ? await FoodRestaurant.find({ zoneId }).distinct('_id')
+        : null;
+
     // Include ALL orders in the period/zone — money metrics already gate on delivered.
     // Old payment $or filter dropped some delivered rows and also hid open COD from counts.
     const orderMatch = {};
     if (periodRange) {
         orderMatch.createdAt = { $gte: periodRange.start, $lte: periodRange.end };
     }
+    // Zone scope via restaurant (matches Transaction Report + listOrdersAdmin).
     if (zoneId) {
-        orderMatch.zoneId = zoneId;
+        orderMatch.restaurantId = { $in: zoneRestaurantIds || [] };
     }
 
     const restaurantMatch = {};
@@ -514,9 +516,6 @@ export async function getDashboardStats(query = {}) {
         restaurantMatch.zoneId = zoneId;
     }
 
-    const zoneRestaurantIds = zoneId
-        ? await FoodRestaurant.find({ zoneId }).distinct('_id')
-        : null;
     const zoneScopedRestaurantMatch = zoneId
         ? { restaurantId: { $in: zoneRestaurantIds || [] } }
         : {};
@@ -583,6 +582,41 @@ export async function getDashboardStats(query = {}) {
                             ]
                         }
                     },
+                    dashboardInTransit: {
+                        $sum: {
+                            $cond: [
+                                {
+                                    $and: [
+                                        { $in: ['$orderStatus', DASHBOARD_IN_TRANSIT_ORDER_STATUSES] },
+                                        ADMIN_VISIBLE_PAYMENT_EXPR
+                                    ]
+                                },
+                                1,
+                                0
+                            ]
+                        }
+                    },
+                    refunded: {
+                        $sum: {
+                            $cond: [
+                                {
+                                    $and: [
+                                        { $eq: [{ $toLower: { $ifNull: ['$payment.status', ''] } }, 'refunded'] },
+                                        {
+                                            $not: {
+                                                $in: [
+                                                    { $toLower: { $ifNull: ['$payment.method', ''] } },
+                                                    ['cash', 'cod', 'cash on delivery']
+                                                ]
+                                            }
+                                        }
+                                    ]
+                                },
+                                1,
+                                0
+                            ]
+                        }
+                    },
                     revenueTotal: { 
                         $sum: { 
                             $cond: [DELIVERED_ORDER_STATUS_EXPR, { $ifNull: ['$pricing.total', 0] }, 0] 
@@ -611,11 +645,6 @@ export async function getDashboardStats(query = {}) {
                     gstTotal: { 
                         $sum: { 
                             $cond: [DELIVERED_ORDER_STATUS_EXPR, { $ifNull: ['$pricing.tax', 0] }, 0] 
-                        } 
-                    },
-                    adminNetProfit: { 
-                        $sum: { 
-                            $cond: [DELIVERED_ORDER_STATUS_EXPR, { $ifNull: ['$platformProfit', 0] }, 0] 
                         } 
                     },
                     // COD pipeline: include pending/processing cash orders (not only delivered)
@@ -845,7 +874,10 @@ export async function getDashboardStats(query = {}) {
             byStatus: {
                 delivered: Number(totals.delivered || 0),
                 cancelled: Number(totals.cancelled || 0),
-                pending: Number(totals.pending || 0)
+                pending: Number(totals.dashboardPending || 0),
+                processing: Number(totals.dashboardProcessing || 0),
+                inTransit: Number(totals.dashboardInTransit || 0),
+                refunded: Number(totals.refunded || 0)
             }
         },
         revenue: { total: Number(totals.revenueTotal || 0) },
