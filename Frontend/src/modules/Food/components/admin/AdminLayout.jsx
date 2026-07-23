@@ -1,9 +1,16 @@
 import { useState, useEffect, useLayoutEffect, useRef } from "react"
-import { Outlet, useLocation, useNavigate } from "react-router-dom"
+import { Outlet, useLocation, useNavigate, Navigate } from "react-router-dom"
 import { ArrowLeft } from "lucide-react"
 import AdminSidebar from "./AdminSidebar"
 import AdminNavbar from "./AdminNavbar"
 import { API_BASE_URL } from "@food/api/config"
+import { adminAPI } from "@food/api"
+import { getCurrentUser, getModuleToken, setAuthData, getModuleRefreshToken } from "@food/utils/auth"
+import {
+  canAccessPath,
+  getFirstAllowedPath,
+  isSubAdmin,
+} from "@food/utils/subAdminPermissions"
 const debugLog = (...args) => {}
 const debugWarn = (...args) => {}
 const debugError = (...args) => {}
@@ -12,9 +19,45 @@ const debugError = (...args) => {}
 export default function AdminLayout() {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
+  const [userVersion, setUserVersion] = useState(0);
   const location = useLocation();
   const navigate = useNavigate();
   const mainRef = useRef(null);
+  const user = getCurrentUser("admin");
+
+  // Keep SUB_ADMIN permissions in sync (so permission changes apply without re-login)
+  useEffect(() => {
+    if (!isSubAdmin(user)) return
+    let cancelled = false
+    adminAPI
+      .getAdminProfile()
+      .then((res) => {
+        if (cancelled) return
+        const fresh =
+          res?.data?.data?.admin ||
+          res?.data?.admin ||
+          res?.data?.data?.user ||
+          null
+        if (!fresh) return
+        const prevPerms = JSON.stringify(user?.permissions || {})
+        const nextPerms = JSON.stringify(fresh.permissions || {})
+        // Avoid rewriting localStorage (and remounting sidebar) when nothing changed
+        if (prevPerms === nextPerms && String(user?.role) === String(fresh.role) && user?.isActive === fresh.isActive) {
+          return
+        }
+        const token = getModuleToken("admin")
+        const refresh = getModuleRefreshToken("admin")
+        if (token) {
+          setAuthData("admin", token, { ...user, ...fresh }, refresh)
+          setUserVersion((v) => v + 1)
+        }
+      })
+      .catch(() => {})
+    return () => {
+      cancelled = true
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   // Scroll the main content container back to the top whenever pathname changes
   // to prevent new pages from loading scrolled down/partially hidden.
@@ -24,13 +67,21 @@ export default function AdminLayout() {
     }
   }, [location.pathname]);
 
+  // Block SUB_ADMIN from routes they don't have permission for
+  const latestUser = getCurrentUser("admin") || user
+  if (isSubAdmin(latestUser) && !canAccessPath(latestUser, location.pathname)) {
+    const fallback = getFirstAllowedPath(latestUser);
+    if (fallback !== location.pathname) {
+      return <Navigate to={fallback} replace />;
+    }
+  }
+
+  const normalizedPath = location.pathname.replace(/\/+$/, "") || "/"
   const showBackButton =
-    location.pathname !== "/admin/food" &&
-    location.pathname !== "/admin/food/" &&
-    location.pathname !== "/admin/food/coupons" &&
-    location.pathname !== "/admin/food/coupons/" &&
-    location.pathname !== "/admin/food/cash-confirmations" &&
-    location.pathname !== "/admin/food/cash-confirmations/";
+    normalizedPath !== "/admin/food" &&
+    normalizedPath !== "/admin/food/coupons" &&
+    normalizedPath !== "/admin/food/cash-confirmations" &&
+    normalizedPath !== "/admin/food/sub-admins";
 
   const handleBackClick = () => {
     if (window.history.state && window.history.state.idx > 0) {

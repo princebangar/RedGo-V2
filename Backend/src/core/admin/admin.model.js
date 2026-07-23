@@ -28,11 +28,17 @@ const adminSchema = new mongoose.Schema(
         },
         role: {
             type: String,
+            enum: ['ADMIN', 'SUB_ADMIN'],
             default: 'ADMIN'
         },
         isActive: {
             type: Boolean,
             default: true
+        },
+        /** Module-level permissions for SUB_ADMIN: { [moduleKey]: { view, create, edit, delete } } */
+        permissions: {
+            type: mongoose.Schema.Types.Mixed,
+            default: {}
         },
         servicesAccess: {
             type: [String],

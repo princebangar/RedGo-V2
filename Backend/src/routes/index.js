@@ -47,7 +47,7 @@ router.get('/v1/food/admin/business-settings/public', businessSettingsController
 router.get('/v1/food/public/customization-settings', systemConfigController.getCustomizationSettings);
 router.get('/v1/food/public/restaurant-settings', systemConfigController.getRestaurantSettings);
 
-router.use('/v1/food/admin', authMiddleware, requireRoles('ADMIN'), restaurantAdminRoutes);
+router.use('/v1/food/admin', authMiddleware, requireRoles('ADMIN', 'SUB_ADMIN'), restaurantAdminRoutes);
 router.use('/v1/food/user', authMiddleware, requireRoles('USER'), userRoutes);
 router.use('/v1/food/notifications', authMiddleware, requireRoles('USER', 'RESTAURANT', 'DELIVERY_PARTNER'), notificationRoutes);
 router.use('/v1/food/orders', authMiddleware, requireRoles('USER'), orderUserRoutes);

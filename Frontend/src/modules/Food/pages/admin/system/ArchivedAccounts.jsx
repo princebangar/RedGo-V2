@@ -197,10 +197,10 @@ export default function ArchivedAccounts() {
                     <tr key={i} className="animate-pulse">
                       <td className="px-6 py-6" colSpan="5">
                         <div className="flex items-center gap-4">
-                          <div className="w-12 h-12 bg-slate-100 rounded-2xl" />
+                          <div className="w-12 h-12 bg-slate-300 rounded-2xl" />
                           <div className="space-y-2">
-                            <div className="h-4 w-48 bg-slate-100 rounded" />
-                            <div className="h-3 w-32 bg-slate-100 rounded" />
+                            <div className="h-4 w-48 bg-slate-300 rounded" />
+                            <div className="h-3 w-32 bg-slate-200 rounded" />
                           </div>
                         </div>
                       </td>
