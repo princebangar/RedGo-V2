@@ -13,7 +13,7 @@ export function getGoogleMapsApiKey() {
 }
 
 /**
- * Fetches an encoded polyline from Google Directions API.
+ * Fetches an encoded polyline from Google Directions API (driving mode).
  * This should be called ONLY ONCE per order assignment to save costs.
  * @param {Object} origin - { lat, lng }
  * @param {Object} destination - { lat, lng }
@@ -31,7 +31,7 @@ export async function fetchPolyline(origin, destination) {
     const timeout = setTimeout(() => controller.abort(), 5000);
     const originStr = `${origin.lat},${origin.lng}`;
     const destStr = `${destination.lat},${destination.lng}`;
-    const url = `https://maps.googleapis.com/maps/api/directions/json?origin=${originStr}&destination=${destStr}&key=${apiKey}`;
+    const url = `https://maps.googleapis.com/maps/api/directions/json?origin=${encodeURIComponent(originStr)}&destination=${encodeURIComponent(destStr)}&mode=driving&region=in&key=${apiKey}`;
 
     const res = await fetch(url, { signal: controller.signal });
     clearTimeout(timeout);
@@ -48,6 +48,61 @@ export async function fetchPolyline(origin, destination) {
   }
 
   return '';
+}
+
+/**
+ * Road/driving distance in km via Google Directions API (mode=driving).
+ * Uses the same route a vehicle would take — not air/haversine distance.
+ * @returns {Promise<number|null>}
+ */
+export async function fetchDrivingDistanceKm(origin, destination) {
+  if (!origin || !destination) return null;
+  const oLat = Number(origin.lat);
+  const oLng = Number(origin.lng);
+  const dLat = Number(destination.lat);
+  const dLng = Number(destination.lng);
+  if (![oLat, oLng, dLat, dLng].every(Number.isFinite)) return null;
+
+  const apiKey = getGoogleMapsApiKey();
+  if (!apiKey) {
+    logger.warn('Google Maps API key missing. Driving distance skipped.');
+    return null;
+  }
+
+  try {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 6000);
+    const originStr = `${oLat},${oLng}`;
+    const destStr = `${dLat},${dLng}`;
+    const url =
+      `https://maps.googleapis.com/maps/api/directions/json` +
+      `?origin=${encodeURIComponent(originStr)}` +
+      `&destination=${encodeURIComponent(destStr)}` +
+      `&mode=driving&units=metric&region=in&key=${apiKey}`;
+
+    const res = await fetch(url, { signal: controller.signal });
+    clearTimeout(timeout);
+    const data = await res.json();
+
+    if (data.status === 'OK' && data.routes?.[0]?.legs?.length) {
+      const meters = data.routes[0].legs.reduce(
+        (sum, leg) => sum + Number(leg.distance?.value || 0),
+        0,
+      );
+      const km = meters / 1000;
+      if (Number.isFinite(km) && km > 0) {
+        return Math.round(km * 100) / 100;
+      }
+    }
+
+    logger.warn(
+      `Driving distance failed: ${data.status}${data.error_message ? ` - ${data.error_message}` : ''}`,
+    );
+  } catch (err) {
+    logger.error(`Error fetching driving distance: ${err.message}`);
+  }
+
+  return null;
 }
 
 /** Normalize any common lat/lng shape to { lat, lng } or null */
@@ -159,7 +214,8 @@ export async function resolveDeliveryLatLng(deliveryAddress) {
 }
 
 /**
- * Resolve restaurant + delivery coordinates (geocode if missing) and distance km.
+ * Resolve restaurant → customer distance in km.
+ * Prefers Google Directions driving/road distance; falls back to air distance only if API fails.
  */
 export async function resolveOrderDistanceKm(restaurant, deliveryAddress) {
   const [restRes, delRes] = await Promise.all([
@@ -168,18 +224,33 @@ export async function resolveOrderDistanceKm(restaurant, deliveryAddress) {
   ]);
 
   let distanceKm = null;
+  let distanceMode = null;
+
   if (restRes.point && delRes.point) {
-    const d = haversineKm(
-      restRes.point.lat,
-      restRes.point.lng,
-      delRes.point.lat,
-      delRes.point.lng,
-    );
-    distanceKm = Number.isFinite(d) && d > 0 ? d : null;
+    const drivingKm = await fetchDrivingDistanceKm(restRes.point, delRes.point);
+    if (Number.isFinite(drivingKm) && drivingKm > 0) {
+      distanceKm = drivingKm;
+      distanceMode = 'driving';
+    } else {
+      const airKm = haversineKm(
+        restRes.point.lat,
+        restRes.point.lng,
+        delRes.point.lat,
+        delRes.point.lng,
+      );
+      if (Number.isFinite(airKm) && airKm > 0) {
+        distanceKm = Math.round(airKm * 100) / 100;
+        distanceMode = 'air_fallback';
+        logger.warn(
+          `Driving distance unavailable; fell back to air distance ${distanceKm} km`,
+        );
+      }
+    }
   }
 
   return {
     distanceKm,
+    distanceMode,
     restaurantPoint: restRes.point,
     deliveryPoint: delRes.point,
     restaurantGeocoded: restRes.geocoded,
