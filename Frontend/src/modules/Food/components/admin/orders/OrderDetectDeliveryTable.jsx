@@ -1,4 +1,3 @@
-import { useState, useEffect, useMemo } from "react"
 import { Eye, Printer, ArrowUpDown, Phone, User } from "lucide-react"
 
 const getStatusColor = (status) => {
@@ -15,20 +14,6 @@ const getStatusColor = (status) => {
 }
 
 export default function OrderDetectDeliveryTable({ orders, visibleColumns, onViewOrder, onPrintOrder }) {
-  const [currentPage, setCurrentPage] = useState(1)
-  const itemsPerPage = 10
-  const totalPages = Math.ceil(orders.length / itemsPerPage)
-  
-  useEffect(() => {
-    setCurrentPage(1)
-  }, [orders.length])
-  
-  const paginatedOrders = useMemo(() => {
-    const start = (currentPage - 1) * itemsPerPage
-    const end = start + itemsPerPage
-    return orders.slice(start, end)
-  }, [orders, currentPage])
-
   if (orders.length === 0) {
     return (
       <div className="bg-white rounded-xl shadow-sm border border-slate-200">
@@ -107,14 +92,16 @@ export default function OrderDetectDeliveryTable({ orders, visibleColumns, onVie
             </tr>
           </thead>
           <tbody className="bg-white divide-y divide-slate-100">
-            {paginatedOrders.map((order, index) => (
-              <tr 
-                key={order.orderId} 
+            {orders.map((order, index) => (
+              <tr
+                key={order.orderId || order.id || index}
                 className="hover:bg-slate-50 transition-colors"
               >
                 {visibleColumns.si && (
                   <td className="px-6 py-4 whitespace-nowrap">
-                    <span className="text-sm font-medium text-slate-700">{(currentPage - 1) * itemsPerPage + index + 1}</span>
+                    <span className="text-sm font-medium text-slate-700">
+                      {order.sl ?? order.si ?? index + 1}
+                    </span>
                   </td>
                 )}
                 {visibleColumns.orderId && (
@@ -171,14 +158,14 @@ export default function OrderDetectDeliveryTable({ orders, visibleColumns, onVie
                 {visibleColumns.actions && (
                   <td className="px-6 py-4 whitespace-nowrap text-center">
                     <div className="flex items-center justify-center gap-2">
-                      <button 
+                      <button
                         onClick={() => onViewOrder(order)}
                         className="p-1.5 rounded text-orange-600 hover:bg-orange-50 transition-colors"
                         title="View Details"
                       >
                         <Eye className="w-4 h-4" />
                       </button>
-                      <button 
+                      <button
                         onClick={() => onPrintOrder(order)}
                         className="p-1.5 rounded text-blue-600 hover:bg-blue-50 transition-colors"
                         title="Print Order"
@@ -193,60 +180,6 @@ export default function OrderDetectDeliveryTable({ orders, visibleColumns, onVie
           </tbody>
         </table>
       </div>
-      
-      {totalPages > 1 && (
-        <div className="px-6 py-4 bg-slate-50 border-t border-slate-200 flex items-center justify-between">
-          <div className="text-sm text-slate-600">
-            Showing <span className="font-semibold">{(currentPage - 1) * itemsPerPage + 1}</span> to{" "}
-            <span className="font-semibold">{Math.min(currentPage * itemsPerPage, orders.length)}</span> of{" "}
-            <span className="font-semibold">{orders.length}</span> orders
-          </div>
-          <div className="flex items-center gap-2">
-            <button
-              onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
-              disabled={currentPage === 1}
-              className="px-3 py-1.5 text-sm font-medium rounded-lg border border-slate-300 bg-white text-slate-700 hover:bg-slate-50 disabled:opacity-50 disabled:cursor-not-allowed transition-all"
-            >
-              Previous
-            </button>
-            <div className="flex items-center gap-1">
-              {Array.from({ length: Math.min(5, totalPages) }, (_, i) => {
-                let pageNum
-                if (totalPages <= 5) {
-                  pageNum = i + 1
-                } else if (currentPage <= 3) {
-                  pageNum = i + 1
-                } else if (currentPage >= totalPages - 2) {
-                  pageNum = totalPages - 4 + i
-                } else {
-                  pageNum = currentPage - 2 + i
-                }
-                return (
-                  <button
-                    key={pageNum}
-                    onClick={() => setCurrentPage(pageNum)}
-                    className={`px-3 py-1.5 text-sm font-medium rounded-lg transition-all ${
-                      currentPage === pageNum
-                        ? "bg-emerald-500 text-white shadow-md"
-                        : "border border-slate-300 bg-white text-slate-700 hover:bg-slate-50"
-                    }`}
-                  >
-                    {pageNum}
-                  </button>
-                )
-              })}
-            </div>
-            <button
-              onClick={() => setCurrentPage(prev => Math.min(totalPages, prev + 1))}
-              disabled={currentPage === totalPages}
-              className="px-3 py-1.5 text-sm font-medium rounded-lg border border-slate-300 bg-white text-slate-700 hover:bg-slate-50 disabled:opacity-50 disabled:cursor-not-allowed transition-all"
-            >
-              Next
-            </button>
-          </div>
-        </div>
-      )}
     </div>
   )
 }
-
