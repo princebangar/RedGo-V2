@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from "react"
+import { useState, useEffect } from "react"
 import { 
   Search, 
   Settings, 
@@ -23,6 +23,7 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel,
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@food/components/ui/dialog"
 import { adminAPI } from "@food/api"
 import { toast } from "sonner"
+import AdminListPagination from "@food/components/admin/AdminListPagination"
 const debugLog = (...args) => {}
 const debugWarn = (...args) => {}
 const debugError = (...args) => {}
@@ -30,6 +31,16 @@ const debugError = (...args) => {}
 
 export default function EarningAddonHistory() {
   const [searchQuery, setSearchQuery] = useState("")
+  const [debouncedSearch, setDebouncedSearch] = useState("")
+  const [currentPage, setCurrentPage] = useState(1)
+  const [pageSize, setPageSize] = useState(() => {
+    try {
+      return Number(localStorage.getItem("admin_earning_addon_history_pageSize")) || 20
+    } catch {
+      return 20
+    }
+  })
+  const [totalItems, setTotalItems] = useState(0)
   const [history, setHistory] = useState([])
   const [isLoading, setIsLoading] = useState(true)
   const [isSettingsOpen, setIsSettingsOpen] = useState(false)
@@ -49,57 +60,42 @@ export default function EarningAddonHistory() {
   })
 
   useEffect(() => {
+    const t = setTimeout(() => setDebouncedSearch(searchQuery.trim()), 300)
+    return () => clearTimeout(t)
+  }, [searchQuery])
+
+  useEffect(() => {
+    setCurrentPage(1)
+  }, [debouncedSearch])
+
+  useEffect(() => {
     fetchHistory()
-  }, [])
+  }, [currentPage, pageSize, debouncedSearch])
 
   const fetchHistory = async () => {
     try {
       setIsLoading(true)
-      debugLog('?? Fetching earning addon history...')
-      const response = await adminAPI.getEarningAddonHistory()
-      debugLog('?? API Response:', {
-        success: response.data.success,
-        message: response.data.message,
-        dataKeys: response.data.data ? Object.keys(response.data.data) : [],
-        historyCount: response.data.data?.history?.length || 0,
-        pagination: response.data.data?.pagination
+      const response = await adminAPI.getEarningAddonHistory({
+        page: currentPage,
+        limit: pageSize,
+        search: debouncedSearch || undefined,
       })
-      
+
       if (response.data.success) {
         const historyData = response.data.data.history || []
-        debugLog('? Earning Addon History fetched:', historyData.length, 'records')
-        
-        // Log sample data for debugging
-        if (historyData.length > 0) {
-          debugLog('?? Sample history record:', {
-            deliveryman: historyData[0].deliveryman,
-            offerTitle: historyData[0].offerTitle,
-            status: historyData[0].status,
-            ordersCompleted: historyData[0].ordersCompleted,
-            earningAmount: historyData[0].earningAmount
-          })
-        }
-        
         setHistory(historyData)
-        if (historyData.length === 0) {
-          debugLog('?? No history records found in database')
-        } else {
-          debugLog(`? Successfully loaded ${historyData.length} history records`)
-        }
+        setTotalItems(response.data.data.pagination?.total ?? historyData.length)
       } else {
-        debugError('? API returned unsuccessful response:', response.data)
         toast.error(response.data.message || "Failed to fetch earning addon history")
+        setHistory([])
+        setTotalItems(0)
       }
     } catch (error) {
-      debugError("? Error fetching earning addon history:", error)
-      debugError("Error details:", {
-        message: error.message,
-        response: error.response?.data,
-        status: error.response?.status,
-        url: error.config?.url
-      })
+      debugError("Error fetching earning addon history:", error)
       const errorMessage = error.response?.data?.message || error.message || "Failed to fetch earning addon history"
       toast.error(errorMessage)
+      setHistory([])
+      setTotalItems(0)
     } finally {
       setIsLoading(false)
     }
@@ -122,19 +118,6 @@ export default function EarningAddonHistory() {
       return dateString
     }
   }
-
-  const filteredHistory = useMemo(() => {
-    if (!searchQuery.trim()) {
-      return history
-    }
-    
-    const query = searchQuery.toLowerCase().trim()
-    return history.filter(item =>
-      item.deliveryman?.toLowerCase().includes(query) ||
-      item.deliveryId?.toLowerCase().includes(query) ||
-      item.offerTitle?.toLowerCase().includes(query)
-    )
-  }, [history, searchQuery])
 
   const handleCredit = async () => {
     if (!selectedHistory) return
@@ -219,7 +202,7 @@ export default function EarningAddonHistory() {
   }
 
   const handleExport = (format) => {
-    if (filteredHistory.length === 0) {
+    if (history.length === 0) {
       toast.error("No data to export")
       return
     }
@@ -259,7 +242,7 @@ export default function EarningAddonHistory() {
             <div className="flex items-center gap-2">
               <h1 className="text-2xl font-bold text-slate-900">Earning Addon History</h1>
               <span className="px-3 py-1 rounded-full text-sm font-semibold bg-slate-100 text-slate-700">
-                {filteredHistory.length}
+                {totalItems}
               </span>
             </div>
 
@@ -392,7 +375,7 @@ export default function EarningAddonHistory() {
                   </tr>
                 </thead>
                 <tbody className="bg-white divide-y divide-slate-100">
-                  {filteredHistory.length === 0 ? (
+                  {history.length === 0 ? (
                     <tr>
                       <td colSpan={Object.values(visibleColumns).filter(v => v).length} className="px-6 py-12 text-center">
                         <div className="flex flex-col items-center gap-2">
@@ -405,11 +388,11 @@ export default function EarningAddonHistory() {
                       </td>
                     </tr>
                   ) : (
-                    filteredHistory.map((item) => (
+                    history.map((item, index) => (
                       <tr key={item._id} className="hover:bg-slate-50 transition-colors">
                         {visibleColumns.si && (
                           <td className="px-6 py-4 whitespace-nowrap">
-                            <span className="text-sm font-medium text-slate-700">{item.sl}</span>
+                            <span className="text-sm font-medium text-slate-700">{(currentPage - 1) * pageSize + index + 1}</span>
                           </td>
                         )}
                         {visibleColumns.deliveryman && (
@@ -502,6 +485,22 @@ export default function EarningAddonHistory() {
               </table>
             </div>
           )}
+
+          <AdminListPagination
+            currentPage={currentPage}
+            pageSize={pageSize}
+            totalItems={totalItems}
+            onPageChange={setCurrentPage}
+            onPageSizeChange={(size) => {
+              setPageSize(size)
+              try {
+                localStorage.setItem("admin_earning_addon_history_pageSize", String(size))
+              } catch {
+                /* ignore */
+              }
+            }}
+            itemLabel="records"
+          />
         </div>
       </div>
 

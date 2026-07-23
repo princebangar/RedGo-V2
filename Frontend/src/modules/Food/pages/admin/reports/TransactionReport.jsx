@@ -35,7 +35,7 @@ const METRIC_INFO = {
   restaurant:
     "Restaurant share = (item subtotal + packaging) − restaurant commission, for delivered orders only.",
   deliveryman:
-    "Total delivery partner earnings — sum of riderEarning on delivered orders.",
+    "Total delivery partner earnings — sum of riderEarning on delivered orders that have an assigned delivery partner (same basis as Delivery Earning page).",
 }
 
 function InfoTip({ tipKey, colorClass = "bg-green-500", align = "right" }) {

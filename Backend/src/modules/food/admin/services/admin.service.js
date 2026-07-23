@@ -1017,7 +1017,7 @@ export async function getTransactionReport(query = {}) {
             .lean(),
         FoodOrder.countDocuments(match),
         FoodOrder.find(match)
-            .select('pricing orderStatus payment riderEarning')
+            .select('pricing orderStatus payment riderEarning dispatch.deliveryPartnerId')
             .lean(),
     ]);
 
@@ -1131,7 +1131,10 @@ export async function getTransactionReport(query = {}) {
             // Align with dashboard Platform Total components
             adminEarning += commission + platformFee + deliveryNet + tax;
             restaurantEarning += Math.max(0, subtotal + packaging - commission);
-            deliverymanEarning += rider;
+            // Same as Delivery Earning page: delivered + assigned partner + riderEarning
+            if (order?.dispatch?.deliveryPartnerId) {
+                deliverymanEarning += rider;
+            }
         }
 
         const method = String(order?.payment?.method || '').toLowerCase();
@@ -4742,8 +4745,11 @@ export async function getDeliveryEarnings(query = {}) {
     const limit = Math.max(1, Math.min(1000, parseInt(query.limit, 10) || 50));
     const skip = (page - 1) * limit;
 
+    // Align with Transaction Report deliveryman earning:
+    // only delivered orders, and only real riderEarning (no deliveryFee fallback).
     const filter = {
-        'dispatch.deliveryPartnerId': { $ne: null }
+        'dispatch.deliveryPartnerId': { $ne: null },
+        orderStatus: 'delivered',
     };
 
     // Date range filters
@@ -4803,15 +4809,16 @@ export async function getDeliveryEarnings(query = {}) {
 
     const search = String(query.search || '').trim();
     if (search) {
-        const regex = new RegExp(search, 'i');
+        const escaped = search.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+        const regex = new RegExp(escaped, 'i');
 
         const [partners, restaurants] = await Promise.all([
             FoodDeliveryPartner.find({
                 $or: [{ name: regex }, { phone: regex }, { email: regex }]
-            }).select('_id').lean(),
+            }).select('_id').limit(100).lean(),
             FoodRestaurant.find({
                 $or: [{ restaurantName: regex }, { name: regex }]
-            }).select('_id').lean()
+            }).select('_id').limit(100).lean()
         ]);
 
         const partnerIds = partners.map((p) => p._id);
@@ -4840,17 +4847,7 @@ export async function getDeliveryEarnings(query = {}) {
                 $group: {
                     _id: null,
                     totalEarnings: {
-                        $sum: {
-                            $ifNull: [
-                                '$riderEarning',
-                                {
-                                    $ifNull: [
-                                        '$deliveryPartnerSettlement',
-                                        { $ifNull: ['$pricing.deliveryFee', 0] }
-                                    ]
-                                }
-                            ]
-                        }
+                        $sum: { $ifNull: ['$riderEarning', 0] }
                     },
                     totalOrders: { $sum: 1 }
                 }
@@ -4861,12 +4858,8 @@ export async function getDeliveryEarnings(query = {}) {
 
     const earnings = orders.map((order) => {
         const partner = order?.dispatch?.deliveryPartnerId;
-        const amount = Number(
-            order?.riderEarning ??
-            order?.deliveryPartnerSettlement ??
-            order?.pricing?.deliveryFee ??
-            0
-        ) || 0;
+        // Real rider earning only — never fall back to delivery fee (that is not rider payout)
+        const amount = Number(order?.riderEarning || 0) || 0;
 
         return {
             transactionId: String(order._id),
@@ -4890,7 +4883,7 @@ export async function getDeliveryEarnings(query = {}) {
         earnings,
         summary: {
             totalDeliveryPartners,
-            totalEarnings: Number(agg.totalEarnings || 0),
+            totalEarnings: Math.round(Number(agg.totalEarnings || 0) * 100) / 100,
             totalOrders: Number(agg.totalOrders || 0)
         },
         pagination: {
@@ -4903,10 +4896,29 @@ export async function getDeliveryEarnings(query = {}) {
 }
 
 // ----- Earning Addon Offers (admin) -----
-export async function getEarningAddons() {
-    const list = await FoodEarningAddon.find({})
-        .sort({ createdAt: -1 })
-        .lean();
+export async function getEarningAddons(query = {}) {
+    const { page = 1, limit = 20, search } = query;
+    const filter = {};
+
+    if (search && typeof search === 'string' && search.trim()) {
+        const term = search.trim();
+        filter.$or = [
+            { title: { $regex: term, $options: 'i' } },
+            { description: { $regex: term, $options: 'i' } }
+        ];
+    }
+
+    const skip = Math.max(0, (Number(page) || 1) - 1) * Math.max(1, Math.min(1000, Number(limit) || 20));
+    const limitNum = Math.max(1, Math.min(1000, Number(limit) || 20));
+
+    const [list, total] = await Promise.all([
+        FoodEarningAddon.find(filter)
+            .sort({ createdAt: -1 })
+            .skip(skip)
+            .limit(limitNum)
+            .lean(),
+        FoodEarningAddon.countDocuments(filter)
+    ]);
 
     const now = Date.now();
     const earningAddons = list.map((a) => {
@@ -4922,7 +4934,15 @@ export async function getEarningAddons() {
         };
     });
 
-    return { earningAddons };
+    return {
+        earningAddons,
+        pagination: {
+            page: Number(page) || 1,
+            limit: limitNum,
+            total,
+            pages: Math.ceil(total / limitNum) || 1
+        }
+    };
 }
 
 export async function createEarningAddon(body) {
