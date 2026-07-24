@@ -998,16 +998,39 @@ async function syncFirebaseConfigToServiceWorker(registration, firebasePublicEnv
 }
 
 async function registerMessagingServiceWorker(firebasePublicEnv) {
-  const registration = await navigator.serviceWorker.register("/firebase-messaging-sw.js", {
-    scope: "/",
-    updateViaCache: "none",
-  });
+  // Cache-bust so closed-app background handler updates after deploys
+  const registration = await navigator.serviceWorker.register(
+    `/firebase-messaging-sw.js?v=20260724`,
+    {
+      scope: "/",
+      updateViaCache: "none",
+    },
+  );
   await syncFirebaseConfigToServiceWorker(registration, firebasePublicEnv);
   try {
     await registration.update();
   } catch {
     // ignore
   }
+  // Ensure the worker is active before getToken (critical for background delivery)
+  if (registration.installing) {
+    await new Promise((resolve) => {
+      const worker = registration.installing;
+      if (!worker) {
+        resolve();
+        return;
+      }
+      worker.addEventListener("statechange", () => {
+        if (worker.state === "activated" || worker.state === "redundant") resolve();
+      });
+    });
+  }
+  try {
+    await navigator.serviceWorker.ready;
+  } catch {
+    // ignore
+  }
+  await syncFirebaseConfigToServiceWorker(registration, firebasePublicEnv);
   return registration;
 }
 

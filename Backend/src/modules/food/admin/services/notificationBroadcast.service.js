@@ -251,30 +251,35 @@ export const createBroadcastNotification = async ({ body = {}, adminId } = {}) =
         )
     });
 
-    // Push must include notification+data (not dataOnly) so Android/iOS/Web
-    // show a tray alert when the app is backgrounded or fully closed.
-    await notifyOwnersSafely(
-        resolvedTargets.map((target) => ({
-            ownerType: target.ownerType,
-            ownerId: target.ownerId
-        })),
-        {
-            title,
-            body: message,
-            link: link || '/',
-            channelId: 'restaurant_orders',
-            sendToAllDevices: true,
-            data: {
-                type: 'admin_broadcast',
-                broadcastId: String(broadcast._id),
-                link: link || '/',
-                click_action: link || '/',
-                targetUrl: link || '/'
-            }
-        }
-    );
-
+    // Socket + inbox are enough for the HTTP response to finish quickly.
+    // FCM to every device can take minutes for large audiences — run in background
+    // so admin history GET is not starved / canceled (~30s client timeout).
     emitRealtimeNotifications(resolvedTargets, broadcast);
+
+    const pushTargets = resolvedTargets.map((target) => ({
+        ownerType: target.ownerType,
+        ownerId: target.ownerId
+    }));
+    const pushPayload = {
+        title,
+        body: message,
+        link: link || '/',
+        channelId: 'restaurant_orders',
+        sendToAllDevices: true,
+        data: {
+            type: 'admin_broadcast',
+            broadcastId: String(broadcast._id),
+            link: link || '/',
+            click_action: link || '/',
+            targetUrl: link || '/'
+        }
+    };
+
+    setTimeout(() => {
+        notifyOwnersSafely(pushTargets, pushPayload).catch((error) => {
+            console.error('[broadcast] background FCM failed:', error?.message || error);
+        });
+    }, 0);
 
     return {
         broadcast,
