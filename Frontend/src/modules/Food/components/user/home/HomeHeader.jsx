@@ -64,7 +64,17 @@ export default function HomeHeader({
   const [localUnread, setLocalUnread] = useState(() => {
     try {
       const saved = JSON.parse(localStorage.getItem('food_user_notifications') || '[]')
-      return Array.isArray(saved) ? saved.filter(n => !n.read).length : 0
+      if (!Array.isArray(saved)) return 0
+      return saved.filter((n) => {
+        if (n?.read) return false
+        const id = String(n?.id || '')
+        const title = String(n?.title || '')
+        const message = String(n?.message || '')
+        if (id === '1' || id === '2') return false
+        if (title === 'Order Confirmed' && message.includes('#12345')) return false
+        if (title === 'Special Offer' && message.includes('50% off')) return false
+        return true
+      }).length
     } catch { return 0 }
   });
 

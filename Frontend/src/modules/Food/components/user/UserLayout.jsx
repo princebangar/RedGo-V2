@@ -250,7 +250,27 @@ function UserLayoutContent() {
       }
       try {
         const existing = JSON.parse(localStorage.getItem('food_user_notifications') || '[]')
-        const updated = [newNotif, ...(Array.isArray(existing) ? existing : [])]
+        const list = Array.isArray(existing) ? existing : []
+        // Drop legacy demo seeds (#12345 / Special Offer) if still present
+        const cleaned = list.filter((item) => {
+          const id = String(item?.id || '')
+          const title = String(item?.title || '')
+          const message = String(item?.message || '')
+          if (id === '1' || id === '2') return false
+          if (title === 'Order Confirmed' && message.includes('#12345')) return false
+          if (title === 'Special Offer' && message.includes('50% off')) return false
+          return true
+        })
+        // Dedupe same order+status within a short window
+        const dedupeKey = `order-${orderId}-${status}`
+        const already = cleaned.some(
+          (n) =>
+            String(n.id || '').startsWith(dedupeKey) ||
+            (String(n.title || '') === String(newNotif.title) &&
+              Date.now() - Number(n.timestamp || 0) < 15_000),
+        )
+        if (already) return
+        const updated = [newNotif, ...cleaned].slice(0, 100)
         localStorage.setItem('food_user_notifications', JSON.stringify(updated))
         const unreadCount = updated.filter(n => !n.read).length
         window.dispatchEvent(new CustomEvent('notificationsUpdated', { detail: { count: unreadCount } }))
