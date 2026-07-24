@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, Component, useMemo } from "react"
 import { createPortal } from "react-dom"
 import { motion, AnimatePresence } from "framer-motion"
-import { useParams, useNavigate, useSearchParams } from "react-router-dom"
+import { useParams, useNavigate, useSearchParams, useLocation as useRouterLocation } from "react-router-dom"
 import { restaurantAPI, diningAPI, orderAPI } from "@food/api"
 import { API_BASE_URL } from "@food/api/config"
 import { toast } from "sonner"
@@ -52,6 +52,7 @@ import { getCompanyNameAsync } from "@food/utils/businessSettings"
 import { isModuleAuthenticated } from "@food/utils/auth"
 import { getRestaurantAvailabilityStatus } from "@food/utils/restaurantAvailability"
 import useAppBackNavigation from "@food/hooks/useAppBackNavigation"
+import { isMongoObjectId, toRestaurantUrlSlug } from "@food/utils/mainTabRoutes"
 import {
   buildCartLineId,
   getDefaultFoodVariant,
@@ -124,12 +125,27 @@ const ScallopBadge = ({ className = "" }) => (
 function RestaurantDetailsContent() {
   const { slug } = useParams()
   const navigate = useNavigate()
+  const routerLocation = useRouterLocation()
   const goBack = useAppBackNavigation()
   const [searchParams, setSearchParams] = useSearchParams()
   const showOnlyUnder250 = searchParams.get('under250') === 'true'
   const targetDishId = useMemo(() => String(searchParams.get('dish') || '').trim(), [searchParams])
   const { addToCart, updateQuantity, removeFromCart, getCartItem, cart, itemCount } = useCart()
   const { vegMode, addDishFavorite, removeDishFavorite, isDishFavorite, getDishFavorites, getFavorites, addFavorite, removeFavorite, isFavorite, orderType } = useProfile()
+  const seededRestaurant = routerLocation.state?.restaurantData || null
+  const seededMongoId = useMemo(() => {
+    const candidates = [
+      seededRestaurant?.mongoId,
+      seededRestaurant?._id,
+      seededRestaurant?.restaurantId,
+      seededRestaurant?.id,
+    ]
+    for (const c of candidates) {
+      const v = String(c || "").trim()
+      if (isMongoObjectId(v)) return v
+    }
+    return ""
+  }, [seededRestaurant])
 
   // Veg mode ON: never keep a Non-veg chip selected
   useEffect(() => {
@@ -448,15 +464,55 @@ function RestaurantDetailsContent() {
 
   useEffect(() => {
     // Reset state when entering a new restaurant page to prevent flash of old content
-    setRestaurant(null)
-    setAllOffers([])
-    setLoadingRestaurant(true)
-    setLoadingOffers(true)
     fetchedRestaurantRef.current = false
     fetchedSlugRef.current = null
     setCurrentCouponIndex(0)
     setSelectedMenuCategory("all")
-  }, [slug])
+    setRestaurantError(null)
+
+    // Instant header from navigation state (name/image) while full API loads
+    if (seededRestaurant) {
+      const seedName =
+        seededRestaurant.name ||
+        seededRestaurant.restaurantName ||
+        "Restaurant"
+      const seedId =
+        seededMongoId ||
+        seededRestaurant.mongoId ||
+        seededRestaurant._id ||
+        seededRestaurant.restaurantId ||
+        null
+      setRestaurant({
+        id: seedId,
+        mongoId: seededMongoId || seedId,
+        name: seedName,
+        cuisine: seededRestaurant.cuisine || seededRestaurant.topCategory || "",
+        rating: seededRestaurant.rating || 0,
+        reviews: seededRestaurant.reviews || seededRestaurant.totalRatings || 0,
+        deliveryTime: seededRestaurant.deliveryTime || "25-30 mins",
+        distance: seededRestaurant.distance || "",
+        location: seededRestaurant.location || "",
+        image: seededRestaurant.image || seededRestaurant.profileImage || null,
+        coverImages: seededRestaurant.coverImages || [],
+        menuImages: seededRestaurant.menuImages || [],
+        menuSections: [],
+        slug,
+        restaurantId: seedId,
+        outletTimings: seededRestaurant.outletTimings || null,
+        deliveryTimings: seededRestaurant.deliveryTimings || null,
+        isActive: seededRestaurant.isActive !== false,
+        isAcceptingOrders: seededRestaurant.isAcceptingOrders !== false,
+      })
+      setLoadingRestaurant(false)
+      setLoadingMenuItems(true)
+    } else {
+      setRestaurant(null)
+      setLoadingRestaurant(true)
+      setLoadingMenuItems(true)
+    }
+    setAllOffers([])
+    setLoadingOffers(true)
+  }, [slug, seededRestaurant, seededMongoId])
 
   // Fetch restaurant data from API
   useEffect(() => {
@@ -478,60 +534,78 @@ function RestaurantDetailsContent() {
         let response = null
         let apiRestaurant = null
 
-        // Try dining API first (if available). If it doesn't return a valid restaurant,
-        // always fall back to restaurant API (important when diningAPI is stubbed).
-        try {
-          response = await diningAPI.getRestaurantBySlug(slug)
-          if (response?.data?.success && response?.data?.data) {
-            apiRestaurant = response.data.data
-            debugLog('? Found restaurant in dining API:', apiRestaurant)
-          } else {
-            debugLog('? Dining API returned no restaurant, falling back to restaurant API...')
-          }
-        } catch (diningError) {
-          // If dining API errors, we still fall back unless it's a hard network failure handled below.
-          if (diningError?.response?.status === 404) {
-            debugLog('? Restaurant not found in dining API, trying restaurant API...')
-          } else {
-            debugWarn('? Dining API failed, trying restaurant API...', diningError?.message)
+        // Try dining API only for slug deep-links (skip when we already have ObjectId from nav state)
+        if (!seededMongoId && !isMongoObjectId(slug)) {
+          try {
+            response = await diningAPI.getRestaurantBySlug(slug)
+            if (response?.data?.success && response?.data?.data) {
+              apiRestaurant = response.data.data
+              debugLog('? Found restaurant in dining API:', apiRestaurant)
+            } else {
+              debugLog('? Dining API returned no restaurant, falling back to restaurant API...')
+            }
+          } catch (diningError) {
+            if (diningError?.response?.status === 404) {
+              debugLog('? Restaurant not found in dining API, trying restaurant API...')
+            } else {
+              debugWarn('? Dining API failed, trying restaurant API...', diningError?.message)
+            }
           }
         }
 
-        // Restaurant API fallback (works for both ObjectId and slug)
+        // Restaurant API: ObjectId first (root cause fix). Slug is only fallback for deep links.
         if (!apiRestaurant) {
           try {
-            // First, try to get restaurant directly by slug/ID (no zoneId needed)
-            try {
-              response = await restaurantAPI.getRestaurantById(slug)
-              if (response?.data?.success && response?.data?.data) {
-                apiRestaurant = response.data.data
-                debugLog('? Found restaurant in restaurant API by slug/ID:', apiRestaurant)
+            const lookupKeys = []
+            if (seededMongoId) lookupKeys.push(seededMongoId)
+            if (isMongoObjectId(slug)) lookupKeys.push(slug)
+            // Only hit slug endpoint when we have no ObjectId (avoids noisy 404s like naviscafe)
+            if (!seededMongoId && !isMongoObjectId(slug) && slug) lookupKeys.push(slug)
+
+            for (const key of lookupKeys) {
+              try {
+                response = await restaurantAPI.getRestaurantById(key)
+                if (response?.data?.success && response?.data?.data) {
+                  apiRestaurant = response.data.data
+                  debugLog('? Found restaurant in restaurant API by key:', key)
+                  break
+                }
+              } catch (directLookupError) {
+                debugLog('? Lookup failed for key:', key)
               }
-            } catch (directLookupError) {
-              // If direct lookup fails, try searching by name.
-              // Fallback without zoneId so missing live location never blocks this page.
+            }
+
+            if (!apiRestaurant) {
+              // Deep-link fallback: resolve pretty slug via list, then fetch by ObjectId
               debugLog('? Direct lookup failed, trying search by name...')
 
               const searchVariants = zoneId
                 ? [{ limit: 100, zoneId: zoneId, _ts: Date.now() }, { limit: 100, _ts: Date.now() }]
                 : [{ limit: 100, _ts: Date.now() }]
 
+              const slugCompact = String(slug || "").toLowerCase().replace(/[^a-z0-9]/g, "")
+              const slugHyphen = String(slug || "").toLowerCase()
+
               for (const searchParams of searchVariants) {
                 try {
                   const searchResponse = await restaurantAPI.getRestaurants(searchParams, { noCache: true })
                   const restaurants = searchResponse?.data?.data?.restaurants || searchResponse?.data?.data || []
 
-                  // Try to find by slug match or name match
-                  const restaurantName = slug.replace(/-/g, ' ').replace(/\b\w/g, l => l.toUpperCase())
-                  const matchingRestaurant = restaurants.find(r =>
-                    r.slug === slug ||
-                    r.slug?.replace(/[\s\/]+/g, '-') === slug ||
-                    r.name?.toLowerCase().replace(/[\s\/]+/g, '-') === slug.toLowerCase() ||
-                    r.name?.toLowerCase() === restaurantName.toLowerCase()
-                  )
+                  const matchingRestaurant = restaurants.find(r => {
+                    const name = String(r.restaurantName || r.name || "").toLowerCase()
+                    const nameSlug = toRestaurantUrlSlug(name)
+                    const nameCompact = name.replace(/[^a-z0-9]/g, "")
+                    const rSlug = toRestaurantUrlSlug(r.slug || "")
+                    return (
+                      rSlug === slugHyphen ||
+                      nameSlug === slugHyphen ||
+                      nameCompact === slugCompact ||
+                      String(r._id) === seededMongoId ||
+                      String(r.restaurantId) === seededMongoId
+                    )
+                  })
 
                   if (matchingRestaurant) {
-                    // Get full restaurant details by ID
                     const fullResponse = await restaurantAPI.getRestaurantById(matchingRestaurant._id || matchingRestaurant.restaurantId)
                     if (fullResponse.data && fullResponse.data.success && fullResponse.data.data) {
                       apiRestaurant = fullResponse.data.data
@@ -848,105 +922,53 @@ function RestaurantDetailsContent() {
           fetchedRestaurantRef.current = true // Mark as fetched
           fetchedSlugRef.current = slug
 
-          // Load outlet timings from public endpoint (source of truth for daily opening slots)
-          try {
-            const outletRestaurantId = transformedRestaurant.mongoId || actualRestaurant?._id || apiRestaurant?._id
-            if (outletRestaurantId) {
-              const outletResponse = await restaurantAPI.getOutletTimingsByRestaurantId(outletRestaurantId, { noCache: true })
-              const outletTimingsData = outletResponse?.data?.data?.outletTimings || outletResponse?.data?.outletTimings
-              if (outletTimingsData) {
-                setRestaurant((prev) => ({ ...prev, outletTimings: outletTimingsData }))
-              }
-            }
-          } catch (outletError) {
-            debugWarn("Outlet timings fetch failed, falling back to delivery timings:", outletError?.message)
-          }
-
-          // Fetch menu and inventory for this restaurant
-          // If no restaurant ID, try to find matching restaurant by name
-          let restaurantIdForMenu = transformedRestaurant.id
-
-          if (!restaurantIdForMenu) {
-            debugWarn('? No restaurant ID available, searching for restaurant by name...')
-            try {
-              const searchVariants = zoneId
-                ? [{ limit: 100, zoneId: zoneId, _ts: Date.now() }, { limit: 100, _ts: Date.now() }]
-                : [{ limit: 100, _ts: Date.now() }]
-
-              for (const searchParams of searchVariants) {
-                const searchResponse = await restaurantAPI.getRestaurants(searchParams, { noCache: true })
-                const restaurants = searchResponse?.data?.data?.restaurants || searchResponse?.data?.data || []
-
-                // Try to find by exact name match
-                const matchingRestaurant = restaurants.find(r =>
-                  r.name?.toLowerCase().trim() === transformedRestaurant.name?.toLowerCase().trim()
-                )
-
-                if (matchingRestaurant) {
-                  restaurantIdForMenu = matchingRestaurant._id || matchingRestaurant.restaurantId || matchingRestaurant.id
-                  debugLog('? Found matching restaurant by name, ID:', restaurantIdForMenu)
-
-                  // Update the restaurant ID in state
-                  setRestaurant(prev => ({
-                    ...prev,
-                    id: restaurantIdForMenu,
-                    restaurantId: restaurantIdForMenu
-                  }))
-                  break
-                }
-              }
-
-              if (!restaurantIdForMenu) {
-                debugWarn('? No matching restaurant found by name')
-              }
-            } catch (searchError) {
-              debugError('? Error searching for restaurant:', searchError)
-            }
-          }
-
-          const normalizedLookupIds = [
-            restaurantIdForMenu,
-            slug,
+          // Menu / outlet / inventory: Mongo ObjectId only (never name-slug — that caused 30s cancels)
+          const objectIdForApis = [
+            seededMongoId,
+            transformedRestaurant.mongoId,
+            actualRestaurant?._id,
+            apiRestaurant?._id,
             transformedRestaurant.id,
             transformedRestaurant.restaurantId,
-            transformedRestaurant.mongoId,
-            apiRestaurant?.restaurantId,
-            apiRestaurant?._id,
-            actualRestaurant?.restaurantId,
-            actualRestaurant?._id,
-            actualRestaurant?.slug,
           ]
-            .filter(Boolean)
-            .map((value) => String(value).trim())
-            .filter((value, index, arr) => arr.indexOf(value) === index)
+            .map((v) => String(v || "").trim())
+            .find((v) => isMongoObjectId(v))
 
           setLoadingMenuItems(true)
-          if (normalizedLookupIds.length > 0) {
-            const hasPreviousOrderForRestaurant = !!actualRestaurant?.hasOrderedBefore || !!apiRestaurant?.hasOrderedBefore;
+          if (!objectIdForApis) {
+            debugWarn('? No Mongo ObjectId for menu/timings — skipping secondary fetches')
+            setLoadingMenuItems(false)
+          } else {
+            const hasPreviousOrderForRestaurant = !!actualRestaurant?.hasOrderedBefore || !!apiRestaurant?.hasOrderedBefore
+
+            const [outletResult, menuResult] = await Promise.allSettled([
+              restaurantAPI.getOutletTimingsByRestaurantId(objectIdForApis),
+              restaurantAPI.getMenuByRestaurantId(objectIdForApis),
+            ])
+
+            if (outletResult.status === "fulfilled") {
+              const outletTimingsData =
+                outletResult.value?.data?.data?.outletTimings ||
+                outletResult.value?.data?.outletTimings
+              if (outletTimingsData) {
+                setRestaurant((prev) => (prev ? { ...prev, outletTimings: outletTimingsData } : prev))
+              }
+            } else {
+              debugWarn("Outlet timings fetch failed, falling back to delivery timings:", outletResult.reason?.message)
+            }
 
             try {
-              debugLog('? Fetching menu for restaurant ID:', restaurantIdForMenu)
-              let menuResponse = null
-              let resolvedMenuLookupId = null
-              for (const lookupId of normalizedLookupIds) {
-                try {
-                  debugLog('? Fetching menu for restaurant lookup ID:', lookupId)
-                  const response = await restaurantAPI.getMenuByRestaurantId(lookupId, { noCache: true })
-                  if (response?.data?.success) {
-                    menuResponse = response
-                    resolvedMenuLookupId = lookupId
-                    break
-                  }
-                } catch (lookupError) {
-                  if (lookupError?.response?.status !== 404) {
-                    throw lookupError
-                  }
-                }
-              }
+              const menuResponse =
+                menuResult.status === "fulfilled" && menuResult.value?.data?.success
+                  ? menuResult.value
+                  : null
               if (!menuResponse) {
+                if (menuResult.status === "rejected" && menuResult.reason?.response?.status !== 404) {
+                  throw menuResult.reason
+                }
                 throw Object.assign(new Error('Menu not found'), { response: { status: 404 } })
               }
-              debugLog('? Menu resolved using lookup ID:', resolvedMenuLookupId)
+              debugLog('? Menu resolved using ObjectId:', objectIdForApis)
               if (menuResponse.data && menuResponse.data.success && menuResponse.data.data && menuResponse.data.data.menu) {
                 const rawSections = menuResponse.data.data.menu.sections || []
                 const toArray = (value) => {
@@ -1109,29 +1131,9 @@ function RestaurantDetailsContent() {
             }
 
             try {
-              debugLog('? Fetching inventory for restaurant ID:', restaurantIdForMenu)
-              let inventoryResponse = null
-              let resolvedInventoryLookupId = null
-              for (const lookupId of normalizedLookupIds) {
-                try {
-                  debugLog('? Fetching inventory for restaurant lookup ID:', lookupId)
-                  const response = await restaurantAPI.getInventoryByRestaurantId(lookupId)
-                  if (response?.data?.success) {
-                    inventoryResponse = response
-                    resolvedInventoryLookupId = lookupId
-                    break
-                  }
-                } catch (lookupError) {
-                  if (lookupError?.response?.status !== 404) {
-                    throw lookupError
-                  }
-                }
-              }
-              if (!inventoryResponse) {
-                throw Object.assign(new Error('Inventory not found'), { response: { status: 404 } })
-              }
-              debugLog('? Inventory resolved using lookup ID:', resolvedInventoryLookupId)
-              if (inventoryResponse.data && inventoryResponse.data.success && inventoryResponse.data.data && inventoryResponse.data.data.inventory) {
+              debugLog('? Fetching inventory for restaurant ID:', objectIdForApis)
+              const inventoryResponse = await restaurantAPI.getInventoryByRestaurantId(objectIdForApis)
+              if (inventoryResponse?.data?.success && inventoryResponse?.data?.data?.inventory) {
                 const inventoryCategories = inventoryResponse.data.data.inventory.categories || []
 
                 // Normalize inventory categories to ensure proper structure
@@ -1167,9 +1169,6 @@ function RestaurantDetailsContent() {
                 debugError('? Error fetching inventory:', inventoryError)
               }
             }
-          }
-          else {
-            setLoadingMenuItems(false)
           }
         } else {
           debugError('? No restaurant data found in API response')
@@ -1226,7 +1225,7 @@ function RestaurantDetailsContent() {
     }
 
     fetchRestaurant()
-  }, [slug, zoneId, restaurant])
+  }, [slug, zoneId, seededMongoId])
 
   // Track previous values to prevent unnecessary recalculations
   const prevCoordsRef = useRef({ userLat: null, userLng: null, restaurantLat: null, restaurantLng: null })
@@ -2431,8 +2430,9 @@ function RestaurantDetailsContent() {
 
   return (
     <AnimatedPage
+      instant
       id="scrollingelement"
-      className={`min-h-screen bg-white dark:bg-[#0a0a0a] flex flex-col transition-all duration-300 ${shouldShowGrayscale ? 'grayscale opacity-75' : ''
+      className={`min-h-screen bg-white dark:bg-[#0a0a0a] flex flex-col ${shouldShowGrayscale ? 'grayscale opacity-75' : ''
         }`}
     >
       {/* Header - Back, Search, Menu (like reference image) */}

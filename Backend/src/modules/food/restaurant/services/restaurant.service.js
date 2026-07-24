@@ -17,8 +17,12 @@ const normalizeName = (value) =>
     String(value || '')
         .trim()
         .toLowerCase()
+        .replace(/['’]/g, '')
         .replace(/-/g, ' ')
         .replace(/\s+/g, ' ');
+
+/** Letters/digits only — for matching navis-cafe ↔ navi's cafe */
+const toCompactName = (value) => normalizeName(value).replace(/[^a-z0-9]/g, '');
 
 const normalizePhone = (value) => {
     const digits = String(value || '').replace(/\D/g, '').slice(-15);
@@ -1489,6 +1493,7 @@ export const listApprovedRestaurants = async (query = {}) => {
         location: 1,
         distance: 1,
         distanceInKm: 1,
+        __topOrder: 1,
         openingTime: 1,
         closingTime: 1,
         openDays: 1,
@@ -1652,27 +1657,40 @@ export const getApprovedRestaurantByIdOrSlug = async (idOrSlug, userId = null) =
     if (/^[0-9a-fA-F]{24}$/.test(value)) {
         doc = await FoodRestaurant.findOne({ _id: value, status: 'approved' }).lean();
     } else {
-        // Slug path
+        // Slug / name path — URL may be "navis-cafe" while DB has "navi's cafe"
         const variantWithSpaces = normalizeName(value);
-        const variantWithHyphens = value.trim().toLowerCase().replace(/\s+/g, ' ');
-        
-        // Robust query supporting exact normalization (with spaces), literal slug (with hyphens),
-        // or a regex fallback allowing any spaces/hyphens interchanged.
-        const escapedValue = escapeRegex(value.trim().toLowerCase());
-        const regexPattern = new RegExp('^' + escapedValue.replace(/-/g, '[\\s-]') + '$', 'i');
-        
-        if (variantWithSpaces || variantWithHyphens) {
-            doc = await FoodRestaurant.findOne({
-                status: 'approved',
-                $or: [
-                    { slug: value },
-                    { restaurantSlug: value },
-                    { restaurantNameNormalized: variantWithSpaces },
-                    { restaurantNameNormalized: variantWithHyphens },
-                    { restaurantNameNormalized: regexPattern }
-                ]
-            }).lean();
+        const compact = toCompactName(value);
+        // Allow any non-alphanumeric between letters (apostrophe, space, hyphen)
+        const flexibleCompact =
+            compact.length >= 3
+                ? new RegExp(
+                      '^' +
+                          compact
+                              .split('')
+                              .map((ch) => escapeRegex(ch))
+                              .join('[^a-z0-9]*') +
+                          '$',
+                      'i',
+                  )
+                : null;
+
+        const orClauses = [
+            { slug: value },
+            { restaurantSlug: value },
+            { restaurantNameNormalized: variantWithSpaces },
+            { restaurantNameNormalized: value.trim().toLowerCase() },
+        ];
+        if (flexibleCompact) {
+            orClauses.push(
+                { restaurantNameNormalized: flexibleCompact },
+                { restaurantName: flexibleCompact },
+            );
         }
+
+        doc = await FoodRestaurant.findOne({
+            status: 'approved',
+            $or: orClauses,
+        }).lean();
     }
 
     if (!doc) return null;

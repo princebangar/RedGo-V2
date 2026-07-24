@@ -3,6 +3,8 @@
  * Decode and extract information from JWT tokens
  */
 
+import { clearCategoryBrowseStorage } from "./categoryCache.js";
+
 /**
  * Decode JWT token without verification (client-side only)
  * @param {string} token - JWT token
@@ -212,6 +214,12 @@ export function clearUserSession() {
     sessionStorage.removeItem("redgo_location_session");
     sessionStorage.removeItem("lastLoginLocationFetch");
     localStorage.setItem("deliveryAddressMode", "current");
+  } catch {
+    /* ignore */
+  }
+  // Drop in-memory + session browse caches so next account starts clean
+  try {
+    clearCategoryBrowseStorage();
   } catch {
     /* ignore */
   }

@@ -250,7 +250,7 @@ export default function AdminHome() {
               helper={`${periodLabel} restaurant cut`}
               icon={<ArrowUpRight className="h-5 w-5 text-indigo-600" />}
               accent="bg-indigo-200/40"
-              path="/admin/food/restaurants/commission"
+              path="/admin/food/transaction-report?focus=platform-total"
               loading={isLoading}
             />
             <MetricCard

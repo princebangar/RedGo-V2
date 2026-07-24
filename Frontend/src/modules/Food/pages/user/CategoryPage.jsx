@@ -1,8 +1,8 @@
-import { useState, useMemo, useRef, useEffect, startTransition, useDeferredValue } from "react"
+import { useState, useMemo, useRef, useEffect, useLayoutEffect, startTransition, useDeferredValue } from "react"
 import { useParams, Link, useNavigate, useNavigationType } from "react-router-dom"
 import { createPortal } from "react-dom"
 import { motion, AnimatePresence } from "framer-motion"
-import { ArrowLeft, Star, Clock, Search, SlidersHorizontal, ChevronDown, Bookmark, BadgePercent, MapPin, ArrowDownUp, Timer, IndianRupee, UtensilsCrossed, ShieldCheck, X, Loader2, Grid2x2 } from "lucide-react"
+import { ArrowLeft, Star, Clock, Search, SlidersHorizontal, ChevronDown, Bookmark, BadgePercent, MapPin, ArrowDownUp, Timer, IndianRupee, UtensilsCrossed, ShieldCheck, X, Loader2, Grid2x2, Zap } from "lucide-react"
 import { Card, CardContent } from "@food/components/ui/card"
 import { Button } from "@food/components/ui/button"
 import { Input } from "@food/components/ui/input"
@@ -27,7 +27,32 @@ import { useLocation } from "@food/hooks/useLocation"
 import { useZone } from "@food/hooks/useZone"
 import { useDelayedLoading } from "@food/hooks/useDelayedLoading"
 import { getMenuFromResponse } from "@food/utils/menuItems"
-import { CATEGORY_SESSION_CACHE, clearCategoryCache } from "../../utils/categoryCache"
+import { getRestaurantAvailabilityStatus } from "@food/utils/restaurantAvailability"
+import { compareRestaurantsByAvailabilityAndDistance } from "@food/utils/restaurantBrowseSort"
+import { calculateDistance, formatDistance } from "@food/utils/common"
+import {
+  saveCategoryBrowseClick,
+  getCategoryLastClick,
+  categoryBrowseNeedsRestore,
+  trackCategoryWindowScrollY,
+  peekBrowseScroll,
+  peekBrowseScrollAny,
+} from "@food/utils/browseScrollMemory"
+import { toFoodUserPath, getRestaurantRouteId } from "@food/utils/mainTabRoutes"
+import RestaurantImageCarousel from "@food/components/user/RestaurantImageCarousel"
+import {
+  peekCategoryListCache,
+  setCategoryListCache,
+  peekCategoryRestaurantsCache,
+  setCategoryRestaurantsCache,
+} from "../../utils/categoryCache"
+
+/** First paint: fewer restaurants + progressive menu enrichment */
+const CATEGORY_FETCH_LIMIT = 18
+const ALL_LIST_INITIAL_VISIBLE = 8
+const ALL_LIST_LOAD_MORE = 6
+const RECOMMENDED_MAX_ITEMS = 24
+const MENU_ENRICH_BATCH = 3
 
 // Filter options
 const filterOptions = [
@@ -48,7 +73,14 @@ const debugError = (...args) => {};
 
 // In-memory cache to avoid localStorage quota limits and slow JSON parsing for large menus
 
-export default function CategoryPage({ embeddedCategorySlug = null, hideHeader = false, hideCategoryCarousel = false, hideFilters = false, disableAutoScroll = false }) {
+export default function CategoryPage({
+  embeddedCategorySlug = null,
+  hideHeader = false,
+  hideCategoryCarousel = false,
+  hideFilters = false,
+  disableAutoScroll = false,
+  isBrowseActive = true,
+}) {
   const params = useParams()
   const category = embeddedCategorySlug || params.category
   const navigate = useNavigate()
@@ -63,14 +95,18 @@ export default function CategoryPage({ embeddedCategorySlug = null, hideHeader =
 
   // Let the network fetch effect handle clearing stale data if the zone actually changes.
   useEffect(() => {
-    if (loadingZone) {
-      setLoadingCategories(true)
-      // Only set loading to true, but do not destroy the existing data immediately
-      // so the browser can restore scroll position seamlessly.
-    }
-  }, [loadingZone])
+    if (!isBrowseActive) return
+    if (!loadingZone) return
+    const cached = peekCategoryListCache(zoneId)
+    if (Array.isArray(cached?.categories) && cached.categories.length > 1) return
+    setLoadingCategories(true)
+  }, [loadingZone, isBrowseActive, zoneId])
   const [searchQuery, setSearchQuery] = useState("")
   const [selectedCategory, setSelectedCategory] = useState(category?.toLowerCase() || 'all')
+  // Always prefer URL/embedded slug so save+restore paths stay stable (not mongo id).
+  const categoryBackPath = `/user/category/${String(
+    embeddedCategorySlug || category || selectedCategory || "all",
+  ).toLowerCase()}`
   const [activeFilters, setActiveFilters] = useState(new Set())
   const [favorites, setFavorites] = useState(new Set())
   const [sortBy, setSortBy] = useState(null)
@@ -81,15 +117,29 @@ export default function CategoryPage({ embeddedCategorySlug = null, hideHeader =
   const filterSectionRefs = useRef({})
   const rightContentRef = useRef(null)
   const categoryScrollRef = useRef(null)
+  const stickyHeaderRef = useRef(null)
+  const [stickyHeaderHeight, setStickyHeaderHeight] = useState(0)
   const menuEnrichmentRequestRef = useRef(0)
   const approvedFoodsCacheRef = useRef(null)
   const approvedFoodsInFlightRef = useRef(null)
   const hasRestoredCategoryFiltersRef = useRef(false)
   const lastFetchedCategoryRef = useRef(null)
 
-  // State for categories from admin
-  const [categories, setCategories] = useState([])
-  const [loadingCategories, setLoadingCategories] = useState(true)
+  // State for categories from admin (seed from memory cache — no "No categories" flash)
+  const [categories, setCategories] = useState(() => {
+    const cached = peekCategoryListCache(zoneId)
+    return Array.isArray(cached?.categories) && cached.categories.length > 0
+      ? cached.categories
+      : []
+  })
+  const [loadingCategories, setLoadingCategories] = useState(() => {
+    const cached = peekCategoryListCache(zoneId)
+    return !(Array.isArray(cached?.categories) && cached.categories.length > 1)
+  })
+  const [categoryKeywords, setCategoryKeywords] = useState(() => {
+    const cached = peekCategoryListCache(zoneId)
+    return cached?.keywords && typeof cached.keywords === "object" ? cached.keywords : {}
+  })
 
   const displayCategories = useMemo(() => {
     if (!Array.isArray(categories)) return []
@@ -132,21 +182,27 @@ export default function CategoryPage({ embeddedCategorySlug = null, hideHeader =
 
   const [restaurantsData, setRestaurantsData] = useState(() => {
     const initialCategory = category?.toLowerCase() || 'all';
-    const cacheKey = `redgo_cat_${initialCategory}_zone_${zoneId || ''}`;
-    if (CATEGORY_SESSION_CACHE.has(cacheKey)) {
-      return CATEGORY_SESSION_CACHE.get(cacheKey).restaurants || [];
-    }
-    return [];
+    const cached = peekCategoryRestaurantsCache(initialCategory, zoneId, [])
+    return cached?.restaurants || []
   })
   const [loadingRestaurants, setLoadingRestaurants] = useState(() => {
     const initialCategory = category?.toLowerCase() || 'all';
-    const cacheKey = `redgo_cat_${initialCategory}_zone_${zoneId || ''}`;
-    return !CATEGORY_SESSION_CACHE.has(cacheKey);
+    return !peekCategoryRestaurantsCache(initialCategory, zoneId, [])
   })
   const [isEnrichingMenus, setIsEnrichingMenus] = useState(false)
   const [approvedFoodsData, setApprovedFoodsData] = useState([])
-  const [categoryKeywords, setCategoryKeywords] = useState({})
-  const showCategorySkeleton = useDelayedLoading((loadingCategories || loadingZone) && restaurantsData.length === 0)
+  const [visibleAllCount, setVisibleAllCount] = useState(ALL_LIST_INITIAL_VISIBLE)
+  const allListSentinelRef = useRef(null)
+  const lastScrolledCategoryRef = useRef(null)
+  const hasRestoredBrowseScrollRef = useRef(false)
+  const savedScrollYRef = useRef(0)
+  const liveScrollYRef = useRef(0)
+  const savedVisibleCountRef = useRef(ALL_LIST_INITIAL_VISIBLE)
+  // Skeleton only while chips are actually loading — don't hide behind restaurant cache
+  const showCategorySkeleton = useDelayedLoading(
+    (loadingCategories || loadingZone) && categories.length <= 1,
+    { delay: 60, minDuration: 120 },
+  )
   const deferredSearchQuery = useDeferredValue(searchQuery)
   const BACKEND_ORIGIN = useMemo(() => API_BASE_URL.replace(/\/api\/?$/, ""), [])
   const slugify = (value) => String(value || "").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "")
@@ -458,6 +514,12 @@ export default function CategoryPage({ embeddedCategorySlug = null, hideHeader =
   }
 
   const getComparablePrice = (row) => {
+    if (Array.isArray(row?.recommendedDishes) && row.recommendedDishes.length > 0) {
+      const prices = row.recommendedDishes
+        .map((dish) => Number(dish?.price))
+        .filter((price) => Number.isFinite(price))
+      if (prices.length > 0) return Math.min(...prices)
+    }
     const raw = row?.categoryDishPrice ?? row?.featuredPrice ?? null
     const parsed = typeof raw === "number" ? raw : parseFirstNumber(raw)
     return Number.isFinite(parsed) ? parsed : null
@@ -561,7 +623,11 @@ export default function CategoryPage({ embeddedCategorySlug = null, hideHeader =
         row.name?.toLowerCase().includes(query) ||
         row.cuisine?.toLowerCase().includes(query) ||
         row.featuredDish?.toLowerCase().includes(query) ||
-        row.categoryDishName?.toLowerCase().includes(query)
+        row.categoryDishName?.toLowerCase().includes(query) ||
+        (Array.isArray(row.recommendedDishes) &&
+          row.recommendedDishes.some((dish) =>
+            String(dish?.name || "").toLowerCase().includes(query),
+          ))
       )
     }
 
@@ -593,13 +659,8 @@ export default function CategoryPage({ embeddedCategorySlug = null, hideHeader =
     const sortedList = uniqueList
       .map((row, index) => ({ row, index }))
       .sort((a, b) => {
-        const aAvail = getRestaurantAvailabilityStatus(a.row)
-        const bAvail = getRestaurantAvailabilityStatus(b.row)
-        const aOpen = aAvail?.isOpen ? 1 : 0
-        const bOpen = bAvail?.isOpen ? 1 : 0
-        if (aOpen !== bOpen) {
-          return bOpen - aOpen
-        }
+        const byBrowse = compareRestaurantsByAvailabilityAndDistance(a.row, b.row)
+        if (byBrowse !== 0) return byBrowse
         return a.index - b.index
       })
       .map(item => item.row)
@@ -607,23 +668,37 @@ export default function CategoryPage({ embeddedCategorySlug = null, hideHeader =
     return sortedList
   }
 
-  // Fetch categories from admin API
+  // Fetch categories from admin API (memory-cached — no empty flash on reopen)
   useEffect(() => {
-    if (loadingZone) return; // Prevent fetching while zone is resolving
+    if (loadingZone) return
+    if (!isBrowseActive) return
 
-    let isCancelled = false;
+    let isCancelled = false
 
     const fetchCategories = async () => {
       try {
+        const cached = peekCategoryListCache(zoneId)
+        if (Array.isArray(cached?.categories) && cached.categories.length > 1) {
+          setCategories(cached.categories)
+          if (cached.keywords) setCategoryKeywords(cached.keywords)
+          setLoadingCategories(false)
+          return
+        }
+
+        // Already loaded in this mount
+        if (categories.length > 1) {
+          setLoadingCategories(false)
+          return
+        }
+
         setLoadingCategories(true)
         const response = await adminAPI.getPublicCategories(zoneId ? { zoneId } : {})
 
-        if (isCancelled) return;
+        if (isCancelled) return
 
         if (response.data && response.data.success && response.data.data && response.data.data.categories) {
           const categoriesArray = response.data.data.categories
 
-          // Transform API categories to match expected format
           const transformedCategories = [
             { id: 'all', name: "All", image: null, slug: 'all' },
             ...categoriesArray.map((cat) => ({
@@ -636,29 +711,29 @@ export default function CategoryPage({ embeddedCategorySlug = null, hideHeader =
             }))
           ]
 
-          setCategories(transformedCategories)
-
-          // Generate category keywords dynamically from category names
           const keywordsMap = {}
           categoriesArray.forEach((cat) => {
             const categoryId = String(cat._id || cat.id || '')
             const categoryName = cat.name.toLowerCase()
-
-            // Generate keywords from category name
             const words = categoryName.split(/[\s-]+/).filter(w => w.length > 0)
             keywordsMap[categoryId] = [categoryName, ...words]
           })
 
+          setCategories(transformedCategories)
           setCategoryKeywords(keywordsMap)
-        } else {
-          // Keep default "All" category on error
+          setCategoryListCache(zoneId, {
+            categories: transformedCategories,
+            keywords: keywordsMap,
+          })
+        } else if (categories.length === 0) {
           setCategories([{ id: 'all', name: "All", image: null, slug: 'all' }])
         }
       } catch (error) {
-        if (isCancelled) return;
+        if (isCancelled) return
         debugError('Error fetching categories:', error)
-        // Keep default "All" category on error
-        setCategories([{ id: 'all', name: "All", image: null, slug: 'all' }])
+        if (categories.length === 0) {
+          setCategories([{ id: 'all', name: "All", image: null, slug: 'all' }])
+        }
       } finally {
         if (!isCancelled) setLoadingCategories(false)
       }
@@ -667,9 +742,10 @@ export default function CategoryPage({ embeddedCategorySlug = null, hideHeader =
     fetchCategories()
 
     return () => {
-      isCancelled = true;
+      isCancelled = true
     }
-  }, [zoneId, loadingZone])
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- seed from cache; avoid loop on categories.length
+  }, [zoneId, loadingZone, isBrowseActive])
 
   // Helper function to check if menu has dishes matching category keywords
   const getCategoryKeywords = (categoryId) => {
@@ -849,6 +925,128 @@ export default function CategoryPage({ embeddedCategorySlug = null, hideHeader =
     return matchingDishes
   }
 
+  const toRecommendedDish = (dish, restaurant) => {
+    const coverImage =
+      restaurant?.image ||
+      (Array.isArray(restaurant?.images) ? restaurant.images.find(Boolean) : "") ||
+      ""
+    const foodType = isVegMenuItem(dish) ? "Veg" : (dish?.foodType || dish?.categoryDishFoodType || "Non-Veg")
+    return {
+      id: dish?.itemId || dish?.id || dish?._id || `${dish?.name}-${dish?.price}`,
+      name: dish?.name || "Unnamed Item",
+      price: Number(dish?.price || 0),
+      image: dish?.image || coverImage,
+      foodType,
+    }
+  }
+
+  const buildRestaurantCardWithCategoryDishes = (restaurant, dishes) => {
+    const recommendedDishes = (Array.isArray(dishes) ? dishes : [])
+      .map((dish) => toRecommendedDish(dish, restaurant))
+      .filter((dish) => dish.name)
+    if (recommendedDishes.length === 0) return null
+
+    const first = recommendedDishes[0]
+    const restaurantId = restaurant?.id || restaurant?.restaurantId || restaurant?.mongoId || restaurant?.slug
+
+    return {
+      ...restaurant,
+      id: restaurantId,
+      recommendedDishes,
+      dishId: first.id,
+      categoryDishName: first.name,
+      categoryDishPrice: first.price,
+      categoryDishImage: first.image,
+      categoryDishFoodType: first.foodType,
+    }
+  }
+
+  /** One card per restaurant; category dishes go into recommendedDishes for Home-style carousel */
+  const groupRestaurantsByCategoryDishes = (restaurants, categoryId) => {
+    const cards = []
+    ;(Array.isArray(restaurants) ? restaurants : []).forEach((restaurant) => {
+      // Prefer search API dishes / already-built carousel dishes — skip waiting on full menus
+      if (Array.isArray(restaurant.recommendedDishes) && restaurant.recommendedDishes.length > 0) {
+        cards.push(restaurant)
+        return
+      }
+
+      let categoryDishes = []
+      if (Array.isArray(restaurant.categoryDishes) && restaurant.categoryDishes.length > 0) {
+        categoryDishes = restaurant.categoryDishes.map((dish) => ({
+          itemId: dish?._id || dish?.id || dish?.itemId,
+          name: dish?.name,
+          price: dish?.price,
+          image: dish?.image,
+          foodType: dish?.foodType,
+        }))
+      } else {
+        if (!restaurant?.menu) return
+        if (!checkCategoryInMenu(restaurant.menu, categoryId)) return
+        categoryDishes = getAllCategoryDishesFromMenu(restaurant.menu, categoryId)
+      }
+
+      if (vegMode) {
+        categoryDishes = categoryDishes.filter((dish) => isVegMenuItem(dish))
+      }
+      const card = buildRestaurantCardWithCategoryDishes(restaurant, categoryDishes)
+      if (card) cards.push(card)
+    })
+    return cards
+  }
+
+  const groupFallbackDishesByRestaurant = (fallbackRows) => {
+    const byRestaurant = new Map()
+
+    ;(Array.isArray(fallbackRows) ? fallbackRows : []).forEach((row) => {
+      const key = String(
+        row?.restaurantId || row?.mongoId || row?.slug || row?.name || row?.id || "",
+      ).trim()
+      if (!key) return
+
+      if (!byRestaurant.has(key)) {
+        const restaurantId = row?.restaurantId || row?.mongoId || row?.slug || key
+        byRestaurant.set(key, {
+          ...row,
+          id: restaurantId,
+          recommendedDishes: [],
+        })
+      }
+
+      const entry = byRestaurant.get(key)
+      entry.recommendedDishes.push(
+        toRecommendedDish(
+          {
+            itemId: row?.dishId,
+            id: row?.dishId,
+            name: row?.categoryDishName,
+            price: row?.categoryDishPrice,
+            image: row?.categoryDishImage,
+            foodType: row?.categoryDishFoodType,
+          },
+          row,
+        ),
+      )
+    })
+
+    return Array.from(byRestaurant.values())
+      .map((row) => {
+        const dishes = row.recommendedDishes || []
+        if (dishes.length === 0) return null
+        const first = dishes[0]
+        return {
+          ...row,
+          recommendedDishes: dishes,
+          dishId: first.id,
+          categoryDishName: first.name,
+          categoryDishPrice: first.price,
+          categoryDishImage: first.image,
+          categoryDishFoodType: first.foodType,
+        }
+      })
+      .filter(Boolean)
+  }
+
   // Helper function to get FIRST featured dish for a category from menu (for backward compatibility)
   const getCategoryDishFromMenu = (menu, categoryId) => {
     const allDishes = getAllCategoryDishesFromMenu(menu, categoryId)
@@ -857,32 +1055,37 @@ export default function CategoryPage({ embeddedCategorySlug = null, hideHeader =
 
   // Fetch restaurants from API
   useEffect(() => {
+    if (!isBrowseActive) return;
     if (loadingZone || loadingCategories) return; // Prevent fetching while zone or categories are resolving
 
     let isCancelled = false
 
     const fetchRestaurants = async () => {
       try {
-        const cacheKey = `redgo_cat_${selectedCategory}_zone_${zoneId || ''}`;
-        const isCategoryChange = lastFetchedCategoryRef.current !== selectedCategory
+        const catKey = String(selectedCategory || "").toLowerCase()
 
-        if (isCategoryChange) {
-          if (CATEGORY_SESSION_CACHE.has(cacheKey)) {
-            const cachedData = CATEGORY_SESSION_CACHE.get(cacheKey);
-            setRestaurantsData(cachedData.restaurants);
-            setLoadingRestaurants(false);
-            setIsEnrichingMenus(false);
-            lastFetchedCategoryRef.current = selectedCategory;
-            return; // Skip fetch entirely
-          }
-
-          setRestaurantsData([])
-          setLoadingRestaurants(true)
+        // Always prefer memory cache (slug + id keys) — instant revisit
+        const cachedHit = peekCategoryRestaurantsCache(catKey, zoneId, categories)
+        if (cachedHit?.restaurants) {
+          setRestaurantsData(cachedHit.restaurants)
+          setLoadingRestaurants(false)
+          setIsEnrichingMenus(false)
+          lastFetchedCategoryRef.current = catKey
+          return
         }
-        lastFetchedCategoryRef.current = selectedCategory
+
+        if (lastFetchedCategoryRef.current === catKey) {
+          setLoadingRestaurants(false)
+          return
+        }
+
+        // No cache yet — clear and load
+        setRestaurantsData([])
+        setLoadingRestaurants(true)
         // Pass coordinates and category to backend for server-side optimization
         const params = {
-          limit: 100,
+          limit: CATEGORY_FETCH_LIMIT,
+          page: 1,
         }
 
         if (location?.latitude && location?.longitude) {
@@ -925,7 +1128,8 @@ export default function CategoryPage({ embeddedCategorySlug = null, hideHeader =
               zoneId: params.zoneId,
               lat: params.lat,
               lng: params.lng,
-              limit: 100
+              limit: CATEGORY_FETCH_LIMIT,
+              page: 1,
             })
           } else {
             // Fallback to text query if categories are still loading or if ID is not ObjectId
@@ -934,7 +1138,8 @@ export default function CategoryPage({ embeddedCategorySlug = null, hideHeader =
               zoneId: params.zoneId,
               lat: params.lat,
               lng: params.lng,
-              limit: 100
+              limit: CATEGORY_FETCH_LIMIT,
+              page: 1,
             })
           }
         } else {
@@ -975,12 +1180,41 @@ export default function CategoryPage({ embeddedCategorySlug = null, hideHeader =
               return hasName
             })
             .map((restaurant) => {
-              let deliveryTime = restaurant.estimatedDeliveryTime || null
-              let distance = restaurant.distance || null
+              const deliveryTime =
+                restaurant.deliveryTime ||
+                restaurant.estimatedDeliveryTime ||
+                (restaurant.estimatedDeliveryTimeMinutes
+                  ? `${restaurant.estimatedDeliveryTimeMinutes} mins`
+                  : "25-30 mins")
+
+              const userLat = location?.latitude
+              const userLng = location?.longitude
+              const coords = restaurant.location?.coordinates
+              const restaurantLat = Number(
+                Array.isArray(coords) ? coords[1] : (restaurant.latitude ?? restaurant.lat),
+              )
+              const restaurantLng = Number(
+                Array.isArray(coords) ? coords[0] : (restaurant.longitude ?? restaurant.lng),
+              )
+              let distanceInKm = Number(restaurant.distanceInKm ?? restaurant.distanceScore)
+              if (!Number.isFinite(distanceInKm) || distanceInKm < 0) {
+                distanceInKm = calculateDistance(userLat, userLng, restaurantLat, restaurantLng)
+              }
+              let distance =
+                restaurant.distance &&
+                String(restaurant.distance).trim() &&
+                !/^0\s*m$/i.test(String(restaurant.distance).trim())
+                  ? restaurant.distance
+                  : null
+              if (!distance && Number.isFinite(distanceInKm) && distanceInKm >= 0) {
+                distance = formatDistance(distanceInKm)
+              }
+              if (distance && /^0\s*m$/i.test(String(distance).trim())) {
+                distance = null
+              }
+
               let offer = restaurant.offer || null
 
-              if (isDefaultValue(deliveryTime, 'deliveryTime')) deliveryTime = null
-              if (isDefaultValue(distance, 'distance')) distance = null
               if (isDefaultValue(offer, 'offer')) offer = null
 
               const cuisine = restaurant.cuisines && restaurant.cuisines.length > 0
@@ -1020,6 +1254,14 @@ export default function CategoryPage({ embeddedCategorySlug = null, hideHeader =
                 rating: restaurant.rating || null,
                 deliveryTime: deliveryTime,
                 distance: distance,
+                distanceInKm: Number.isFinite(distanceInKm) ? distanceInKm : null,
+                location: restaurant.location || null,
+                topOrder: Number.isFinite(Number(restaurant.__topOrder ?? restaurant.topOrder))
+                  ? Number(restaurant.__topOrder ?? restaurant.topOrder)
+                  : 1000000,
+                __topOrder: Number.isFinite(Number(restaurant.__topOrder ?? restaurant.topOrder))
+                  ? Number(restaurant.__topOrder ?? restaurant.topOrder)
+                  : 1000000,
                 image: image,
                 images: allImages,
                 priceRange: restaurant.priceRange || null,
@@ -1031,41 +1273,98 @@ export default function CategoryPage({ embeddedCategorySlug = null, hideHeader =
                 mongoId: restaurant._id || null,
                 hasPaneer: false,
                 category: 'all',
+                isActive: restaurant.isActive !== false,
+                isAcceptingOrders: restaurant.isAcceptingOrders !== false,
+                openDays: Array.isArray(restaurant.openDays) ? restaurant.openDays : [],
+                deliveryTimings: restaurant.deliveryTimings || null,
+                outletTimings: restaurant.outletTimings || null,
+                openingTime: restaurant.openingTime || restaurant?.deliveryTimings?.openingTime || null,
+                closingTime: restaurant.closingTime || restaurant?.deliveryTimings?.closingTime || null,
+                categoryDishes: Array.isArray(restaurant.categoryDishes)
+                  ? restaurant.categoryDishes
+                      .map((dish) => ({
+                        itemId: dish?._id || dish?.id || dish?.itemId,
+                        name: dish?.name,
+                        price: Number(dish?.price || 0),
+                        image: normalizeImageUrl(dish?.image) || dish?.image || null,
+                        foodType: dish?.foodType || "Non-Veg",
+                      }))
+                      .filter((dish) => dish.name)
+                  : [],
               }
             }).filter(Boolean)
 
           if (isCancelled) return
 
-          startTransition(() => {
-            setRestaurantsData(restaurantsWithIds)
+          lastFetchedCategoryRef.current = String(selectedCategory || "").toLowerCase()
+
+          // Search already returned category dishes — paint instantly, skip N+1 menu fetches
+          const withSearchDishes = restaurantsWithIds.map((restaurant) => {
+            if (!Array.isArray(restaurant.categoryDishes) || restaurant.categoryDishes.length === 0) {
+              return restaurant
+            }
+            return (
+              buildRestaurantCardWithCategoryDishes(restaurant, restaurant.categoryDishes) ||
+              restaurant
+            )
           })
+          const searchDishCoverage =
+            withSearchDishes.filter(
+              (r) => Array.isArray(r.recommendedDishes) && r.recommendedDishes.length > 0,
+            ).length
+
+          // Save immediately so switching away mid-enrichment still caches this category
+          setCategoryRestaurantsCache(
+            selectedCategory,
+            zoneId,
+            withSearchDishes,
+            categories,
+          )
+
+          startTransition(() => {
+            setRestaurantsData(withSearchDishes)
+          })
+
+          if (
+            selectedCategory &&
+            selectedCategory !== "all" &&
+            searchDishCoverage > 0 &&
+            searchDishCoverage >= Math.ceil(withSearchDishes.length * 0.5)
+          ) {
+            setIsEnrichingMenus(false)
+            return
+          }
 
           setIsEnrichingMenus(true)
           const enrichmentRequestId = ++menuEnrichmentRequestRef.current
           void (async () => {
             try {
-              const transformedRestaurants = []
+              const transformedRestaurants = withSearchDishes.map((r) => ({ ...r }))
 
-              for (let index = 0; index < restaurantsWithIds.length; index += 4) {
+              for (let index = 0; index < withSearchDishes.length; index += MENU_ENRICH_BATCH) {
                 if (isCancelled) return
-                const batchRestaurants = restaurantsWithIds.slice(index, index + 4)
+                const batchRestaurants = withSearchDishes.slice(index, index + MENU_ENRICH_BATCH)
                 const batchResults = await Promise.all(
                   batchRestaurants.map(async (restaurant) => {
+                     // Already have category dishes from search — keep them
+                     if (Array.isArray(restaurant.recommendedDishes) && restaurant.recommendedDishes.length > 0) {
+                       return restaurant
+                     }
                      try {
                       const lookupIds = [
+                        restaurant.mongoId,
                         restaurant.restaurantId,
                         restaurant.id,
-                        restaurant.mongoId,
-                        restaurant.slug,
                       ]
                         .filter(Boolean)
                         .map((value) => String(value).trim())
                         .filter((value, valueIndex, arr) => arr.indexOf(value) === valueIndex)
+                        .filter((value) => /^[0-9a-fA-F]{24}$/.test(value))
 
                       let menu = null
                       for (const lookupId of lookupIds) {
                         try {
-                          const menuResponse = await restaurantAPI.getMenuByRestaurantId(lookupId, { noCache: true })
+                          const menuResponse = await restaurantAPI.getMenuByRestaurantId(lookupId)
                           const rawMenu = getMenuFromResponse(menuResponse)
                           const normalizedMenu = normalizeMenu(rawMenu)
                           if (menuResponse?.data?.success && normalizedMenu?.sections?.length > 0) {
@@ -1077,11 +1376,6 @@ export default function CategoryPage({ embeddedCategorySlug = null, hideHeader =
                             throw lookupError
                           }
                         }
-                      }
-
-                      if (!menu || menu.sections.length === 0) {
-                        const approvedFoods = await fetchApprovedFoods()
-                        menu = buildFallbackMenuFromFoods(approvedFoods, restaurant)
                       }
 
                       if (menu?.sections?.length > 0) {
@@ -1130,19 +1424,32 @@ export default function CategoryPage({ embeddedCategorySlug = null, hideHeader =
                 )
 
                 if (isCancelled || enrichmentRequestId !== menuEnrichmentRequestRef.current) return
-                transformedRestaurants.push(...batchResults)
+
+                for (let i = 0; i < batchResults.length; i += 1) {
+                  transformedRestaurants[index + i] = batchResults[i]
+                }
+
+                // Progressive UI update — first batches unlock Recommended quickly
+                startTransition(() => {
+                  setRestaurantsData([...transformedRestaurants])
+                })
+                // Keep cache fresh as batches complete (revisit stays instant)
+                setCategoryRestaurantsCache(
+                  selectedCategory,
+                  zoneId,
+                  transformedRestaurants,
+                  categories,
+                )
               }
 
               if (!isCancelled && enrichmentRequestId === menuEnrichmentRequestRef.current) {
-                startTransition(() => {
-                  setRestaurantsData(transformedRestaurants)
-                })
-                
                 if (selectedCategory) {
-                  const cacheKey = `redgo_cat_${selectedCategory}_zone_${zoneId || ''}`;
-                  CATEGORY_SESSION_CACHE.set(cacheKey, {
-                    restaurants: transformedRestaurants
-                  });
+                  setCategoryRestaurantsCache(
+                    selectedCategory,
+                    zoneId,
+                    transformedRestaurants,
+                    categories,
+                  )
                 }
               }
             } finally {
@@ -1167,10 +1474,11 @@ export default function CategoryPage({ embeddedCategorySlug = null, hideHeader =
     return () => {
       isCancelled = true
     }
-  }, [zoneId, loadingZone, loadingCategories, location?.latitude, location?.longitude, location?.city, selectedCategory, isOutOfService])
+  }, [zoneId, loadingZone, loadingCategories, location?.latitude, location?.longitude, location?.city, selectedCategory, isOutOfService, categories, isBrowseActive])
 
-  // Update selected category when URL changes
+  // Update selected category when URL changes — hydrate restaurants from cache instantly
   useEffect(() => {
+    let nextSlug = String(selectedCategory || "").toLowerCase()
     if (category && categories && categories.length > 0) {
       const categorySlug = category.toLowerCase()
       const matchedCategory = categories.find(cat =>
@@ -1178,15 +1486,24 @@ export default function CategoryPage({ embeddedCategorySlug = null, hideHeader =
         cat.id === categorySlug ||
         cat.name.toLowerCase().replace(/\s+/g, '-') === categorySlug
       )
-      if (matchedCategory) {
-        setSelectedCategory(matchedCategory.slug || matchedCategory.id)
-      } else {
-        setSelectedCategory(categorySlug)
-      }
+      // Prefer URL slug (stable cache key) over mongo id
+      nextSlug = matchedCategory?.slug
+        ? String(matchedCategory.slug).toLowerCase()
+        : categorySlug
+      setSelectedCategory(nextSlug)
     } else if (category) {
-      setSelectedCategory(category.toLowerCase())
+      nextSlug = category.toLowerCase()
+      setSelectedCategory(nextSlug)
     }
-  }, [category, categories])
+
+    const cached = peekCategoryRestaurantsCache(nextSlug, zoneId, categories)
+    if (cached?.restaurants) {
+      setRestaurantsData(cached.restaurants)
+      setLoadingRestaurants(false)
+      setIsEnrichingMenus(false)
+      lastFetchedCategoryRef.current = nextSlug
+    }
+  }, [category, categories, zoneId])
 
   useEffect(() => {
     if (typeof window === "undefined" || !currentFilterStorageKey) return
@@ -1233,13 +1550,14 @@ export default function CategoryPage({ embeddedCategorySlug = null, hideHeader =
     if (!rail) return
 
     const selectedButton = rail.querySelector("[data-category-selected='true']")
-    if (!selectedButton || typeof selectedButton.scrollIntoView !== "function") return
+    if (!(selectedButton instanceof HTMLElement)) return
 
-    selectedButton.scrollIntoView({
-      behavior: "auto",
-      inline: "center",
-      block: "nearest",
-    })
+    // Avoid scrollIntoView — it can move the window vertically and break back-restore.
+    const railRect = rail.getBoundingClientRect()
+    const btnRect = selectedButton.getBoundingClientRect()
+    const delta =
+      btnRect.left - railRect.left - (railRect.width / 2 - btnRect.width / 2)
+    rail.scrollLeft += delta
   }, [selectedCategory, categories])
 
   const toggleFilter = (filterId) => {
@@ -1300,8 +1618,8 @@ export default function CategoryPage({ embeddedCategorySlug = null, hideHeader =
     })
   }
 
-  // Filter restaurants based on active filters and selected category
-  // If category is selected, expand restaurants into dish cards (one card per matching dish)
+  // Recommended: one small card per matching dish (original horizontal 2-row slider).
+  // All Restaurants (below): one card per restaurant with category dishes in carousel.
   const filteredRecommended = useMemo(() => {
     const sourceData = restaurantsData.length > 0 ? restaurantsData : []
     let filtered = [...sourceData]
@@ -1314,36 +1632,55 @@ export default function CategoryPage({ embeddedCategorySlug = null, hideHeader =
       })
     }
 
-    // Filter by category - Dynamic filtering based on menu items
     if (selectedCategory && selectedCategory !== 'all') {
       const expandedDishes = []
 
-      filtered.forEach(r => {
-        if (r.menu) {
-          const hasCategoryItem = checkCategoryInMenu(r.menu, selectedCategory)
-          if (hasCategoryItem) {
-            // Get ALL matching dishes for this category
-            const categoryDishes = getAllCategoryDishesFromMenu(r.menu, selectedCategory)
+      filtered.forEach((r) => {
+        let categoryDishes = []
 
-            if (categoryDishes.length > 0) {
-              const validDishes = vegMode
-                ? categoryDishes.filter((dish) => isVegMenuItem(dish))
-                : categoryDishes;
-
-              validDishes.forEach((dishForCard) => {
-                expandedDishes.push({
-                  ...r,
-                  id: `${r.id || r.restaurantId}-${dishForCard.itemId}`,
-                  dishId: dishForCard.itemId || `${r.id}-dish`,
-                  categoryDish: dishForCard,
-                  categoryDishName: dishForCard.name,
-                  categoryDishPrice: dishForCard.price,
-                  categoryDishImage: dishForCard.image,
-                })
-              })
-            }
-          }
+        if (Array.isArray(r.recommendedDishes) && r.recommendedDishes.length > 0) {
+          categoryDishes = r.recommendedDishes.map((dish) => ({
+            itemId: dish?.id || dish?.itemId || dish?._id,
+            name: dish?.name,
+            price: dish?.price,
+            image: dish?.image,
+            foodType: dish?.foodType,
+          }))
+        } else if (Array.isArray(r.categoryDishes) && r.categoryDishes.length > 0) {
+          categoryDishes = r.categoryDishes.map((dish) => ({
+            itemId: dish?._id || dish?.id || dish?.itemId,
+            name: dish?.name,
+            price: dish?.price,
+            image: dish?.image,
+            foodType: dish?.foodType,
+          }))
+        } else {
+          if (!r.menu) return
+          if (!checkCategoryInMenu(r.menu, selectedCategory)) return
+          categoryDishes = getAllCategoryDishesFromMenu(r.menu, selectedCategory)
         }
+
+        if (categoryDishes.length === 0) return
+
+        const validDishes = vegMode
+          ? categoryDishes.filter((dish) => isVegMenuItem(dish))
+          : categoryDishes
+
+        const sourceRestaurantId = r.id || r.restaurantId || r.mongoId || r.slug
+
+        validDishes.forEach((dishForCard) => {
+          expandedDishes.push({
+            ...r,
+            id: `${sourceRestaurantId}-${dishForCard.itemId}`,
+            sourceRestaurantId,
+            dishId: dishForCard.itemId || `${sourceRestaurantId}-dish`,
+            categoryDish: dishForCard,
+            categoryDishName: dishForCard.name,
+            categoryDishPrice: dishForCard.price,
+            categoryDishImage: dishForCard.image,
+            categoryDishFoodType: dishForCard.foodType,
+          })
+        })
       })
 
       filtered = expandedDishes
@@ -1353,6 +1690,10 @@ export default function CategoryPage({ embeddedCategorySlug = null, hideHeader =
         filtered = vegMode
           ? fallbackDishes.filter((dish) => dish.categoryDishFoodType === "Veg")
           : fallbackDishes
+        filtered = filtered.map((row) => ({
+          ...row,
+          sourceRestaurantId: row.restaurantId || row.mongoId || row.slug || row.id,
+        }))
         if (vegMode && vegModeOption === "pure-veg") {
           filtered = filtered.filter((r) => {
             if (r?.hasNonVegMenu === true) return false
@@ -1378,46 +1719,15 @@ export default function CategoryPage({ embeddedCategorySlug = null, hideHeader =
       })
     }
 
-    // Filter by category - Dynamic filtering based on menu items
-    // If category is selected, expand restaurants into dish cards (one card per matching dish)
     if (selectedCategory && selectedCategory !== 'all') {
-      const expandedDishes = []
-
-      filtered.forEach(r => {
-        if (r.menu) {
-          const hasCategoryItem = checkCategoryInMenu(r.menu, selectedCategory)
-          if (hasCategoryItem) {
-            // Get ALL matching dishes for this category
-            const categoryDishes = getAllCategoryDishesFromMenu(r.menu, selectedCategory)
-
-            if (categoryDishes.length > 0) {
-              const validDishes = vegMode
-                ? categoryDishes.filter((dish) => isVegMenuItem(dish))
-                : categoryDishes;
-
-              validDishes.forEach((dishForCard) => {
-                expandedDishes.push({
-                  ...r,
-                  id: `${r.id || r.restaurantId}-${dishForCard.itemId}`,
-                  dishId: dishForCard.itemId || `${r.id}-dish`,
-                  categoryDish: dishForCard,
-                  categoryDishName: dishForCard.name,
-                  categoryDishPrice: dishForCard.price,
-                  categoryDishImage: dishForCard.image,
-                })
-              })
-            }
-          }
-        }
-      })
-
-      filtered = expandedDishes
+      filtered = groupRestaurantsByCategoryDishes(filtered, selectedCategory)
 
       if (filtered.length === 0) {
         const fallbackDishes = getCategoryFallbackDishesFromApprovedFoods(selectedCategory, sourceData)
-        filtered = vegMode
-          ? fallbackDishes.filter((dish) => dish.categoryDishFoodType === "Veg")
+        const vegFiltered = vegMode
+          ? fallbackDishes.filter((dish) => dish.categoryDishFoodType === "Veg" || isVegMenuItem({ foodType: dish.categoryDishFoodType }))
           : fallbackDishes
+        filtered = groupFallbackDishesByRestaurant(vegFiltered)
         if (vegMode && vegModeOption === "pure-veg") {
           filtered = filtered.filter((r) => {
             if (r?.hasNonVegMenu === true) return false
@@ -1432,44 +1742,237 @@ export default function CategoryPage({ embeddedCategorySlug = null, hideHeader =
   }, [selectedCategory, activeFilters, deferredSearchQuery, restaurantsData, categoryKeywords, vegMode, vegModeOption, approvedFoodsData, sortBy])
 
   const showRestaurantSkeleton = useDelayedLoading(
-    isLoadingFilterResults || loadingRestaurants || loadingZone || loadingCategories || (isEnrichingMenus && selectedCategory !== 'all'),
-    { delay: 140, minDuration: 360 }
+    isLoadingFilterResults ||
+      loadingRestaurants ||
+      loadingZone ||
+      loadingCategories ||
+      (isEnrichingMenus &&
+        filteredAllRestaurants.length === 0 &&
+        filteredRecommended.length === 0),
+    { delay: 80, minDuration: 280 }
   )
 
+  const recommendedItems = useMemo(() => {
+    const items = filteredRecommended.slice(0, RECOMMENDED_MAX_ITEMS)
+    // Online first → pin order → nearest distance (same when all offline)
+    return [...items]
+      .map((row, index) => ({ row, index }))
+      .sort((a, b) => {
+        const byBrowse = compareRestaurantsByAvailabilityAndDistance(a.row, b.row)
+        if (byBrowse !== 0) return byBrowse
+        return a.index - b.index
+      })
+      .map((entry) => entry.row)
+  }, [filteredRecommended])
+
+  // Always show every matching restaurant in All Restaurants (do not hide ones that appear in Recommended dishes)
+  const allRestaurantsWithoutRecommended = filteredAllRestaurants
+
+  const visibleAllRestaurants = useMemo(
+    () => allRestaurantsWithoutRecommended.slice(0, visibleAllCount),
+    [allRestaurantsWithoutRecommended, visibleAllCount],
+  )
+
+  const isBootstrapping =
+    (loadingRestaurants && restaurantsData.length === 0) ||
+    loadingZone ||
+    (loadingCategories && categories.length <= 1) ||
+    (isEnrichingMenus && restaurantsData.length === 0) ||
+    isLoadingFilterResults
+
+  const isContentLoading = isBootstrapping || showRestaurantSkeleton
+
+  const hasNoResults =
+    !isBootstrapping &&
+    !showRestaurantSkeleton &&
+    allRestaurantsWithoutRecommended.length === 0 &&
+    filteredRecommended.length === 0
+
+  useEffect(() => {
+    // Reset lazy window only when user changes category/filters — never on restaurant back.
+    if (getCategoryLastClick() || peekBrowseScroll(categoryBackPath) || peekBrowseScrollAny()) return
+    if (savedVisibleCountRef.current > ALL_LIST_INITIAL_VISIBLE) return
+    setVisibleAllCount(ALL_LIST_INITIAL_VISIBLE)
+  }, [selectedCategory, activeFilters, deferredSearchQuery, sortBy, categoryBackPath])
+
+  useEffect(() => {
+    if (!isBrowseActive) return undefined
+    const node = allListSentinelRef.current
+    if (!node) return undefined
+    const total = allRestaurantsWithoutRecommended.length
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (!entries[0]?.isIntersecting) return
+        setVisibleAllCount((prev) => {
+          if (prev >= total) return prev
+          return Math.min(prev + ALL_LIST_LOAD_MORE, total)
+        })
+      },
+      { rootMargin: "240px 0px" },
+    )
+    observer.observe(node)
+    return () => observer.disconnect()
+  }, [allRestaurantsWithoutRecommended.length, selectedCategory, isBrowseActive])
+
   const handleCategorySelect = (category) => {
-    const categorySlug = category.slug || category.id
-    setSelectedCategory(categorySlug.toLowerCase())
-    // Only navigate — the URL-sync useEffect will update selectedCategory
-    // This prevents a double state update that causes the skeleton to flash
-    if (categorySlug === 'all') {
-      navigate('/user/category/all')
+    const categorySlug = String(category.slug || category.id || "").toLowerCase()
+    const cached = peekCategoryRestaurantsCache(categorySlug, zoneId, categories)
+    if (cached?.restaurants) {
+      setSelectedCategory(categorySlug)
+      setRestaurantsData(cached.restaurants)
+      setLoadingRestaurants(false)
+      setIsEnrichingMenus(false)
+      lastFetchedCategoryRef.current = categorySlug
     } else {
-      navigate(`/user/category/${categorySlug}`)
+      setSelectedCategory(categorySlug)
+      setRestaurantsData([])
+      setLoadingRestaurants(true)
+      lastFetchedCategoryRef.current = null
+    }
+    // Replace history so back always returns Home — don't stack category hops.
+    if (categorySlug === 'all') {
+      navigate(toFoodUserPath('/user/category/all'), { replace: true })
+    } else {
+      navigate(toFoodUserPath(`/user/category/${categorySlug}`), { replace: true })
     }
   }
 
-  // Check if should show grayscale (user out of service)
+  // Zone out-of-service → whole page grayscale. Per-card closed timing handled below.
   const shouldShowGrayscale = isOutOfService
   const isCategoryView = selectedCategory && selectedCategory !== 'all'
 
-  const lastScrolledCategoryRef = useRef(null)
+  const isRestaurantClosed = (restaurant) => {
+    if (isOutOfService) return true
+    const availability = getRestaurantAvailabilityStatus(restaurant)
+    return !availability?.isOpen
+  }
 
-  // Auto-scroll to Recommended section on fresh navigation or category change
+  const rememberBrowsePosition = (focusId) => {
+    const y = Math.max(
+      typeof window !== "undefined" ? window.scrollY || 0 : 0,
+      liveScrollYRef.current,
+      savedScrollYRef.current,
+    )
+    const count = Math.max(visibleAllCount, ALL_LIST_INITIAL_VISIBLE)
+    savedScrollYRef.current = y
+    liveScrollYRef.current = y
+    savedVisibleCountRef.current = count
+    hasRestoredBrowseScrollRef.current = false
+    trackCategoryWindowScrollY(y)
+    saveCategoryBrowseClick({
+      path: categoryBackPath,
+      scrollY: y,
+      focusId,
+      visibleCount: count,
+    })
+  }
+
+  // Track scroll while category is visible — click save can then avoid reading a raced 0
   useEffect(() => {
+    if (!isBrowseActive) return undefined
+    const onScroll = () => {
+      const y = window.scrollY || 0
+      liveScrollYRef.current = y
+      trackCategoryWindowScrollY(y)
+    }
+    onScroll()
+    window.addEventListener("scroll", onScroll, { passive: true })
+    return () => window.removeEventListener("scroll", onScroll)
+  }, [isBrowseActive])
+
+  // Fixed header (like Home) — measure spacer so content doesn't jump under it
+  useLayoutEffect(() => {
+    const el = stickyHeaderRef.current
+    if (!el || typeof ResizeObserver === "undefined") {
+      if (el) setStickyHeaderHeight(el.getBoundingClientRect().height || 0)
+      return undefined
+    }
+    const measure = () => {
+      setStickyHeaderHeight(el.getBoundingClientRect().height || 0)
+    }
+    measure()
+    const ro = new ResizeObserver(measure)
+    ro.observe(el)
+    return () => ro.disconnect()
+  }, [hideHeader, hideCategoryCarousel, showCategorySkeleton, displayCategories.length])
+
+  // Expand lazy list so target Y / focus card exist (does not own scroll restore)
+  useLayoutEffect(() => {
+    if (!isBrowseActive) return
+    if (!categoryBrowseNeedsRestore()) return
+
+    const total = allRestaurantsWithoutRecommended.length
+    if (!total) return
+
+    const pending = getCategoryLastClick()
+    // Only expand to what was visible at click — full expand makes back feel laggy
+    let needed = Math.min(
+      Math.max(
+        Number(pending?.visibleCount) || 0,
+        savedVisibleCountRef.current,
+        ALL_LIST_INITIAL_VISIBLE,
+      ),
+      total,
+    )
+
+    if (pending?.focusId) {
+      const focusKey = String(pending.focusId)
+      const focusIndex = allRestaurantsWithoutRecommended.findIndex(
+        (r) => String(r.id) === focusKey || String(r.sourceRestaurantId) === focusKey,
+      )
+      if (focusIndex >= 0) {
+        needed = Math.min(Math.max(needed, focusIndex + 1), total)
+      }
+    }
+
+    if (needed > visibleAllCount) {
+      setVisibleAllCount(needed)
+    }
+  }, [
+    isBrowseActive,
+    allRestaurantsWithoutRecommended.length,
+    visibleAllCount,
+  ])
+
+  // Mark restored-intent so auto-scroll-to-recommended stays off; lock lives in KeepAlive
+  useLayoutEffect(() => {
+    if (!isBrowseActive) {
+      hasRestoredBrowseScrollRef.current = false
+      return
+    }
+    if (categoryBrowseNeedsRestore()) {
+      hasRestoredBrowseScrollRef.current = true
+      const pending = getCategoryLastClick()
+      const targetY = Math.max(
+        0,
+        Number(pending?.scrollY) || liveScrollYRef.current || 0,
+      )
+      if (targetY > 0) {
+        window.scrollTo({ top: targetY, left: 0, behavior: "instant" })
+      }
+    }
+  }, [isBrowseActive])
+
+  // Auto-scroll to Recommended section on fresh navigation or category change (not on back)
+  useEffect(() => {
+    if (!isBrowseActive) return;
     if (disableAutoScroll) return;
     if (!embeddedCategorySlug) return;
+    if (navType === "POP") return;
+    if (hasRestoredBrowseScrollRef.current) return;
+    if (getCategoryLastClick() || peekBrowseScroll(categoryBackPath) || peekBrowseScrollAny()) return;
     if (selectedCategory !== 'all' && filteredRecommended.length > 0 && recommendedSectionRef.current) {
       const categoryChanged = lastScrolledCategoryRef.current !== selectedCategory;
       const isFreshMount = !hasAutoScrolledRef.current;
 
-      if (categoryChanged || (isFreshMount && navType !== "POP")) {
+      if (categoryChanged || isFreshMount) {
         hasAutoScrolledRef.current = true
         lastScrolledCategoryRef.current = selectedCategory
         
-        // Wait a tiny bit for the layout/renders to settle and calculate the correct offset
         const timer = setTimeout(() => {
-          if (recommendedSectionRef.current) {
-            const topOffset = recommendedSectionRef.current.getBoundingClientRect().top + window.scrollY - 80 // adjust for sticky headers
+          if (recommendedSectionRef.current && !hasRestoredBrowseScrollRef.current) {
+            const headerOffset = stickyHeaderRef.current?.getBoundingClientRect().height || stickyHeaderHeight || 80
+            const topOffset = recommendedSectionRef.current.getBoundingClientRect().top + window.scrollY - headerOffset
             window.scrollTo({ top: topOffset, behavior: 'smooth' })
           }
         }, 80)
@@ -1477,18 +1980,21 @@ export default function CategoryPage({ embeddedCategorySlug = null, hideHeader =
         return () => clearTimeout(timer)
       }
     }
-  }, [navType, selectedCategory, filteredRecommended.length, disableAutoScroll])
+  }, [navType, selectedCategory, filteredRecommended.length, disableAutoScroll, embeddedCategorySlug, isBrowseActive, categoryBackPath])
 
   return (
     <div className={`min-h-screen bg-white dark:bg-[#0a0a0a] ${shouldShowGrayscale ? 'grayscale opacity-75' : ''}`}>
-      {/* Sticky Header */}
-      <div className="sticky top-0 z-20 bg-white/95 dark:bg-[#1a1a1a]/95 backdrop-blur supports-[backdrop-filter]:bg-white/90 shadow-sm">
+      {/* Fixed like Home — CSS sticky + backdrop-blur was jittering on scroll */}
+      <div
+        ref={stickyHeaderRef}
+        className="fixed top-0 left-0 right-0 z-40 w-full bg-white dark:bg-[#1a1a1a] shadow-sm"
+      >
         <div className="max-w-7xl mx-auto">
           {/* Search Bar with Back Button */}
           {!hideHeader && (
             <div className="flex items-center gap-2 px-3 md:px-6 py-3 border-b border-gray-100 dark:border-gray-800">
               <button
-                onClick={() => navigate('/user')}
+                onClick={() => navigate(toFoodUserPath("/user"))}
                 className="w-9 h-9 flex items-center justify-center hover:bg-gray-100 dark:hover:bg-gray-800 rounded-full transition-colors flex-shrink-0"
               >
                 <ArrowLeft className="h-5 w-5 text-gray-700 dark:text-gray-300" />
@@ -1516,10 +2022,10 @@ export default function CategoryPage({ embeddedCategorySlug = null, hideHeader =
                 msOverflowStyle: "none",
               }}
             >
-              {showCategorySkeleton ? (
+              {showCategorySkeleton || ((loadingCategories || loadingZone) && displayCategories.length <= 1) ? (
                 <CategoryChipRowSkeleton className="py-3" />
-              ) : (
-                categories && displayCategories.length > 0 ? displayCategories.map((cat) => {
+              ) : displayCategories.length > 0 ? (
+                displayCategories.map((cat) => {
                   const categorySlug = cat.slug || cat.id
                   const isSelected = selectedCategory === categorySlug || selectedCategory === cat.id
                   const isAllCategory = categorySlug === "all" || cat.id === "all"
@@ -1565,193 +2071,220 @@ export default function CategoryPage({ embeddedCategorySlug = null, hideHeader =
                       </span>
                     </button>
                   )
-                }) : (
+                })
+              ) : (
                   <div className="flex items-center justify-center py-4">
                     <span className="text-sm text-gray-600 dark:text-gray-400">No categories available</span>
                   </div>
-                )
               )}
-            </div>
-          )}
-
-          {/* Filters */}
-          {!hideFilters && (
-            <div className="flex flex-col md:flex-row md:flex-wrap gap-2 px-4 md:px-6 py-3">
-              {/* Row 1 */}
-              <div
-                className="flex items-center gap-2 overflow-x-auto md:overflow-x-visible scrollbar-hide pb-1 md:pb-0"
-                style={{
-                  scrollbarWidth: "none",
-                  msOverflowStyle: "none",
-                }}
-              >
-                <Button
-                  variant="outline"
-                  onClick={() => setIsFilterOpen(true)}
-                  className="h-7 md:h-8 px-2.5 md:px-3 rounded-md flex items-center gap-1.5 whitespace-nowrap shrink-0 transition-all bg-white dark:bg-[#1a1a1a] border border-gray-200 dark:border-gray-800 hover:bg-gray-50 dark:hover:bg-gray-800"
-                >
-                  <SlidersHorizontal className="h-3.5 w-3.5 md:h-4 md:w-4" />
-                  <span className="text-xs md:text-sm font-bold text-black dark:text-white">Filters</span>
-                </Button>
-                {[
-                  { id: 'under-30-mins', label: 'Under 30 mins' },
-                  { id: 'delivery-under-45', label: 'Under 45 mins' },
-                  { id: 'rating-4-plus', label: 'Rating 4.0+' },
-                  { id: 'rating-45-plus', label: 'Rating 4.5+' },
-                ].map((filter) => {
-                  const isActive = activeFilters.has(filter.id)
-                  return (
-                    <Button
-                      key={filter.id}
-                      variant="outline"
-                      onClick={() => toggleFilter(filter.id)}
-                      className={`h-7 md:h-8 px-2.5 md:px-3 rounded-md flex items-center gap-1.5 whitespace-nowrap shrink-0 transition-all ${isActive
-                        ? 'bg-[#DC2626] text-white border border-[#DC2626] hover:bg-[#991B1B]'
-                        : 'bg-white dark:bg-[#1a1a1a] border border-gray-200 dark:border-gray-800 hover:bg-gray-50 dark:hover:bg-gray-800'
-                        }`}
-                    >
-                      <span className={`text-xs md:text-sm text-black dark:text-white font-bold ${isActive ? 'text-white' : 'text-black dark:text-white'}`}>{filter.label}</span>
-                    </Button>
-                  )
-                })}
-              </div>
-
-              {/* Row 2 */}
-              <div
-                className="flex items-center gap-2 overflow-x-auto md:overflow-x-visible scrollbar-hide pb-1 md:pb-0"
-                style={{
-                  scrollbarWidth: "none",
-                  msOverflowStyle: "none",
-                }}
-              >
-                {[
-                  { id: 'distance-under-1km', label: 'Under 1km', icon: MapPin },
-                  { id: 'distance-under-2km', label: 'Under 2km', icon: MapPin },
-                  { id: 'flat-50-off', label: 'Flat 50% OFF' },
-                  { id: 'under-250', label: 'Under ₹250' },
-                ].map((filter) => {
-                  const Icon = filter.icon
-                  const isActive = activeFilters.has(filter.id)
-                  return (
-                    <Button
-                      key={filter.id}
-                      variant="outline"
-                      onClick={() => toggleFilter(filter.id)}
-                      className={`h-7 md:h-8 px-2.5 md:px-3 rounded-md flex items-center gap-1.5 whitespace-nowrap shrink-0 transition-all ${isActive
-                        ? 'bg-[#DC2626] text-white border border-[#DC2626] hover:bg-[#991B1B]'
-                        : 'bg-white dark:bg-[#1a1a1a] border border-gray-200 dark:border-gray-800 hover:bg-gray-50 dark:hover:bg-gray-800'
-                        }`}
-                    >
-                      {Icon && <Icon className={`h-3.5 w-3.5 md:h-4 md:w-4 ${isActive ? 'text-white' : 'text-gray-900 dark:text-white'}`} />}
-                      <span className={`text-xs md:text-sm font-bold ${isActive ? 'text-white' : 'text-black dark:text-white'}`}>{filter.label}</span>
-                    </Button>
-                  )
-                })}
-              </div>
             </div>
           )}
         </div>
       </div>
+      <div style={{ height: stickyHeaderHeight }} aria-hidden="true" />
+
+      {/* Filters — scroll away with content (not sticky) */}
+      {!hideFilters && (
+        <div className="max-w-7xl mx-auto bg-white dark:bg-[#0a0a0a]">
+          <div className="flex flex-col md:flex-row md:flex-wrap gap-2 px-4 md:px-6 py-3">
+            {/* Row 1 */}
+            <div
+              className="flex items-center gap-2 overflow-x-auto md:overflow-x-visible scrollbar-hide pb-1 md:pb-0"
+              style={{
+                scrollbarWidth: "none",
+                msOverflowStyle: "none",
+              }}
+            >
+              <Button
+                variant="outline"
+                onClick={() => setIsFilterOpen(true)}
+                className="h-7 md:h-8 px-2.5 md:px-3 rounded-md flex items-center gap-1.5 whitespace-nowrap shrink-0 transition-all bg-white dark:bg-[#1a1a1a] border border-gray-200 dark:border-gray-800 hover:bg-gray-50 dark:hover:bg-gray-800"
+              >
+                <SlidersHorizontal className="h-3.5 w-3.5 md:h-4 md:w-4" />
+                <span className="text-xs md:text-sm font-bold text-black dark:text-white">Filters</span>
+              </Button>
+              {[
+                { id: 'under-30-mins', label: 'Under 30 mins' },
+                { id: 'delivery-under-45', label: 'Under 45 mins' },
+                { id: 'rating-4-plus', label: 'Rating 4.0+' },
+                { id: 'rating-45-plus', label: 'Rating 4.5+' },
+              ].map((filter) => {
+                const isActive = activeFilters.has(filter.id)
+                return (
+                  <Button
+                    key={filter.id}
+                    variant="outline"
+                    onClick={() => toggleFilter(filter.id)}
+                    className={`h-7 md:h-8 px-2.5 md:px-3 rounded-md flex items-center gap-1.5 whitespace-nowrap shrink-0 transition-all ${isActive
+                      ? 'bg-[#DC2626] text-white border border-[#DC2626] hover:bg-[#991B1B]'
+                      : 'bg-white dark:bg-[#1a1a1a] border border-gray-200 dark:border-gray-800 hover:bg-gray-50 dark:hover:bg-gray-800'
+                      }`}
+                  >
+                    <span className={`text-xs md:text-sm text-black dark:text-white font-bold ${isActive ? 'text-white' : 'text-black dark:text-white'}`}>{filter.label}</span>
+                  </Button>
+                )
+              })}
+            </div>
+
+            {/* Row 2 */}
+            <div
+              className="flex items-center gap-2 overflow-x-auto md:overflow-x-visible scrollbar-hide pb-1 md:pb-0"
+              style={{
+                scrollbarWidth: "none",
+                msOverflowStyle: "none",
+              }}
+            >
+              {[
+                { id: 'distance-under-1km', label: 'Under 1km', icon: MapPin },
+                { id: 'distance-under-2km', label: 'Under 2km', icon: MapPin },
+                { id: 'flat-50-off', label: 'Flat 50% OFF' },
+                { id: 'under-250', label: 'Under ₹250' },
+              ].map((filter) => {
+                const Icon = filter.icon
+                const isActive = activeFilters.has(filter.id)
+                return (
+                  <Button
+                    key={filter.id}
+                    variant="outline"
+                    onClick={() => toggleFilter(filter.id)}
+                    className={`h-7 md:h-8 px-2.5 md:px-3 rounded-md flex items-center gap-1.5 whitespace-nowrap shrink-0 transition-all ${isActive
+                      ? 'bg-[#DC2626] text-white border border-[#DC2626] hover:bg-[#991B1B]'
+                      : 'bg-white dark:bg-[#1a1a1a] border border-gray-200 dark:border-gray-800 hover:bg-gray-50 dark:hover:bg-gray-800'
+                      }`}
+                  >
+                    {Icon && <Icon className={`h-3.5 w-3.5 md:h-4 md:w-4 ${isActive ? 'text-white' : 'text-gray-900 dark:text-white'}`} />}
+                    <span className={`text-xs md:text-sm font-bold ${isActive ? 'text-white' : 'text-black dark:text-white'}`}>{filter.label}</span>
+                  </Button>
+                )
+              })}
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Content */}
       <div className="px-4 sm:px-6 md:px-8 lg:px-10 xl:px-12 py-4 sm:py-6 md:py-8 lg:py-10 space-y-6 md:space-y-8 lg:space-y-10">
         <div className="max-w-7xl mx-auto">
-          {/* RECOMMENDED FOR YOU Section - Hide when "All" category is selected */}
-          {filteredRecommended.length > 0 && selectedCategory !== 'all' && (
+          {/* RECOMMENDED FOR YOU — show skeleton while loading, avoid blank white boxes */}
+          {selectedCategory !== 'all' && (isContentLoading || filteredRecommended.length > 0) && (
             <section ref={recommendedSectionRef}>
               <h2 className="text-xs sm:text-sm md:text-base font-semibold text-gray-400 dark:text-gray-500 tracking-widest uppercase mb-4 md:mb-6">
                 RECOMMENDED FOR YOU
               </h2>
 
-              {/* Small Restaurant Cards - Grid - Show all dishes when category is selected */}
-              <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 gap-3 md:gap-4">
-                {(isCategoryView
-                  ? filteredRecommended
-                  : filteredRecommended.slice(0, 6)
-                ).map((restaurant) => {
-                  return (
+              {isContentLoading && filteredRecommended.length === 0 ? (
+                <div className="overflow-x-auto overscroll-x-contain pb-1 -mx-4 px-4 [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden">
+                  <div className="flex gap-3" style={{ width: "max-content" }}>
+                    {Array.from({ length: 3 }).map((_, i) => (
+                      <div
+                        key={`rec-skel-${i}`}
+                        className="w-[calc((100vw-2rem-1.5rem)/3)] sm:w-[148px] md:w-[160px] lg:w-[168px] shrink-0 animate-pulse"
+                      >
+                        <div className="aspect-square rounded-xl md:rounded-2xl bg-gray-200 dark:bg-gray-800 mb-2" />
+                        <div className="h-3 w-3/4 rounded bg-gray-200 dark:bg-gray-800 mb-1" />
+                        <div className="h-2.5 w-1/2 rounded bg-gray-100 dark:bg-gray-700" />
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              ) : (
+                (() => {
+                  const recCount = recommendedItems.length
+                  const useTwoRows = recCount >= 6
+                  // Always fixed ~1/3 viewport width — never stretch when 1–2 items
+                  const cardWidthClass =
+                    "w-[calc((100vw-2rem-1.5rem)/3)] sm:w-[148px] md:w-[160px] lg:w-[168px] shrink-0"
+
+                  const renderRecCard = (restaurant) => {
+                    const closed = isRestaurantClosed(restaurant)
+                    return (
                       <Link
                         key={restaurant.id}
-                        to={`/user/restaurants/${restaurant.slug || restaurant._id || restaurant.restaurantId || restaurant.name.toLowerCase().replace(/\s+/g, '-')}${restaurant.dishId ? `?dish=${restaurant.dishId}` : ''}`}
-                        state={{ restaurantData: restaurant }}
-                        className="block"
+                        to={toFoodUserPath(`/user/restaurants/${getRestaurantRouteId(restaurant)}${restaurant.dishId ? `?dish=${restaurant.dishId}` : ''}`)}
+                        state={{ restaurantData: restaurant, from: categoryBackPath }}
+                        data-browse-focus={restaurant.id}
+                        onClick={() => rememberBrowsePosition(restaurant.id)}
+                        className={`block min-w-0 ${cardWidthClass}`}
                       >
-                      <div className={`group ${shouldShowGrayscale ? 'grayscale opacity-75' : ''}`}>
-                        {/* Image Container */}
-                        <div className="relative aspect-square rounded-xl md:rounded-2xl overflow-hidden mb-2">
-                          {/* Use category dish image if available, otherwise restaurant image */}
-                          {restaurant.categoryDishImage ? (
-                            <img
-                              src={restaurant.categoryDishImage}
-                              alt={restaurant.categoryDishName || restaurant.name}
-                              className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
-                              onError={(e) => {
-                                // Fallback to restaurant image if dish image fails
-                                if (restaurant.image) {
-                                  e.target.src = restaurant.image
-                                } else {
-                                  // Show emoji placeholder
-                                  e.target.style.display = 'none'
-                                  const placeholder = document.createElement('div')
-                                  placeholder.className = 'w-full h-full flex items-center justify-center bg-gray-100 dark:bg-gray-800 text-6xl'
-                                  placeholder.textContent = '???'
-                                  e.target.parentElement.appendChild(placeholder)
-                                }
-                              }}
-                            />
-                          ) : restaurant.image ? (
-                            <img
-                              src={restaurant.image}
-                              alt={restaurant.name}
-                              className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
-                              onError={(e) => {
-                                // Show emoji placeholder
-                                e.target.style.display = 'none'
-                                const placeholder = document.createElement('div')
-                                placeholder.className = 'w-full h-full flex items-center justify-center bg-gray-100 dark:bg-gray-800 text-6xl'
-                                placeholder.textContent = '???'
-                                e.target.parentElement.appendChild(placeholder)
-                              }}
-                            />
-                          ) : (
-                            <div className="w-full h-full flex items-center justify-center bg-gray-100 dark:bg-gray-800 text-6xl">
-                              ???
-                            </div>
-                          )}
+                        <div className={`group ${shouldShowGrayscale || closed ? "grayscale opacity-75" : ""}`}>
+                          <div className="relative aspect-square rounded-xl md:rounded-2xl overflow-hidden mb-2 bg-gray-200 dark:bg-gray-800">
+                            {(restaurant.categoryDishImage || restaurant.image) ? (
+                              <img
+                                src={restaurant.categoryDishImage || restaurant.image}
+                                alt={restaurant.categoryDishName || restaurant.name}
+                                loading="lazy"
+                                decoding="async"
+                                className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+                                onError={(e) => {
+                                  if (restaurant.categoryDishImage && restaurant.image && e.target.src !== restaurant.image) {
+                                    e.target.src = restaurant.image
+                                  } else {
+                                    e.target.style.visibility = "hidden"
+                                  }
+                                }}
+                              />
+                            ) : null}
 
-                          {/* Offer Badge */}
-                          {restaurant.offer && (
-                            <div className="absolute top-1.5 left-1.5 bg-gradient-to-r from-[#DC2626] to-[#991B1B] text-white text-[10px] md:text-xs font-semibold px-1.5 py-0.5 rounded shadow-sm">
-                              {restaurant.offer}
-                            </div>
-                          )}
+                            {restaurant.offer && (
+                              <div className="absolute top-1.5 left-1.5 bg-gradient-to-r from-[#DC2626] to-[#991B1B] text-white text-[10px] md:text-xs font-semibold px-1.5 py-0.5 rounded shadow-sm">
+                                {restaurant.offer}
+                              </div>
+                            )}
 
-                          {/* Rating Badge (NOW ON IMAGE, bottom-left with white border) */}
-                          <div className="absolute bottom-0 left-0 bg-green-600 border-[4px] rounded-md border-white text-white text-[11px] md:text-xs font-bold px-1.5 py-0.5 flex items-center gap-0.5">
-                            {restaurant.rating}
-                            <Star className="h-2.5 w-2.5 md:h-3 md:w-3 fill-white" />
+                            <div className="absolute bottom-0 left-0 bg-green-600 border-[4px] rounded-md border-white text-white text-[11px] md:text-xs font-bold px-1.5 py-0.5 flex items-center gap-0.5">
+                              {Number(restaurant.rating) > 0 ? Number(restaurant.rating).toFixed(1) : "NEW"}
+                              <Star className="h-2.5 w-2.5 md:h-3 md:w-3 fill-white" />
+                            </div>
                           </div>
+
+                          <h3 className="font-semibold text-gray-900 dark:text-white text-xs md:text-sm line-clamp-1">
+                            {isCategoryView
+                              ? (restaurant.categoryDishName || restaurant.featuredDish || restaurant.name)
+                              : restaurant.name}
+                          </h3>
+                          {isCategoryView && (
+                            <p className="text-[10px] md:text-xs text-gray-500 dark:text-gray-400 line-clamp-1">
+                              {restaurant.name}
+                            </p>
+                          )}
                         </div>
+                      </Link>
+                    )
+                  }
 
-                        <h3 className="font-semibold text-gray-900 dark:text-white text-xs md:text-sm line-clamp-1">
-                          {isCategoryView ? (restaurant.categoryDishName || restaurant.featuredDish || restaurant.name) : restaurant.name}
-                        </h3>
-                        {isCategoryView && (
-                          <p className="text-[10px] md:text-xs text-gray-500 dark:text-gray-400 line-clamp-1">
-                            {restaurant.name}
-                          </p>
-                        )}
-                        {restaurant.deliveryTime && (
-                          <div className="flex items-center gap-1 text-gray-500 dark:text-gray-400 text-[10px] md:text-xs">
-                            <Clock className="h-2.5 w-2.5 md:h-3 md:w-3" />
-                            <span>{restaurant.deliveryTime}</span>
-                          </div>
-                        )}
+                  // Fixed card size for 1–N items (matches multi-item carousel width)
+                  if (!useTwoRows) {
+                    return (
+                      <div className="overflow-x-auto overscroll-x-contain pb-1 -mx-4 px-4 touch-pan-x [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden">
+                        <div className="flex gap-3" style={{ width: "max-content", minWidth: "100%" }}>
+                          {recommendedItems.map(renderRecCard)}
+                        </div>
                       </div>
-                    </Link>
+                    )
+                  }
+
+                  // 6+: exactly 2 rows — first 3 on top, next 3 below, then slide (no 3rd row)
+                  const topRow = []
+                  const bottomRow = []
+                  recommendedItems.forEach((item, index) => {
+                    if (Math.floor(index / 3) % 2 === 0) topRow.push(item)
+                    else bottomRow.push(item)
+                  })
+
+                  return (
+                    <div className="overflow-x-auto overscroll-x-contain pb-1 -mx-4 px-4 touch-pan-x [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden">
+                      <div className="inline-flex flex-col gap-3" style={{ width: "max-content", minWidth: "100%" }}>
+                        <div className="flex gap-3">
+                          {topRow.map(renderRecCard)}
+                        </div>
+                        <div className="flex gap-3">
+                          {bottomRow.map(renderRecCard)}
+                        </div>
+                      </div>
+                    </div>
                   )
-                })}
-              </div>
+                })()
+              )}
             </section>
           )}
 
@@ -1772,43 +2305,47 @@ export default function CategoryPage({ embeddedCategorySlug = null, hideHeader =
 
             {/* Large Restaurant Cards */}
             <div className={`grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 md:gap-5 lg:gap-6 xl:gap-7 items-stretch ${showRestaurantSkeleton ? 'opacity-50' : 'opacity-100'} transition-opacity duration-300`}>
-              {filteredAllRestaurants.map((restaurant) => {
-                const restaurantSlug = restaurant.slug || restaurant._id || restaurant.restaurantId || restaurant.name.toLowerCase().replace(/\s+/g, "-")
+              {isContentLoading && visibleAllRestaurants.length === 0 ? (
+                <div className="col-span-full">
+                  <RestaurantGridSkeleton count={4} compact />
+                </div>
+              ) : (
+              visibleAllRestaurants.map((restaurant) => {
+                const restaurantSlug = getRestaurantRouteId(restaurant) || "restaurant"
                 const isFavorite = favorites.has(restaurant.id)
+                const closed = isRestaurantClosed(restaurant)
 
                 return (
-                  <Link key={restaurant.id} to={`/user/restaurants/${restaurantSlug}${restaurant.dishId ? `?dish=${restaurant.dishId}` : ''}`} state={{ restaurantData: restaurant }} className="h-full flex">
-                    <Card className={`overflow-hidden cursor-pointer gap-0 border-0 dark:border-gray-800 group bg-white dark:bg-[#1a1a1a] shadow-md hover:shadow-xl transition-all duration-300 py-0 rounded-md h-full flex flex-col w-full ${shouldShowGrayscale ? 'grayscale opacity-75' : ''
+                  <Link
+                    key={restaurant.id}
+                    to={toFoodUserPath(`/user/restaurants/${restaurantSlug}`)}
+                    state={{ restaurantData: restaurant, from: categoryBackPath }}
+                    data-browse-focus={restaurant.id}
+                    onClick={() => rememberBrowsePosition(restaurant.id)}
+                    className="h-full flex"
+                  >
+                    <Card className={`overflow-hidden cursor-pointer gap-0 border-0 dark:border-gray-800 group bg-white dark:bg-[#1a1a1a] shadow-md hover:shadow-xl transition-all duration-300 py-0 rounded-md h-full flex flex-col w-full ${shouldShowGrayscale || closed ? 'grayscale opacity-75' : ''
                       }`}>
-                      {/* Image Section */}
-                      <div className="relative h-44 sm:h-52 md:h-60 lg:h-64 xl:h-72 w-full overflow-hidden rounded-t-md flex-shrink-0">
-                        {/* Use category dish image if available, otherwise restaurant image */}
-                        {restaurant.categoryDishImage ? (
-                          <img
-                            src={restaurant.categoryDishImage}
-                            alt={restaurant.categoryDishName || restaurant.name}
-                            className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
-                            onError={(e) => {
-                              // Fallback to restaurant image if dish image fails
-                              if (restaurant.image) {
-                                e.target.src = restaurant.image
-                              } else {
-                                // Show emoji placeholder
-                                e.target.style.display = 'none'
-                                const placeholder = document.createElement('div')
-                                placeholder.className = 'w-full h-full flex items-center justify-center bg-gray-100 dark:bg-gray-800 text-6xl'
-                                placeholder.textContent = '???'
-                                e.target.parentElement.appendChild(placeholder)
-                              }
-                            }}
+                      {/* Image Section — Home-style dish carousel when category dishes exist */}
+                      <div className="relative h-44 sm:h-52 md:h-60 lg:h-64 xl:h-72 w-full overflow-hidden rounded-t-md flex-shrink-0 isolate">
+                        {isCategoryView && Array.isArray(restaurant.recommendedDishes) && restaurant.recommendedDishes.length > 0 ? (
+                          <RestaurantImageCarousel
+                            restaurant={restaurant}
+                            backendOrigin={BACKEND_ORIGIN}
+                            className="h-44 sm:h-52 md:h-60 lg:h-64 xl:h-72"
+                            roundedClass="rounded-t-md"
+                            backFrom={categoryBackPath}
+                            focusId={restaurant.id}
+                            visibleCount={visibleAllCount}
                           />
                         ) : restaurant.image ? (
                           <img
                             src={restaurant.image}
                             alt={restaurant.name}
+                            loading="lazy"
+                            decoding="async"
                             className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
                             onError={(e) => {
-                              // Show emoji placeholder
                               e.target.style.display = 'none'
                               const placeholder = document.createElement('div')
                               placeholder.className = 'w-full h-full flex items-center justify-center bg-gray-100 dark:bg-gray-800 text-6xl'
@@ -1822,20 +2359,18 @@ export default function CategoryPage({ embeddedCategorySlug = null, hideHeader =
                           </div>
                         )}
 
-                        {/* Category Dish Badge - Top Left (shows category dish if available, otherwise featured dish) */}
-                        {(isCategoryView ? restaurant.categoryDishPrice : (restaurant.categoryDishName || restaurant.featuredDish)) && (
-                          <div className="absolute top-3 left-3">
+                        {/* Featured dish badge only when not using category dish carousel */}
+                        {!isCategoryView && (restaurant.categoryDishName || restaurant.featuredDish) && (
+                          <div className="absolute top-3 left-3 z-10">
                             <div className="bg-gray-800/80 backdrop-blur-sm text-white px-3 py-1.5 rounded-lg text-xs sm:text-sm md:text-base font-medium">
-                              {isCategoryView
-                                ? `₹${restaurant.categoryDishPrice || restaurant.featuredPrice || 0}`
-                                : `${restaurant.categoryDishName || restaurant.featuredDish} • ₹${restaurant.categoryDishPrice || restaurant.featuredPrice}`}
+                              {`${restaurant.categoryDishName || restaurant.featuredDish} • ₹${restaurant.categoryDishPrice || restaurant.featuredPrice}`}
                             </div>
                           </div>
                         )}
 
                         {/* Ad Badge */}
                         {restaurant.isAd && (
-                          <div className="absolute top-3 right-14 bg-black/50 text-white text-[10px] md:text-xs px-2 py-0.5 rounded">
+                          <div className="absolute top-3 right-14 z-[3] bg-black/50 text-white text-[10px] md:text-xs px-2 py-0.5 rounded">
                             Ad
                           </div>
                         )}
@@ -1844,7 +2379,7 @@ export default function CategoryPage({ embeddedCategorySlug = null, hideHeader =
                         <Button
                           variant="ghost"
                           size="icon"
-                          className="absolute top-3 right-3 h-9 w-9 md:h-10 md:w-10 bg-white/90 dark:bg-[#1a1a1a]/90 backdrop-blur-sm rounded-lg hover:bg-white dark:hover:bg-[#2a2a2a] transition-colors"
+                          className="absolute top-3 right-3 z-[3] h-9 w-9 md:h-10 md:w-10 bg-white/90 dark:bg-[#1a1a1a]/90 backdrop-blur-sm rounded-lg hover:bg-white dark:hover:bg-[#2a2a2a] transition-colors"
                           onClick={(e) => {
                             e.preventDefault()
                             e.stopPropagation()
@@ -1857,39 +2392,37 @@ export default function CategoryPage({ embeddedCategorySlug = null, hideHeader =
 
                       {/* Content Section */}
                       <CardContent className="p-3 sm:p-4 md:p-5 lg:p-6 gap-0 flex-1 flex flex-col">
-                        {/* Restaurant Name & Rating */}
+                        {/* Restaurant Name & Rating — delivery row matches Home */}
                         <div className="flex items-start justify-between gap-2 mb-2 lg:mb-3">
                           <div className="flex-1 min-w-0">
-                            <h3 className="text-md md:text-xl lg:text-2xl font-bold text-gray-900 dark:text-white line-clamp-1 lg:line-clamp-2">
-                              {isCategoryView ? (restaurant.categoryDishName || restaurant.featuredDish || restaurant.name) : restaurant.name}
+                            <h3 className="text-md md:text-xl lg:text-2xl font-bold text-[#1c1c1c] dark:text-white line-clamp-1 lg:line-clamp-2 leading-tight tracking-tight">
+                              {restaurant.name}
                             </h3>
-                            {isCategoryView && (
-                              <p className="mt-1 text-sm md:text-base text-gray-500 dark:text-gray-400 line-clamp-1">
-                                {restaurant.name}
-                              </p>
-                            )}
+                            <div className="flex flex-wrap items-center gap-2 mt-2">
+                              <div className="flex items-center gap-1.5 text-sm font-semibold text-[#257d3c] transition-all duration-300">
+                                <Zap
+                                  className="h-4 w-4 fill-[#257d3c]"
+                                  strokeWidth={2.5}
+                                />
+                                <span>
+                                  {restaurant.deliveryTime || "25-30 mins"}
+                                </span>
+                                {restaurant.distance && (
+                                  <>
+                                    <span className="text-[#257d3c] mx-1 font-bold">|</span>
+                                    <span>{restaurant.distance}</span>
+                                  </>
+                                )}
+                              </div>
+                            </div>
                           </div>
-                          <div className="flex-shrink-0 bg-green-600 text-white px-2 md:px-3 lg:px-4 py-1 lg:py-1.5 rounded-lg flex items-center gap-1">
-                            <span className="text-sm md:text-base lg:text-lg font-bold">{restaurant.rating}</span>
-                            <Star className="h-3 w-3 md:h-4 md:w-4 lg:h-5 lg:w-5 fill-white text-white" />
+                          <div className="flex-shrink-0 bg-[#257d3c] text-white px-2 py-1 rounded-lg flex items-center gap-1">
+                            <Star className="h-3.5 w-3.5 fill-white text-white" strokeWidth={0} />
+                            <span className="text-sm font-bold tracking-tight">
+                              {Number(restaurant.rating) > 0 ? Number(restaurant.rating).toFixed(1) : "NEW"}
+                            </span>
                           </div>
                         </div>
-
-                        {/* Delivery Time & Distance */}
-                        {(restaurant.deliveryTime || restaurant.distance) && (
-                          <div className="flex items-center gap-1 text-sm md:text-base lg:text-lg text-gray-500 dark:text-gray-400 mb-2 lg:mb-3">
-                            {restaurant.deliveryTime && (
-                              <>
-                                <Clock className="h-4 w-4 md:h-5 md:w-5 lg:h-6 lg:w-6" strokeWidth={1.5} />
-                                <span className="font-medium">{restaurant.deliveryTime}</span>
-                              </>
-                            )}
-                            {restaurant.deliveryTime && restaurant.distance && <span className="mx-1">|</span>}
-                            {restaurant.distance && (
-                              <span className="font-medium">{restaurant.distance}</span>
-                            )}
-                          </div>
-                        )}
 
                         {/* Offer Badge */}
                         {restaurant.offer && (
@@ -1902,11 +2435,18 @@ export default function CategoryPage({ embeddedCategorySlug = null, hideHeader =
                     </Card>
                   </Link>
                 )
-              })}
+              })
+              )}
             </div>
 
-            {/* Empty State */}
-            {filteredAllRestaurants.length === 0 && !showRestaurantSkeleton && !loadingRestaurants && !loadingZone && !loadingCategories && !isEnrichingMenus && (
+            {visibleAllCount < allRestaurantsWithoutRecommended.length && (
+              <div ref={allListSentinelRef} className="flex justify-center py-6">
+                <Loader2 className="h-5 w-5 animate-spin text-gray-400" />
+              </div>
+            )}
+
+            {/* Empty State — never flash while categories/menus still loading */}
+            {hasNoResults && (
               <div className="text-center py-12 md:py-16">
                 <p className="text-gray-500 dark:text-gray-400 text-sm md:text-base">
                   {searchQuery
@@ -1921,7 +2461,6 @@ export default function CategoryPage({ embeddedCategorySlug = null, hideHeader =
                     setActiveFilters(new Set())
                     setSearchQuery("")
                     setSortBy(null)
-                    // Trigger a gentle refresh to ensure data freshness
                     menuEnrichmentRequestRef.current += 1
                     setIsEnrichingMenus(false)
                     setTimeout(() => setIsLoadingFilterResults(false), 500)

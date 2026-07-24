@@ -2,7 +2,7 @@ import mongoose from 'mongoose';
 import * as adminService from '../services/admin.service.js';
 import { logger } from '../../../../utils/logger.js';
 import { FoodRestaurant } from '../../restaurant/models/restaurant.model.js';
-import { invalidateCache } from '../../../../middleware/cache.js';
+import { invalidateCache, invalidateFoodBrowseCaches } from '../../../../middleware/cache.js';
 import { FoodRefreshToken } from '../../../../core/refreshTokens/refreshToken.model.js';
 import { validateCategoryListQuery, validateCategoryRejectDto, validateCategoryUpsertDto } from '../validators/category.validator.js';
 import { validateCreateOfferDto, validateUpdateOfferCartVisibilityDto } from '../validators/offer.validator.js';
@@ -304,6 +304,9 @@ export async function updateRestaurantMenuById(req, res, next) {
             return res.status(404).json({ success: false, message: 'Restaurant not found' });
         }
         await invalidateCache('restaurant_menu:*');
+        await invalidateCache('search:*');
+        await invalidateCache('categories:*');
+        await invalidateCache('under_250:*');
         res.status(200).json({ success: true, message: 'Menu updated successfully', data: { menu } });
     } catch (error) {
         next(error);
@@ -324,6 +327,7 @@ export async function updateRestaurantById(req, res, next) {
         await invalidateCache('restaurant_detail:*');
         await invalidateCache('under_250:*');
         await invalidateCache('offers:*');
+        await invalidateCache('search:*');
         res.status(200).json({ success: true, message: 'Restaurant updated successfully', data: { restaurant: updated } });
     } catch (error) {
         next(error);
@@ -353,6 +357,7 @@ export async function updateRestaurantStatus(req, res, next) {
         await invalidateCache('restaurant_detail:*');
         await invalidateCache('under_250:*');
         await invalidateCache('offers:*');
+        await invalidateCache('search:*');
         res.status(200).json({ success: true, message: 'Restaurant status updated successfully', data: { restaurant: updated } });
     } catch (error) {
         next(error);
@@ -372,6 +377,7 @@ export async function updateRestaurantLocation(req, res, next) {
         await invalidateCache('restaurants:*');
         await invalidateCache('restaurant_detail:*');
         await invalidateCache('under_250:*');
+        await invalidateCache('search:*');
         res.status(200).json({ success: true, message: 'Restaurant location updated successfully', data: { restaurant: updated } });
     } catch (error) {
         next(error);
@@ -444,6 +450,7 @@ export async function createCategory(req, res, next) {
     try {
         const body = validateCategoryUpsertDto(req.body || {});
         const created = await adminService.createCategory(body);
+        await invalidateFoodBrowseCaches(['categories', 'search']);
         res.status(201).json({ success: true, message: 'Category created successfully', data: { category: created } });
     } catch (error) {
         next(error);
@@ -461,6 +468,7 @@ export async function updateCategory(req, res, next) {
         if (!updated) {
             return res.status(404).json({ success: false, message: 'Category not found' });
         }
+        await invalidateFoodBrowseCaches(['categories', 'search']);
         res.status(200).json({ success: true, message: 'Category updated successfully', data: { category: updated } });
     } catch (error) {
         next(error);
@@ -477,6 +485,7 @@ export async function deleteCategory(req, res, next) {
         if (!result) {
             return res.status(404).json({ success: false, message: 'Category not found' });
         }
+        await invalidateFoodBrowseCaches(['categories', 'search']);
         res.status(200).json({ success: true, message: 'Category deleted successfully', data: result });
     } catch (error) {
         next(error);
@@ -493,6 +502,7 @@ export async function toggleCategoryStatus(req, res, next) {
         if (!updated) {
             return res.status(404).json({ success: false, message: 'Category not found' });
         }
+        await invalidateFoodBrowseCaches(['categories', 'search']);
         res.status(200).json({ success: true, message: 'Category status updated successfully', data: { category: updated } });
     } catch (error) {
         next(error);
@@ -509,6 +519,7 @@ export async function approveCategory(req, res, next) {
         if (!updated) {
             return res.status(404).json({ success: false, message: 'Category not found or already approved' });
         }
+        await invalidateFoodBrowseCaches(['categories', 'search']);
         res.status(200).json({ success: true, message: 'Category approved successfully', data: { category: updated } });
     } catch (error) {
         next(error);
@@ -526,6 +537,7 @@ export async function rejectCategory(req, res, next) {
         if (!updated) {
             return res.status(404).json({ success: false, message: 'Category not found' });
         }
+        await invalidateFoodBrowseCaches(['categories', 'search']);
         res.status(200).json({ success: true, message: 'Category rejected successfully', data: { category: updated } });
     } catch (error) {
         next(error);
@@ -542,6 +554,7 @@ export async function makeCategoryGlobal(req, res, next) {
         if (!updated) {
             return res.status(404).json({ success: false, message: 'Category not found' });
         }
+        await invalidateFoodBrowseCaches(['categories', 'search']);
         res.status(200).json({ success: true, message: 'Category is now global', data: { category: updated } });
     } catch (error) {
         next(error);
@@ -1094,6 +1107,7 @@ export async function approveRestaurant(req, res, next) {
         await invalidateCache('restaurant_detail:*');
         await invalidateCache('under_250:*');
         await invalidateCache('offers:*');
+        await invalidateCache('search:*');
         res.status(200).json({
             success: true,
             message: 'Restaurant approved successfully',
@@ -1108,6 +1122,7 @@ export async function createRestaurant(req, res, next) {
     try {
         const restaurant = await adminService.createRestaurantByAdmin(req.body || {});
         await invalidateCache('restaurants:*');
+        await invalidateCache('search:*');
         res.status(201).json({
             success: true,
             message: 'Restaurant created successfully',
@@ -1144,6 +1159,7 @@ export async function rejectRestaurant(req, res, next) {
         await invalidateCache('restaurant_detail:*');
         await invalidateCache('under_250:*');
         await invalidateCache('offers:*');
+        await invalidateCache('search:*');
         res.status(200).json({
             success: true,
             message: 'Restaurant rejected successfully',
@@ -1179,6 +1195,8 @@ export async function deleteRestaurant(req, res, next) {
         await invalidateCache('under_250:*');
         await invalidateCache('offers:*');
         await invalidateCache('restaurant_menu:*');
+        await invalidateCache('search:*');
+        await invalidateCache('categories:*');
         res.status(200).json({
             success: true,
             message: 'Restaurant and all associated data deleted successfully',

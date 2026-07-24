@@ -57,7 +57,7 @@ import { authMiddleware } from '../../../../core/auth/auth.middleware.js';
 import { sendError } from '../../../../utils/response.js';
 import { getRestaurantFinanceController } from '../controllers/restaurantFinance.controller.js';
 
-import { cacheResponse, invalidateCache } from '../../../../middleware/cache.js';
+import { cacheResponse, invalidateCache, invalidateFoodBrowseCaches } from '../../../../middleware/cache.js';
 
 const router = express.Router();
 
@@ -116,16 +116,19 @@ router.patch('/profile', authMiddleware, requireRestaurant, async (req, res, nex
     // Invalidate caches when profile is updated
     await invalidateCache('restaurants:*');
     await invalidateCache('restaurant_detail:*');
+    await invalidateCache('search:*');
     next();
 }, updateRestaurantProfileController);
 router.patch('/availability', authMiddleware, requireApprovedRestaurant, async (req, res, next) => {
     await invalidateCache('restaurants:*');
+    await invalidateCache('search:*');
     next();
 }, updateRestaurantAcceptingOrdersController);
 router.patch('/dining-settings', authMiddleware, requireApprovedRestaurant, updateCurrentRestaurantDiningSettingsController);
 router.patch('/takeaway-settings', authMiddleware, requireApprovedRestaurant, async (req, res, next) => {
     await invalidateCache('restaurants:*');
     await invalidateCache('restaurant_detail:*');
+    await invalidateCache('search:*');
     next();
 }, updateCurrentRestaurantTakeawaySettingsController);
 router.post('/dining-settings/request', authMiddleware, requireApprovedRestaurant, createDiningRequestController);
@@ -136,6 +139,7 @@ router.put('/outlet-timings', authMiddleware, requireApprovedRestaurant, async (
     await invalidateCache('restaurant_detail:*');
     await invalidateCache('restaurant_timings:*');
     await invalidateCache('under_250:*');
+    await invalidateCache('search:*');
     next();
 }, upsertCurrentRestaurantOutletTimingsController);
 router.get('/finance', authMiddleware, requireApprovedRestaurant, getRestaurantFinanceController);
@@ -189,14 +193,25 @@ router.post(
 
 // Categories (restaurant dashboard). Read-only for item creation, CRUD for Menu Categories page.
 router.get('/categories', authMiddleware, requireApprovedRestaurant, listCategoriesController);
-router.post('/categories', authMiddleware, requireApprovedRestaurant, createCategoryController);
-router.patch('/categories/:id', authMiddleware, requireApprovedRestaurant, updateCategoryController);
-router.delete('/categories/:id', authMiddleware, requireApprovedRestaurant, deleteCategoryController);
+router.post('/categories', authMiddleware, requireApprovedRestaurant, async (req, res, next) => {
+    await invalidateFoodBrowseCaches(['categories', 'search']);
+    next();
+}, createCategoryController);
+router.patch('/categories/:id', authMiddleware, requireApprovedRestaurant, async (req, res, next) => {
+    await invalidateFoodBrowseCaches(['categories', 'search']);
+    next();
+}, updateCategoryController);
+router.delete('/categories/:id', authMiddleware, requireApprovedRestaurant, async (req, res, next) => {
+    await invalidateFoodBrowseCaches(['categories', 'search']);
+    next();
+}, deleteCategoryController);
 
 // Menu (restaurant dashboard) - only fields needed by UI
 router.get('/menu', authMiddleware, requireApprovedRestaurant, getMenuController);
 router.patch('/menu', authMiddleware, requireApprovedRestaurant, async (req, res, next) => {
     await invalidateCache('restaurant_menu:*');
+    await invalidateCache('search:*');
+    await invalidateCache('under_250:*');
     next();
 }, updateMenuController);
 
@@ -209,10 +224,16 @@ router.get('/restaurants/:id/addons', cacheResponse(600, 'restaurant_addons'), g
 // Foods (restaurant creates/updates items -> stored in food_items collection)
 router.post('/foods', authMiddleware, requireApprovedRestaurant, async (req, res, next) => {
     await invalidateCache('restaurant_menu:*');
+    await invalidateCache('search:*');
+    await invalidateCache('categories:*');
+    await invalidateCache('under_250:*');
     next();
 }, createRestaurantFoodController);
 router.patch('/foods/:id', authMiddleware, requireApprovedRestaurant, async (req, res, next) => {
     await invalidateCache('restaurant_menu:*');
+    await invalidateCache('search:*');
+    await invalidateCache('categories:*');
+    await invalidateCache('under_250:*');
     next();
 }, updateRestaurantFoodController);
 

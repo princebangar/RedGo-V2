@@ -1,5 +1,5 @@
-import React, { useEffect, Suspense, lazy } from "react"
-import { Routes, Route, Navigate, useLocation, useNavigate } from "react-router-dom"
+import React, { useEffect, useLayoutEffect, Suspense, lazy } from "react"
+import { Routes, Route, Navigate, useLocation, useNavigate, useNavigationType } from "react-router-dom"
 import ProtectedRoute from "@food/components/ProtectedRoute"
 import AuthRedirect from "@food/components/AuthRedirect"
 import Loader from "@food/components/Loader"
@@ -7,6 +7,7 @@ import AuthInitializer from "@food/components/AuthInitializer"
 import PushSoundEnableButton from "@food/components/PushSoundEnableButton"
 import { initPushNotificationClient, registerWebPushForCurrentModule } from "@food/utils/firebaseMessaging"
 import { isExactMainTabPath } from "@food/utils/mainTabRoutes"
+import { getCategoryLastClick } from "@food/utils/browseScrollMemory"
 import { isModuleAuthenticated } from "@food/utils/auth"
 import { AppShellSkeleton } from "./components/ui/loading-skeletons"
 import { Loader2 } from "lucide-react"
@@ -66,12 +67,47 @@ function UserPathRedirect() {
   return <Navigate to={newPath} replace />
 }
 
-// Scroll to top on route change
+// Scroll to top on forward navigations only — keep / restore position on back (POP)
 function ScrollToTop() {
   const { pathname } = useLocation();
+  const navigationType = useNavigationType();
+
   useEffect(() => {
+    if (typeof window !== "undefined" && "scrollRestoration" in window.history) {
+      window.history.scrollRestoration = "manual";
+    }
+  }, []);
+
+  useLayoutEffect(() => {
+    if (navigationType === "POP") {
+      try {
+        let y = NaN;
+        const mem = getCategoryLastClick();
+        if (mem && Number.isFinite(Number(mem.scrollY))) {
+          y = Number(mem.scrollY);
+        }
+        if (!Number.isFinite(y) || y < 0) {
+          const raw = sessionStorage.getItem("food_browse_scroll_v1");
+          if (raw) {
+            const data = JSON.parse(raw);
+            y = Number(data?.scrollY);
+          }
+        }
+        if (!Number.isFinite(y) || y < 0) {
+          const backup = sessionStorage.getItem("food_category_browse_backup_v1");
+          if (backup) {
+            const data = JSON.parse(backup);
+            y = Number(data?.scrollY);
+          }
+        }
+        if (Number.isFinite(y) && y >= 0) {
+          window.scrollTo({ top: y, left: 0, behavior: "instant" });
+        }
+      } catch {}
+      return;
+    }
     window.scrollTo(0, 0);
-  }, [pathname]);
+  }, [pathname, navigationType]);
   return null;
 }
 

@@ -42,7 +42,6 @@ const debugWarn = (...args) => { }
 const debugError = (...args) => { }
 const EDIT_PROFILE_DRAFT_KEY = "user_edit_profile_draft"
 
-
 // Gender options
 const genderOptions = [
   { value: "male", label: "Male" },
@@ -95,21 +94,11 @@ const buildFormDataFromProfile = (profile = {}) => ({
   gender: profile.gender || "",
 })
 
-const loadEditProfileDraft = () => {
+const clearEditProfileDraft = () => {
   try {
-    const saved = localStorage.getItem(EDIT_PROFILE_DRAFT_KEY)
-    return saved ? JSON.parse(saved) : null
+    localStorage.removeItem(EDIT_PROFILE_DRAFT_KEY)
   } catch (error) {
-    debugError('Error loading edit profile draft from localStorage:', error)
-    return null
-  }
-}
-
-const saveEditProfileDraft = (data) => {
-  try {
-    localStorage.setItem(EDIT_PROFILE_DRAFT_KEY, JSON.stringify(data))
-  } catch (error) {
-    debugError('Error saving edit profile draft to localStorage:', error)
+    debugError('Error clearing edit profile draft from localStorage:', error)
   }
 }
 
@@ -165,23 +154,18 @@ const convertToWebP = (file, quality = 0.8) => {
   })
 }
 
-const clearEditProfileDraft = () => {
-  try {
-    localStorage.removeItem(EDIT_PROFILE_DRAFT_KEY)
-  } catch (error) {
-    debugError('Error clearing edit profile draft from localStorage:', error)
-  }
-}
-
 export default function EditProfile() {
   const navigate = useNavigate()
   const goBack = useAppBackNavigation()
   const { userProfile, updateUserProfile } = useProfile()
 
-  // Load from localStorage or use context
+  // Always start from saved profile — never hydrate unsaved drafts into the form
+  useEffect(() => {
+    clearEditProfileDraft()
+  }, [])
+
   const storedProfile = loadProfileFromStorage()
-  const draftProfile = loadEditProfileDraft()
-  const initialProfile = draftProfile || storedProfile || userProfile || {}
+  const initialProfile = storedProfile || userProfile || {}
 
   const initialFormData = buildFormDataFromProfile(initialProfile)
 
@@ -202,50 +186,36 @@ export default function EditProfile() {
     dateOfBirth: "",
   })
   const fileInputRef = useRef(null)
-  const hydratedFromDraftRef = useRef(Boolean(draftProfile))
+  const mobileInputRef = useRef(null)
+  const savedProfileImageRef = useRef(initialProfile?.profileImage || userProfile?.profileImage || "")
 
-  // Update form data when profile changes
+  // Sync form when real saved profile loads from context (not while user is editing)
   useEffect(() => {
-    const storedProfile = loadProfileFromStorage()
-    const profile = storedProfile || userProfile || {}
-
-    // Always update image if available from profile
-    if (profile.profileImage && profile.profileImage !== profileImage) {
+    if (hasChanges) return
+    const stored = loadProfileFromStorage()
+    const profile = stored || userProfile || {}
+    const nextForm = buildFormDataFromProfile(profile)
+    setFormData(nextForm)
+    if (profile.profileImage) {
       setProfileImage(profile.profileImage)
       setImagePreview(profile.profileImage)
+      savedProfileImageRef.current = profile.profileImage
     }
-
-    if (hydratedFromDraftRef.current) return
-
-    const newFormData = buildFormDataFromProfile(profile)
-    setFormData(newFormData)
-  }, [userProfile])
-
-  useEffect(() => {
-    saveEditProfileDraft({
-      name: formData.name,
-      phone: formData.mobile,
-      mobile: formData.mobile,
-      email: formData.email,
-      profileImage,
-      dateOfBirth: formData.dateOfBirth ? formData.dateOfBirth.format('YYYY-MM-DD') : null,
-      anniversary: formData.anniversary ? formData.anniversary.format('YYYY-MM-DD') : null,
-      gender: formData.gender || "",
-    })
-  }, [formData, profileImage])
-
-  // Get avatar initial
-  const avatarInitial = formData.name?.charAt(0).toUpperCase() || 'A'
+  }, [userProfile, hasChanges])
 
   // Check if form has changes (including profile photo changes)
   useEffect(() => {
     const currentData = JSON.stringify(formData)
     const savedData = JSON.stringify(initialData)
-    const originalImage = initialProfile?.profileImage || userProfile?.profileImage || ""
+    const originalImage = savedProfileImageRef.current || ""
     const isImageChanged = pendingImageFile !== null || profileImage !== originalImage
     setHasChanges(currentData !== savedData || isImageChanged)
-  }, [formData, initialData, pendingImageFile, profileImage, initialProfile, userProfile])
+  }, [formData, initialData, pendingImageFile, profileImage])
 
+  const discardAndGoBack = () => {
+    clearEditProfileDraft()
+    goBack()
+  }
   const validateEmail = (value) => {
     if (!value) return ""
     return EMAIL_REGEX.test(value) ? "" : "Please enter a valid email"
@@ -365,7 +335,9 @@ export default function EditProfile() {
 
   const validateForm = () => {
     const nextErrors = {
-      mobile: validateMobile(formData.mobile),
+      mobile: !formData.mobile
+        ? "Mobile number is required"
+        : validateMobile(formData.mobile),
       email: validateEmail(formData.email),
       dateOfBirth: validateDateOfBirth(formData.dateOfBirth),
     }
@@ -399,9 +371,10 @@ export default function EditProfile() {
         setIsUploadingImage(false)
       }
 
-      // Prepare data for API
+      // Prepare data for API — phone only persists when Update profile is clicked
       const updateData = {
         name: formData.name,
+        phone: formData.mobile || undefined,
         email: formData.email || undefined,
         dateOfBirth: formData.dateOfBirth ? formData.dateOfBirth.format('YYYY-MM-DD') : undefined,
         anniversary: formData.anniversary ? formData.anniversary.format('YYYY-MM-DD') : undefined,
@@ -450,13 +423,20 @@ export default function EditProfile() {
   }
 
   const handleMobileChange = () => {
-    // Navigate to mobile change page or show modal
-    debugLog('Change mobile clicked')
+    setFormData((prev) => ({ ...prev, mobile: "" }))
+    setFieldErrors((prev) => ({ ...prev, mobile: "" }))
+    requestAnimationFrame(() => {
+      mobileInputRef.current?.focus()
+      mobileInputRef.current?.select?.()
+    })
   }
 
   const handleEmailChange = () => {
-    // Navigate to email change page or show modal
-    debugLog('Change email clicked')
+    setFormData((prev) => ({ ...prev, email: "" }))
+    setFieldErrors((prev) => ({ ...prev, email: "" }))
+    requestAnimationFrame(() => {
+      document.getElementById("email")?.focus()
+    })
   }
 
   return (
@@ -560,10 +540,8 @@ export default function EditProfile() {
       <div className="bg-white dark:bg-[#1a1a1a] border-b border-gray-100 dark:border-gray-800">
         <div className="max-w-7xl mx-auto flex items-center gap-3 px-4 sm:px-6 md:px-8 lg:px-10 xl:px-12 py-4 md:py-5 lg:py-6">
           <button
-            onClick={() => {
-              clearEditProfileDraft()
-              goBack()
-            }}
+            type="button"
+            onClick={discardAndGoBack}
             className="w-9 h-9 flex items-center justify-center hover:bg-gray-100 dark:hover:bg-gray-800 rounded-full transition-colors flex-shrink-0"
           >
             <ArrowLeft className="h-5 w-5 text-gray-700 dark:text-white" />
@@ -690,13 +668,22 @@ export default function EditProfile() {
                 <legend className="text-[13px] text-gray-400 dark:text-gray-500 px-1 font-normal tracking-wide">Mobile</legend>
                 <div className="flex items-center justify-between">
                   <input
+                    ref={mobileInputRef}
                     id="mobile"
                     type="tel"
+                    inputMode="numeric"
+                    autoComplete="tel"
+                    maxLength={10}
                     value={formData.mobile}
                     onChange={(e) => handleChange('mobile', e.target.value)}
-                    className="w-full bg-transparent border-none outline-none text-gray-800 dark:text-white text-[16px] font-medium pb-1"
+                    placeholder="Enter 10-digit mobile number"
+                    className="w-full bg-transparent border-none outline-none text-gray-800 dark:text-white text-[16px] font-medium pb-1 placeholder:text-gray-400"
                   />
-                  <button type="button" onClick={handleMobileChange} className="text-[#DC2626] text-[13px] font-semibold tracking-wider shrink-0 px-1">
+                  <button
+                    type="button"
+                    onClick={handleMobileChange}
+                    className="text-[#DC2626] text-[13px] font-semibold tracking-wider shrink-0 px-1"
+                  >
                     CHANGE
                   </button>
                 </div>
