@@ -1,7 +1,7 @@
 import { Link, useLocation } from "react-router-dom"
 import { ShoppingBag, Tag, Truck, UtensilsCrossed } from "lucide-react"
 import { useState, useEffect, useRef } from "react"
-import { motion, AnimatePresence } from "framer-motion"
+import { motion } from "framer-motion"
 import api from "@food/api"
 import { useProfile } from "@food/context/ProfileContext"
 import {
@@ -186,53 +186,55 @@ export default function BottomNavigation() {
   ]
 
   return (
-    <AnimatePresence>
-      {isVisible && (
-        <motion.div
-          initial={{ y: 120 }}
-          animate={{ y: 0 }}
-          exit={{ y: 120 }}
-          transition={{ 
-            type: "tween",
-            ease: [0.22, 1, 0.36, 1],
-            duration: 0.5
-          }}
-          className="md:hidden fixed bottom-6 left-0 right-0 z-50 px-6 pointer-events-none"
-        >
-          <div 
-            className="max-w-md mx-auto h-18 bg-white dark:bg-[#1a1a1a] border border-gray-100 dark:border-white/10 shadow-[0_15px_40px_-10px_rgba(0,0,0,0.3)] flex items-center justify-around px-2 rounded-[2rem] overflow-hidden pointer-events-auto"
+    <motion.div
+      initial={false}
+      animate={{ y: isVisible ? 0 : 120 }}
+      transition={{
+        type: "tween",
+        ease: [0.22, 1, 0.36, 1],
+        duration: 0.28,
+      }}
+      className="md:hidden fixed bottom-6 left-0 right-0 z-50 px-6 pointer-events-none"
+      aria-hidden={!isVisible}
+    >
+      <div
+        className={`max-w-md mx-auto h-18 bg-white dark:bg-[#1a1a1a] border border-gray-100 dark:border-white/10 shadow-[0_15px_40px_-10px_rgba(0,0,0,0.3)] flex items-center justify-around px-2 rounded-[2rem] overflow-hidden ${
+          isVisible ? "pointer-events-auto" : "pointer-events-none"
+        }`}
+      >
+        {navItems.map((item) => (
+          <Link
+            key={item.id}
+            to={item.to}
+            onClick={item.onClick}
+            className={`flex flex-col items-center justify-center gap-1 h-14 w-full relative transition-all duration-300 ${
+              item.active ? "text-[#DC2626]" : "text-gray-600 dark:text-gray-400"
+            }`}
           >
-            {navItems.map((item) => (
-              <Link
-                key={item.id}
-                to={item.to}
-                onClick={item.onClick}
-                className={`flex flex-col items-center justify-center gap-1 h-14 w-full relative transition-all duration-300 ${
-                  item.active ? "text-[#DC2626]" : "text-gray-600 dark:text-gray-400"
+            {item.active && (
+              <motion.div
+                layoutId="active-nav-bg"
+                className="absolute inset-x-1 inset-y-1 bg-[#FFF5F5] dark:bg-[#DC2626]/10 rounded-[1.5rem] z-0"
+                transition={{ type: "spring", stiffness: 400, damping: 30 }}
+              />
+            )}
+
+            <div className="relative z-10 flex flex-col items-center gap-0.5">
+              <item.icon
+                className={`h-5 w-5 transition-transform duration-300 ${item.active ? "scale-110" : ""}`}
+                strokeWidth={item.active ? 2.5 : 2}
+              />
+              <span
+                className={`text-[10px] font-black tracking-tight uppercase leading-none ${
+                  item.active ? "opacity-100" : "text-gray-900/70 dark:text-gray-300/60"
                 }`}
               >
-                {item.active && (
-                  <motion.div
-                    layoutId="active-nav-bg"
-                    className="absolute inset-x-1 inset-y-1 bg-[#FFF5F5] dark:bg-[#DC2626]/10 rounded-[1.5rem] z-0"
-                    transition={{ type: "spring", stiffness: 400, damping: 30 }}
-                  />
-                )}
-                
-                <div className="relative z-10 flex flex-col items-center gap-0.5">
-                  <item.icon 
-                    className={`h-5 w-5 transition-transform duration-300 ${item.active ? "scale-110" : ""}`} 
-                    strokeWidth={item.active ? 2.5 : 2} 
-                  />
-                  <span className={`text-[10px] font-black tracking-tight uppercase leading-none ${item.active ? "opacity-100" : "text-gray-900/70 dark:text-gray-300/60"}`}>
-                    {item.id === 'under250' ? 'Under 250' : item.label}
-                  </span>
-                </div>
-              </Link>
-            ))}
-          </div>
-        </motion.div>
-      )}
-    </AnimatePresence>
+                {item.id === "under250" ? "Under 250" : item.label}
+              </span>
+            </div>
+          </Link>
+        ))}
+      </div>
+    </motion.div>
   )
 }

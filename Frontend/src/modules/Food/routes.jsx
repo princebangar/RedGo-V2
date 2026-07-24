@@ -6,8 +6,14 @@ import Loader from "@food/components/Loader"
 import AuthInitializer from "@food/components/AuthInitializer"
 import PushSoundEnableButton from "@food/components/PushSoundEnableButton"
 import { initPushNotificationClient, registerWebPushForCurrentModule } from "@food/utils/firebaseMessaging"
-import { isExactMainTabPath } from "@food/utils/mainTabRoutes"
-import { getCategoryLastClick } from "@food/utils/browseScrollMemory"
+import {
+  getCategorySlugFromPath,
+  isExactMainTabPath,
+} from "@food/utils/mainTabRoutes"
+import {
+  getCategoryLastClick,
+  normalizeBrowsePath,
+} from "@food/utils/browseScrollMemory"
 import { isModuleAuthenticated } from "@food/utils/auth"
 import { AppShellSkeleton } from "./components/ui/loading-skeletons"
 import { Loader2 } from "lucide-react"
@@ -67,7 +73,8 @@ function UserPathRedirect() {
   return <Navigate to={newPath} replace />
 }
 
-// Scroll to top on forward navigations only — keep / restore position on back (POP)
+// Scroll to top on forward navigations only — keep / restore position on back (POP).
+// Main tabs + category browse own their scroll (KeepAlive) — never fight them here.
 function ScrollToTop() {
   const { pathname } = useLocation();
   const navigationType = useNavigationType();
@@ -79,33 +86,73 @@ function ScrollToTop() {
   }, []);
 
   useLayoutEffect(() => {
-    if (navigationType === "POP") {
-      try {
-        let y = NaN;
-        const mem = getCategoryLastClick();
-        if (mem && Number.isFinite(Number(mem.scrollY))) {
-          y = Number(mem.scrollY);
-        }
-        if (!Number.isFinite(y) || y < 0) {
-          const raw = sessionStorage.getItem("food_browse_scroll_v1");
-          if (raw) {
-            const data = JSON.parse(raw);
-            y = Number(data?.scrollY);
+    const isCategory = !!getCategorySlugFromPath(pathname);
+    const isMainTab = isExactMainTabPath(pathname);
+
+    // KeepAlive / page restore owns these surfaces — jumping here steals taps.
+    if (isMainTab || isCategory) {
+      if (navigationType === "POP" && isCategory) {
+        try {
+          const want = normalizeBrowsePath(pathname);
+          const mem = getCategoryLastClick();
+          const memPath = mem?.path ? normalizeBrowsePath(mem.path) : "";
+          if (
+            mem &&
+            memPath.includes("/category/") &&
+            Number.isFinite(Number(mem.scrollY)) &&
+            Number(mem.scrollY) >= 0
+          ) {
+            // Same browse session (any category slug) — seed once; lock finishes it.
+            window.scrollTo({
+              top: Number(mem.scrollY),
+              left: 0,
+              behavior: "instant",
+            });
+          } else if (want) {
+            const raw = sessionStorage.getItem("food_browse_scroll_v1");
+            if (raw) {
+              const data = JSON.parse(raw);
+              const y = Number(data?.scrollY);
+              if (
+                normalizeBrowsePath(data?.path || "").includes("/category/") &&
+                Number.isFinite(y) &&
+                y >= 0
+              ) {
+                window.scrollTo({ top: y, left: 0, behavior: "instant" });
+              }
+            }
           }
+        } catch {
+          /* ignore */
         }
-        if (!Number.isFinite(y) || y < 0) {
-          const backup = sessionStorage.getItem("food_category_browse_backup_v1");
-          if (backup) {
-            const data = JSON.parse(backup);
-            y = Number(data?.scrollY);
-          }
-        }
-        if (Number.isFinite(y) && y >= 0) {
-          window.scrollTo({ top: y, left: 0, behavior: "instant" });
-        }
-      } catch {}
+      }
       return;
     }
+
+    if (navigationType === "POP") {
+      try {
+        const raw = sessionStorage.getItem("food_browse_scroll_v1");
+        if (raw) {
+          const data = JSON.parse(raw);
+          const y = Number(data?.scrollY);
+          if (
+            normalizeBrowsePath(data?.path || "") === normalizeBrowsePath(pathname) &&
+            Number.isFinite(y) &&
+            y >= 0
+          ) {
+            window.scrollTo({ top: y, left: 0, behavior: "instant" });
+            return;
+          }
+        }
+      } catch {
+        /* ignore */
+      }
+      return;
+    }
+
+    // Category chip switches use REPLACE — do not yank scroll (breaks taps).
+    if (navigationType === "REPLACE") return;
+
     window.scrollTo(0, 0);
   }, [pathname, navigationType]);
   return null;

@@ -206,6 +206,7 @@ export function clearUserSession() {
     "userVegMode",
     "userVegModeOption",
     "food-under-250-filters",
+    "food-category-page-filters-v1",
     "app:isOnline"
   ];
   keys.forEach((k) => localStorage.removeItem(k));

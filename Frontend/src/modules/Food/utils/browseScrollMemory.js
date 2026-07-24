@@ -59,8 +59,8 @@ export const saveBrowseScroll = ({ path, scrollY, focusId, visibleCount } = {}) 
     sessionStorage.setItem(STORAGE_KEY, JSON.stringify(payload));
 
     if (isCategory) {
-      categoryLastClickMemory = payload;
-      categoryNeedsRestore = true;
+      // Track last window Y for restaurant-back restore, but do NOT arm
+      // categoryNeedsRestore here — only explicit restaurant clicks should.
       lastCategoryWindowScrollY = payload.scrollY;
       sessionStorage.setItem(CATEGORY_BACKUP_KEY, JSON.stringify(payload));
     }
@@ -85,7 +85,14 @@ export const saveCategoryBrowseClick = ({ path, scrollY, focusId, visibleCount }
   categoryLastClickMemory = payload;
   categoryNeedsRestore = true;
   lastCategoryWindowScrollY = y;
-  saveBrowseScroll(payload);
+  if (typeof window !== "undefined") {
+    try {
+      sessionStorage.setItem(STORAGE_KEY, JSON.stringify(payload));
+      sessionStorage.setItem(CATEGORY_BACKUP_KEY, JSON.stringify(payload));
+    } catch {
+      // ignore
+    }
+  }
   return payload;
 };
 
@@ -102,9 +109,9 @@ export const markCategoryBrowseRestored = () => {
 
 /**
  * One-shot scroll restore after category becomes visible.
- * Stops as soon as position settles OR the user scrolls — never fights them.
+ * Stops as soon as position settles OR the user touches — never fights taps.
  */
-export const runCategoryScrollLock = ({ durationMs = 280 } = {}) => {
+export const runCategoryScrollLock = ({ durationMs = 180 } = {}) => {
   if (typeof window === "undefined") return () => {};
 
   activeCategoryScrollLockCancel?.();
@@ -116,6 +123,7 @@ export const runCategoryScrollLock = ({ durationMs = 280 } = {}) => {
   let cancelled = false;
   let rafId = 0;
   let userInterrupted = false;
+  let frames = 0;
 
   const finish = () => {
     if (cancelled) return;
@@ -153,31 +161,34 @@ export const runCategoryScrollLock = ({ durationMs = 280 } = {}) => {
     }
   };
 
-  const onUserScrollIntent = () => {
+  // Any real user gesture wins immediately — continuous scrollTo steals taps.
+  const onUserIntent = () => {
     if (cancelled) return;
-    // Allow a tiny settle window, then never override the user again
-    if (Date.now() - start < 50) return;
     userInterrupted = true;
     finish();
   };
 
   const detachUserListeners = () => {
-    window.removeEventListener("wheel", onUserScrollIntent);
-    window.removeEventListener("touchmove", onUserScrollIntent);
-    window.removeEventListener("pointerdown", onUserScrollIntent);
+    window.removeEventListener("wheel", onUserIntent);
+    window.removeEventListener("touchstart", onUserIntent);
+    window.removeEventListener("touchmove", onUserIntent);
+    window.removeEventListener("pointerdown", onUserIntent);
   };
 
-  window.addEventListener("wheel", onUserScrollIntent, { passive: true });
-  window.addEventListener("touchmove", onUserScrollIntent, { passive: true });
-  window.addEventListener("pointerdown", onUserScrollIntent, { passive: true });
+  window.addEventListener("wheel", onUserIntent, { passive: true });
+  window.addEventListener("touchstart", onUserIntent, { passive: true });
+  window.addEventListener("touchmove", onUserIntent, { passive: true });
+  window.addEventListener("pointerdown", onUserIntent, { passive: true });
 
   const tick = () => {
     if (cancelled || userInterrupted) return;
-    apply();
+    frames += 1;
+    // Only re-apply a few times while layout expands — not every frame forever.
+    if (frames <= 6 || frames % 3 === 0) apply();
     const pending = getCategoryLastClick() || seed;
     const targetY = Math.max(0, Number(pending.scrollY) || lastCategoryWindowScrollY || 0);
     const settled =
-      Math.abs((window.scrollY || 0) - targetY) <= 12 && Date.now() - start > 32;
+      Math.abs((window.scrollY || 0) - targetY) <= 12 && Date.now() - start > 24;
     if (settled || Date.now() - start >= durationMs) {
       finish();
       return;
@@ -274,9 +285,9 @@ export const clearBrowseScroll = () => {
 
 /**
  * Restore exact window scrollY (no scrollIntoView — that recenters the card).
- * Retries while lazy lists / images expand the page height.
+ * Retries briefly while lazy lists expand; any user touch cancels immediately.
  */
-export const restoreBrowseScroll = (saved, { retries = 60, onDone } = {}) => {
+export const restoreBrowseScroll = (saved, { retries = 24, onDone } = {}) => {
   if (!saved || typeof window === "undefined") {
     onDone?.(false);
     return () => {};
@@ -287,6 +298,23 @@ export const restoreBrowseScroll = (saved, { retries = 60, onDone } = {}) => {
   let attempt = 0;
   let cancelled = false;
   let rafId = 0;
+
+  const detachUserListeners = () => {
+    window.removeEventListener("wheel", onUserIntent);
+    window.removeEventListener("touchstart", onUserIntent);
+    window.removeEventListener("touchmove", onUserIntent);
+    window.removeEventListener("pointerdown", onUserIntent);
+  };
+
+  const stop = (ok) => {
+    if (cancelled) return;
+    cancelled = true;
+    if (rafId) cancelAnimationFrame(rafId);
+    detachUserListeners();
+    onDone?.(ok);
+  };
+
+  const onUserIntent = () => stop(false);
 
   const apply = () => {
     if (cancelled) return;
@@ -312,7 +340,7 @@ export const restoreBrowseScroll = (saved, { retries = 60, onDone } = {}) => {
   const run = () => {
     if (cancelled) return;
     attempt += 1;
-    apply();
+    if (attempt <= 6 || attempt % 3 === 0) apply();
 
     const maxScroll = Math.max(
       0,
@@ -327,19 +355,21 @@ export const restoreBrowseScroll = (saved, { retries = 60, onDone } = {}) => {
       : null;
 
     if (closeEnough || (canReach && attempt >= 4) || (focusEl && attempt >= 6) || attempt >= retries) {
-      apply();
-      onDone?.(closeEnough || canReach || !!focusEl);
+      if (!cancelled) apply();
+      stop(closeEnough || canReach || !!focusEl);
       return;
     }
 
     rafId = requestAnimationFrame(run);
   };
 
+  window.addEventListener("wheel", onUserIntent, { passive: true });
+  window.addEventListener("touchstart", onUserIntent, { passive: true });
+  window.addEventListener("touchmove", onUserIntent, { passive: true });
+  window.addEventListener("pointerdown", onUserIntent, { passive: true });
+
   apply();
   rafId = requestAnimationFrame(run);
 
-  return () => {
-    cancelled = true;
-    if (rafId) cancelAnimationFrame(rafId);
-  };
+  return () => stop(false);
 };
