@@ -100,6 +100,8 @@ export default function CashConfirmations() {
 
   const requestIdRef = useRef(0)
 
+  const loadingRequestIdRef = useRef(0)
+
   const skipSearchEffectRef = useRef(true)
 
 
@@ -128,7 +130,13 @@ export default function CashConfirmations() {
 
     try {
 
-      if (!silent) setLoading(true)
+      if (!silent) {
+
+        setLoading(true)
+
+        loadingRequestIdRef.current = requestId
+
+      }
 
       const res = await adminAPI.getCashConfirmations({
 
@@ -178,7 +186,8 @@ export default function CashConfirmations() {
 
     } finally {
 
-      if (requestId === requestIdRef.current && !silent) {
+      // Silent badge/focus refreshes bump requestIdRef; don't leave the UI stuck on loading.
+      if (!silent && loadingRequestIdRef.current === requestId) {
 
         setLoading(false)
 

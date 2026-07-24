@@ -23,8 +23,9 @@ import { isModuleAuthenticated } from "../../utils/auth"
 import { AppShellSkeleton } from "@food/components/ui/loading-skeletons"
 import LoginRequiredModal from "./LoginRequiredModal"
 import MainTabKeepAlive from "./MainTabKeepAlive"
-import { getMainTabFromPath, isExactMainTabPath, rememberMainTabBeforeProfile } from "@food/utils/mainTabRoutes"
+import { getMainTabFromPath, isExactMainTabPath, rememberMainTabBeforeProfile, shouldPreserveMainTabsUnderPath, getCategorySlugFromPath, isRestaurantDetailPath, rememberCategoryKeepAliveSlug, peekCategoryKeepAliveSlug, clearCategoryKeepAliveSlug } from "@food/utils/mainTabRoutes"
 import { registerFoodPageCacheLifecycle } from "@food/utils/foodPageCache"
+import CategoryBrowseKeepAlive from "./CategoryBrowseKeepAlive"
 
 let reloadManualLocationFlagCleared = false
 /** Clear sticky manual-location loader flag on F5 before first paint. */
@@ -354,13 +355,68 @@ function UserLayoutContent() {
     registerFoodPageCacheLifecycle();
   }, []);
 
-  const activeMainTab = getMainTabFromPath(location.pathname);
+  const pathMainTab = getMainTabFromPath(location.pathname);
+  const lastMainTabRef = useRef(pathMainTab || "delivery");
+  const [mainTabsMounted, setMainTabsMounted] = useState(() => !!pathMainTab);
 
   useEffect(() => {
-    if (activeMainTab && activeMainTab !== "profile") {
-      rememberMainTabBeforeProfile(activeMainTab);
+    if (pathMainTab) {
+      lastMainTabRef.current = pathMainTab;
+      setMainTabsMounted(true);
     }
-  }, [activeMainTab]);
+  }, [pathMainTab]);
+
+  useEffect(() => {
+    if (pathMainTab && pathMainTab !== "profile") {
+      rememberMainTabBeforeProfile(pathMainTab);
+    }
+  }, [pathMainTab]);
+
+  // Keep home/tabs alive under restaurant/category so back is instant (no remount/refetch).
+  const preserveMainTabs =
+    !pathMainTab &&
+    mainTabsMounted &&
+    shouldPreserveMainTabsUnderPath(location.pathname);
+  const keepAliveTab = pathMainTab || (preserveMainTabs ? lastMainTabRef.current : null);
+  const activeMainTab = pathMainTab;
+
+  const categorySlug = getCategorySlugFromPath(location.pathname);
+  const isRestaurantPath = isRestaurantDetailPath(location.pathname);
+  const lastCategorySlugRef = useRef(
+    categorySlug || peekCategoryKeepAliveSlug() || null,
+  );
+  const [categoryBrowseMounted, setCategoryBrowseMounted] = useState(
+    () => !!(categorySlug || peekCategoryKeepAliveSlug()),
+  );
+
+  if (categorySlug) {
+    lastCategorySlugRef.current = categorySlug;
+    rememberCategoryKeepAliveSlug(categorySlug);
+  }
+
+  useEffect(() => {
+    if (categorySlug) {
+      setCategoryBrowseMounted(true);
+      rememberCategoryKeepAliveSlug(categorySlug);
+      return;
+    }
+    // Keep category page mounted under restaurant OR home tabs — instant reopen.
+    // Only tear down when leaving both (e.g. search / other non-tab routes).
+    if (!isRestaurantPath && !pathMainTab) {
+      setCategoryBrowseMounted(false);
+      lastCategorySlugRef.current = null;
+      clearCategoryKeepAliveSlug();
+    }
+  }, [categorySlug, isRestaurantPath, pathMainTab]);
+
+  const preservedCategorySlug =
+    categorySlug || lastCategorySlugRef.current || peekCategoryKeepAliveSlug();
+  const showCategoryBrowse =
+    !!categorySlug ||
+    (categoryBrowseMounted &&
+      !!preservedCategorySlug &&
+      (isRestaurantPath || !!pathMainTab));
+  const categoryBrowseVisible = !!categorySlug;
 
   useEffect(() => {
     const rootPaths = ["/", "/user", "/food", "/dining", "/user/dining", "/takeaway", "/user/takeaway"];
@@ -455,11 +511,25 @@ function UserLayoutContent() {
         />
       ) : (
         <main className={`${showBottomNav ? "md:pt-40" : ""} min-h-screen flex flex-col`}>
-          {activeMainTab ? (
-            <MainTabKeepAlive activeTab={activeMainTab} />
-          ) : (
-            <Outlet />
-          )}
+          {keepAliveTab ? (
+            <div
+              style={{ display: pathMainTab ? "block" : "none" }}
+              aria-hidden={!pathMainTab}
+              data-main-tabs-preserved={!pathMainTab ? "true" : undefined}
+            >
+              <MainTabKeepAlive
+                activeTab={keepAliveTab}
+                isVisible={!!pathMainTab}
+              />
+            </div>
+          ) : null}
+          {showCategoryBrowse ? (
+            <CategoryBrowseKeepAlive
+              categorySlug={preservedCategorySlug}
+              isVisible={categoryBrowseVisible}
+            />
+          ) : null}
+          {!pathMainTab && !categorySlug ? <Outlet /> : null}
         </main>
       )}
 

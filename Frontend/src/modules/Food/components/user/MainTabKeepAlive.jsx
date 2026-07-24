@@ -1,14 +1,28 @@
-import { Suspense, lazy, useEffect, useRef, useState } from "react";
+import { Suspense, lazy, useEffect, useLayoutEffect, useRef, useState } from "react";
 import Home from "@food/pages/user/Home";
 import ProtectedRoute from "@food/components/ProtectedRoute";
 import { AppShellSkeleton } from "@food/components/ui/loading-skeletons";
 import { registerFoodPageCacheLifecycle } from "@food/utils/foodPageCache";
+import { normalizeBrowsePath } from "@food/utils/browseScrollMemory";
 
 const Dining = lazy(() => import("@food/pages/user/Dining"));
 const Under250 = lazy(() => import("@food/pages/user/Under250"));
 const Profile = lazy(() => import("@food/pages/user/profile/Profile"));
 
 const TAB_SHELL_CLASS = "main-tab-keep-alive-pane";
+
+function isHomeBrowsePath(path) {
+  const p = normalizeBrowsePath(path);
+  return (
+    p === "/user" ||
+    p === "/user/takeaway" ||
+    p === "/takeaway" ||
+    p === "/user/dining" ||
+    p === "/dining" ||
+    p === "/user/under-250" ||
+    p === "/under-250"
+  );
+}
 
 function TabSuspense({ children }) {
   return (
@@ -22,7 +36,7 @@ function TabSuspense({ children }) {
  * Keeps main nav tabs mounted after first visit so tab switches are instant
  * (no remount, no duplicate API calls, scroll preserved per tab).
  */
-export default function MainTabKeepAlive({ activeTab }) {
+export default function MainTabKeepAlive({ activeTab, isVisible = true }) {
   const [visited, setVisited] = useState(() => new Set(activeTab ? [activeTab] : []));
   const scrollPositionsRef = useRef({});
   const prevTabRef = useRef(activeTab);
@@ -41,10 +55,30 @@ export default function MainTabKeepAlive({ activeTab }) {
     });
   }, [activeTab]);
 
-  useEffect(() => {
+  // Apply scroll before paint so restaurant→home never flashes the top.
+  // Only when the tab shell is visible (hidden under restaurant/category overlay).
+  useLayoutEffect(() => {
+    if (!isVisible) {
+      // Always snapshot — including 0 — so category-from-top returns to top,
+      // not a stale mid-page scroll from an earlier restaurant visit.
+      if (activeTab && typeof window !== "undefined") {
+        const y = Math.max(0, window.scrollY || 0);
+        scrollPositionsRef.current[activeTab] = y;
+        try {
+          sessionStorage.setItem(`main_tab_scroll_${activeTab}`, String(y));
+        } catch {}
+      }
+      prevTabRef.current = activeTab;
+      return;
+    }
+
     const prevTab = prevTabRef.current;
     if (prevTab && prevTab !== activeTab) {
-      scrollPositionsRef.current[prevTab] = window.scrollY;
+      const y = Math.max(0, window.scrollY || 0);
+      scrollPositionsRef.current[prevTab] = y;
+      try {
+        sessionStorage.setItem(`main_tab_scroll_${prevTab}`, String(y));
+      } catch {}
     }
 
     if (!activeTab) {
@@ -52,17 +86,66 @@ export default function MainTabKeepAlive({ activeTab }) {
       return;
     }
 
-    const savedY = scrollPositionsRef.current[activeTab];
-    requestAnimationFrame(() => {
-      window.scrollTo({
-        top: typeof savedY === "number" ? savedY : 0,
-        left: 0,
-        behavior: "instant",
-      });
+    // Only restore browse scroll when it was saved for Home (restaurant→home).
+    // Category browse scroll must NOT be applied on Home — that jumps mid-page.
+    try {
+      const rawBrowse = sessionStorage.getItem("food_browse_scroll_v1");
+      if (rawBrowse) {
+        const data = JSON.parse(rawBrowse);
+        const y = Number(data?.scrollY);
+        if (isHomeBrowsePath(data?.path) && Number.isFinite(y) && y >= 0) {
+          window.scrollTo({ top: y, left: 0, behavior: "instant" });
+          prevTabRef.current = activeTab;
+          return;
+        }
+      }
+    } catch {}
+
+    let savedY = scrollPositionsRef.current[activeTab];
+    if (typeof savedY !== "number") {
+      try {
+        const raw = sessionStorage.getItem(`main_tab_scroll_${activeTab}`);
+        if (raw != null) savedY = Number(raw);
+      } catch {}
+    }
+
+    window.scrollTo({
+      top: typeof savedY === "number" && Number.isFinite(savedY) ? savedY : 0,
+      left: 0,
+      behavior: "instant",
     });
 
     prevTabRef.current = activeTab;
-  }, [activeTab]);
+  }, [activeTab, isVisible]);
+
+  useEffect(() => {
+    return () => {
+      const tab = prevTabRef.current;
+      if (!tab) return;
+      try {
+        const rawBrowse = sessionStorage.getItem("food_browse_scroll_v1");
+        if (rawBrowse) {
+          const data = JSON.parse(rawBrowse);
+          if (
+            isHomeBrowsePath(data?.path) &&
+            Number.isFinite(Number(data?.scrollY))
+          ) {
+            sessionStorage.setItem(
+              `main_tab_scroll_${tab}`,
+              String(Math.max(0, Number(data.scrollY))),
+            );
+            return;
+          }
+        }
+        if (typeof window !== "undefined") {
+          sessionStorage.setItem(
+            `main_tab_scroll_${tab}`,
+            String(Math.max(0, window.scrollY || 0)),
+          );
+        }
+      } catch {}
+    };
+  }, []);
 
   const paneProps = (tabId) => ({
     className: TAB_SHELL_CLASS,
@@ -75,20 +158,26 @@ export default function MainTabKeepAlive({ activeTab }) {
     <>
       {visited.has("delivery") && (
         <div {...paneProps("delivery")}>
-          <Home homeMode="delivery" isTabActive={activeTab === "delivery"} />
+          <Home
+            homeMode="delivery"
+            isTabActive={isVisible && activeTab === "delivery"}
+          />
         </div>
       )}
 
       {visited.has("takeaway") && (
         <div {...paneProps("takeaway")}>
-          <Home homeMode="takeaway" isTabActive={activeTab === "takeaway"} />
+          <Home
+            homeMode="takeaway"
+            isTabActive={isVisible && activeTab === "takeaway"}
+          />
         </div>
       )}
 
       {visited.has("dining") && (
         <div {...paneProps("dining")}>
           <TabSuspense>
-            <Dining isTabActive={activeTab === "dining"} />
+            <Dining isTabActive={isVisible && activeTab === "dining"} />
           </TabSuspense>
         </div>
       )}
@@ -96,7 +185,7 @@ export default function MainTabKeepAlive({ activeTab }) {
       {visited.has("under250") && (
         <div {...paneProps("under250")}>
           <TabSuspense>
-            <Under250 isTabActive={activeTab === "under250"} />
+            <Under250 isTabActive={isVisible && activeTab === "under250"} />
           </TabSuspense>
         </div>
       )}
@@ -105,7 +194,7 @@ export default function MainTabKeepAlive({ activeTab }) {
         <div {...paneProps("profile")}>
           <ProtectedRoute requiredRole="user" loginPath="/user/auth/login">
             <TabSuspense>
-              <Profile isTabActive={activeTab === "profile"} />
+              <Profile isTabActive={isVisible && activeTab === "profile"} />
             </TabSuspense>
           </ProtectedRoute>
         </div>

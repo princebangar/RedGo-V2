@@ -1,5 +1,5 @@
 import { sendResponse, sendError } from '../../../../utils/response.js';
-import { invalidateCache } from '../../../../middleware/cache.js';
+import { invalidateFoodBrowseCaches } from '../../../../middleware/cache.js';
 import {
     listPendingFoodApprovals,
     approveFoodItem,
@@ -19,9 +19,14 @@ export async function approveFoodItemController(req, res, next) {
     try {
         const updated = await approveFoodItem(req.params.id);
         if (!updated) return sendError(res, 404, 'Food item not found or not pending');
-        
-        await invalidateCache('restaurant_menu:*');
-        await invalidateCache('under_250:*');
+
+        await invalidateFoodBrowseCaches([
+            'restaurant_menu',
+            'search',
+            'categories',
+            'under_250',
+            'restaurants',
+        ]);
 
         return sendResponse(res, 200, 'Food item approved successfully', { food: updated });
     } catch (error) {
@@ -33,9 +38,14 @@ export async function rejectFoodItemController(req, res, next) {
     try {
         const updated = await rejectFoodItem(req.params.id, req.body?.reason);
         if (!updated) return sendError(res, 404, 'Food item not found or not pending');
-        
-        await invalidateCache('restaurant_menu:*');
-        await invalidateCache('under_250:*');
+
+        await invalidateFoodBrowseCaches([
+            'restaurant_menu',
+            'search',
+            'categories',
+            'under_250',
+            'restaurants',
+        ]);
 
         return sendResponse(res, 200, 'Food item rejected successfully', { food: updated });
     } catch (error) {

@@ -158,13 +158,39 @@ export default function useAppBackNavigation() {
       location.state?.fromOrderPlaced ||
       location.state?.from === "cart" ||
       location.state?.from === "checkout"
+    const hasHistory =
+      typeof window !== "undefined" &&
+      window.history.state &&
+      typeof window.history.state.idx === "number" &&
+      window.history.state.idx > 0
+
+    // Restaurant → category/home: prefer history back so keep-alive stays mounted (instant).
+    // Fall back to explicit from path when history is unavailable.
+    if (/^\/user\/restaurants\/[^/]+$/.test(normalizedPath)) {
+      if (!isFromCartOrPlaced && hasHistory) {
+        navigate(-1)
+        return
+      }
+      if (explicitBackPath && explicitBackPath !== location.pathname) {
+        navigate(explicitBackPath)
+        return
+      }
+      navigate(resolveBackPath({ ...location, orderType }))
+      return
+    }
+
+    // Prefer real history back so the previous page (category/home) remounts
+    // with the same history entry — scroll memory can restore position.
+    if (!isOrderPage && !isFromCartOrPlaced && hasHistory) {
+      navigate(-1)
+      return
+    }
 
     if (explicitBackPath && explicitBackPath !== location.pathname) {
       navigate(explicitBackPath, { replace: true })
-    } else if (!isOrderPage && !isFromCartOrPlaced && window.history.state && window.history.state.idx > 0) {
-      navigate(-1)
-    } else {
-      navigate(resolveBackPath({ ...location, orderType }), { replace: true })
+      return
     }
+
+    navigate(resolveBackPath({ ...location, orderType }), { replace: true })
   }, [location, navigate, orderType])
 }

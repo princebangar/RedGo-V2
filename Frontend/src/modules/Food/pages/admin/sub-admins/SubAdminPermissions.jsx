@@ -17,6 +17,7 @@ export default function SubAdminPermissions() {
   const [saving, setSaving] = useState(false)
   const [subAdmin, setSubAdmin] = useState(null)
   const [permissions, setPermissions] = useState(normalizePermissions({}))
+  const [savedPermissions, setSavedPermissions] = useState(normalizePermissions({}))
 
   const modules = useMemo(() => getSubAdminPermissionModules(), [])
 
@@ -30,8 +31,10 @@ export default function SubAdminPermissions() {
         navigate("/admin/food/sub-admins")
         return
       }
+      const normalized = normalizePermissions(admin.permissions || {})
       setSubAdmin(admin)
-      setPermissions(normalizePermissions(admin.permissions || {}))
+      setPermissions(normalized)
+      setSavedPermissions(normalized)
     } catch (err) {
       toast.error(err?.response?.data?.message || "Failed to load permissions")
       navigate("/admin/food/sub-admins")
@@ -51,6 +54,10 @@ export default function SubAdminPermissions() {
     })
   }, [permissions, modules])
 
+  const hasPermissionChanges = useMemo(
+    () => JSON.stringify(permissions) !== JSON.stringify(savedPermissions),
+    [permissions, savedPermissions],
+  )
   const isRowAllChecked = (key) => {
     const row = permissions[key] || emptyPermissionActions()
     return SUB_ADMIN_PERMISSION_ACTIONS.every((a) => row[a])
@@ -91,9 +98,11 @@ export default function SubAdminPermissions() {
   }
 
   const handleSave = async () => {
+    if (!hasPermissionChanges || saving) return
     setSaving(true)
     try {
       await adminAPI.updateSubAdminPermissions(id, permissions)
+      setSavedPermissions(permissions)
       toast.success("Permissions saved successfully")
       navigate("/admin/food/sub-admins")
     } catch (err) {
@@ -212,8 +221,13 @@ export default function SubAdminPermissions() {
             <button
               type="button"
               onClick={handleSave}
-              disabled={saving}
-              className="inline-flex items-center gap-2 px-4 py-2.5 text-sm font-medium rounded-lg bg-slate-900 text-white hover:bg-slate-800 transition-all disabled:opacity-60 shadow-sm"
+              disabled={saving || !hasPermissionChanges}
+              title={
+                hasPermissionChanges
+                  ? "Save permission changes"
+                  : "Change at least one permission to enable save"
+              }
+              className="inline-flex items-center gap-2 px-4 py-2.5 text-sm font-medium rounded-lg bg-slate-900 text-white hover:bg-slate-800 transition-all disabled:opacity-45 disabled:cursor-not-allowed disabled:hover:bg-slate-900 shadow-sm"
             >
               {saving && <Loader2 className="w-4 h-4 animate-spin" />}
               Save Permissions

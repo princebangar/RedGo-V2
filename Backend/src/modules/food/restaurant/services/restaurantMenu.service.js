@@ -166,8 +166,38 @@ export async function getPublicApprovedRestaurantMenu(restaurantIdOrSlug) {
             .select('_id status')
             .lean();
     } else {
-        const normalized = value.trim().toLowerCase().replace(/-/g, ' ').replace(/\s+/g, ' ');
-        restaurant = await FoodRestaurant.findOne({ restaurantNameNormalized: normalized, status: 'approved' })
+        const normalized = value
+            .trim()
+            .toLowerCase()
+            .replace(/['’]/g, '')
+            .replace(/-/g, ' ')
+            .replace(/\s+/g, ' ');
+        const compact = normalized.replace(/[^a-z0-9]/g, '');
+        const flexibleCompact =
+            compact.length >= 3
+                ? new RegExp(
+                      '^' +
+                          compact
+                              .split('')
+                              .map((ch) => ch.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'))
+                              .join('[^a-z0-9]*') +
+                          '$',
+                      'i',
+                  )
+                : null;
+
+        const orClauses = [{ restaurantNameNormalized: normalized }];
+        if (flexibleCompact) {
+            orClauses.push(
+                { restaurantNameNormalized: flexibleCompact },
+                { restaurantName: flexibleCompact },
+            );
+        }
+
+        restaurant = await FoodRestaurant.findOne({
+            status: 'approved',
+            $or: orClauses,
+        })
             .select('_id status')
             .lean();
     }

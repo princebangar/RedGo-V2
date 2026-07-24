@@ -112,6 +112,8 @@ export const searchUnified = async (query = {}, options = {}) => {
 
     let restaurantIds = new Set();
     let restaurantDetailsMap = new Map();
+    /** @type {Map<string, Array<{_id: any, name: string, price: number, image: string, foodType: string}>>} */
+    const categoryDishesByRestaurant = new Map();
 
     // 2. Handle Category Filtering (Restaurants don't have categoryId, FoodItems do)
     if (categoryId && mongoose.Types.ObjectId.isValid(categoryId)) {
@@ -127,12 +129,33 @@ export const searchUnified = async (query = {}, options = {}) => {
             }
         }
 
-        const catFoodItems = await FoodItem.find({ 
+        // Pull dish fields once so category browse can skip N+1 menu fetches on the client.
+        const catFoodItems = await FoodItem.find({
             categoryId: { $in: categoryIdsToMatch },
-            approvalStatus: 'approved' 
-        }).select('restaurantId').lean();
-        
-        const catRestaurantIds = [...new Set(catFoodItems.map(f => f.restaurantId.toString()))];
+            approvalStatus: 'approved',
+            isAvailable: { $ne: false },
+        })
+            .select('restaurantId name price image foodType')
+            .lean();
+
+        for (const food of catFoodItems) {
+            const rid = food?.restaurantId?.toString?.();
+            if (!rid) continue;
+            if (!categoryDishesByRestaurant.has(rid)) {
+                categoryDishesByRestaurant.set(rid, []);
+            }
+            const list = categoryDishesByRestaurant.get(rid);
+            if (list.length >= 16) continue;
+            list.push({
+                _id: food._id,
+                name: food.name,
+                price: food.price,
+                image: food.image || '',
+                foodType: food.foodType || 'Non-Veg',
+            });
+        }
+
+        const catRestaurantIds = [...categoryDishesByRestaurant.keys()];
         if (catRestaurantIds.length > 0) {
             restaurantFilter = mergeAndConditions(
                 restaurantFilter,
@@ -267,29 +290,84 @@ export const searchUnified = async (query = {}, options = {}) => {
     // 4. Final Result Formatting
     let results = Array.from(restaurantDetailsMap.values());
 
-    // Simple distance sorting if lat/lng are provided
+    // Distance sorting (GeoJSON coordinates [lng, lat] or latitude/longitude fields)
     if (lat && lng && results.length > 0) {
-        results.forEach(res => {
-            if (res.location && res.location.latitude && res.location.longitude) {
-                const dLat = (res.location.latitude - lat) * Math.PI / 180;
-                const dLon = (res.location.longitude - lng) * Math.PI / 180;
-                const a = Math.sin(dLat/2) * Math.sin(dLat/2) +
-                          Math.cos(lat * Math.PI / 180) * Math.cos(res.location.latitude * Math.PI / 180) *
-                          Math.sin(dLon/2) * Math.sin(dLon/2);
-                const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
-                res.distanceScore = 6371 * c; // Km
+        const userLat = Number(lat);
+        const userLng = Number(lng);
+        const toRad = (deg) => (deg * Math.PI) / 180;
+        const haversineKm = (lat1, lng1, lat2, lng2) => {
+            const dLat = toRad(lat2 - lat1);
+            const dLon = toRad(lng2 - lng1);
+            const a =
+                Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+                Math.cos(toRad(lat1)) *
+                    Math.cos(toRad(lat2)) *
+                    Math.sin(dLon / 2) *
+                    Math.sin(dLon / 2);
+            const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+            return 6371 * c;
+        };
+
+        results.forEach((res) => {
+            const coords = res.location?.coordinates;
+            const restaurantLat = Number(
+                Array.isArray(coords) && coords.length >= 2
+                    ? coords[1]
+                    : (res.location?.latitude ?? res.latitude),
+            );
+            const restaurantLng = Number(
+                Array.isArray(coords) && coords.length >= 2
+                    ? coords[0]
+                    : (res.location?.longitude ?? res.longitude),
+            );
+
+            if (
+                Number.isFinite(userLat) &&
+                Number.isFinite(userLng) &&
+                Number.isFinite(restaurantLat) &&
+                Number.isFinite(restaurantLng)
+            ) {
+                const km = haversineKm(userLat, userLng, restaurantLat, restaurantLng);
+                res.distanceScore = km;
+                res.distanceInKm = Math.round(km * 100) / 100;
+                res.distance =
+                    km >= 1
+                        ? `${km.toFixed(1)} km`
+                        : `${Math.round(km * 1000)} m`;
             } else {
                 res.distanceScore = 999;
+                res.distanceInKm = null;
             }
         });
         results.sort((a, b) => (a.distanceScore || 999) - (b.distanceScore || 999));
     }
 
     // ... (rest of logic up to result formation)
+    let pageRestaurants = results.slice(skip, skip + limit);
+
+    if (categoryDishesByRestaurant.size > 0) {
+        pageRestaurants = pageRestaurants.map((restaurant) => {
+            const rid = restaurant?._id?.toString?.();
+            const dishes = rid ? categoryDishesByRestaurant.get(rid) : null;
+            if (!Array.isArray(dishes) || dishes.length === 0) return restaurant;
+            const first = dishes[0];
+            return {
+                ...restaurant,
+                categoryDishes: dishes,
+                matchedDish: first.name,
+                matchedDishImage: first.image,
+                matchedDishId: first._id,
+                matchedDishFoodType: first.foodType || null,
+                foodType: first.foodType || null,
+                isVeg: String(first.foodType || '').toLowerCase() === 'veg',
+            };
+        });
+    }
+
     const finalResult = {
         success: true,
         data: {
-            restaurants: results.slice(skip, skip + limit),
+            restaurants: pageRestaurants,
             total: results.length,
             page: parseInt(page),
             limit: parseInt(limit),

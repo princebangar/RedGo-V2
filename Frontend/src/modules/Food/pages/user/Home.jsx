@@ -2,6 +2,7 @@ import { useSearchParams, Link, useNavigate, useLocation as useRouterLocation } 
 import React, {
   useRef,
   useEffect,
+  useLayoutEffect,
   useState,
   useMemo,
   useCallback,
@@ -94,7 +95,16 @@ import offerImage from "@food/assets/offerimage.png";
 import api, { publicGetOnce, restaurantAPI, adminAPI } from "@food/api";
 import { API_BASE_URL } from "@food/api/config";
 import OptimizedImage from "@food/components/OptimizedImage";
+import RestaurantImageCarousel from "@food/components/user/RestaurantImageCarousel";
 import { getRestaurantAvailabilityStatus } from "@food/utils/restaurantAvailability";
+import { compareRestaurantsByAvailabilityAndDistance } from "@food/utils/restaurantBrowseSort";
+import {
+  saveBrowseScroll,
+  peekBrowseScroll,
+  consumeBrowseScroll,
+  restoreBrowseScroll,
+} from "@food/utils/browseScrollMemory";
+import { toFoodUserPath, getRestaurantRouteId } from "@food/utils/mainTabRoutes";
 import {
   getCachedExploreIcons,
   setCachedExploreIcons,
@@ -105,7 +115,6 @@ import HomeHeader from "@food/components/user/home/HomeHeader";
 import QuickSection from "@food/components/user/home/QuickSection";
 import PromoRow from "@food/components/user/home/PromoRow";
 import FestBanner from "@food/components/user/home/FestBanner";
-import { clearCategoryCache } from "../../utils/categoryCache";
 
 // Persistence for back-navigation and refresh speed
 const getSessionCache = (key) => {
@@ -242,8 +251,6 @@ const placeholders = [
   'Search "dosa"',
 ];
 
-const WEBVIEW_SESSION_CACHE_BUSTER = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-
 const getRestaurantDisplayName = (restaurant) => {
   const nameCandidates = [
     restaurant?.name,
@@ -258,304 +265,6 @@ const getRestaurantDisplayName = (restaurant) => {
   );
   return resolvedName ? resolvedName.trim() : "Restaurant";
 };
-
-// Restaurant Image Carousel Component
-const RestaurantImageCarousel = React.memo(
-  ({
-    restaurant,
-    priority = false,
-    backendOrigin = "",
-    className = "h-56 sm:h-60 md:h-64 lg:h-[280px] xl:h-[320px]",
-    roundedClass = "rounded-t-md",
-  }) => {
-    const webviewSessionKeyRef = useRef(WEBVIEW_SESSION_CACHE_BUSTER);
-    const imageElementRef = useRef(null);
-    const navigate = useNavigate();
-    const { vegMode } = useProfile();
-
-    const withCacheBuster = useCallback(
-      (url) => {
-        if (typeof url !== "string" || !url) return "";
-        if (/^data:/i.test(url) || /^blob:/i.test(url)) return url;
-
-        // Resolve relative URLs (e.g. /uploads/...) so they load on mobile when backend is different from frontend.
-        const isRelative = !/^(https?:|\/\/|data:|blob:)/i.test(url.trim());
-        const resolvedUrl =
-          backendOrigin && isRelative
-            ? `${backendOrigin.replace(/\/$/, "")}${url.startsWith("/") ? url : `/${url}`}`
-            : url;
-
-        // Do not mutate signed URLs (legacy S3/Cloudfront/Firebase links can break if query changes).
-        const hasSignedParams =
-          /[?&](X-Amz-|Signature=|Expires=|AWSAccessKeyId=|GoogleAccessId=|token=|sig=|se=|sp=|sv=)/i.test(
-            resolvedUrl,
-          );
-        if (hasSignedParams) return resolvedUrl;
-
-        try {
-          const parsed = new URL(resolvedUrl, window.location.origin);
-
-          // Apply cache-buster only to app/backend-hosted URLs to avoid third-party CDN signature issues.
-          const currentHost =
-            typeof window !== "undefined" ? window.location.hostname : "";
-          const isLocalHost = /^(localhost|127\.0\.0\.1)$/i.test(
-            parsed.hostname,
-          );
-          const isSameHost = currentHost && parsed.hostname === currentHost;
-
-          if (isLocalHost || isSameHost) {
-            parsed.searchParams.set("_wv", webviewSessionKeyRef.current);
-          }
-          return parsed.toString();
-        } catch {
-          return resolvedUrl;
-        }
-      },
-      [backendOrigin],
-    );
-
-    const slideItems = useMemo(() => {
-      let items = [];
-      if (Array.isArray(restaurant.recommendedDishes) && restaurant.recommendedDishes.length > 0) {
-        restaurant.recommendedDishes.forEach((dish, idx) => {
-          if (vegMode && !isVegMenuItem(dish)) return;
-          if (dish.image) items.push({ id: dish.id || idx, src: withCacheBuster(dish.image), dish });
-        });
-      }
-
-      // Fallback: If no recommended dishes, only show ONE restaurant cover image (no sliding).
-      if (items.length === 0) {
-        const sourceImages = Array.isArray(restaurant.images) && restaurant.images.length > 0
-          ? restaurant.images
-          : [restaurant.image];
-        const validImages = sourceImages.filter(img => typeof img === "string").map(img => img.trim()).filter(Boolean);
-        if (validImages.length > 0) {
-          items.push({ id: "fallback", src: withCacheBuster(validImages[0]), dish: null });
-        }
-      }
-      return items;
-    }, [restaurant.recommendedDishes, restaurant.images, restaurant.image, withCacheBuster, vegMode]);
-
-    const [currentIndex, setCurrentIndex] = useState(0);
-    const [isImageUnavailable, setIsImageUnavailable] = useState(false);
-    const [loadedIndices, setLoadedIndices] = useState(new Set([0]));
-    const touchStartX = useRef(0);
-    const touchEndX = useRef(0);
-    const isSwiping = useRef(false);
-    const preloadedSrcsRef = useRef(new Set());
-
-    const [isTransitioning, setIsTransitioning] = useState(true);
-    const [displayIndex, setDisplayIndex] = useState(0);
-
-    // Prepare slides for infinite loop: [Original Slides] + [First Slide Clone]
-    const infiniteSlides = useMemo(() => {
-      if (slideItems.length <= 1) return slideItems;
-      return [...slideItems, { ...slideItems[0], id: 'clone-first' }];
-    }, [slideItems]);
-
-    const handleNext = useCallback(() => {
-      if (slideItems.length <= 1) return;
-      setIsTransitioning(true);
-      setCurrentIndex(prev => prev + 1);
-    }, [slideItems.length]);
-
-    const handlePrev = useCallback(() => {
-      if (slideItems.length <= 1) return;
-      setIsTransitioning(true);
-      setCurrentIndex(prev => (prev - 1 + infiniteSlides.length) % infiniteSlides.length);
-    }, [slideItems.length, infiniteSlides.length]);
-
-    // Auto Swipe — keep interval stable (do NOT restart on every currentIndex change)
-    useEffect(() => {
-      if (slideItems.length <= 1) return undefined;
-      const timer = setInterval(() => {
-        handleNext();
-      }, 3000);
-      return () => clearInterval(timer);
-    }, [slideItems.length, handleNext]);
-
-    // Magic loop cleanup: Handle jump from clone back to real first item
-    useEffect(() => {
-      if (currentIndex === infiniteSlides.length - 1 && slideItems.length > 1) {
-        // We reached the clone
-        const timer = setTimeout(() => {
-          setIsTransitioning(false);
-          setCurrentIndex(0);
-        }, 500); // Wait for transition duration
-        return () => clearTimeout(timer);
-      }
-    }, [currentIndex, infiniteSlides.length, slideItems.length]);
-
-    // Map internal index to indicators (0 to length-1)
-    useEffect(() => {
-      if (slideItems.length > 0) {
-        setDisplayIndex(currentIndex % slideItems.length);
-      }
-    }, [currentIndex, slideItems.length]);
-
-    // Preload every dish image once + keep all slides mounted so Cloudinary is not hit again on each slide
-    useEffect(() => {
-      if (slideItems.length === 0) {
-        setIsImageUnavailable(true);
-        return;
-      }
-
-      setCurrentIndex(0);
-      setIsTransitioning(true);
-      setIsImageUnavailable(false);
-
-      const uniqueSrcs = [
-        ...new Set(slideItems.map((item) => item.src).filter(Boolean)),
-      ];
-
-      uniqueSrcs.forEach((src) => {
-        if (preloadedSrcsRef.current.has(src)) return;
-        preloadedSrcsRef.current.add(src);
-        const img = new Image();
-        img.decoding = "async";
-        img.src = src;
-      });
-
-      // Mount all slide <img>s immediately (including clone) — one fetch per unique URL
-      setLoadedIndices(
-        new Set(Array.from({ length: Math.max(slideItems.length + (slideItems.length > 1 ? 1 : 0), 1) }, (_, i) => i)),
-      );
-    }, [restaurant?.id, restaurant?.slug, restaurant?.updatedAt, slideItems]);
-
-    // Handle touch events for swipe
-    const handleTouchStart = (e) => {
-      touchStartX.current = e.touches[0].clientX;
-      isSwiping.current = false;
-    };
-
-    const handleTouchMove = (e) => {
-      const currentX = e.touches[0].clientX;
-      const diff = touchStartX.current - currentX;
-      if (Math.abs(diff) > 10) isSwiping.current = true;
-    };
-
-    const handleTouchEnd = (e) => {
-      if (!isSwiping.current) return;
-      touchEndX.current = e.changedTouches[0].clientX;
-      const diff = touchStartX.current - touchEndX.current;
-      const minSwipeDistance = 50;
-
-      if (Math.abs(diff) > minSwipeDistance) {
-        if (diff > 0) handleNext();
-        else handlePrev();
-      }
-      isSwiping.current = false;
-    };
-
-    const handleDishClick = (e, dish) => {
-      if (!dish) return;
-      e.preventDefault();
-      e.stopPropagation();
-      const targetSlug = restaurant.slug || String(restaurant.name || "").toLowerCase().replace(/\s+/g, '-');
-      navigate(`/user/restaurants/${targetSlug}?dish=${dish.id}`);
-    };
-
-    const showMultipleImages = slideItems.length > 1;
-    const currentSlide = infiniteSlides[currentIndex] || null;
-
-    return (
-      <div
-        className={`relative ${className} w-full overflow-hidden ${roundedClass} flex-shrink-0 group`}
-        onTouchStart={handleTouchStart}
-        onTouchMove={handleTouchMove}
-        onTouchEnd={handleTouchEnd}
-        onClick={(e) => currentSlide?.dish ? handleDishClick(e, currentSlide.dish) : null}
-      >
-        <div
-          className={`absolute inset-0 flex h-full group-hover:scale-105 ${isTransitioning ? 'transition-transform duration-500 ease-in-out' : 'transition-none'}`}
-          style={{ transform: `translateX(-${currentIndex * 100}%)` }}
-        >
-          {infiniteSlides.map((item, idx) => {
-            const shouldLoad = loadedIndices.has(idx);
-
-            return (
-              <div key={`${item.id}-${idx}`} className="w-full h-full flex-shrink-0 relative">
-                {shouldLoad ? (
-                  <OptimizedImage
-                    src={item.src}
-                    alt={`${restaurant.name} - Image ${idx + 1}`}
-                    className="w-full h-full"
-                    objectFit="cover"
-                    // Single Cloudinary URL — no srcset storm on every slide
-                    responsive={false}
-                    // Keep mounted; don't flip priority per slide (avoids re-fetch)
-                    priority={priority && idx === 0}
-                    placeholder="empty"
-                    onError={() => {
-                      if (idx === currentIndex && slideItems.length === 1) setIsImageUnavailable(true);
-                    }}
-                  />
-                ) : (
-                  <div className="absolute inset-0 bg-gradient-to-r from-gray-200 via-gray-300 to-gray-200 dark:from-gray-700 dark:via-gray-600 dark:to-gray-700 animate-pulse" />
-                )}
-              </div>
-            );
-          })}
-        </div>
-
-        {/* Dish Recommended Badge Floating Left Top */}
-        {currentSlide?.dish && (
-          <div className="absolute top-3 left-3 z-10 max-w-[90%] pointer-events-none">
-            <div className="bg-black/80 backdrop-blur-md px-3 py-1.5 rounded-full flex items-center gap-2.5 shadow-xl border border-white/10">
-              {!vegMode && (
-                currentSlide.dish.foodType === 'Veg' ? (
-                  <div className="flex-shrink-0 w-3 h-3 border border-green-600 bg-white rounded-[2px] flex items-center justify-center p-[1px]">
-                    <div className="w-full h-full bg-green-600 rounded-full" />
-                  </div>
-                ) : (
-                  <div className="flex-shrink-0 w-3 h-3 border border-red-600 bg-white rounded-[2px] flex items-center justify-center p-[1px]">
-                    <div className="w-full h-full bg-red-600 rounded-full" />
-                  </div>
-                )
-              )}
-              <div className="flex items-center gap-1.5 whitespace-nowrap overflow-hidden">
-                <span className="text-white font-bold text-[11px] tracking-tight truncate max-w-[150px]">{currentSlide.dish.name}</span>
-                <span className="text-white/60 font-bold text-[11px]">•</span>
-                <span className="text-white font-black text-[11px]">₹{currentSlide.dish.price}</span>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {isImageUnavailable && (
-          <div className="absolute inset-0 z-[2] flex items-center justify-center bg-gray-100">
-            <span className="text-xs text-gray-500">Image unavailable</span>
-          </div>
-        )}
-
-        {showMultipleImages && (
-          <div className="absolute bottom-2 left-1/2 transform -translate-x-1/2 flex items-center z-10 max-w-[80%] overflow-hidden gap-[4px] justify-center drop-shadow-lg">
-            {slideItems.map((_, index) => (
-              <button
-                key={index}
-                onClick={(e) => {
-                  e.preventDefault();
-                  e.stopPropagation();
-                  setCurrentIndex(index);
-                }}
-                className="focus:outline-none flex items-center py-1 group/btn"
-                aria-label={`Go to slide ${index + 1}`}>
-                <div
-                  className={`h-1.5 rounded-full transition-all duration-300 shadow-sm ${index === displayIndex
-                    ? "w-4 bg-white opacity-100"
-                    : "w-1.5 bg-white opacity-60 group-hover/btn:opacity-90 group-hover/btn:bg-white"
-                    }`}
-                />
-              </button>
-            ))}
-          </div>
-        )}
-
-        <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-black/20 opacity-0 transition-opacity duration-300 group-hover:opacity-100 pointer-events-none" />
-      </div>
-    );
-  },
-);
 
 // Symmetrical Scallop Icon Badge (with inline % vector text) to look exactly like the restaurant details page
 const ScallopBadge = ({ className = "" }) => (
@@ -665,9 +374,11 @@ const RestaurantCardOfferCarousel = React.memo(({ coupons }) => {
 });
 
 export default function Home({ homeMode = null, isTabActive = true }) {
+  const navigate = useNavigate();
+  const routerLocation = useRouterLocation();
+  const hasRestoredBrowseScrollRef = useRef(false);
   const HERO_BANNER_AUTO_SLIDE_MS = 3500;
   const BACKEND_ORIGIN = API_BASE_URL.replace(/\/api\/?$/, "");
-  const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const query = searchParams.get("q") || "";
   const [heroSearch, setHeroSearch] = useState("");
@@ -676,7 +387,6 @@ export default function Home({ homeMode = null, isTabActive = true }) {
     useSearchOverlay();
   const { openLocationSelector } = useLocationSelector();
   const { userProfile, vegMode, setVegMode: setVegModeContext, vegModeOption, setVegModeOption, orderType, setOrderType } = useProfile();
-  const routerLocation = useRouterLocation();
   // homeMode lets MainTabKeepAlive mount Delivery + Takeaway Home side-by-side
   // without both instances fighting over global orderType / pathname.
   const isTakeawayPage =
@@ -806,9 +516,15 @@ export default function Home({ homeMode = null, isTabActive = true }) {
   const [showAllCategoriesModal, setShowAllCategoriesModal] = useState(false);
   const [availabilityTick, setAvailabilityTick] = useState(Date.now());
   const RESTAURANTS_BATCH_SIZE = 9;
-  const [visibleRestaurantCount, setVisibleRestaurantCount] = useState(
-    RESTAURANTS_BATCH_SIZE,
-  );
+  const [visibleRestaurantCount, setVisibleRestaurantCount] = useState(() => {
+    if (typeof window === "undefined") return RESTAURANTS_BATCH_SIZE;
+    const pending = peekBrowseScroll(window.location.pathname);
+    const n = Number(pending?.visibleCount);
+    if (Number.isFinite(n) && n > RESTAURANTS_BATCH_SIZE) {
+      return Math.floor(n);
+    }
+    return RESTAURANTS_BATCH_SIZE;
+  });
   const restaurantLoadMoreRef = useRef(null);
   const publicCategoriesCacheRef = useRef(new Map());
   const publicCategoriesInFlightRef = useRef(new Map());
@@ -1760,15 +1476,6 @@ export default function Home({ homeMode = null, isTabActive = true }) {
   const menuUnionRequestSeqRef = useRef(0);
   const menuUnionCacheRef = useRef(new Map());
 
-  // Clear category cache when returning to the Home page
-  useEffect(() => {
-    try {
-      clearCategoryCache();
-    } catch (e) {
-      // Ignore
-    }
-  }, []);
-
   // Scroll tracking effect
   useEffect(() => {
     if (!isFilterOpen || !rightContentRef.current) return;
@@ -1962,8 +1669,13 @@ export default function Home({ homeMode = null, isTabActive = true }) {
                 restaurant.estimatedDeliveryTime || "25-30 mins";
 
               // Use pre-calculated distance from backend
-              const distance = restaurant.distance || "0 m";
-              const distanceInKm = restaurant.distanceInKm || 0;
+              const distance = restaurant.distance || null;
+              const distanceInKm = Number.isFinite(Number(restaurant.distanceInKm))
+                ? Number(restaurant.distanceInKm)
+                : null;
+              const topOrder = Number.isFinite(Number(restaurant.__topOrder ?? restaurant.topOrder))
+                ? Number(restaurant.__topOrder ?? restaurant.topOrder)
+                : 1000000;
 
               // Get first cuisine or default
               const cuisine =
@@ -2021,6 +1733,8 @@ export default function Home({ homeMode = null, isTabActive = true }) {
                 takeawaySettings: restaurant.takeawaySettings || null,
                 distance: distance,
                 distanceInKm: distanceInKm, // Store numeric distance for sorting
+                topOrder,
+                __topOrder: topOrder,
                 image: image,
                 images: allImages, // Array of cover images for carousel (separate from menu images)
                 priceRange: restaurant.priceRange || "$$", // Use from API or default
@@ -2361,27 +2075,134 @@ export default function Home({ homeMode = null, isTabActive = true }) {
       }
     }
 
-    // Sort so that offline (closed) restaurants are pushed to the bottom.
-    // Preserves the relative order of open restaurants.
+    // Online first → pinned top order → nearest distance (same when all offline)
     const sortedResult = result
       .map((restaurant, index) => ({ restaurant, index }))
       .sort((a, b) => {
-        const aAvail = getRestaurantAvailabilityStatus(a.restaurant, new Date(availabilityTick));
-        const bAvail = getRestaurantAvailabilityStatus(b.restaurant, new Date(availabilityTick));
-        
-        const aOpen = aAvail?.isOpen ? 1 : 0;
-        const bOpen = bAvail?.isOpen ? 1 : 0;
-        
-        if (aOpen !== bOpen) {
-          return bOpen - aOpen; // open (1) comes before closed (0)
-        }
-        
-        return a.index - b.index; // maintain stable sorting order
+        const byBrowse = compareRestaurantsByAvailabilityAndDistance(
+          a.restaurant,
+          b.restaurant,
+          { now: new Date(availabilityTick) },
+        );
+        if (byBrowse !== 0) return byBrowse;
+        return a.index - b.index;
       })
       .map((item) => item.restaurant);
 
     return sortedResult;
   }, [restaurantsData, matchesVegMode, effectiveOrderType, isTakeawayPage, heroSearch, matchesTakeawayName, availabilityTick]);
+
+  // Stable browse path — don't use restaurant URL while Home stays mounted underneath
+  const homeBrowsePath =
+    homeMode === "takeaway" || isTakeawayPage
+      ? "/user/takeaway"
+      : homeMode === "delivery"
+        ? "/user"
+        : routerLocation.pathname || "/user";
+
+  const rememberHomeBrowsePosition = useCallback((focusId) => {
+    saveBrowseScroll({
+      path: homeBrowsePath,
+      scrollY: typeof window !== "undefined" ? window.scrollY : 0,
+      focusId,
+      visibleCount: visibleRestaurantCount,
+    });
+  }, [visibleRestaurantCount, homeBrowsePath]);
+
+  // Category open from Home: lock current scroll (often top) so back lands here — not mid-page.
+  const rememberLeaveForCategory = useCallback(() => {
+    const y =
+      typeof window !== "undefined" ? Math.max(0, window.scrollY || 0) : 0;
+    const tabKey =
+      homeMode === "takeaway" || isTakeawayPage ? "takeaway" : "delivery";
+    try {
+      sessionStorage.setItem(`main_tab_scroll_${tabKey}`, String(y));
+    } catch {
+      // ignore
+    }
+    saveBrowseScroll({
+      path: homeBrowsePath,
+      scrollY: y,
+      focusId: null,
+      visibleCount: visibleRestaurantCount,
+    });
+  }, [homeBrowsePath, homeMode, isTakeawayPage, visibleRestaurantCount]);
+
+  // Allow restore again after leaving for restaurant (tabs stay mounted now)
+  useEffect(() => {
+    if (!isTabActive) {
+      hasRestoredBrowseScrollRef.current = false;
+    }
+  }, [isTabActive]);
+
+  // After back from restaurant details: restore exact scrollY before paint (list already in memory)
+  useLayoutEffect(() => {
+    if (!isTabActive) return;
+    if (hasRestoredBrowseScrollRef.current) return;
+
+    const browsePath = homeBrowsePath;
+    const pending = peekBrowseScroll(browsePath);
+    if (!pending) return;
+
+    const targetY = Math.max(0, Number(pending.scrollY) || 0);
+    window.scrollTo({ top: targetY, left: 0, behavior: "instant" });
+
+    if (loadingRestaurants) return;
+    if (!Array.isArray(filteredRestaurants) || filteredRestaurants.length === 0) return;
+
+    let needed = Math.min(
+      Math.max(Number(pending.visibleCount) || 0, RESTAURANTS_BATCH_SIZE),
+      filteredRestaurants.length,
+    );
+
+    if (pending.focusId) {
+      const focusKey = String(pending.focusId);
+      const focusIndex = filteredRestaurants.findIndex((r) => {
+        const slug = String(r.slug || r.name || "")
+          .toLowerCase()
+          .replace(/[\s/]+/g, "-");
+        return (
+          String(r.mongoId || "") === focusKey ||
+          String(r.id || "") === focusKey ||
+          slug === focusKey
+        );
+      });
+      if (focusIndex >= 0) {
+        needed = Math.min(
+          Math.max(needed, focusIndex + 1, RESTAURANTS_BATCH_SIZE),
+          filteredRestaurants.length,
+        );
+      }
+    }
+
+    if (needed > visibleRestaurantCount) {
+      setVisibleRestaurantCount(needed);
+      return;
+    }
+
+    if (pending.focusId) {
+      const safeId = String(pending.focusId).replace(/\\/g, "\\\\").replace(/"/g, '\\"');
+      const el = document.querySelector(`[data-browse-focus="${safeId}"]`);
+      if (!el && needed < filteredRestaurants.length) {
+        setVisibleRestaurantCount((prev) =>
+          Math.min(prev + RESTAURANTS_BATCH_SIZE, filteredRestaurants.length),
+        );
+        return;
+      }
+    }
+
+    const saved = consumeBrowseScroll(browsePath);
+    if (!saved) return;
+    hasRestoredBrowseScrollRef.current = true;
+    return restoreBrowseScroll(saved);
+  }, [
+    isTabActive,
+    loadingRestaurants,
+    filteredRestaurants,
+    visibleRestaurantCount,
+    RESTAURANTS_BATCH_SIZE,
+    homeBrowsePath,
+  ]);
 
   const restaurantLazyLoadResetKey = useMemo(() => {
     const activeFilterKey = Array.from(activeFilters).sort().join("|");
@@ -2439,10 +2260,31 @@ export default function Home({ homeMode = null, isTabActive = true }) {
   }, [filteredRestaurants.length, RESTAURANTS_BATCH_SIZE]);
 
   useEffect(() => {
+    // Don't collapse the list while Home is hidden under restaurant/category
+    if (!isTabActive) return;
+
+    // Keep expanded list when returning from a restaurant (browse scroll pending)
+    const pending = peekBrowseScroll(homeBrowsePath);
+    if (pending?.visibleCount) {
+      const needed = Math.min(
+        Math.max(Number(pending.visibleCount) || 0, RESTAURANTS_BATCH_SIZE),
+        Math.max(filteredRestaurants.length, Number(pending.visibleCount) || 0),
+      );
+      setVisibleRestaurantCount(needed);
+      return;
+    }
+    if (hasRestoredBrowseScrollRef.current) return;
+
     setVisibleRestaurantCount(
       Math.min(RESTAURANTS_BATCH_SIZE, filteredRestaurants.length),
     );
-  }, [restaurantLazyLoadResetKey, filteredRestaurants.length, RESTAURANTS_BATCH_SIZE]);
+  }, [
+    restaurantLazyLoadResetKey,
+    filteredRestaurants.length,
+    RESTAURANTS_BATCH_SIZE,
+    homeBrowsePath,
+    isTabActive,
+  ]);
 
   useEffect(() => {
     if (visibleRestaurantCount <= filteredRestaurants.length) return;
@@ -2451,6 +2293,7 @@ export default function Home({ homeMode = null, isTabActive = true }) {
 
   useEffect(() => {
     if (!hasMoreRestaurants) return;
+    if (!isTabActive) return;
     if (showRestaurantSkeleton || loadingRestaurants || isLoadingFilterResults) return;
     const target = restaurantLoadMoreRef.current;
     if (!target || typeof window === "undefined") return;
@@ -2474,6 +2317,7 @@ export default function Home({ homeMode = null, isTabActive = true }) {
     return () => observer.disconnect();
   }, [
     hasMoreRestaurants,
+    isTabActive,
     showRestaurantSkeleton,
     loadingRestaurants,
     isLoadingFilterResults,
@@ -2667,8 +2511,13 @@ export default function Home({ homeMode = null, isTabActive = true }) {
               const linkedRestaurants = bannerData?.linkedRestaurants || [];
               if (linkedRestaurants.length > 0) {
                 const firstRestaurant = linkedRestaurants[0];
-                const restaurantSlug = firstRestaurant.slug || firstRestaurant.restaurantId || firstRestaurant._id;
-                navigate(`/restaurants/${restaurantSlug}`);
+                const restaurantId =
+                  getRestaurantRouteId(firstRestaurant) ||
+                  firstRestaurant.restaurantId ||
+                  firstRestaurant._id;
+                if (restaurantId) {
+                  navigate(toFoodUserPath(`/user/restaurants/${restaurantId}`));
+                }
               }
             }}
             aria-label={`Open hero banner ${currentBannerIndex + 1}`}
@@ -2692,7 +2541,7 @@ export default function Home({ homeMode = null, isTabActive = true }) {
           {/* Meals Under 200 Card */}
           <div
             className="flex-shrink-0 flex flex-col items-center gap-2 cursor-pointer transition-transform hover:scale-105 active:scale-95"
-            onClick={() => navigate("/user/under-250")}
+            onClick={() => navigate(toFoodUserPath("/user/under-250"))}
           >
             <div className="w-16 h-16 sm:w-20 sm:h-20 bg-[#DC2626] rounded-b-full rounded-t-sm shadow-md border-t-4 border-orange-200 flex flex-col items-center justify-center p-1">
               <span className="text-[10px] sm:text-xs font-bold text-white text-center leading-tight">UNDER</span>
@@ -2711,6 +2560,7 @@ export default function Home({ homeMode = null, isTabActive = true }) {
               <Link
                 key={category.id || index}
                 to={`/food/user/category/${category.slug || category.name.toLowerCase().replace(/\s+/g, "-")}`}
+                onClick={rememberLeaveForCategory}
                 className="flex-shrink-0 flex flex-col items-center gap-2 group transition-all duration-300 hover:-translate-y-1"
               >
                 <div className="w-16 h-16 sm:w-20 sm:h-20 rounded-full overflow-hidden shadow-sm border border-gray-100 dark:border-gray-800 group-hover:border-[#DC2626] transition-colors">
@@ -2748,8 +2598,10 @@ export default function Home({ homeMode = null, isTabActive = true }) {
   }, [displayCategories, showCategorySkeleton, navigate]);
 
   return (
-
-    <div className="relative min-h-screen bg-white dark:bg-[#0a0a0a] pb-16 md:pb-6 overflow-x-clip">
+    
+    <div
+      className="relative min-h-screen bg-white dark:bg-[#0a0a0a] pb-16 md:pb-6 overflow-x-clip"
+    >
       <div className="transition-all duration-300">
         {/* Unified Background for Entire Page - Vibrant Food Theme */}
         <div className="absolute top-0 left-0 right-0 bottom-0 pointer-events-none overflow-hidden z-0">
@@ -3070,6 +2922,7 @@ export default function Home({ homeMode = null, isTabActive = true }) {
                           key={category.id || index}
                           to={`/food/user/category/${category.slug}`}
                           state={{ from: '/food/user' }}
+                          onClick={rememberLeaveForCategory}
                           className="flex-shrink-0 flex flex-col items-center gap-2.5 group w-[92px]"
                         >
                           <div className="relative w-20 h-20 sm:w-24 sm:h-24 rounded-full overflow-hidden shadow-md border-2 border-gray-100 dark:border-gray-800 bg-white dark:bg-[#1a1a1a] group-active:scale-95 transition-all duration-300">
@@ -3191,6 +3044,7 @@ export default function Home({ homeMode = null, isTabActive = true }) {
                           <Link
                             key={`sticky-${category.id || index}`}
                             to={`/food/user/category/${category.slug}`}
+                            onClick={rememberLeaveForCategory}
                             className="flex-shrink-0 flex flex-col items-center gap-1.5 group w-[74px]"
                           >
                             <div className="w-18 h-18 rounded-full overflow-hidden border-2 border-gray-100 dark:border-white/10 shadow-md bg-white dark:bg-white/5 transition-transform group-active:scale-95">
@@ -3328,17 +3182,28 @@ export default function Home({ homeMode = null, isTabActive = true }) {
 
             <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3 px-4">
               {recommendedForYouRestaurants.map((restaurant, index) => {
+                const restaurantRouteId = getRestaurantRouteId(restaurant);
                 const rawSlug = restaurant.slug || restaurant.name;
-                const restaurantSlug = rawSlug.toLowerCase().replace(/[\s\/]+/g, "-");
+                const restaurantSlug = String(rawSlug || "")
+                  .toLowerCase()
+                  .replace(/[\s/]+/g, "-");
+                const linkId = restaurantRouteId || restaurantSlug;
                 return (
                   <motion.div
-                    key={`recommended-${restaurant.mongoId || restaurant.id || restaurantSlug}`}
+                    key={`recommended-${restaurant.mongoId || restaurant.id || linkId}`}
                     initial={{ opacity: 0, y: 12 }}
                     whileInView={{ opacity: 1, y: 0 }}
                     viewport={{ once: true }}
                     transition={{ duration: 0.35, delay: index * 0.05 }}>
                     <Link
-                      to={`/user/restaurants/${restaurantSlug}`}
+                      to={toFoodUserPath(`/user/restaurants/${linkId}`)}
+                      state={{ from: homeBrowsePath, restaurantData: restaurant }}
+                      data-browse-focus={restaurant.mongoId || restaurant.id || linkId}
+                      onClick={() =>
+                        rememberHomeBrowsePosition(
+                          restaurant.mongoId || restaurant.id || linkId,
+                        )
+                      }
                       className="block rounded-[20px] overflow-hidden border border-gray-200/70 dark:border-gray-800 bg-white dark:bg-[#1a1a1a] shadow-md hover:shadow-lg transition-all duration-300">
                       <div className="relative h-24 sm:h-28 md:h-32 bg-gray-50">
                         <RestaurantImageCarousel
@@ -3346,6 +3211,9 @@ export default function Home({ homeMode = null, isTabActive = true }) {
                           backendOrigin={BACKEND_ORIGIN}
                           className="h-24 sm:h-28 md:h-32"
                           roundedClass="rounded-t-[20px]"
+                          backFrom={homeBrowsePath}
+                          focusId={restaurant.mongoId || restaurant.id || linkId}
+                          visibleCount={visibleRestaurantCount}
                         />
                         <div className={`absolute bottom-2 left-2 px-2 py-0.5 rounded-lg ${Number(restaurant.rating) > 0 ? "bg-black/80 backdrop-blur-md text-white font-medium" : "bg-gray-200/90 text-gray-600 font-medium"} text-[10px] shadow-lg border border-white/10`}>
                           {Number(restaurant.rating) > 0 ? Number(restaurant.rating).toFixed(1) : "NEW"}
@@ -3479,6 +3347,7 @@ export default function Home({ homeMode = null, isTabActive = true }) {
                   );
                 const rawSlug = (typeof restaurant?.slug === "string" && restaurant.slug.trim()) ? restaurant.slug.trim() : fallbackSlugSource;
                 const restaurantSlug = rawSlug.toLowerCase().replace(/[\s\/]+/g, "-");
+                const restaurantRouteId = getRestaurantRouteId(restaurant) || restaurantSlug;
                 const availability = getRestaurantAvailabilityStatus(
                   restaurant,
                   new Date(availabilityTick),
@@ -3551,9 +3420,15 @@ export default function Home({ homeMode = null, isTabActive = true }) {
                           ? `fade-in-up 0.5s ease-out ${index * 0.05}s backwards`
                           : "none",
                     }}>
-                    <div className="h-full group">
+                    <div className="h-full group" data-browse-focus={restaurant.mongoId || restaurant.id || restaurantRouteId}>
                       <Link
-                        to={`/user/restaurants/${restaurantSlug}`}
+                        to={toFoodUserPath(`/user/restaurants/${restaurantRouteId}`)}
+                        state={{ from: homeBrowsePath, restaurantData: restaurant }}
+                        onClick={() =>
+                          rememberHomeBrowsePosition(
+                            restaurant.mongoId || restaurant.id || restaurantRouteId,
+                          )
+                        }
                         className="h-full flex">
                         <Card
                           className={`overflow-hidden gap-0 cursor-pointer border border-gray-200/70 dark:border-gray-800/80 group bg-white dark:bg-[#1a1a1a] transition-all duration-500 py-0 rounded-[28px] flex flex-col h-full w-full relative shadow-md hover:shadow-2xl ${isOutOfService || !availability.isOpen
@@ -3566,6 +3441,9 @@ export default function Home({ homeMode = null, isTabActive = true }) {
                               restaurant={restaurant}
                               priority={index < 2}
                               backendOrigin={BACKEND_ORIGIN}
+                              backFrom={homeBrowsePath}
+                              focusId={restaurant.mongoId || restaurant.id || restaurantRouteId}
+                              visibleCount={visibleRestaurantCount}
                             />
 
 
@@ -4402,8 +4280,11 @@ export default function Home({ homeMode = null, isTabActive = true }) {
                         }}
                         whileTap={{ scale: 0.95 }}>
                         <Link
-                          to={`/user/category/${categoryData.slug || categoryData.name.toLowerCase().replace(/\s+/g, "-")}`}
-                          onClick={() => setShowAllCategoriesModal(false)}
+                          to={toFoodUserPath(`/user/category/${categoryData.slug || categoryData.name.toLowerCase().replace(/\s+/g, "-")}`)}
+                          onClick={() => {
+                            rememberLeaveForCategory();
+                            setShowAllCategoriesModal(false);
+                          }}
                           className="block">
                           <div className="flex flex-col items-center gap-2 sm:gap-2.5 cursor-pointer w-full">
                             <div className="w-20 h-20 sm:w-24 sm:h-24 md:w-28 md:h-28 rounded-full overflow-hidden shadow-md transition-all hover:shadow-lg flex-shrink-0">

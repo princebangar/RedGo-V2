@@ -48,7 +48,7 @@ export const cacheResponse = (ttlInSeconds = 300, prefix = 'api_cache') => {
 };
 
 /**
- * Clear cache by pattern (e.g. 'api_cache:GET:/api/food/restaurants*')
+ * Clear cache by pattern (e.g. 'restaurants:*')
  * WARNING: 'keys' is O(N), use with care or switch to SCAN for large datasets.
  * @param {string} pattern - Redis glob pattern for keys to delete.
  */
@@ -66,4 +66,24 @@ export const invalidateCache = async (pattern) => {
     } catch (err) {
         logger.error(`Cache invalidation error: ${err.message}`);
     }
+};
+
+/**
+ * Invalidate user-facing Food browse caches (home / category / search).
+ * Call after restaurant, menu, food, or category changes.
+ * @param {string[]} [prefixes]
+ */
+export const invalidateFoodBrowseCaches = async (
+    prefixes = [
+        'restaurants',
+        'restaurant_detail',
+        'restaurant_menu',
+        'categories',
+        'search',
+        'under_250',
+        'offers',
+    ],
+) => {
+    const list = Array.isArray(prefixes) ? prefixes.filter(Boolean) : [];
+    await Promise.all(list.map((prefix) => invalidateCache(`${prefix}:*`)));
 };
