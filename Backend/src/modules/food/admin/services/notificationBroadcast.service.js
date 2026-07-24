@@ -251,6 +251,8 @@ export const createBroadcastNotification = async ({ body = {}, adminId } = {}) =
         )
     });
 
+    // Push must include notification+data (not dataOnly) so Android/iOS/Web
+    // show a tray alert when the app is backgrounded or fully closed.
     await notifyOwnersSafely(
         resolvedTargets.map((target) => ({
             ownerType: target.ownerType,
@@ -259,10 +261,15 @@ export const createBroadcastNotification = async ({ body = {}, adminId } = {}) =
         {
             title,
             body: message,
+            link: link || '/',
+            channelId: 'restaurant_orders',
+            sendToAllDevices: true,
             data: {
                 type: 'admin_broadcast',
                 broadcastId: String(broadcast._id),
-                link
+                link: link || '/',
+                click_action: link || '/',
+                targetUrl: link || '/'
             }
         }
     );

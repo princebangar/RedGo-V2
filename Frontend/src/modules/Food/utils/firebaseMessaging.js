@@ -964,6 +964,53 @@ async function getFirebasePublicEnv() {
   return publicEnvPromise;
 }
 
+async function syncFirebaseConfigToServiceWorker(registration, firebasePublicEnv) {
+  if (!registration || !firebasePublicEnv) return;
+  const config = {
+    apiKey: firebasePublicEnv.apiKey,
+    authDomain: firebasePublicEnv.authDomain,
+    projectId: firebasePublicEnv.projectId,
+    appId: firebasePublicEnv.appId,
+    messagingSenderId: firebasePublicEnv.messagingSenderId,
+    storageBucket: firebasePublicEnv.storageBucket,
+    measurementId: firebasePublicEnv.measurementId,
+  };
+  if (!config.apiKey || !config.projectId || !config.appId || !config.messagingSenderId) return;
+
+  const post = (sw) => {
+    try {
+      sw?.postMessage({ type: "REDGO_FCM_CONFIG", config });
+    } catch {
+      // ignore
+    }
+  };
+
+  post(registration.active);
+  post(registration.waiting);
+  post(registration.installing);
+
+  try {
+    const ready = await navigator.serviceWorker.ready;
+    post(ready.active);
+  } catch {
+    // ignore
+  }
+}
+
+async function registerMessagingServiceWorker(firebasePublicEnv) {
+  const registration = await navigator.serviceWorker.register("/firebase-messaging-sw.js", {
+    scope: "/",
+    updateViaCache: "none",
+  });
+  await syncFirebaseConfigToServiceWorker(registration, firebasePublicEnv);
+  try {
+    await registration.update();
+  } catch {
+    // ignore
+  }
+  return registration;
+}
+
 function getMessagingFirebaseApp(config) {
   const appConfig = {
     apiKey: config.apiKey,
@@ -1023,7 +1070,7 @@ async function resolveWebFcmToken(moduleName, options = {}) {
     const supported = await isSupported().catch(() => false);
     if (!supported) return null;
 
-    const registration = await navigator.serviceWorker.register("/firebase-messaging-sw.js");
+    const registration = await registerMessagingServiceWorker(firebasePublicEnv);
     const messaging = getMessaging(app);
     const token = await getToken(messaging, {
       vapidKey: firebasePublicEnv.vapidKey,
@@ -1344,7 +1391,7 @@ export async function setupPendingVerificationPushListeners(moduleName) {
   const ready = await getMessagingAppForPush();
   if (!ready) return false;
   try {
-    await navigator.serviceWorker.register("/firebase-messaging-sw.js");
+    await registerMessagingServiceWorker(ready.firebasePublicEnv);
     await attachForegroundListener(ready.app);
     return true;
   } catch {
@@ -1371,11 +1418,10 @@ export async function enablePendingVerificationPush(moduleName, phone) {
   }
   if (permission !== "granted") return false;
 
-  await navigator.serviceWorker.register("/firebase-messaging-sw.js");
+  const registration = await registerMessagingServiceWorker(ready.firebasePublicEnv);
   await attachForegroundListener(ready.app);
 
   const { getMessaging, getToken } = await import("firebase/messaging");
-  const registration = await navigator.serviceWorker.ready;
   const messaging = getMessaging(ready.app);
   const token = await getToken(messaging, {
     vapidKey: ready.firebasePublicEnv.vapidKey,
@@ -1487,7 +1533,7 @@ export async function registerWebPushForCurrentModule(pathname = window.location
       const supported = await isSupported().catch(() => false);
       if (!supported) return;
 
-      const registration = await navigator.serviceWorker.register("/firebase-messaging-sw.js");
+      const registration = await registerMessagingServiceWorker(firebasePublicEnv);
       pushDebugLog(PUSH_DEBUG_PREFIX, "Service worker registered for push", {
         scope: registration.scope,
         moduleName,
