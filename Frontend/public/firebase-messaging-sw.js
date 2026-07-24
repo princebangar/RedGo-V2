@@ -1,22 +1,29 @@
 /* eslint-disable no-undef */
+/**
+ * Firebase Cloud Messaging service worker.
+ * Background/closed-app delivery depends on Firebase initializing here.
+ * Config sources (in order): Cache written by the page → public env API.
+ */
 importScripts("https://www.gstatic.com/firebasejs/10.13.2/firebase-app-compat.js");
 importScripts("https://www.gstatic.com/firebasejs/10.13.2/firebase-messaging-compat.js");
 
 const sanitize = (value) => String(value || "").trim().replace(/^['"]|['"]$/g, "");
-const PUSH_DEBUG_PREFIX = "[push-sw]";
-const pushDebugLog = () => {};
-const OS_NOTIFICATION_DEDUP_STORAGE_KEY = "os_notification_dedup_v1";
+const CONFIG_CACHE = "redgo-fcm-config-v1";
+const CONFIG_URL = "/__redgo_fcm_web_config__";
 const notificationDedupWindowMs = 30000;
+
+let messagingReady = false;
+let firebaseInitPromise = null;
+
 const getNotificationKey = (payload) => {
   const data = payload?.data || {};
   if (data.notificationId || data.messageId || payload?.messageId) {
-    return data.notificationId || data.messageId || payload.messageId;
+    return String(data.notificationId || data.messageId || payload.messageId);
   }
 
   const orderMongoId = String(data.orderMongoId || "").trim();
   const orderId = String(data.orderId || "").trim();
   const orderStatus = String(data.orderStatus || "").trim();
-
   if (orderMongoId || orderId) {
     return [orderMongoId || orderId, orderStatus || "update"].join("::");
   }
@@ -24,6 +31,7 @@ const getNotificationKey = (payload) => {
   return [
     data.type || "",
     data.title || payload?.notification?.title || "",
+    data.body || payload?.notification?.body || "",
     data.targetUrl || data.link || "",
   ]
     .map((value) => String(value || "").trim())
@@ -31,54 +39,100 @@ const getNotificationKey = (payload) => {
     .join("::");
 };
 
-function readSharedOsNotificationDedup() {
+async function readCachedFirebaseConfig() {
   try {
-    const raw = sessionStorage.getItem(OS_NOTIFICATION_DEDUP_STORAGE_KEY);
-    if (!raw) return {};
-    const parsed = JSON.parse(raw);
-    return parsed && typeof parsed === "object" ? parsed : {};
+    const cache = await caches.open(CONFIG_CACHE);
+    const response = await cache.match(CONFIG_URL);
+    if (!response) return null;
+    return normalizeFirebaseConfig(await response.json());
   } catch {
-    return {};
+    return null;
   }
 }
 
-function writeSharedOsNotificationDedup(map) {
+async function writeCachedFirebaseConfig(config) {
+  const normalized = normalizeFirebaseConfig(config);
+  if (!normalized) return false;
   try {
-    sessionStorage.setItem(OS_NOTIFICATION_DEDUP_STORAGE_KEY, JSON.stringify(map));
+    const cache = await caches.open(CONFIG_CACHE);
+    await cache.put(
+      CONFIG_URL,
+      new Response(JSON.stringify(normalized), {
+        headers: { "Content-Type": "application/json" },
+      }),
+    );
+    return true;
   } catch {
-    // ignore
+    return false;
   }
+}
+
+function normalizeFirebaseConfig(data = {}) {
+  const config = {
+    apiKey: sanitize(data.apiKey || data.VITE_FIREBASE_API_KEY || data.FIREBASE_API_KEY),
+    authDomain: sanitize(data.authDomain || data.VITE_FIREBASE_AUTH_DOMAIN || data.FIREBASE_AUTH_DOMAIN),
+    projectId: sanitize(data.projectId || data.VITE_FIREBASE_PROJECT_ID || data.FIREBASE_PROJECT_ID),
+    appId: sanitize(data.appId || data.VITE_FIREBASE_APP_ID || data.FIREBASE_APP_ID),
+    messagingSenderId: sanitize(
+      data.messagingSenderId ||
+        data.VITE_FIREBASE_MESSAGING_SENDER_ID ||
+        data.FIREBASE_MESSAGING_SENDER_ID,
+    ),
+    storageBucket: sanitize(
+      data.storageBucket || data.VITE_FIREBASE_STORAGE_BUCKET || data.FIREBASE_STORAGE_BUCKET,
+    ),
+    measurementId: sanitize(
+      data.measurementId || data.VITE_FIREBASE_MEASUREMENT_ID || data.FIREBASE_MEASUREMENT_ID,
+    ),
+  };
+  if (config.apiKey && config.projectId && config.appId && config.messagingSenderId) {
+    return config;
+  }
+  return null;
+}
+
+async function loadFirebaseWebConfigFromApi() {
+  const candidates = ["/api/v1/food/public/env", "/api/v1/env/public", "/api/env/public"];
+  for (const url of candidates) {
+    try {
+      const response = await fetch(url, { cache: "no-store" });
+      if (!response.ok) continue;
+      const json = await response.json();
+      const config = normalizeFirebaseConfig((json && json.data) || {});
+      if (config) {
+        await writeCachedFirebaseConfig(config);
+        return config;
+      }
+    } catch {
+      // try next
+    }
+  }
+  return null;
+}
+
+async function resolveFirebaseConfig() {
+  return (await readCachedFirebaseConfig()) || (await loadFirebaseWebConfigFromApi());
 }
 
 function shouldSkipDuplicateOsNotification(notificationKey) {
   if (!notificationKey) return false;
+  if (!self.__redgoOsDedup) self.__redgoOsDedup = {};
+  const shared = self.__redgoOsDedup;
   const now = Date.now();
-  const shared = readSharedOsNotificationDedup();
-
   for (const [key, timestamp] of Object.entries(shared)) {
-    if (now - Number(timestamp) > notificationDedupWindowMs) {
-      delete shared[key];
-    }
+    if (now - Number(timestamp) > notificationDedupWindowMs) delete shared[key];
   }
-
-  const sharedTimestamp = Number(shared[notificationKey] || 0);
-  if (sharedTimestamp && now - sharedTimestamp < notificationDedupWindowMs) {
+  if (shared[notificationKey] && now - Number(shared[notificationKey]) < notificationDedupWindowMs) {
     return true;
   }
-
   shared[notificationKey] = now;
-  writeSharedOsNotificationDedup(shared);
   return false;
 }
 
 async function notifyOpenClients(payload) {
-  pushDebugLog(PUSH_DEBUG_PREFIX, "Broadcasting push to open clients", { payload });
   const windowClients = await clients.matchAll({ type: "window", includeUncontrolled: true });
   windowClients.forEach((client) => {
-    client.postMessage({
-      type: "push-notification-received",
-      payload,
-    });
+    client.postMessage({ type: "push-notification-received", payload });
   });
 }
 
@@ -89,185 +143,207 @@ function getTargetPathFromPayload(payload = {}) {
     payload?.data?.click_action ||
     payload?.fcmOptions?.link ||
     "/";
-
   try {
-    const url = new URL(rawTarget, self.location.origin);
-    return url.pathname || "/";
+    return new URL(rawTarget, self.location.origin).pathname || "/";
   } catch {
     return "/";
   }
 }
 
-async function hasVisibleClientForTarget(payload = {}) {
+async function hasVisibleFocusedClient(payload = {}) {
   const windowClients = await clients.matchAll({ type: "window", includeUncontrolled: true });
+  if (!windowClients.length) return false;
+
+  // Any focused/visible tab → page foreground handler owns UX (sound/toast).
+  const anyVisible = windowClients.some(
+    (client) => client.visibilityState === "visible" || client.focused,
+  );
+  if (!anyVisible) return false;
+
   const hasExplicitTarget = Boolean(
     payload?.data?.targetUrl ||
       payload?.data?.link ||
       payload?.data?.click_action ||
       payload?.fcmOptions?.link,
   );
-
-  // Approval / onboarding pushes often have no target — always show OS notification.
   if (!hasExplicitTarget) {
-    return false;
+    // Broadcast with no deep-link: still skip OS tray if app is open & focused.
+    return true;
   }
 
   const targetPath = getTargetPathFromPayload(payload);
   const normalizedTarget =
-    targetPath.length > 1 && targetPath.endsWith("/")
-      ? targetPath.slice(0, -1)
-      : targetPath;
+    targetPath.length > 1 && targetPath.endsWith("/") ? targetPath.slice(0, -1) : targetPath;
 
-  const visibleClient = windowClients.find((client) => {
-    const isVisible = client.visibilityState === "visible" || client.focused;
-    if (!isVisible) return false;
+  return windowClients.some((client) => {
+    if (!(client.visibilityState === "visible" || client.focused)) return false;
     try {
       const clientPath = new URL(client.url).pathname.replace(/\/$/, "") || "/";
-      if (normalizedTarget === "/" || !normalizedTarget) {
-        return false;
-      }
+      if (!normalizedTarget || normalizedTarget === "/") return true;
       return clientPath === normalizedTarget || clientPath.startsWith(`${normalizedTarget}/`);
     } catch {
-      return false;
+      return true;
     }
   });
-  pushDebugLog(PUSH_DEBUG_PREFIX, "Visible client check", {
-    count: windowClients.length,
-    targetPath: normalizedTarget,
-    hasVisibleClient: Boolean(visibleClient),
-    clients: windowClients.map((client) => ({
-      url: client.url,
-      visibilityState: client.visibilityState,
-      focused: client.focused,
-    })),
-  });
-  return Boolean(visibleClient);
 }
 
-async function loadFirebaseWebConfig() {
-  const candidates = [
-    "/api/v1/food/public/env",
-    "/api/v1/env/public",
-    "/api/env/public",
-  ];
-  for (const url of candidates) {
-    try {
-      const response = await fetch(url, { cache: "no-store" });
-      if (!response.ok) continue;
-      const json = await response.json();
-      const data = (json && json.data) || {};
-      const config = {
-        apiKey: sanitize(data.VITE_FIREBASE_API_KEY || data.FIREBASE_API_KEY),
-        authDomain: sanitize(data.VITE_FIREBASE_AUTH_DOMAIN || data.FIREBASE_AUTH_DOMAIN),
-        projectId: sanitize(data.VITE_FIREBASE_PROJECT_ID || data.FIREBASE_PROJECT_ID),
-        appId: sanitize(data.VITE_FIREBASE_APP_ID || data.FIREBASE_APP_ID),
-        messagingSenderId: sanitize(data.VITE_FIREBASE_MESSAGING_SENDER_ID || data.FIREBASE_MESSAGING_SENDER_ID),
-        storageBucket: sanitize(data.VITE_FIREBASE_STORAGE_BUCKET || data.FIREBASE_STORAGE_BUCKET),
-        measurementId: sanitize(data.VITE_FIREBASE_MEASUREMENT_ID || data.FIREBASE_MEASUREMENT_ID),
-      };
-
-      if (config.apiKey && config.projectId && config.appId && config.messagingSenderId) {
-        pushDebugLog(PUSH_DEBUG_PREFIX, "Loaded Firebase web config");
-        return config;
-      }
-    } catch {
-      // try next candidate
-    }
-  }
-
-  return null;
+function normalizePushPayload(raw) {
+  if (!raw || typeof raw !== "object") return null;
+  const payload = raw.message && typeof raw.message === "object" ? raw.message : raw;
+  const data = { ...(payload.data || {}) };
+  return {
+    notification: payload.notification || null,
+    data,
+    fcmOptions: payload.fcmOptions || payload.fcm_options || null,
+    messageId: payload.messageId || payload.fcmMessageId || data.messageId || null,
+  };
 }
 
-(async () => {
-  const config = await loadFirebaseWebConfig();
-  if (!config || !config.apiKey || !config.projectId || !config.appId || !config.messagingSenderId) {
+async function showOsNotificationFromPayload(payload) {
+  const normalized = normalizePushPayload(payload) || payload || {};
+  const data = normalized.data || {};
+  const title =
+    String(normalized?.notification?.title || data.title || "New Notification")
+      .replace(/^[👤🏪🛵🛡️]\s*/, "")
+      .replace(/^\[(User|Shop|Rider|Admin)\]\s*/i, "")
+      .trim() || "New Notification";
+  const body = String(
+    normalized?.notification?.body || data.body || data.message || "",
+  ).trim();
+  const image = normalized?.notification?.image || data.image || data.imageUrl || undefined;
+  const notificationKey = getNotificationKey(normalized);
+
+  if (shouldSkipDuplicateOsNotification(notificationKey)) {
+    await notifyOpenClients(normalized);
     return;
   }
 
-  firebase.initializeApp(config);
-  pushDebugLog(PUSH_DEBUG_PREFIX, "Firebase messaging service worker initialized");
-  const messaging = firebase.messaging();
+  const link = data.link || data.targetUrl || data.click_action || "/";
 
-  messaging.onBackgroundMessage(async (payload) => {
-    pushDebugLog(PUSH_DEBUG_PREFIX, "Received Firebase background message", { payload });
-    
-    const visibleClient = await hasVisibleClientForTarget(payload);
-    
-    if (!visibleClient) {
-      const title = String(payload?.notification?.title || payload?.data?.title || "New Notification")
-        .replace(/^[👤🏪🛵🛡️]\s*/, "")
-        .replace(/^\[(User|Shop|Rider|Admin)\]\s*/i, "")
-        .trim() || "New Notification";
-      const body = payload?.notification?.body || payload?.data?.body || "";
-      const image =
-        payload?.notification?.image ||
-        payload?.data?.image ||
-        payload?.data?.imageUrl ||
-        undefined;
-      const notificationKey = getNotificationKey(payload);
-
-      if (shouldSkipDuplicateOsNotification(notificationKey)) {
-        await notifyOpenClients(payload);
-        return;
-      }
-      
-      pushDebugLog(PUSH_DEBUG_PREFIX, "Showing service worker notification", {
-        title,
-        body,
-        image,
-        notificationKey,
-      });
-  
-      self.registration.showNotification(title, {
-        body,
-        icon: "/favicon.ico",
-        badge: "/favicon.ico",
-        image,
-        tag: notificationKey,
-        renotify: false,
-        silent: false,
-        requireInteraction: false,
-        vibrate: [200, 100, 200, 100, 300],
-        data: payload?.data || {},
-      });
-    }
-
-    // Always notify clients regardless of visibility
-    await notifyOpenClients(payload);
+  await self.registration.showNotification(title, {
+    body,
+    icon: "/favicon.ico",
+    badge: "/favicon.ico",
+    image,
+    tag: notificationKey || `redgo-${Date.now()}`,
+    renotify: data.type === "admin_broadcast",
+    silent: false,
+    requireInteraction: data.type === "admin_broadcast",
+    vibrate: [200, 100, 200, 100, 300],
+    data: { ...data, link, title, body },
   });
-})();
 
-self.addEventListener("push", (event) => {
-  if (!event.data) return;
+  await notifyOpenClients(normalized);
+}
+
+async function ensureFirebaseMessaging() {
+  if (messagingReady) return true;
+  if (firebaseInitPromise) return firebaseInitPromise;
+
+  firebaseInitPromise = (async () => {
+    const config = await resolveFirebaseConfig();
+    if (!config) return false;
+    try {
+      if (!firebase.apps.length) {
+        firebase.initializeApp(config);
+      }
+      const messaging = firebase.messaging();
+      messaging.onBackgroundMessage(async (payload) => {
+        await notifyOpenClients(payload);
+        if (await hasVisibleFocusedClient(payload)) return;
+        // Always show tray for background/closed — title/body come from
+        // notification block and/or data mirrors from the server.
+        await showOsNotificationFromPayload(payload);
+      });
+      messagingReady = true;
+      return true;
+    } catch {
+      return false;
+    }
+  })();
 
   try {
-    const payload = event.data.json();
-    pushDebugLog(PUSH_DEBUG_PREFIX, "Received raw push event", { payload });
-    // No client relay here. onBackgroundMessage handles delivery, and relaying in both
-    // places can produce duplicate notifications in web clients.
-    event.waitUntil(Promise.resolve());
-  } catch {
-    // Ignore malformed payloads.
+    return await firebaseInitPromise;
+  } finally {
+    if (!messagingReady) firebaseInitPromise = null;
+  }
+}
+
+void ensureFirebaseMessaging();
+
+self.addEventListener("message", (event) => {
+  const data = event?.data;
+  if (!data || typeof data !== "object") return;
+  if (data.type === "REDGO_FCM_CONFIG" && data.config) {
+    event.waitUntil(
+      (async () => {
+        await writeCachedFirebaseConfig(data.config);
+        await ensureFirebaseMessaging();
+      })(),
+    );
   }
 });
 
+/**
+ * Fallback when Firebase messaging never initialized (missing config on cold start).
+ * If messaging IS ready, onBackgroundMessage owns display — skip to avoid doubles.
+ */
+self.addEventListener("push", (event) => {
+  event.waitUntil(
+    (async () => {
+      const ready = await ensureFirebaseMessaging();
+      if (ready) return;
+
+      let raw = null;
+      try {
+        raw = event.data ? event.data.json() : null;
+      } catch {
+        try {
+          const text = event.data ? event.data.text() : "";
+          raw = text ? JSON.parse(text) : null;
+        } catch {
+          raw = null;
+        }
+      }
+      if (!raw) return;
+
+      const payload = normalizePushPayload(raw) || raw;
+      if (await hasVisibleFocusedClient(payload)) {
+        await notifyOpenClients(payload);
+        return;
+      }
+      await showOsNotificationFromPayload(payload);
+    })(),
+  );
+});
+
 self.addEventListener("notificationclick", (event) => {
-  pushDebugLog(PUSH_DEBUG_PREFIX, "Notification click received", {
-    data: event?.notification?.data || {},
-  });
   event.notification.close();
   const rawLink =
     event?.notification?.data?.link ||
     event?.notification?.data?.click_action ||
     event?.notification?.data?.targetUrl ||
     "/";
-  const targetUrl = String(rawLink || "/").startsWith("/") ? String(rawLink || "/") : "/";
+
+  let targetUrl = "/";
+  try {
+    if (String(rawLink || "").startsWith("http")) {
+      const parsed = new URL(String(rawLink));
+      targetUrl = `${parsed.pathname}${parsed.search}${parsed.hash}` || "/";
+    } else {
+      targetUrl = String(rawLink || "/").startsWith("/") ? String(rawLink || "/") : "/";
+    }
+  } catch {
+    targetUrl = "/";
+  }
+
   event.waitUntil(
     clients.matchAll({ type: "window", includeUncontrolled: true }).then((windowClients) => {
       const client = windowClients.find((c) => c.url.includes(self.location.origin));
       if (client) {
         client.focus();
-        return client.navigate(targetUrl);
+        if ("navigate" in client) return client.navigate(targetUrl);
+        return undefined;
       }
       return clients.openWindow(targetUrl);
     }),

@@ -141,26 +141,44 @@ const stripOwnerTitlePrefix = (title = '') =>
         .replace(/^\[(User|Shop|Rider|Admin)\]\s*/i, '')
         .trim();
 
-const buildMessagePayload = (payload = {}, token) => {
+const resolveClickLink = (payload = {}, data = {}) => {
+    const raw =
+        sanitizeString(payload.link) ||
+        sanitizeString(data.link) ||
+        sanitizeString(data.targetUrl) ||
+        sanitizeString(data.click_action) ||
+        '/';
+    return raw || '/';
+};
+
+const buildMessagePayload = (payload = {}, token, { platform } = {}) => {
     const notification = {
         title:
             stripOwnerTitlePrefix(payload.title || payload.notification?.title) ||
             'New notification',
         body: sanitizeString(payload.body || payload.notification?.body || '')
     };
+    const clickLink = resolveClickLink(payload, payload.data || {});
     const data = normalizeDataMap({
         ...(payload.data || {}),
         // Always mirror title/body in data so native/web handlers can show tray UI if needed
         title: notification.title,
         body: notification.body,
+        link: clickLink,
+        click_action: clickLink,
+        targetUrl: sanitizeString(payload.data?.targetUrl) || clickLink,
     });
     const image =
         sanitizeString(payload.icon || payload.notification?.image || payload.notification?.icon || data.image || data.imageUrl);
 
     // dataOnly: omit system notification blocks so only an awake client can render local UI.
     // For killed-app delivery (Android/iOS), callers must NOT set dataOnly.
+    // Web: omit top-level `notification` so the service worker owns tray display
+    // (avoids browser auto-tray + SW duplicate). Title/body stay in `data`.
     const message = { token };
-    const isDataOnly = payload.dataOnly === true;
+    const isWeb = platform === 'web';
+    const isDataOnly = payload.dataOnly === true || isWeb;
+    const androidChannel = sanitizeString(payload.channelId) || 'restaurant_orders';
 
     if (!isDataOnly) {
         message.notification = { ...notification };
@@ -175,54 +193,73 @@ const buildMessagePayload = (payload = {}, token) => {
 
     const soundFile = payload.sound || 'default';
 
-    message.android = {
-        priority: 'high',
-        ...(isDataOnly
-            ? {}
-            : {
-                notification: {
-                    channel_id: payload.channelId || 'restaurant_orders',
-                    sound: soundFile,
-                    default_vibrate_timings: true,
-                    default_light_settings: true,
-                    ...(image ? { image } : {}),
-                },
-            }),
-    };
-
-    message.apns = {
-        headers: {
-            'apns-priority': '10',
-            'apns-push-type': isDataOnly ? 'background' : 'alert',
-        },
-        payload: {
-            aps: isDataOnly
-                ? {
-                    'content-available': 1,
-                }
+    if (!isWeb) {
+        message.android = {
+            priority: 'high',
+            ttl: '86400s',
+            ...(isDataOnly
+                ? {}
                 : {
-                    alert: {
-                        title: notification.title,
-                        body: notification.body,
+                    notification: {
+                        channel_id: androidChannel,
+                        sound: soundFile,
+                        default_vibrate_timings: true,
+                        default_light_settings: true,
+                        notification_priority: 'PRIORITY_HIGH',
+                        ...(image ? { image } : {}),
                     },
-                    sound: soundFile,
-                    badge: 1,
-                    'content-available': 1,
-                    'mutable-content': 1,
-                },
-        },
-    };
+                }),
+        };
 
-    if (!isDataOnly) {
+        message.apns = {
+            headers: {
+                'apns-priority': '10',
+                'apns-push-type': isDataOnly ? 'background' : 'alert',
+                'apns-expiration': String(Math.floor(Date.now() / 1000) + 86400),
+            },
+            payload: {
+                aps: isDataOnly
+                    ? {
+                        'content-available': 1,
+                    }
+                    : {
+                        alert: {
+                            title: notification.title,
+                            body: notification.body,
+                        },
+                        sound: soundFile,
+                        badge: 1,
+                        'content-available': 1,
+                        'mutable-content': 1,
+                    },
+            },
+        };
+    }
+
+    if (isWeb || !isDataOnly) {
+        let webLink = clickLink;
+        try {
+            if (webLink.startsWith('/')) {
+                const origin = sanitizeString(
+                    payload.webOrigin ||
+                        process.env.FRONTEND_URL ||
+                        process.env.CLIENT_URL ||
+                        process.env.APP_URL ||
+                        ''
+                ).replace(/\/$/, '');
+                if (origin) webLink = `${origin}${webLink}`;
+            }
+        } catch {
+            // keep relative
+        }
+
         message.webpush = {
             headers: {
                 Urgency: 'high',
+                TTL: '86400',
             },
-            notification: {
-                title: notification.title,
-                body: notification.body,
-                icon: '/favicon.ico',
-                ...(image ? { image } : {}),
+            fcm_options: {
+                link: webLink || '/',
             },
         };
     }
@@ -359,7 +396,7 @@ export const removeFirebaseDeviceToken = async ({ ownerType, ownerId, token, pla
     return { success: true };
 };
 
-export const sendPushNotification = async (tokens, payload = {}) => {
+export const sendPushNotification = async (tokens, payload = {}, { platform } = {}) => {
     const projectId = getFirebaseProjectId();
     const accessToken = await getFirebaseAccessToken();
     const uniqueTokens = normalizeTokenList(tokens);
@@ -370,7 +407,7 @@ export const sendPushNotification = async (tokens, payload = {}) => {
 
     const results = await Promise.all(
         uniqueTokens.map(async (token) => {
-            const message = buildMessagePayload(payload, token);
+            const message = buildMessagePayload(payload, token, { platform });
             try {
                 const response = await fetch(FCM_SEND_URL(projectId), {
                     method: 'POST',
@@ -416,39 +453,19 @@ export const sendNotificationToOwner = async ({ ownerType, ownerId, payload, pla
     // Clone payload so broadcast loops don't mutate a shared object
     const enrichedPayload = { ...payload };
 
-    // Prefer latest token per platform so closed-app mobile still gets push
-    // even if a newer web token exists (and vice versa).
-    let targetTokens = [];
-    if (platform) {
-        const tokens = await listOwnerTokens({ ownerType, ownerId, platform });
-        targetTokens =
+    const sendForPlatform = async (platformName) => {
+        const tokens = await listOwnerTokens({ ownerType, ownerId, platform: platformName });
+        const targetTokens =
             payload?.sendToAllDevices === true
                 ? normalizeTokenList(tokens)
                 : pickLatestTokenOnly(tokens);
-    } else {
-        const [webTokens, mobileTokens] = await Promise.all([
-            listOwnerTokens({ ownerType, ownerId, platform: 'web' }),
-            listOwnerTokens({ ownerType, ownerId, platform: 'mobile' }),
-        ]);
-        if (payload?.sendToAllDevices === true) {
-            targetTokens = normalizeTokenList([...webTokens, ...mobileTokens]);
-        } else {
-            targetTokens = normalizeTokenList([
-                ...pickLatestTokenOnly(webTokens),
-                ...pickLatestTokenOnly(mobileTokens),
-            ]);
+        if (!targetTokens.length) {
+            return { successCount: 0, failureCount: 0, results: [], platform: platformName };
         }
-    }
-
-    if (!targetTokens.length) {
-        logger.warn(`[FCM] No device tokens for ${ownerType}:${ownerId} — push skipped`);
-        return { successCount: 0, failureCount: 0, results: [] };
-    }
-    try {
-        console.log(`[FCM] Sending to ${ownerType}:${ownerId}. Title: "${enrichedPayload.title || 'Data Only'}" tokens=${targetTokens.length}`);
-        const response = await sendPushNotification(targetTokens, enrichedPayload);
+        const response = await sendPushNotification(targetTokens, enrichedPayload, {
+            platform: platformName,
+        });
         const invalidTokens = (response.results || [])
-
             .filter((item) => !item.ok && item.remove)
             .map((item) => item.token)
             .filter(Boolean);
@@ -456,22 +473,43 @@ export const sendNotificationToOwner = async ({ ownerType, ownerId, payload, pla
             const model = getOwnerModel(ownerType);
             const doc = model ? await model.findById(ownerId) : null;
             if (doc) {
-                const fieldNames = platform
-                    ? [getTokenFieldForPlatform(platform)]
-                    : [OWNER_TOKEN_FIELDS.web, OWNER_TOKEN_FIELDS.mobile];
-                for (const field of fieldNames) {
-                    doc[field] = normalizeTokenList((Array.isArray(doc[field]) ? doc[field] : []).filter((t) => !invalidTokens.includes(t)));
-                }
+                const field = getTokenFieldForPlatform(platformName);
+                doc[field] = normalizeTokenList(
+                    (Array.isArray(doc[field]) ? doc[field] : []).filter((t) => !invalidTokens.includes(t)),
+                );
                 await doc.save();
             }
         }
-        logger.info(
-            `FCM push sent to ${ownerType}:${ownerId} (${platform || 'web+mobile'}). Success=${response.successCount}, Failure=${response.failureCount}`
-        );
-        return response;
+        return { ...response, platform: platformName };
+    };
+
+    try {
+        let responses = [];
+        if (platform) {
+            responses = [await sendForPlatform(platform === 'mobile' ? 'mobile' : 'web')];
+        } else {
+            responses = await Promise.all([sendForPlatform('web'), sendForPlatform('mobile')]);
+        }
+
+        const successCount = responses.reduce((sum, r) => sum + (r.successCount || 0), 0);
+        const failureCount = responses.reduce((sum, r) => sum + (r.failureCount || 0), 0);
+        const results = responses.flatMap((r) => r.results || []);
+
+        if (!successCount && !failureCount) {
+            logger.warn(`[FCM] No device tokens for ${ownerType}:${ownerId} — push skipped`);
+        } else {
+            console.log(
+                `[FCM] Sending to ${ownerType}:${ownerId}. Title: "${enrichedPayload.title || 'Data Only'}" success=${successCount} failure=${failureCount}`,
+            );
+            logger.info(
+                `FCM push sent to ${ownerType}:${ownerId} (${platform || 'web+mobile'}). Success=${successCount}, Failure=${failureCount}`,
+            );
+        }
+
+        return { successCount, failureCount, results };
     } catch (error) {
         logger.warn(`FCM push failed for ${ownerType}:${ownerId}: ${error.message}`);
-        return { successCount: 0, failureCount: targetTokens.length, error: error.message };
+        return { successCount: 0, failureCount: 1, error: error.message };
     }
 };
 
