@@ -1502,6 +1502,10 @@ export default function CategoryPage({
       setLoadingRestaurants(false)
       setIsEnrichingMenus(false)
       lastFetchedCategoryRef.current = nextSlug
+    } else if (String(selectedCategory || "").toLowerCase() !== nextSlug) {
+      setRestaurantsData([])
+      setLoadingRestaurants(true)
+      lastFetchedCategoryRef.current = null
     }
   }, [category, categories, zoneId])
 

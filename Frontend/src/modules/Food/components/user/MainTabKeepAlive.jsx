@@ -40,6 +40,7 @@ export default function MainTabKeepAlive({ activeTab, isVisible = true }) {
   const [visited, setVisited] = useState(() => new Set(activeTab ? [activeTab] : []));
   const scrollPositionsRef = useRef({});
   const prevTabRef = useRef(activeTab);
+  const wasVisibleRef = useRef(isVisible);
 
   useEffect(() => {
     registerFoodPageCacheLifecycle();
@@ -56,8 +57,11 @@ export default function MainTabKeepAlive({ activeTab, isVisible = true }) {
   }, [activeTab]);
 
   // Apply scroll before paint so restaurant→home never flashes the top.
-  // Only when the tab shell is visible (hidden under restaurant/category overlay).
+  // Restore only when tab changes or shell becomes visible again — never while idle.
   useLayoutEffect(() => {
+    const becameVisible = isVisible && !wasVisibleRef.current;
+    wasVisibleRef.current = isVisible;
+
     if (!isVisible) {
       // Always snapshot — including 0 — so category-from-top returns to top,
       // not a stale mid-page scroll from an earlier restaurant visit.
@@ -73,7 +77,8 @@ export default function MainTabKeepAlive({ activeTab, isVisible = true }) {
     }
 
     const prevTab = prevTabRef.current;
-    if (prevTab && prevTab !== activeTab) {
+    const tabChanged = Boolean(prevTab && prevTab !== activeTab);
+    if (tabChanged) {
       const y = Math.max(0, window.scrollY || 0);
       scrollPositionsRef.current[prevTab] = y;
       try {
@@ -82,6 +87,12 @@ export default function MainTabKeepAlive({ activeTab, isVisible = true }) {
     }
 
     if (!activeTab) {
+      prevTabRef.current = activeTab;
+      return;
+    }
+
+    // Idle on same visible tab — do not yank scroll (steals taps / kills smoothness).
+    if (!tabChanged && !becameVisible) {
       prevTabRef.current = activeTab;
       return;
     }
@@ -95,6 +106,9 @@ export default function MainTabKeepAlive({ activeTab, isVisible = true }) {
         const y = Number(data?.scrollY);
         if (isHomeBrowsePath(data?.path) && Number.isFinite(y) && y >= 0) {
           window.scrollTo({ top: y, left: 0, behavior: "instant" });
+          try {
+            sessionStorage.removeItem("food_browse_scroll_v1");
+          } catch {}
           prevTabRef.current = activeTab;
           return;
         }

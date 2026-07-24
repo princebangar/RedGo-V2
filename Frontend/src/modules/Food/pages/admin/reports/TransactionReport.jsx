@@ -214,12 +214,6 @@ export default function TransactionReport() {
             refundedTransaction: 0,
             adminEarning: 0,
             platformTotal: 0,
-            platformTotalBreakdown: {
-              commission: 0,
-              platformFee: 0,
-              deliveryNet: 0,
-              gst: 0,
-            },
             restaurantEarning: 0,
             deliverymanEarning: 0,
             ...(data.summary || {}),

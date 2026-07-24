@@ -1,7 +1,6 @@
 import { Suspense, lazy, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { AppShellSkeleton } from "@food/components/ui/loading-skeletons";
 import {
-  getCategoryLastClick,
   categoryBrowseNeedsRestore,
   runCategoryScrollLock,
 } from "@food/utils/browseScrollMemory";
@@ -10,41 +9,32 @@ const CategoryPage = lazy(() => import("@food/pages/user/CategoryPage"));
 
 /**
  * Keeps CategoryPage mounted under restaurant details.
- * Applies an immediate scroll lock on show so window doesn't stick at top
- * while CategoryPage expands the lazy list.
+ * Scroll restore runs ONLY when becoming visible again (restaurant → back),
+ * never on sticky category chip switches — that fight steals taps app-wide.
  */
 export default function CategoryBrowseKeepAlive({
   categorySlug,
   isVisible,
 }) {
   const [mountedSlug, setMountedSlug] = useState(categorySlug || null);
-  const scrollYRef = useRef(0);
+  const wasVisibleRef = useRef(false);
 
   useEffect(() => {
     if (categorySlug) setMountedSlug(categorySlug);
   }, [categorySlug]);
 
   useLayoutEffect(() => {
-    if (!isVisible) {
-      if (typeof window !== "undefined" && window.scrollY > 0) {
-        scrollYRef.current = window.scrollY;
-      }
-      return undefined;
-    }
+    const becameVisible = isVisible && !wasVisibleRef.current;
+    wasVisibleRef.current = isVisible;
 
-    if (!categoryBrowseNeedsRestore()) {
-      const pending = getCategoryLastClick();
-      const targetY = Math.max(
-        0,
-        Number(pending?.scrollY) || scrollYRef.current || 0,
-      );
-      if (targetY > 0) {
-        window.scrollTo({ top: targetY, left: 0, behavior: "instant" });
-      }
-      return undefined;
-    }
+    if (!isVisible) return undefined;
 
-    return runCategoryScrollLock({ durationMs: 280 });
+    // Chip / URL slug change while already browsing — leave scroll alone.
+    if (!becameVisible) return undefined;
+
+    if (!categoryBrowseNeedsRestore()) return undefined;
+
+    return runCategoryScrollLock({ durationMs: 180 });
   }, [isVisible, categorySlug]);
 
   if (!mountedSlug) return null;
