@@ -171,13 +171,11 @@ const buildMessagePayload = (payload = {}, token, { platform } = {}) => {
     const image =
         sanitizeString(payload.icon || payload.notification?.image || payload.notification?.icon || data.image || data.imageUrl);
 
-    // dataOnly: omit system notification blocks so only an awake client can render local UI.
-    // For killed-app delivery (Android/iOS), callers must NOT set dataOnly.
-    // Web: omit top-level `notification` so the service worker owns tray display
-    // (avoids browser auto-tray + SW duplicate). Title/body stay in `data`.
+    // dataOnly: omit system notification blocks ONLY if caller explicitly requested silent background sync.
+    // For killed/closed app delivery (Android/iOS/Web), top-level `notification` block MUST be included.
     const message = { token };
     const isWeb = platform === 'web';
-    const isDataOnly = payload.dataOnly === true || isWeb;
+    const isDataOnly = payload.dataOnly === true;
     const androidChannel = sanitizeString(payload.channelId) || 'restaurant_orders';
 
     if (!isDataOnly) {
@@ -193,76 +191,81 @@ const buildMessagePayload = (payload = {}, token, { platform } = {}) => {
 
     const soundFile = payload.sound || 'default';
 
-    if (!isWeb) {
-        message.android = {
-            priority: 'high',
-            ttl: '86400s',
-            ...(isDataOnly
-                ? {}
+    message.android = {
+        priority: 'high',
+        ttl: '86400s',
+        ...(isDataOnly
+            ? {}
+            : {
+                notification: {
+                    channel_id: androidChannel,
+                    sound: soundFile,
+                    default_vibrate_timings: true,
+                    default_light_settings: true,
+                    notification_priority: 'PRIORITY_HIGH',
+                    ...(image ? { image } : {}),
+                },
+            }),
+    };
+
+    message.apns = {
+        headers: {
+            'apns-priority': '10',
+            'apns-push-type': isDataOnly ? 'background' : 'alert',
+            'apns-expiration': String(Math.floor(Date.now() / 1000) + 86400),
+        },
+        payload: {
+            aps: isDataOnly
+                ? {
+                    'content-available': 1,
+                }
                 : {
-                    notification: {
-                        channel_id: androidChannel,
-                        sound: soundFile,
-                        default_vibrate_timings: true,
-                        default_light_settings: true,
-                        notification_priority: 'PRIORITY_HIGH',
-                        ...(image ? { image } : {}),
+                    alert: {
+                        title: notification.title,
+                        body: notification.body,
                     },
-                }),
-        };
+                    sound: soundFile,
+                    badge: 1,
+                    'content-available': 1,
+                    'mutable-content': 1,
+                },
+        },
+    };
 
-        message.apns = {
-            headers: {
-                'apns-priority': '10',
-                'apns-push-type': isDataOnly ? 'background' : 'alert',
-                'apns-expiration': String(Math.floor(Date.now() / 1000) + 86400),
-            },
-            payload: {
-                aps: isDataOnly
-                    ? {
-                        'content-available': 1,
-                    }
-                    : {
-                        alert: {
-                            title: notification.title,
-                            body: notification.body,
-                        },
-                        sound: soundFile,
-                        badge: 1,
-                        'content-available': 1,
-                        'mutable-content': 1,
-                    },
-            },
-        };
-    }
-
-    if (isWeb || !isDataOnly) {
-        let webLink = clickLink;
-        try {
-            if (webLink.startsWith('/')) {
-                const origin = sanitizeString(
-                    payload.webOrigin ||
-                        process.env.FRONTEND_URL ||
-                        process.env.CLIENT_URL ||
-                        process.env.APP_URL ||
-                        ''
-                ).replace(/\/$/, '');
-                if (origin) webLink = `${origin}${webLink}`;
-            }
-        } catch {
-            // keep relative
+    let webLink = clickLink;
+    try {
+        if (webLink.startsWith('/')) {
+            const origin = sanitizeString(
+                payload.webOrigin ||
+                    process.env.FRONTEND_URL ||
+                    process.env.CLIENT_URL ||
+                    process.env.APP_URL ||
+                    ''
+            ).replace(/\/$/, '');
+            if (origin) webLink = `${origin}${webLink}`;
         }
-
-        message.webpush = {
-            headers: {
-                Urgency: 'high',
-                TTL: '86400',
-            },
-            fcm_options: {
-                link: webLink || '/',
-            },
-        };
+    } catch {
+        // keep relative
     }
+
+    message.webpush = {
+        headers: {
+            Urgency: 'high',
+            TTL: '86400',
+        },
+        ...(isDataOnly
+            ? {}
+            : {
+                notification: {
+                    title: notification.title,
+                    body: notification.body,
+                    ...(image ? { image, icon: image } : {}),
+                },
+            }),
+        fcm_options: {
+            link: webLink || '/',
+        },
+    };
 
     return message;
 };
