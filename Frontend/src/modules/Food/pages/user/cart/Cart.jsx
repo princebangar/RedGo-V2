@@ -235,19 +235,7 @@ export default function Cart() {
       return "saved"
     }
   })
-  useEffect(() => {
-    const audio = new Audio(zoopSound)
-    audio.preload = "auto"
-    audio.volume = 0.8
-    orderSuccessAudioRef.current = audio
 
-    return () => {
-      if (orderSuccessAudioRef.current) {
-        orderSuccessAudioRef.current.pause()
-        orderSuccessAudioRef.current = null
-      }
-    }
-  }, [])
 
   const [customizationSettings, setCustomizationSettings] = useState({
     cod_enabled: true,
@@ -305,12 +293,11 @@ export default function Cart() {
   }, [orderType, customizationSettings, selectedPaymentMethod])
 
   useEffect(() => {
-    if (!showOrderSuccess || !orderSuccessAudioRef.current) return
+    orderSuccessAudioRef.current = null;
+  }, [])
 
-    orderSuccessAudioRef.current.currentTime = 0
-    orderSuccessAudioRef.current.play().catch((error) => {
-      debugWarn("Order success sound blocked by browser:", error?.message || error)
-    })
+  useEffect(() => {
+    // No sound on order success
   }, [showOrderSuccess])
 
   // Auto-transition from savings congratulations to order success after 3 seconds

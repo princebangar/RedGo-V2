@@ -3197,27 +3197,6 @@ function OrdersMainInner() {
                     );
                   })()}
 
-                  {/* Customer info */}
-                  <div className="mb-4">
-                    <h4 className="text-sm font-semibold text-gray-900">
-                      {(popupOrder || newOrder)?.items?.[0]?.name ||
-                        "New Order"}
-                    </h4>
-                    <p className="text-xs text-gray-500 mt-1">
-                      {(popupOrder || newOrder)?.createdAt
-                        ? new Date(
-                          (popupOrder || newOrder).createdAt,
-                        ).toLocaleString("en-GB", {
-                          day: "numeric",
-                          month: "short",
-                          hour: "2-digit",
-                          minute: "2-digit",
-                          hour12: true,
-                        }).replace(/ am/i, ' AM').replace(/ pm/i, ' PM')
-                        : "Just now"}
-                    </p>
-                  </div>
-
                   {/* Restaurant Note */}
                   {(popupOrder || newOrder)?.restaurantNote && (
                     <div className="mb-4 bg-blue-50 border border-blue-200 rounded-lg p-3">
@@ -3235,11 +3214,25 @@ function OrdersMainInner() {
 
                   {/* Details Section — first 4 always visible, extra items expandable */}
                   {(() => {
-                    const orderItems = (popupOrder || newOrder)?.items || [];
+                    const activeOrder = popupOrder || newOrder;
+                    const orderItems = activeOrder?.items || [];
                     const ALWAYS_SHOW = 4;
                     const visibleItems = orderItems.slice(0, ALWAYS_SHOW);
                     const extraItems = orderItems.slice(ALWAYS_SHOW);
                     const hasExtra = extraItems.length > 0;
+
+                    const formattedTime = activeOrder?.createdAt
+                      ? new Date(activeOrder.createdAt)
+                          .toLocaleString("en-GB", {
+                            day: "numeric",
+                            month: "short",
+                            hour: "2-digit",
+                            minute: "2-digit",
+                            hour12: true,
+                          })
+                          .replace(/ am/i, " AM")
+                          .replace(/ pm/i, " PM")
+                      : "Just now";
 
                     const renderItem = (item, index) => (
                       <div key={index} className="flex items-start gap-3">
@@ -3268,13 +3261,16 @@ function OrdersMainInner() {
 
                     return (
                       <div className="mb-4">
-                        {/* Header */}
-                        <div className="flex items-center gap-2 py-2 border-b border-gray-200 mb-3">
-                          <svg className="w-5 h-5 text-gray-700" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                          </svg>
-                          <span className="text-sm font-semibold text-gray-900">Details</span>
-                          <span className="text-xs text-gray-500">{orderItems.length} item{orderItems.length !== 1 ? 's' : ''}</span>
+                        {/* Header with item count & order timestamp */}
+                        <div className="flex items-center justify-between py-2 border-b border-gray-200 mb-3">
+                          <div className="flex items-center gap-2">
+                            <svg className="w-5 h-5 text-gray-700" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                            </svg>
+                            <span className="text-sm font-semibold text-gray-900">Details</span>
+                            <span className="text-xs text-gray-500">({orderItems.length} item{orderItems.length !== 1 ? 's' : ''})</span>
+                          </div>
+                          <span className="text-xs font-semibold text-gray-500">{formattedTime}</span>
                         </div>
 
                         {/* Always-visible first 4 items */}

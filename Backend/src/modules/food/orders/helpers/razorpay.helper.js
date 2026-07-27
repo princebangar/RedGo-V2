@@ -125,6 +125,48 @@ export async function fetchRazorpayPaymentLink(paymentLinkId) {
 }
 
 /**
+ * Create a Dynamic Single-Use UPI QR Code via Razorpay QR Code API
+ * Scanned with PhonePe / GPay / Paytm -> Opens UPI App directly with exact amount pre-filled!
+ */
+export async function createRazorpayQrCode({
+    amountPaise,
+    name,
+    description,
+    notes = {},
+}) {
+    const instance = getRazorpayInstance();
+    if (!instance) throw new Error('Razorpay not configured');
+    const foodOrderId = notes.foodOrderId ? String(notes.foodOrderId) : '';
+
+    return instance.qrCode.create({
+        type: 'upi_qr',
+        name: name || `Order #${foodOrderId.slice(-6)}`,
+        usage: 'single_use',
+        fixed_amount: true,
+        payment_amount: Math.round(amountPaise),
+        description: description || `Payment for order ${foodOrderId}`,
+        notes: {
+            foodOrderId,
+            ...(notes || {}),
+        },
+    });
+}
+
+export async function fetchRazorpayQrCode(qrCodeId) {
+    const instance = getRazorpayInstance();
+    if (!instance) throw new Error('Razorpay not configured');
+    if (!qrCodeId) throw new Error('qrCodeId is required');
+    return instance.qrCode.fetch(String(qrCodeId));
+}
+
+export async function fetchRazorpayQrCodePayments(qrCodeId) {
+    const instance = getRazorpayInstance();
+    if (!instance) throw new Error('Razorpay not configured');
+    if (!qrCodeId) throw new Error('qrCodeId is required');
+    return instance.qrCode.fetchAllPayments(String(qrCodeId));
+}
+
+/**
  * ✅ NEW: Initiate a refund for a successful payment.
  * NON-BREAKING Extension for automated cancellation refunds.
  * @param {string} paymentId - Original Razorpay payment_id (captured)

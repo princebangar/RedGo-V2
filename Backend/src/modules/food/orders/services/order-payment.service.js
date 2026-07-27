@@ -9,7 +9,9 @@ import {
 import { logger } from '../../../../utils/logger.js';
 import {
   createPaymentLink,
+  createRazorpayQrCode,
   fetchRazorpayPaymentLink,
+  fetchRazorpayQrCodePayments,
   isRazorpayConfigured,
 } from '../helpers/razorpay.helper.js';
 import * as foodTransactionService from './foodTransaction.service.js';
@@ -26,41 +28,58 @@ async function syncRazorpayQrPayment(orderDoc) {
   if (payment.method !== 'razorpay_qr') return payment;
   if (payment.status === 'paid') return payment;
 
-  const paymentLinkId = payment?.qr?.paymentLinkId;
-  if (!paymentLinkId || !isRazorpayConfigured()) return orderDoc.payment;
+  const qrId = payment?.qr?.qrCodeId || payment?.qr?.paymentLinkId;
+  if (!qrId || !isRazorpayConfigured()) return orderDoc.payment;
 
-  let link;
+  let isPaid = false;
+
   try {
-    link = await fetchRazorpayPaymentLink(paymentLinkId);
+    if (String(qrId).startsWith('qr_')) {
+      const res = await fetchRazorpayQrCodePayments(qrId);
+      const items = Array.isArray(res?.items) ? res.items : Array.isArray(res) ? res : [];
+      const successful = items.find((p) =>
+        ['captured', 'authorized'].includes(String(p?.status || '').toLowerCase())
+      );
+      if (successful) {
+        isPaid = true;
+      }
+    } else {
+      const link = await fetchRazorpayPaymentLink(qrId);
+      const linkStatus = String(link?.status || '').toLowerCase();
+      if (['paid', 'captured', 'authorized'].includes(linkStatus)) {
+        isPaid = true;
+      }
+    }
   } catch (error) {
     logger.warn(
-      `Razorpay payment-link fetch failed for ${paymentLinkId}: ${
-        error?.message || error
-      }`,
+      `Razorpay QR status check failed for ${qrId}: ${error?.message || error}`
     );
     return orderDoc.payment;
   }
 
-  const linkStatus = String(link?.status || '').toLowerCase();
-  if (!linkStatus) return orderDoc.payment;
+  if (isPaid) {
+    await FoodOrder.updateOne(
+      { _id: orderDoc._id },
+      {
+        $set: {
+          'payment.status': 'paid',
+          'payment.paidAt': new Date(),
+        },
+      }
+    );
+    await FoodTransaction.updateOne(
+      { orderId: orderDoc._id },
+      {
+        $set: {
+          'payment.qr.status': 'paid',
+          'payment.status': 'paid',
+          'payment.paidAt': new Date(),
+        },
+      }
+    );
+  }
 
-  // Write back to FoodTransaction (ledger) only.
-  await FoodTransaction.updateOne(
-    { orderId: orderDoc?._id },
-    {
-      $set: {
-        'payment.qr.status': linkStatus,
-        'payment.status': ['paid', 'captured', 'authorized'].includes(linkStatus)
-          ? 'paid'
-          : ['expired', 'cancelled', 'canceled', 'failed'].includes(linkStatus)
-            ? 'failed'
-            : (payment.status || 'pending_qr'),
-      },
-    },
-  );
-
-  const updatedTx = await FoodTransaction.findOne({ orderId: orderDoc?._id }).lean();
-  return updatedTx?.payment || payment;
+  return payment;
 }
 
 export async function createCollectQr(
@@ -95,22 +114,64 @@ export async function createCollectQr(
   }
 
   const user = order.userId || {};
-  const link = await createPaymentLink({
-    amountPaise: Math.round(amountDue * 100),
-    currency: 'INR',
-    description: `Order ${order._id.toString()} - COD collect`,
-    orderId: order._id.toString(),
-    customerName: customerInfo.name || user.name || 'Customer',
-    customerEmail: customerInfo.email || user.email || 'customer@example.com',
-    customerPhone: customerInfo.phone || user.phone,
-    notes: {
-      foodOrderId: order._id.toString(),
-      orderDisplayId: String(order.orderId || ''),
-      purpose: 'cod_collect_qr',
-    },
-  });
+  const amountPaise = Math.round(amountDue * 100);
 
-  // Phase 2: write QR collection state into FoodTransaction only.
+  let qrData = null;
+  try {
+    // Attempt 1: Create real Dynamic UPI QR Code via Razorpay QR Code API
+    const rzQr = await createRazorpayQrCode({
+      amountPaise,
+      name: `Order #${String(order.orderId || order._id).slice(-6)}`,
+      description: `Payment for Order #${order.orderId || order._id}`,
+      notes: {
+        foodOrderId: order._id.toString(),
+        orderDisplayId: String(order.orderId || ''),
+        purpose: 'cod_collect_qr',
+      },
+    });
+
+    const directImage = rzQr.image_url || rzQr.imageUrl || rzQr.image || rzQr.short_url || rzQr.upi_link || rzQr.url;
+    logger.info(`Razorpay QR created successfully: id=${rzQr.id}, image=${directImage}`);
+
+    qrData = {
+      qrCodeId: rzQr.id,
+      paymentLinkId: rzQr.id,
+      shortUrl: directImage,
+      imageUrl: directImage,
+      status: rzQr.status || 'active',
+      expiresAt: rzQr.close_by ? new Date(rzQr.close_by * 1000) : null,
+    };
+  } catch (qrError) {
+    logger.warn(
+      `Razorpay QR Code API creation failed (${qrError?.message}), falling back to Payment Link`,
+    );
+    // Fallback: Create Payment Link
+    const link = await createPaymentLink({
+      amountPaise,
+      currency: 'INR',
+      description: `Order ${order._id.toString()} - COD collect`,
+      orderId: order._id.toString(),
+      customerName: customerInfo.name || user.name || 'Customer',
+      customerEmail: customerInfo.email || user.email || 'customer@example.com',
+      customerPhone: customerInfo.phone || user.phone,
+      notes: {
+        foodOrderId: order._id.toString(),
+        orderDisplayId: String(order.orderId || ''),
+        purpose: 'cod_collect_qr',
+      },
+    });
+
+    qrData = {
+      qrCodeId: link.id,
+      paymentLinkId: link.id,
+      shortUrl: link.short_url,
+      imageUrl: link.short_url,
+      status: link.status || 'created',
+      expiresAt: link.expire_by ? new Date(link.expire_by * 1000) : null,
+    };
+  }
+
+  // Write QR collection state into FoodTransaction
   await FoodTransaction.updateOne(
     { orderId: order._id },
     {
@@ -118,13 +179,7 @@ export async function createCollectQr(
         paymentMethod: 'razorpay_qr',
         'payment.method': 'razorpay_qr',
         'payment.status': 'pending_qr',
-        'payment.qr': {
-          paymentLinkId: link.id,
-          shortUrl: link.short_url,
-          imageUrl: link.short_url,
-          status: link.status || 'created',
-          expiresAt: link.expire_by ? new Date(link.expire_by * 1000) : null,
-        },
+        'payment.qr': qrData,
       },
     },
   );
@@ -147,26 +202,17 @@ export async function createCollectQr(
     orderMongoId: String(orderId),
     orderId: order?.orderId || null,
     deliveryPartnerId,
-    paymentLinkId: link.id,
-    shortUrl: link.short_url,
+    paymentLinkId: qrData.paymentLinkId,
+    shortUrl: qrData.shortUrl,
     amountDue,
   });
 
   return {
-    shortUrl:
-      link?.short_url ?? link?.shortUrl ?? link?.short_url_path ?? null,
-    imageUrl:
-      link?.short_url ??
-      link?.image_url ??
-      link?.imageUrl ??
-      link?.image ??
-      null,
+    shortUrl: qrData.shortUrl,
+    imageUrl: qrData.imageUrl,
+    qrCodeId: qrData.qrCodeId,
     amount: amountDue,
-    expiresAt: link?.expire_by
-      ? new Date(link.expire_by * 1000)
-      : link?.expiresAt
-        ? new Date(link.expiresAt)
-        : null,
+    expiresAt: qrData.expiresAt,
   };
 }
 

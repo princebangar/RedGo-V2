@@ -389,6 +389,42 @@ export const useDeliveryNotifications = () => {
     }, ALERT_LOOP_INTERVAL_MS);
   }, [clearAlertLoopTimer, isOrderAlertMuted, stopAlertLoop]);
   
+  const playSynthDeliveryBeep = useCallback(async () => {
+    if (typeof window === 'undefined') return;
+    try {
+      const AudioCtx = window.AudioContext || window.webkitAudioContext;
+      if (!AudioCtx) return;
+      let ctx = window.__deliverySynthCtx;
+      if (!ctx) {
+        ctx = new AudioCtx();
+        window.__deliverySynthCtx = ctx;
+      }
+      if (ctx.state === 'suspended') {
+        await ctx.resume();
+      }
+      const now = ctx.currentTime;
+      const pulses = [
+        { start: 0, duration: 0.25, freq: 880 },
+        { start: 0.28, duration: 0.25, freq: 1100 },
+        { start: 0.56, duration: 0.35, freq: 880 },
+      ];
+      pulses.forEach(({ start, duration, freq }) => {
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        osc.type = 'triangle';
+        osc.frequency.setValueAtTime(freq, now + start);
+        gain.gain.setValueAtTime(0.9, now + start);
+        gain.gain.exponentialRampToValueAtTime(0.001, now + start + duration);
+        osc.connect(gain);
+        gain.connect(ctx.destination);
+        osc.start(now + start);
+        osc.stop(now + start + duration);
+      });
+    } catch (err) {
+      debugWarn('Synth delivery beep failed:', err);
+    }
+  }, []);
+
   const playNotificationSound = useCallback((orderData = {}) => {
     if (isOrderAlertMuted(orderData)) {
       return;
@@ -398,7 +434,7 @@ export const useDeliveryNotifications = () => {
     void triggerWebViewNativeNotification(orderData).catch(() => {});
 
     try {
-      if (typeof window !== 'undefined' && window.__userHasInteracted && typeof navigator !== 'undefined' && typeof navigator.vibrate === 'function') {
+      if (typeof window !== 'undefined' && typeof navigator !== 'undefined' && typeof navigator.vibrate === 'function') {
         try {
           navigator.vibrate([200, 100, 200, 100, 300]);
         } catch (_) {}
@@ -416,33 +452,35 @@ export const useDeliveryNotifications = () => {
           audioRef.current.pause();
           audioRef.current.src = newSrc;
           audioRef.current.load();
-          debugLog('?? Audio source updated to:', selectedSound === 'original' ? 'Original' : 'Zomato Tone');
+          debugLog('Audio source updated to:', selectedSound === 'original' ? 'Original' : 'Zomato Tone');
         }
       } else {
         audioRef.current = new Audio();
         audioRef.current.src = soundFile;
         audioRef.current.preload = 'auto';
-        audioRef.current.volume = 0.9;
+        audioRef.current.volume = 1.0;
         audioRef.current.load();
-        debugLog('?? Audio initialized with:', selectedSound === 'original' ? 'Original' : 'Zomato Tone', 'Source:', soundFile);
+        debugLog('Audio initialized with:', selectedSound === 'original' ? 'Original' : 'Zomato Tone', 'Source:', soundFile);
       }
       
       if (audioRef.current) {
         audioRef.current.muted = false;
-        audioRef.current.volume = 0.9;
+        audioRef.current.volume = 1.0;
         audioRef.current.currentTime = 0;
-        audioRef.current.play().catch((error) => {
-          if (!error.message?.includes('user didn\'t interact') && !error.name?.includes('NotAllowedError')) {
-            debugWarn('Error playing notification sound:', error);
-          }
-        });
+        const p = audioRef.current.play();
+        if (p && typeof p.catch === 'function') {
+          p.catch(async (error) => {
+            debugWarn('HTML5 Audio play failed, running WebAudio synth fallback:', error);
+            await playSynthDeliveryBeep();
+          });
+        }
+      } else {
+        void playSynthDeliveryBeep();
       }
     } catch (error) {
-      if (!error.message?.includes('user didn\'t interact') && !error.name?.includes('NotAllowedError')) {
-        debugWarn('Error playing sound:', error);
-      }
+      void playSynthDeliveryBeep();
     }
-  }, [isOrderAlertMuted]);
+  }, [isOrderAlertMuted, playSynthDeliveryBeep]);
 
   const setOrderAlertMuted = useCallback(
     (orderData, nextMuted) => {
@@ -786,10 +824,27 @@ export const useDeliveryNotifications = () => {
         ? resolveAudioSource(originalSound, 'delivery-original')
         : resolveAudioSource(alertSound, 'delivery-alert');
 
+      const AudioCtx = window.AudioContext || window.webkitAudioContext;
+      if (AudioCtx) {
+        try {
+          if (!window.__deliverySynthCtx) {
+            window.__deliverySynthCtx = new AudioCtx();
+          }
+          if (window.__deliverySynthCtx.state === 'suspended') {
+            await window.__deliverySynthCtx.resume();
+          }
+          const buf = window.__deliverySynthCtx.createBuffer(1, 1, 22050);
+          const srcNode = window.__deliverySynthCtx.createBufferSource();
+          srcNode.buffer = buf;
+          srcNode.connect(window.__deliverySynthCtx.destination);
+          srcNode.start(0);
+        } catch (_) {}
+      }
+
       if (!audioRef.current) {
         audioRef.current = new Audio(soundFile);
         audioRef.current.preload = 'auto';
-        audioRef.current.volume = 0.7;
+        audioRef.current.volume = 1.0;
       }
 
       if (!audioUnlockAttemptedRef.current && audioRef.current) {
