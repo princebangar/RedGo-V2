@@ -2465,6 +2465,10 @@ export const orderAPI = {
     apiClient.post("/food/orders/calculate", payload ?? {}, {
       contextModule: "user",
     }),
+  initiateOnlinePayment: (payload) =>
+    apiClient.post("/food/orders/initiate-online-payment", payload ?? {}, {
+      contextModule: "user",
+    }),
   createOrder: (payload) =>
     apiClient.post("/food/orders", payload ?? {}, { contextModule: "user" }),
   verifyPayment: (body) =>

@@ -24,6 +24,17 @@ export async function calculateOrderController(req, res, next) {
     }
 }
 
+export async function initiateOnlinePaymentController(req, res, next) {
+    try {
+        const userId = req.user?.userId;
+        const dto = validateCreateOrderDto(req.body);
+        const result = await orderService.initiateOnlinePayment(userId, dto);
+        return sendResponse(res, 200, 'Online payment initiated', result);
+    } catch (err) {
+        next(err);
+    }
+}
+
 export async function createOrderController(req, res, next) {
     try {
         const userId = req.user?.userId;

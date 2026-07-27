@@ -71,6 +71,104 @@ export async function calculateOrder(userId, dto) {
   return calculateOrderPricing(userId, dto);
 }
 
+// Store for pending razorpay online payment intents (allows Webhook to auto-create order if user phone drops network post-payment)
+const pendingOnlinePayments = new Map();
+
+export async function createOrderFromPendingIntent(rzOrderId, rzPaymentId, rzSignature = "webhook_verified") {
+  const intent = pendingOnlinePayments.get(rzOrderId);
+  if (!intent) return null;
+  const { userId, dto } = intent;
+  dto.razorpayOrderId = rzOrderId;
+  dto.razorpayPaymentId = rzPaymentId;
+  dto.razorpaySignature = rzSignature;
+  
+  try {
+    const result = await createOrder(userId, dto);
+    pendingOnlinePayments.delete(rzOrderId);
+    return result?.order || null;
+  } catch (err) {
+    logger.error(`[PendingPaymentRecovery] Failed to create order for ${rzOrderId}: ${err?.message || err}`);
+    return null;
+  }
+}
+
+// ----- Initiate online payment (Razorpay) -----
+export async function initiateOnlinePayment(userId, dto) {
+  const restaurant = await FoodRestaurant.findById(dto.restaurantId)
+    .select("status restaurantName zoneId location isAcceptingOrders takeawaySettings addressLine1 addressLine2 area city state pincode")
+    .lean();
+  if (!restaurant) throw new ValidationError("Restaurant not found");
+  if (restaurant.status !== "approved" || restaurant.isAcceptingOrders === false)
+    throw new ValidationError("Restaurant not accepting orders");
+
+  try {
+    const { assertRestaurantOpenForOrders } = await import(
+      "../../restaurant/services/outletTimings.service.js"
+    );
+    await assertRestaurantOpenForOrders(dto.restaurantId);
+  } catch (timingError) {
+    if (timingError instanceof ValidationError) throw timingError;
+    logger.warn(
+      `[OrderInitiate] Outlet timing check skipped for ${dto.restaurantId}: ${timingError?.message || timingError}`
+    );
+  }
+
+  const onlineConfig = await FoodSystemConfig.findOne({ key: "online_payment_enabled" }).select("value").lean();
+  if (onlineConfig && onlineConfig.value === false) {
+    throw new ValidationError("Online payment is currently disabled");
+  }
+
+  const computedSubtotal = (dto.items || []).reduce((sum, item) => {
+    const price = Number(item?.price);
+    const qty = Number(item?.quantity);
+    if (!Number.isFinite(price) || !Number.isFinite(qty)) return sum;
+    return sum + Math.max(0, price) * Math.max(0, qty);
+  }, 0);
+
+  const normalizedPricing = {
+    subtotal: Number(dto.pricing?.subtotal ?? computedSubtotal),
+    tax: Number(dto.pricing?.tax ?? 0),
+    packagingFee: Number(dto.pricing?.packagingFee ?? 0),
+    deliveryFee: (dto.orderType || "delivery") === "takeaway" ? 0 : Number(dto.pricing?.deliveryFee ?? 0),
+    platformFee: Number(dto.pricing?.platformFee ?? 0),
+    discount: Number(dto.pricing?.discount ?? 0),
+    total: Number(dto.pricing?.total ?? 0),
+    currency: String(dto.pricing?.currency || "INR"),
+  };
+
+  const amountPaise = Math.round((normalizedPricing.total ?? 0) * 100);
+  if (amountPaise < 100)
+    throw new ValidationError("Amount too low for online payment");
+
+  if (!isRazorpayConfigured()) {
+    throw new ValidationError("Payment gateway is not configured");
+  }
+
+  const tempReceiptId = `rec_${Date.now()}_${Math.floor(Math.random() * 1000)}`;
+  const rzOrder = await createRazorpayOrder(amountPaise, "INR", tempReceiptId);
+
+  // Store intent for 30 minutes in case phone disconnects before frontend calls createOrder
+  pendingOnlinePayments.set(rzOrder.id, {
+    userId,
+    dto,
+    createdAt: Date.now()
+  });
+
+  // Clean up expired pending intents (> 30 mins)
+  for (const [key, val] of pendingOnlinePayments.entries()) {
+    if (Date.now() - val.createdAt > 30 * 60 * 1000) {
+      pendingOnlinePayments.delete(key);
+    }
+  }
+
+  return {
+    key: getRazorpayKeyId(),
+    orderId: rzOrder.id,
+    amount: rzOrder.amount,
+    currency: rzOrder.currency || "INR",
+  };
+}
+
 // ----- Create order -----
 export async function createOrder(userId, dto) {
   const restaurant = await FoodRestaurant.findById(dto.restaurantId)
@@ -167,13 +265,6 @@ export async function createOrder(userId, dto) {
     }
   }
 
-  if (paymentMethod === "razorpay") {
-    const onlineConfig = await FoodSystemConfig.findOne({ key: "online_payment_enabled" }).select("value").lean();
-    if (onlineConfig && onlineConfig.value === false) {
-      throw new ValidationError("Online payment is currently disabled");
-    }
-  }
-
   // Ensure pricing is present and consistent.
   const computedSubtotal = (dto.items || []).reduce((sum, item) => {
     const price = Number(item?.price);
@@ -191,6 +282,38 @@ export async function createOrder(userId, dto) {
     total: Number(dto.pricing?.total ?? 0),
     currency: String(dto.pricing?.currency || "INR"),
   };
+
+  if (paymentMethod === "razorpay") {
+    const onlineConfig = await FoodSystemConfig.findOne({ key: "online_payment_enabled" }).select("value").lean();
+    if (onlineConfig && onlineConfig.value === false) {
+      throw new ValidationError("Online payment is currently disabled");
+    }
+
+    const rzOrderId = String(dto.razorpayOrderId || "").trim();
+    const rzPaymentId = String(dto.razorpayPaymentId || "").trim();
+    const rzSignature = String(dto.razorpaySignature || "").trim();
+
+    if (!rzOrderId || !rzPaymentId || !rzSignature) {
+      throw new ValidationError("Payment details (razorpayOrderId, razorpayPaymentId, razorpaySignature) are required for online payment");
+    }
+
+    const valid = verifyPaymentSignature(rzOrderId, rzPaymentId, rzSignature);
+    if (!valid) throw new ValidationError("Payment verification failed: Invalid signature");
+
+    if (isRazorpayConfigured()) {
+      try {
+        const rzPayment = await fetchRazorpayPayment(rzPaymentId);
+        const expectedPaise = Math.round(Number(normalizedPricing.total ?? 0) * 100);
+        assertRazorpayPaymentMatches(rzPayment, {
+          orderId: rzOrderId,
+          amountPaise: expectedPaise,
+        });
+      } catch (err) {
+        throw new ValidationError(err?.message || "Payment verification failed");
+      }
+    }
+  }
+
   const computedTotal = Math.max(
     0,
     (Number.isFinite(normalizedPricing.subtotal)
@@ -217,11 +340,18 @@ export async function createOrder(userId, dto) {
     normalizedPricing.total = computedTotal;
   }
 
+  const isPaidOnline = paymentMethod === "razorpay";
+
   const payment = {
     method: paymentMethod,
-    status: isCash ? "cod_pending" : isWallet ? "paid" : "created",
-    amountDue: normalizedPricing.total ?? 0,
-    razorpay: {},
+    status: isCash ? "cod_pending" : (isWallet || isPaidOnline) ? "paid" : "created",
+    amountDue: (isWallet || isPaidOnline) ? 0 : (normalizedPricing.total ?? 0),
+    razorpay: isPaidOnline ? {
+      orderId: String(dto.razorpayOrderId || "").trim(),
+      paymentId: String(dto.razorpayPaymentId || "").trim(),
+      signature: String(dto.razorpaySignature || "").trim(),
+      paidAt: new Date()
+    } : {},
     qr: {},
   };
 
@@ -417,31 +547,6 @@ export async function createOrder(userId, dto) {
   });
 
   let razorpayPayload = null;
-
-  if (paymentMethod === "razorpay" && isRazorpayConfigured()) {
-    const amountPaise = Math.round((normalizedPricing.total ?? 0) * 100);
-    if (amountPaise < 100)
-      throw new ValidationError("Amount too low for online payment");
-    try {
-      const rzOrder = await createRazorpayOrder(amountPaise, "INR", order._id.toString());
-      razorpayPayload = {
-        key: getRazorpayKeyId(),
-        orderId: rzOrder.id,
-        amount: rzOrder.amount,
-        currency: rzOrder.currency || "INR",
-      };
-      // Persist on both local snapshot AND the Mongoose document (mutation after
-      // `new FoodOrder({ payment })` alone does not always update nested paths).
-      payment.razorpay = { orderId: rzOrder.id, paymentId: "", signature: "" };
-      payment.status = "created";
-      order.payment = order.payment || {};
-      order.payment.razorpay = { orderId: rzOrder.id, paymentId: "", signature: "" };
-      order.payment.status = "created";
-      order.markModified("payment");
-    } catch (err) {
-      throw new ValidationError(err?.message || "Payment gateway error");
-    }
-  }
 
   await order.save();
 

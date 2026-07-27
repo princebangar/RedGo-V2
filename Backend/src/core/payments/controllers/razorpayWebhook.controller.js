@@ -2,6 +2,7 @@ import crypto from 'crypto';
 import { FoodOrder } from '../../../modules/food/orders/models/order.model.js';
 import { FoodTransaction } from '../../../modules/food/orders/models/foodTransaction.model.js';
 import * as foodTransactionService from '../../../modules/food/orders/services/foodTransaction.service.js';
+import * as orderService from '../../../modules/food/orders/services/order.service.js';
 import { config } from '../../../config/env.js';
 import { logger } from '../../../utils/logger.js';
 
@@ -84,7 +85,19 @@ export const handleRazorpayWebhook = async (req, res) => {
             const rzOrderId = paymentObj.order_id;
             const rzPaymentId = paymentObj.id;
 
-            const order = await findFoodOrderForRazorpayOrderId(rzOrderId);
+            let order = await findFoodOrderForRazorpayOrderId(rzOrderId);
+            if (!order) {
+                // If phone dropped network post-payment, recover order from pending intent
+                try {
+                    order = await orderService.createOrderFromPendingIntent(rzOrderId, rzPaymentId);
+                    if (order) {
+                        logger.info(`Webhook [payment.captured]: Auto-created Order ${order._id} from Pending Intent`);
+                    }
+                } catch (recoveryErr) {
+                    logger.error(`Webhook Auto-Create Error for ${rzOrderId}: ${recoveryErr?.message || recoveryErr}`);
+                }
+            }
+
             if (order) {
                 // Also persist orderId if missing (legacy orders)
                 if (rzOrderId && !order.payment?.razorpay?.orderId) {
@@ -99,7 +112,7 @@ export const handleRazorpayWebhook = async (req, res) => {
                 );
                 logger.info(`Webhook [payment.captured]: Synced Order ${order.orderId || order._id} (Status=paid)`);
             } else {
-                logger.warn(`Webhook [payment.captured]: Order not found for RZ-Order: ${rzOrderId}`);
+                logger.warn(`Webhook [payment.captured]: Order not found & no pending intent for RZ-Order: ${rzOrderId}`);
             }
         }
 
