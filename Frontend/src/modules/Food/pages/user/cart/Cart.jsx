@@ -2132,15 +2132,12 @@ export default function Cart() {
         return
       }
 
-      // Create order in backend
-      const orderResponse = await orderAPI.createOrder(orderPayload)
-
-      debugLog("? Order created successfully:", orderResponse.data)
-
-      const { order, razorpay } = orderResponse.data.data
-
       // Cash flow: order placed without online payment
       if (selectedPaymentMethod === "cash") {
+        const orderResponse = await orderAPI.createOrder(orderPayload)
+        debugLog("? Cash order created successfully:", orderResponse.data)
+        const { order } = orderResponse.data.data
+
         toast.success("Order placed with Cash on Delivery")
         setPlacedOrderId(order?._id || order?.orderId || order?.id || null)
         setOrderSuccessSavingsAmount(platformPricingSavings.totalSavings > 0 ? platformPricingSavings.totalSavings : 0)
@@ -2165,8 +2162,12 @@ export default function Cart() {
         return
       }
 
-      // Wallet flow: order placed with wallet payment (already processed in backend)
+      // Wallet flow: order placed with wallet payment
       if (selectedPaymentMethod === "wallet") {
+        const orderResponse = await orderAPI.createOrder(orderPayload)
+        debugLog("? Wallet order created successfully:", orderResponse.data)
+        const { order } = orderResponse.data.data
+
         toast.success("Order placed with Wallet payment")
         setPlacedOrderId(order?._id || order?.orderId || order?.id || null)
         setOrderSuccessSavingsAmount(platformPricingSavings.totalSavings > 0 ? platformPricingSavings.totalSavings : 0)
@@ -2200,12 +2201,18 @@ export default function Cart() {
         return
       }
 
+      // Online payment (Razorpay) flow: Initiate payment order FIRST (no DB order created yet)
+      const initiateResponse = await orderAPI.initiateOnlinePayment(orderPayload)
+      debugLog("? Online payment initiated successfully:", initiateResponse.data)
+
+      const razorpay = initiateResponse.data.data
+
       if (!razorpay || !razorpay.orderId || !razorpay.key) {
-        debugError("? Razorpay initialization failed:", { razorpay, order })
-        throw new Error(razorpay ? "Razorpay payment gateway is not configured. Please contact support." : "Failed to initialize payment")
+        debugError("? Razorpay initialization failed:", { razorpay })
+        throw new Error("Failed to initialize payment gateway. Please contact support.")
       }
 
-      debugLog("?? Razorpay order created:", {
+      debugLog("?? Razorpay gateway order created:", {
         orderId: razorpay.orderId,
         amount: razorpay.amount,
         currency: razorpay.currency,
@@ -2221,64 +2228,50 @@ export default function Cart() {
       // Format phone number (remove non-digits, take last 10 digits)
       const formattedPhone = userPhone.replace(/\D/g, "").slice(-10)
 
-      debugLog("?? User info for payment:", {
-        name: userName,
-        email: userEmail,
-        phone: formattedPhone
-      })
-
       // Get company name for Razorpay
       const companyName = await getCompanyNameAsync()
 
-      // Flag to prevent double-cancellation (Razorpay can fire both onError + onClose)
+      // Flag to prevent duplicate execution (onError + onClose)
       let paymentHandled = false
 
-      // Initialize Razorpay payment
+      // Initialize Razorpay payment modal
       await initRazorpayPayment({
         key: razorpay.key,
         amount: razorpay.amount, // Already in paise from backend
         currency: razorpay.currency || 'INR',
         order_id: razorpay.orderId,
         name: companyName,
-        description: `Order ${order._id || order.orderId} - ${RUPEE_SYMBOL}${(razorpay.amount / 100).toFixed(2)}`,
+        description: `Order Payment - ${RUPEE_SYMBOL}${(razorpay.amount / 100).toFixed(2)}`,
         prefill: {
           name: userName,
           email: userEmail,
           contact: formattedPhone
         },
         notes: {
-          orderId: order._id || order.orderId,
           userId: userInfo.id || "",
-          restaurantId: restaurantId || "unknown"
+          restaurantId: finalRestaurantId || "unknown"
         },
         handler: async (response) => {
           paymentHandled = true
           try {
-            debugLog("? Payment successful, verifying...", {
+            debugLog("? Payment successful, creating order in DB...", {
               razorpay_order_id: response.razorpay_order_id,
               razorpay_payment_id: response.razorpay_payment_id
             })
 
-            // Verify payment with backend
-            const verifyOrderId = order?._id || order?.id || order?.orderMongoId
-            if (!verifyOrderId) {
-              throw new Error("Unable to verify payment: missing order id from create-order response")
-            }
-            const verifyResponse = await orderAPI.verifyPayment({
-              orderId: verifyOrderId,
+            // Now create the order in DB with payment signature verification
+            const createOrderPayload = {
+              ...orderPayload,
               razorpayOrderId: response.razorpay_order_id,
               razorpayPaymentId: response.razorpay_payment_id,
-              razorpaySignature: response.razorpay_signature
-            })
+              razorpaySignature: response.razorpay_signature,
+            }
 
-            debugLog("? Payment verification response:", verifyResponse.data)
+            const createResponse = await orderAPI.createOrder(createOrderPayload)
+            debugLog("? Order created after payment:", createResponse.data)
 
-            if (verifyResponse.data.success) {
-              // Payment successful
-              debugLog("?? Order placed successfully:", {
-                orderId: order._id || order.orderId,
-                paymentId: verifyResponse.data.data?.payment?.paymentId
-              })
+            if (createResponse.data?.success) {
+              const { order } = createResponse.data.data
               setPlacedOrderId(order._id || order.orderId)
               setOrderSuccessSavingsAmount(platformPricingSavings.totalSavings > 0 ? platformPricingSavings.totalSavings : 0)
               if (platformPricingSavings.totalSavings > 0) {
@@ -2291,12 +2284,19 @@ export default function Cart() {
               }
               window.dispatchEvent(new CustomEvent('order-placed', { detail: { order } }))
               clearCart()
+              setRestaurantNote("")
+              setShowRestaurantNoteInput(false)
+              try {
+                window.localStorage.removeItem(CART_ORDER_NOTE_STORAGE_KEY)
+              } catch {
+                // ignore
+              }
               setIsPlacingOrder(false)
             } else {
-              throw new Error(verifyResponse.data.message || "Payment verification failed")
+              throw new Error(createResponse.data?.message || "Payment verified but order creation failed")
             }
           } catch (error) {
-            debugError("? Payment verification error:", error)
+            debugError("? Order creation after payment error:", error)
             const errorMessage =
               error?.response?.data?.message ||
               error?.response?.data?.error?.message ||
@@ -2311,18 +2311,6 @@ export default function Cart() {
           if (paymentHandled) return
           paymentHandled = true
           debugError("? Razorpay payment error:", error)
-          // Auto-cancel the unpaid order in backend
-          const cancelOrderId = order?._id || order?.id || order?.orderMongoId
-          if (cancelOrderId) {
-            try {
-              await orderAPI.cancelOrder(cancelOrderId, {
-                reason: "Payment failed or was not completed"
-              })
-            } catch (cancelErr) {
-              debugError("Failed to cancel unpaid order:", cancelErr)
-            }
-          }
-          // Don't show alert for user cancellation
           if (error?.code !== 'PAYMENT_CANCELLED' && error?.message !== 'PAYMENT_CANCELLED') {
             const errorMessage = error?.description || error?.message || "Payment failed. Please try again."
             alert(errorMessage)
@@ -2334,20 +2322,8 @@ export default function Cart() {
         onClose: async () => {
           if (paymentHandled) return
           paymentHandled = true
-          debugLog("?? Payment modal closed by user")
-          // Auto-cancel the unpaid order since user left without paying
-          const cancelOrderId = order?._id || order?.id || order?.orderMongoId
-          if (cancelOrderId) {
-            try {
-              await orderAPI.cancelOrder(cancelOrderId, {
-                reason: "User closed payment gateway without paying"
-              })
-              toast.info("Payment was not completed. No order has been placed.")
-            } catch (cancelErr) {
-              debugError("Failed to cancel unpaid order:", cancelErr)
-              toast.warning("Payment was not completed. If you see a pending order, please cancel it manually.")
-            }
-          }
+          debugLog("?? Payment modal closed by user - no DB order was created")
+          toast.info("Payment was not completed. No order has been placed.")
           setIsPlacingOrder(false)
         }
       })
