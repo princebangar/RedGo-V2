@@ -61,7 +61,7 @@ export default function HomeHeader({
     pollMs: 60000,
     enabled: isTabActive,
   });
-  const [localUnread, setLocalUnread] = useState(() => {
+  const readUnreadFromStorage = () => {
     try {
       const saved = JSON.parse(localStorage.getItem('food_user_notifications') || '[]')
       if (!Array.isArray(saved)) return 0
@@ -76,13 +76,23 @@ export default function HomeHeader({
         return true
       }).length
     } catch { return 0 }
-  });
+  }
+
+  const [localUnread, setLocalUnread] = useState(readUnreadFromStorage);
 
   useEffect(() => {
-    const handler = (e) => setLocalUnread(e.detail?.count ?? 0)
+    const handler = (e) => setLocalUnread(e?.detail?.count ?? readUnreadFromStorage())
     window.addEventListener('notificationsUpdated', handler)
-    return () => window.removeEventListener('notificationsUpdated', handler)
+    window.addEventListener('focus', handler)
+    return () => {
+      window.removeEventListener('notificationsUpdated', handler)
+      window.removeEventListener('focus', handler)
+    }
   }, []);
+
+  useEffect(() => {
+    setLocalUnread(readUnreadFromStorage())
+  }, [routerLocation.pathname]);
 
   const unreadCount = broadcastUnread + localUnread;
 

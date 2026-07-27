@@ -157,6 +157,7 @@ export default function useNotificationInbox(module, options = {}) {
             unreadCount: Math.max(0, Number(cached.unreadCount || 0) - 1),
           });
         }
+        dispatchNotificationInboxRefresh();
       } catch {
         fetchInbox({ force: true });
       }
@@ -174,21 +175,23 @@ export default function useNotificationInbox(module, options = {}) {
       }
       try {
         await notificationAPI.dismiss(id, { contextModule: module });
-        fetchInbox({ force: true });
+        inboxSharedCache.delete(cacheKey);
+        dispatchNotificationInboxRefresh();
       } catch {
         fetchInbox({ force: true });
       }
     },
-    [fetchInbox, items, module],
+    [cacheKey, fetchInbox, items, module],
   );
 
   const dismissAll = useCallback(async () => {
     if (!module) return;
     setItems([]);
     setUnreadCount(0);
+    inboxSharedCache.delete(cacheKey);
     try {
       await notificationAPI.dismissAll({ contextModule: module });
-      inboxSharedCache.delete(cacheKey);
+      dispatchNotificationInboxRefresh();
     } catch {
       fetchInbox({ force: true });
     }
