@@ -168,12 +168,35 @@ export default function Notifications() {
       markBroadcastAsRead(id)
       return
     }
-    setNotificationsList((prev) => prev.map((n) => (n.id === id ? { ...n, read: true } : n)))
+    setNotificationsList((prev) => {
+      const next = prev.map((n) => (n.id === id ? { ...n, read: true } : n))
+      try {
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(next))
+      } catch {
+        /* ignore */
+      }
+      window.dispatchEvent(
+        new CustomEvent("notificationsUpdated", {
+          detail: { count: next.filter((n) => !n.read).length },
+        }),
+      )
+      return next
+    })
   }
 
   const handleClearAll = () => {
     setNotificationsList([])
+    try {
+      localStorage.setItem(STORAGE_KEY, "[]")
+    } catch {
+      /* ignore */
+    }
     dismissAllBroadcastNotifications()
+    window.dispatchEvent(
+      new CustomEvent("notificationsUpdated", {
+        detail: { count: 0 },
+      }),
+    )
   }
 
   const handleDeleteOne = (id, source = "local") => {
@@ -181,7 +204,20 @@ export default function Notifications() {
       dismissBroadcastNotification(id)
       return
     }
-    setNotificationsList((prev) => prev.filter((notification) => notification.id !== id))
+    setNotificationsList((prev) => {
+      const next = prev.filter((notification) => notification.id !== id)
+      try {
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(next))
+      } catch {
+        /* ignore */
+      }
+      window.dispatchEvent(
+        new CustomEvent("notificationsUpdated", {
+          detail: { count: next.filter((n) => !n.read).length },
+        }),
+      )
+      return next
+    })
   }
 
   return (
