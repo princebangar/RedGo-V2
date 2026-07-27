@@ -98,13 +98,21 @@ export const useUserNotifications = () => {
     socketRef.current.on('order_status_update', (data) => {
       debugLog('🔔 Order status update received:', data);
       
-      const title = data.title || `Order #${data.orderId || 'Update'}`;
+      const rawId = String(data.displayOrderId || data.orderDisplayId || data.orderId || '');
+      const readableId = rawId.length > 20
+        ? `FOD-${rawId.slice(-6).toUpperCase()}`
+        : rawId || 'Update';
+
+      const rawTitle = String(data.title || '');
+      const title = (rawTitle && (!data.orderId || !rawTitle.includes(data.orderId) || String(data.orderId).length <= 20))
+        ? rawTitle
+        : `Order #${readableId}`;
       const message = data.message || `Your order status is now ${String(data.orderStatus || '').replace(/_/g, ' ')}`;
 
       const isImportant = String(data.orderStatus).includes('cancel') ||
         ['ready_for_pickup', 'ready', 'confirmed', 'delivered', 'out_for_delivery'].includes(data.orderStatus);
 
-      const statusKey = `${String(data.orderId || '')}:${String(data.orderStatus || '')}`;
+      const statusKey = `${readableId}:${String(data.orderStatus || '')}`;
       const now = Date.now();
       const isDuplicateStatusToast =
         statusKey &&
@@ -126,7 +134,7 @@ export const useUserNotifications = () => {
       const event = new CustomEvent('orderStatusNotification', {
         detail: {
           orderMongoId: data.orderMongoId,
-          orderId: data.orderId,
+          orderId: readableId,
           status: data.orderStatus,
           orderStatus: data.orderStatus, // Ensure compatibility with different UI checks
           title,

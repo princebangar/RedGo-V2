@@ -217,9 +217,11 @@ function emitOrderUpdate(order, deliveryPartnerId, options = {}) {
     if (io) {
       const dv =
         order.deliveryVerification?.toObject?.() || order.deliveryVerification;
+      const readableId = order.orderId || (order._id ? `FOD-${order._id.toString().slice(-6).toUpperCase()}` : '');
       const payload = {
         orderMongoId: order._id?.toString?.(),
-        orderId: order._id.toString(),
+        orderId: readableId,
+        displayOrderId: readableId,
         orderStatus: order.orderStatus,
         deliveryState: order.deliveryState,
         deliveryVerification: dv,

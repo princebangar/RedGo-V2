@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { 
+import {
   ShieldCheck, DollarSign, CheckCircle2,
   QrCode, Loader2, X, RefreshCw, Package
 } from 'lucide-react';
@@ -10,11 +10,11 @@ import { showUserFacingApiError } from '@/shared/utils/apiError';
 import { ActionSlider } from '@/modules/DeliveryV2/components/ui/ActionSlider';
 
 const Backdrop = ({ onClose }) => (
-  <motion.div 
-    initial={{ opacity: 0 }} 
-    animate={{ opacity: 1 }} 
+  <motion.div
+    initial={{ opacity: 0 }}
+    animate={{ opacity: 1 }}
     exit={{ opacity: 0 }}
-    className="absolute inset-0 bg-black/40 -z-10 pointer-events-auto" 
+    className="absolute inset-0 bg-black/40 -z-10 pointer-events-auto"
     onClick={onClose}
   />
 );
@@ -104,22 +104,22 @@ const OtpModal = ({ order, onVerified, onClose }) => {
   return (
     <div className="fixed inset-0 z-120 p-0 sm:p-4 flex items-end justify-center pointer-events-none">
       <Backdrop onClose={onClose} />
-      <motion.div 
+      <motion.div
         initial={{ y: '100%' }} animate={{ y: 0 }} exit={{ y: '100%' }}
         className="w-full max-w-md sm:max-w-lg bg-white rounded-t-3xl sm:rounded-t-[2.5rem] shadow-[0_-20px_60px_rgba(0,0,0,0.3)] p-4 sm:p-6 pb-6 sm:pb-12 pointer-events-auto max-h-[84vh] overflow-y-auto"
       >
         <div className="w-12 h-1.5 bg-gray-200 rounded-full mx-auto mb-6" />
         <div className="flex justify-between items-center mb-6">
-           <div className="flex items-center gap-3">
-             <div className={`w-12 h-12 rounded-2xl flex items-center justify-center ${isOtpVerified ? 'bg-green-100 text-green-600' : 'bg-gray-100 text-gray-500'}`}>
-               <ShieldCheck className="w-7 h-7" />
-             </div>
-             <div>
-               <h2 className="text-xl font-bold text-gray-900">Handover Code</h2>
-               <p className="text-[10px] font-bold uppercase tracking-widest text-gray-400">Step 1 of Verification</p>
-             </div>
-           </div>
-           <button onClick={onClose} className="p-2 bg-gray-50 rounded-full text-gray-400 hover:text-gray-600"><X className="w-5 h-5"/></button>
+          <div className="flex items-center gap-3">
+            <div className={`w-12 h-12 rounded-2xl flex items-center justify-center ${isOtpVerified ? 'bg-green-100 text-green-600' : 'bg-gray-100 text-gray-500'}`}>
+              <ShieldCheck className="w-7 h-7" />
+            </div>
+            <div>
+              <h2 className="text-xl font-bold text-gray-900">Handover Code</h2>
+              <p className="text-[10px] font-bold uppercase tracking-widest text-gray-400">Step 1 of Verification</p>
+            </div>
+          </div>
+          <button onClick={onClose} className="p-2 bg-gray-50 rounded-full text-gray-400 hover:text-gray-600"><X className="w-5 h-5" /></button>
         </div>
 
         <DeliveryInstructionsPanel note={order?.note} />
@@ -134,16 +134,15 @@ const OtpModal = ({ order, onVerified, onClose }) => {
               value={digit}
               onChange={(e) => handleOtpChange(i, e.target.value)}
               onKeyDown={(e) => handleKeyDown(i, e)}
-              className={`w-12 sm:w-14 h-16 sm:h-18 bg-gray-50 border-2 rounded-2xl text-center text-2xl sm:text-3xl font-bold transition-all ${
-                isOtpVerified ? 'border-green-500 bg-green-50 text-green-700' : 'border-gray-200 focus:border-green-600 text-gray-700'
-              }`}
+              className={`w-12 sm:w-14 h-16 sm:h-18 bg-gray-50 border-2 rounded-2xl text-center text-2xl sm:text-3xl font-bold transition-all ${isOtpVerified ? 'border-green-500 bg-green-50 text-green-700' : 'border-gray-200 focus:border-green-600 text-gray-700'
+                }`}
             />
           ))}
         </div>
 
-        <ActionSlider 
+        <ActionSlider
           key="action-otp"
-          label={isVerifyingOtp ? "Verifying..." : isAlreadyVerified ? "Code already verified ✓" : "Slide to Verify OTP"} 
+          label={isVerifyingOtp ? "Verifying..." : isAlreadyVerified ? "Code already verified ✓" : "Slide to Verify OTP"}
           successLabel="Verified!"
           disabled={otp.some(d => !d) || isVerifyingOtp || isOtpVerified || isAlreadyVerified}
           onConfirm={verifyOtp}
@@ -177,7 +176,7 @@ const PaymentModal = ({ order, otpString, onComplete, onClose }) => {
         // toast.success("Payment Received Successfully!");
         setShowQrModal(false);
       }
-    } catch (e) {}
+    } catch (e) { }
   }, [orderId]);
 
   const handleManualCheck = async () => {
@@ -200,7 +199,8 @@ const PaymentModal = ({ order, otpString, onComplete, onClose }) => {
         name: order.userName || 'Customer',
         phone: order.userPhone || ''
       });
-      const link = res?.data?.data?.shortUrl || res?.data?.shortUrl || null;
+      const data = res?.data?.data || res?.data || {};
+      const link = data.imageUrl || data.shortUrl || data.image || null;
       if (link) {
         setCollectQrLink(link);
         setPaymentStatus('pending');
@@ -234,81 +234,79 @@ const PaymentModal = ({ order, otpString, onComplete, onClose }) => {
     <>
       <div className="fixed inset-0 z-120 p-0 sm:p-4 flex items-end justify-center pointer-events-none">
         <Backdrop onClose={onClose} />
-        <motion.div 
+        <motion.div
           initial={{ y: '100%' }} animate={{ y: 0 }} exit={{ y: '100%' }}
           className="w-full max-w-md sm:max-w-lg bg-white rounded-t-3xl sm:rounded-t-[2.5rem] shadow-[0_-20px_60px_rgba(0,0,0,0.3)] p-4 sm:p-6 pb-6 sm:pb-12 pointer-events-auto max-h-[84vh] overflow-y-auto"
         >
           <div className="w-12 h-1.5 bg-gray-200 rounded-full mx-auto mb-6" />
           <div className="flex justify-between items-center mb-6">
-             <div className="flex items-center gap-3">
-               <div className={`w-12 h-12 rounded-2xl flex items-center justify-center ${isPaid ? 'bg-green-100 text-green-600' : 'bg-amber-100 text-amber-600'}`}>
-                 <DollarSign className="w-7 h-7" />
-               </div>
-               <div>
-                 <h2 className="text-xl font-bold text-gray-900">Collect Payment</h2>
-                 <p className="text-[10px] font-bold uppercase tracking-widest text-gray-400">Step 2 of Verification</p>
-               </div>
-             </div>
-             <button onClick={onClose} className="p-2 bg-gray-50 rounded-full text-gray-400 hover:text-gray-600"><X className="w-5 h-5"/></button>
+            <div className="flex items-center gap-3">
+              <div className={`w-12 h-12 rounded-2xl flex items-center justify-center ${isPaid ? 'bg-green-100 text-green-600' : 'bg-amber-100 text-amber-600'}`}>
+                <DollarSign className="w-7 h-7" />
+              </div>
+              <div>
+                <h2 className="text-xl font-bold text-gray-900">Collect Payment</h2>
+                <p className="text-[10px] font-bold uppercase tracking-widest text-gray-400">Step 2 of Verification</p>
+              </div>
+            </div>
+            <button onClick={onClose} className="p-2 bg-gray-50 rounded-full text-gray-400 hover:text-gray-600"><X className="w-5 h-5" /></button>
           </div>
 
           <DeliveryInstructionsPanel note={order?.note} />
 
           <div className="bg-amber-50 rounded-3xl p-4 sm:p-6 border border-amber-100 mb-6 sm:mb-8">
-             <div className="flex justify-between items-center mb-6">
-               <div>
-                 <p className="text-amber-700 text-[10px] font-bold uppercase tracking-widest mb-1">
-                    {isPaid ? "Amount Paid Online" : "Cash to Collect"}
-                 </p>
-                 <p className="text-amber-950 text-3xl sm:text-4xl font-bold">₹{amountToCollect.toFixed(2)}</p>
-               </div>
-               {isPaid && <div className="bg-green-500 text-white px-4 py-2 rounded-full text-[10px] font-bold">PAID ✓</div>}
-             </div>
+            <div className="flex justify-between items-center mb-6">
+              <div>
+                <p className="text-amber-700 text-[10px] font-bold uppercase tracking-widest mb-1">
+                  {isPaid ? "Amount Paid Online" : "Cash to Collect"}
+                </p>
+                <p className="text-amber-950 text-3xl sm:text-4xl font-bold">₹{amountToCollect.toFixed(2)}</p>
+              </div>
+              {isPaid && <div className="bg-green-500 text-white px-4 py-2 rounded-full text-[10px] font-bold">PAID ✓</div>}
+            </div>
 
-              {!isPaid && (
-                <div className="space-y-3">
-                  <button 
-                    onClick={handleQrSelection}
-                    disabled={isGeneratingQr}
-                    className={`w-full py-3.5 sm:py-4 border-2 rounded-2xl font-bold text-[11px] sm:text-xs uppercase tracking-widest flex items-center justify-center gap-2 transition-all ${
-                      !isCashPayment && paymentStatus === 'pending'
-                        ? 'bg-amber-100 border-amber-400 text-amber-900 shadow-inner'
-                        : 'bg-white border-amber-200 text-amber-800'
+            {!isPaid && (
+              <div className="space-y-3">
+                <button
+                  onClick={handleQrSelection}
+                  disabled={isGeneratingQr}
+                  className={`w-full py-3.5 sm:py-4 border-2 rounded-2xl font-bold text-[11px] sm:text-xs uppercase tracking-widest flex items-center justify-center gap-2 transition-all ${!isCashPayment && paymentStatus === 'pending'
+                    ? 'bg-amber-100 border-amber-400 text-amber-900 shadow-inner'
+                    : 'bg-white border-amber-200 text-amber-800'
                     }`}
-                  >
-                    {isGeneratingQr ? <Loader2 className="w-4 h-4 animate-spin" /> : <QrCode className="w-5 h-5" />}
-                    {paymentStatus === 'pending' && !isCashPayment ? 'QR Active - Waiting...' : 'Show Payment QR'}
-                  </button>
+                >
+                  {isGeneratingQr ? <Loader2 className="w-4 h-4 animate-spin" /> : <QrCode className="w-5 h-5" />}
+                  {paymentStatus === 'pending' && !isCashPayment ? 'QR Active - Waiting...' : 'Show Payment QR'}
+                </button>
 
-                  <button
-                    onClick={handleCashSelection}
-                    className={`w-full py-3.5 sm:py-4 border-2 rounded-2xl font-bold text-[11px] sm:text-xs uppercase tracking-widest flex items-center justify-center gap-2 transition-all ${
-                      isCashPayment
-                        ? 'bg-[#15498b] border-[#15498b] text-white shadow-lg shadow-[#15498b]/30'
-                        : 'bg-white border-amber-200 text-amber-800'
+                <button
+                  onClick={handleCashSelection}
+                  className={`w-full py-3.5 sm:py-4 border-2 rounded-2xl font-bold text-[11px] sm:text-xs uppercase tracking-widest flex items-center justify-center gap-2 transition-all ${isCashPayment
+                    ? 'bg-[#15498b] border-[#15498b] text-white shadow-lg shadow-[#15498b]/30'
+                    : 'bg-white border-amber-200 text-amber-800'
                     }`}
-                  >
-                    <DollarSign className="w-5 h-5" />
-                    Cash Payment
-                  </button>
-                </div>
-              )}
+                >
+                  <DollarSign className="w-5 h-5" />
+                  Cash Payment
+                </button>
+              </div>
+            )}
           </div>
 
           {/* If the driver collects physical cash, they can directly slide this, bypassing QR. Unless cash is selected or it's paid, lock slider. */}
-            <ActionSlider 
+          <ActionSlider
             key="action-payment"
-            label={isCashPayment ? "Slide to Confirm Cash" : "Slide to Complete Order"} 
+            label={isCashPayment ? "Slide to Confirm Cash" : "Slide to Complete Order"}
             successLabel="Delivered! ✓"
             disabled={!isPaid && !isCashPayment}
             onConfirm={async () => {
-                try {
-                    // Pass the payment method to completion if needed
-                    await onComplete(otpString, isCashPayment ? 'cash' : 'qr');
-                } catch (e) {
-                    // Slider handles reset
-                    throw e;
-                }
+              try {
+                // Pass the payment method to completion if needed
+                await onComplete(otpString, isCashPayment ? 'cash' : 'qr');
+              } catch (e) {
+                // Slider handles reset
+                throw e;
+              }
             }}
             color="bg-green-600"
           />
@@ -317,33 +315,41 @@ const PaymentModal = ({ order, otpString, onComplete, onClose }) => {
 
       <AnimatePresence>
         {showQrModal && (
-          <motion.div 
+          <motion.div
             initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
             className="fixed inset-0 z-200 bg-black/80 flex items-center justify-center p-4 sm:p-6 pointer-events-auto"
             onClick={() => setShowQrModal(false)}
           >
-            <motion.div 
+            <motion.div
               initial={{ scale: 0.9, y: 20 }} animate={{ scale: 1, y: 0 }}
               className="bg-white w-full max-w-sm rounded-3xl p-5 sm:p-8 flex flex-col items-center text-center shadow-2xl"
               onClick={e => e.stopPropagation()}
             >
               <h3 className="text-gray-950 font-bold text-xl mb-2">Scan to Pay</h3>
               <p className="text-gray-500 text-sm mb-8 font-medium">Order Total: ₹{amountToCollect.toFixed(2)}</p>
-              
-              <div className="flex flex-col items-center gap-6 bg-gray-50 rounded-3xl border-2 border-gray-100 p-6 mb-8 w-full">
-                 <img 
-                   src={`https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=${encodeURIComponent(collectQrLink)}`} 
-                   alt="Razorpay QR"
-                   className="w-44 h-44 sm:w-56 sm:h-56 mix-blend-multiply"
-                 />
-                 <button
-                    onClick={handleManualCheck}
-                    disabled={isSyncing}
-                    className="flex gap-2 items-center bg-[#15498b] hover:bg-[#0f3568] text-white px-6 py-3 rounded-2xl text-xs font-black uppercase tracking-widest shadow-lg shadow-[#15498b]/30 active:scale-95 transition-all disabled:opacity-60"
-                 >
-                    {isSyncing ? <Loader2 className="w-4 h-4 animate-spin" /> : <RefreshCw className="w-4 h-4" />}
-                    Check Payment Status
-                 </button>
+              <div className="flex flex-col items-center gap-4 bg-gray-50 rounded-3xl border-2 border-gray-100 p-3 sm:p-4 mb-4 w-full">
+                <div className="relative w-64 h-64 sm:w-72 sm:h-72 rounded-2xl border-2 border-gray-200 bg-white shadow-sm overflow-hidden flex items-center justify-center p-1.5">
+                  <img
+                    src={
+                      collectQrLink?.startsWith('http') || collectQrLink?.startsWith('data:')
+                        ? collectQrLink
+                        : `https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=${encodeURIComponent(collectQrLink)}`
+                    }
+                    alt="Razorpay QR"
+                    className={`w-full h-full ${collectQrLink?.startsWith('http') || collectQrLink?.startsWith('data:')
+                      ? 'object-cover scale-[1.60] -translate-y-[6%] translate-x-[0.8%] origin-center'
+                      : 'object-contain p-2'
+                      }`}
+                  />
+                </div>
+                <button
+                  onClick={handleManualCheck}
+                  disabled={isSyncing}
+                  className="flex gap-2 items-center bg-[#15498b] hover:bg-[#0f3568] text-white px-6 py-3 rounded-2xl text-xs font-black uppercase tracking-widest shadow-lg shadow-[#15498b]/30 active:scale-95 transition-all disabled:opacity-60"
+                >
+                  {isSyncing ? <Loader2 className="w-4 h-4 animate-spin" /> : <RefreshCw className="w-4 h-4" />}
+                  Check Payment Status
+                </button>
               </div>
 
               <button
@@ -398,26 +404,26 @@ export const DeliveryVerificationModal = ({ order, onComplete, onClose }) => {
   return (
     <AnimatePresence mode="wait">
       {step === 'otp' && (
-        <OtpModal 
-          key="otp-modal" 
-          order={order} 
-          onVerified={handleOtpVerified} 
-          onClose={onClose || (() => {})} 
+        <OtpModal
+          key="otp-modal"
+          order={order}
+          onVerified={handleOtpVerified}
+          onClose={onClose || (() => { })}
         />
       )}
       {step === 'payment' && (
-        <PaymentModal 
-          key="payment-modal" 
-          order={order} 
-          otpString={verifiedOtp} 
-          onComplete={onComplete} 
-          onClose={onClose || (() => {})} 
+        <PaymentModal
+          key="payment-modal"
+          order={order}
+          otpString={verifiedOtp}
+          onComplete={onComplete}
+          onClose={onClose || (() => { })}
         />
       )}
       {step === 'complete' && (
         <div className="fixed inset-0 z-120 p-0 sm:p-4 flex items-end justify-center pointer-events-none">
-          <Backdrop onClose={onClose || (() => {})} />
-          <motion.div 
+          <Backdrop onClose={onClose || (() => { })} />
+          <motion.div
             key="complete-modal"
             initial={{ y: '100%' }} animate={{ y: 0 }} exit={{ y: '100%' }}
             className="w-full max-w-md sm:max-w-lg bg-white rounded-t-3xl sm:rounded-t-[2.5rem] shadow-[0_-20px_60px_rgba(0,0,0,0.3)] p-4 sm:p-6 pb-6 sm:pb-12 pointer-events-auto max-h-[84vh] overflow-y-auto"
@@ -432,9 +438,9 @@ export const DeliveryVerificationModal = ({ order, onComplete, onClose }) => {
                 <p className="text-[10px] font-bold uppercase tracking-widest text-green-600">Payment Received Online</p>
               </div>
             </div>
-            <ActionSlider 
+            <ActionSlider
               key="action-complete"
-              label="Slide to Complete Delivery" 
+              label="Slide to Complete Delivery"
               successLabel="Delivered! ✓"
               onConfirm={async () => {
                 await onComplete(verifiedOtp);

@@ -17,12 +17,16 @@ export const PICKUP_METRICS_SOURCE = {
 
 export function getOrderRestaurantLatLng(order) {
   if (!order) return null;
-  const rest = order.restaurantLocation || order.restaurantId?.location || {};
+  const rest = order.restaurantLocation || order.restaurantId?.location || order.restaurant?.location || {};
+  const coords = Array.isArray(rest.coordinates)
+    ? rest.coordinates
+    : (Array.isArray(order.restaurantCoordinates) ? order.restaurantCoordinates : null);
+
   const lat = parseFloat(
-    order.restaurant_lat || order.restaurantLat || rest.latitude || rest.lat,
+    order.restaurant_lat || order.restaurantLat || rest.latitude || rest.lat || (coords ? coords[1] : NaN),
   );
   const lng = parseFloat(
-    order.restaurant_lng || order.restaurantLng || rest.longitude || rest.lng,
+    order.restaurant_lng || order.restaurantLng || rest.longitude || rest.lng || (coords ? coords[0] : NaN),
   );
   if (Number.isFinite(lat) && Number.isFinite(lng)) return { lat, lng };
   return null;
@@ -38,7 +42,7 @@ export function isOrderWithinOfferRange(order, riderLocation, maxKm = MAX_OFFER_
     return true;
   }
   const restaurant = getOrderRestaurantLatLng(order);
-  if (!restaurant) return false;
+  if (!restaurant) return true;
   const km =
     getHaversineDistance(
       riderLocation.lat,
@@ -46,7 +50,7 @@ export function isOrderWithinOfferRange(order, riderLocation, maxKm = MAX_OFFER_
       restaurant.lat,
       restaurant.lng,
     ) / 1000;
-  return Number.isFinite(km) && km <= maxKm;
+  return Number.isFinite(km) ? km <= maxKm : true;
 }
 
 export function isTrustedDispatchDistance(km) {

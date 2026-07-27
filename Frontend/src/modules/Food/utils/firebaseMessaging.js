@@ -56,9 +56,10 @@ function getPushSoundSources(moduleName = normalizeModuleFromPath()) {
     return [restaurantAlertSoundPath];
   }
   if (moduleName === "delivery") {
-    return [fallbackNotificationSound];
+    return [restaurantAlertSoundPath, fallbackNotificationSound];
   }
-  return [pushNotificationSoundPath, fallbackNotificationSound];
+  // User module: no audio alerts on push notifications/status updates
+  return [];
 }
 
 function isSupportedBrowser() {
