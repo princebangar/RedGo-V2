@@ -85,43 +85,75 @@ export default function NewOrderNotification({ order, onClose, onViewOrder }) {
               <div>
                 <h4 className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-3">Order Items ({order.items?.length || 0})</h4>
                 <div className="space-y-2.5">
-                  {(showAllItems ? order.items : order.items?.slice(0, VISIBLE_LIMIT))?.map((item, index) => (
-                    <div
-                      key={index}
-                      className="flex items-start justify-between gap-3 bg-gray-50 rounded-xl px-3 py-2.5 border border-gray-100"
-                    >
-                      {/* Left: image + name/variant/qty */}
-                      <div className="flex items-start gap-2.5 flex-1 min-w-0">
-                        {item.image && (
-                          <div className="w-9 h-9 rounded-lg overflow-hidden bg-gray-200 flex-shrink-0 mt-0.5">
-                            <img
-                              src={item.image}
-                              alt={item.name}
-                              className="w-full h-full object-cover"
-                              onError={(e) => { e.target.style.display = 'none'; }}
-                            />
+                  {(showAllItems ? order.items : order.items?.slice(0, VISIBLE_LIMIT))?.map((item, index) => {
+                    const isVeg = item.isVeg !== false && item.veg !== false && !String(item.type || '').toLowerCase().includes('non');
+                    const variantText = 
+                      (typeof item.variantName === 'string' && item.variantName.trim()) ||
+                      (typeof item.variant === 'string' && item.variant.trim()) ||
+                      (typeof item.variant === 'object' && item.variant?.name) ||
+                      (typeof item.selectedVariant === 'string' && item.selectedVariant.trim()) ||
+                      (typeof item.selectedVariant === 'object' && item.selectedVariant?.name) ||
+                      (typeof item.variant_name === 'string' && item.variant_name.trim()) ||
+                      (typeof item.variation === 'string' && item.variation.trim()) ||
+                      (typeof item.variation === 'object' && item.variation?.name) ||
+                      (typeof item.size === 'string' && item.size.trim()) ||
+                      (typeof item.portion === 'string' && item.portion.trim()) ||
+                      (typeof item.option === 'string' && item.option.trim()) ||
+                      (typeof item.choice === 'string' && item.choice.trim()) ||
+                      '';
+                    const itemAddons = Array.isArray(item.addons) ? item.addons : Array.isArray(item.selectedAddons) ? item.selectedAddons : [];
+
+                    return (
+                      <div
+                        key={index}
+                        className="flex items-start justify-between gap-3 bg-gradient-to-r from-slate-50/90 via-white to-slate-50/70 p-3 sm:p-3.5 rounded-xl border border-slate-200/90 shadow-xs"
+                      >
+                        <div className="flex items-start gap-2.5 flex-1 min-w-0">
+                          <div className={`w-4 sm:w-5 h-4 sm:h-5 border-2 shrink-0 rounded-[4px] flex items-center justify-center p-[2px] mt-0.5 ${isVeg ? "border-emerald-600 bg-emerald-50/80" : "border-rose-600 bg-rose-50/80"}`}>
+                            <div className={`w-2 sm:w-2.5 h-2 sm:h-2.5 rounded-full ${isVeg ? "bg-emerald-600" : "bg-rose-600"}`} />
                           </div>
-                        )}
-                        <div className="flex flex-col min-w-0">
-                          <span className="text-gray-900 font-bold text-sm leading-tight truncate">
-                            {item.name}
+                          <span className="shrink-0 px-2 sm:px-2.5 py-0.5 sm:py-1 rounded-lg bg-gray-900 text-amber-400 font-black text-xs sm:text-sm tracking-wider shadow-xs border border-gray-800">
+                            {item.quantity}×
                           </span>
-                          {item.variantName && (
-                            <span className="mt-0.5 inline-flex self-start items-center px-2 py-0.5 rounded-full bg-orange-100 text-orange-700 text-[11px] font-semibold">
-                              {item.variantName}
-                            </span>
+                          {item.image && (
+                            <div className="w-8 sm:w-9 h-8 sm:h-9 rounded-lg overflow-hidden bg-gray-200 flex-shrink-0 mt-0.5">
+                              <img
+                                src={item.image}
+                                alt={item.name}
+                                className="w-full h-full object-cover"
+                                onError={(e) => { e.target.style.display = 'none'; }}
+                              />
+                            </div>
                           )}
-                          <span className="text-gray-500 text-xs font-medium mt-0.5">
-                            Qty: {item.quantity}
-                          </span>
+                          <div className="flex flex-col min-w-0 flex-1">
+                            <span className="text-sm sm:text-base font-extrabold text-gray-950 leading-snug">
+                              {item.name}
+                            </span>
+                            {variantText && (
+                              <div className="mt-1 flex flex-wrap items-center gap-1">
+                                <span className="inline-flex items-center gap-1.5 text-xs sm:text-sm font-black text-rose-900 bg-rose-100 border-2 border-rose-300 px-2.5 py-0.5 rounded-lg shadow-xs">
+                                  <span className="w-1.5 h-1.5 rounded-full bg-rose-600 animate-pulse" />
+                                  {variantText}
+                                </span>
+                              </div>
+                            )}
+                            {itemAddons.length > 0 && (
+                              <div className="mt-1 flex flex-wrap items-center gap-1">
+                                {itemAddons.map((addon, aIdx) => (
+                                  <span key={aIdx} className="inline-flex items-center text-xs font-bold text-slate-800 bg-slate-100 border border-slate-300 px-2.5 py-0.5 rounded-md">
+                                    + {typeof addon === 'string' ? addon : addon.name}
+                                  </span>
+                                ))}
+                              </div>
+                            )}
+                          </div>
                         </div>
+                        <span className="text-sm sm:text-base font-black text-gray-900 shrink-0 ml-2 bg-gray-100/90 border border-gray-200 px-2.5 py-1 rounded-lg">
+                          ₹{(item.price * item.quantity).toFixed(2)}
+                        </span>
                       </div>
-                      {/* Right: price */}
-                      <span className="text-green-700 font-extrabold text-sm whitespace-nowrap mt-0.5">
-                        ₹{(item.price * item.quantity).toFixed(2)}
-                      </span>
-                    </div>
-                  ))}
+                    );
+                  })}
 
                   {/* Expand / Collapse button */}
                   {order.items?.length > VISIBLE_LIMIT && (

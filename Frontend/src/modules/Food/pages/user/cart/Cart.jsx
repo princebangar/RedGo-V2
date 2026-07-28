@@ -226,6 +226,7 @@ export default function Cart() {
   const [showOrderSuccess, setShowOrderSuccess] = useState(false)
   const [orderSuccessSavingsAmount, setOrderSuccessSavingsAmount] = useState(0)
   const [placedOrderId, setPlacedOrderId] = useState(null)
+  const [placedOrderObj, setPlacedOrderObj] = useState(null)
   const [selectedAddressId, setSelectedAddressId] = useState(null)
   const [deliveryAddressMode, setDeliveryAddressMode] = useState(() => {
     try {
@@ -469,7 +470,6 @@ export default function Cart() {
     deliveryFee: 25,
     deliveryFeeRanges: [],
     freeDeliveryUpTo: 0,
-    freeDeliveryThreshold: 149,
     platformFee: 5,
     packagingFee: 0,
     gstRate: 5,
@@ -1219,7 +1219,6 @@ export default function Cart() {
             deliveryFee: response.data.data.feeSettings.deliveryFee ?? 25,
             deliveryFeeRanges: response.data.data.feeSettings.deliveryFeeRanges ?? [],
             freeDeliveryUpTo: response.data.data.feeSettings.freeDeliveryUpTo ?? 0,
-            freeDeliveryThreshold: response.data.data.feeSettings.freeDeliveryThreshold ?? 149,
             platformFee: response.data.data.feeSettings.platformFee ?? 5,
             packagingFee: response.data.data.feeSettings.packagingFee ?? 0,
             gstRate: response.data.data.feeSettings.gstRate ?? 5,
@@ -1283,11 +1282,7 @@ export default function Cart() {
         if (inRange) return fee
       }
 
-      return 0
-    }
-
-    if (subtotal >= feeSettings.freeDeliveryThreshold) {
-      return 0
+      return Number(feeSettings.deliveryFee || 0)
     }
 
     return Number(feeSettings.deliveryFee || 0)
@@ -1514,7 +1509,9 @@ export default function Cart() {
       } catch (err) {
         toast.error("Failed to copy link")
       }
-      document.body.removeChild(textArea)
+      if (document.body.contains(textArea)) {
+        document.body.removeChild(textArea)
+      }
     }
   }
 
@@ -1657,8 +1654,8 @@ export default function Cart() {
           itemId: item.itemId || item.id,
           name: item.name,
           price: item.price,
-          variantId: item.variantId || undefined,
-          variantName: item.variantName || undefined,
+          variantId: item.variantId || item.variant?._id || item.variant?.id || undefined,
+          variantName: item.variantName || (typeof item.variant === 'string' ? item.variant : item.variant?.name) || (typeof item.selectedVariant === 'string' ? item.selectedVariant : item.selectedVariant?.name) || undefined,
           variantPrice: item.variantPrice || item.price,
           quantity: item.quantity || 1,
           image: item.image,
@@ -1901,19 +1898,23 @@ export default function Cart() {
 
       // Include all cart items (main items + addons)
       // Note: Addons are added as separate cart items when user clicks the + button
-      const orderItems = cart.map(item => ({
-        itemId: item.itemId || item.id,
-        name: item.name,
-        price: item.price,
-        variantId: item.variantId || undefined,
-        variantName: item.variantName || undefined,
-        variantPrice: item.variantPrice || item.price,
-        quantity: item.quantity || 1,
-        image: item.image || "",
-        description: item.description || "",
-        isVeg: item.isVeg === true || item.foodType === 'Veg',
-        preparationTime: item.preparationTime
-      }))
+      const orderItems = cart.map(item => {
+        const vName = item.variantName || (typeof item.variant === 'string' ? item.variant : item.variant?.name) || (typeof item.selectedVariant === 'string' ? item.selectedVariant : item.selectedVariant?.name) || item.variant_name || item.size || undefined;
+        const vId = item.variantId || item.variant?._id || item.variant?.id || item.selectedVariant?._id || item.selectedVariant?.id || undefined;
+        return {
+          itemId: item.itemId || item.id,
+          name: item.name,
+          price: item.price,
+          variantId: vId,
+          variantName: vName,
+          variantPrice: item.variantPrice || item.price,
+          quantity: item.quantity || 1,
+          image: item.image || "",
+          description: item.description || "",
+          isVeg: item.isVeg === true || item.foodType === 'Veg',
+          preparationTime: item.preparationTime
+        };
+      })
 
       debugLog("?? Order items to send:", orderItems)
       debugLog("?? Order pricing:", orderPricing)
@@ -2127,6 +2128,7 @@ export default function Cart() {
 
         toast.success("Order placed with Cash on Delivery")
         setPlacedOrderId(order?._id || order?.orderId || order?.id || null)
+        setPlacedOrderObj(order)
         setOrderSuccessSavingsAmount(platformPricingSavings.totalSavings > 0 ? platformPricingSavings.totalSavings : 0)
         if (platformPricingSavings.totalSavings > 0) {
           setCongratssSavingsAmount(platformPricingSavings.totalSavings)
@@ -2157,6 +2159,7 @@ export default function Cart() {
 
         toast.success("Order placed with Wallet payment")
         setPlacedOrderId(order?._id || order?.orderId || order?.id || null)
+        setPlacedOrderObj(order)
         setOrderSuccessSavingsAmount(platformPricingSavings.totalSavings > 0 ? platformPricingSavings.totalSavings : 0)
         if (platformPricingSavings.totalSavings > 0) {
           setCongratssSavingsAmount(platformPricingSavings.totalSavings)
@@ -2260,6 +2263,7 @@ export default function Cart() {
             if (createResponse.data?.success) {
               const { order } = createResponse.data.data
               setPlacedOrderId(order._id || order.orderId)
+              setPlacedOrderObj(order)
               setOrderSuccessSavingsAmount(platformPricingSavings.totalSavings > 0 ? platformPricingSavings.totalSavings : 0)
               if (platformPricingSavings.totalSavings > 0) {
                 setCongratssSavingsAmount(platformPricingSavings.totalSavings)
@@ -2375,7 +2379,7 @@ export default function Cart() {
     setShowPlacingOrder(false)
     navigate(`/user/orders/${placedOrderId}?confirmed=true`, {
       replace: true,
-      state: { fromOrderPlaced: true, from: 'cart' }
+      state: { order: placedOrderObj, fromOrderPlaced: true, from: 'cart' }
     })
   }
 

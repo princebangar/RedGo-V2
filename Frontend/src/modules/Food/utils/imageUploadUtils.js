@@ -27,7 +27,7 @@ const openTransientImageInput = ({
   const cleanup = () => {
     input.onchange = null
     input.oncancel = null
-    if (input.parentNode) {
+    if (input.parentNode && input.parentNode.contains(input)) {
       input.parentNode.removeChild(input)
     }
   }

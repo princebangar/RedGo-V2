@@ -69,8 +69,13 @@ function findClosestPointIndex(path, riderLatLng) {
  */
 function normPt(pt) {
   if (!pt) return null;
-  const lat = typeof pt.lat === 'function' ? pt.lat() : pt.lat;
-  const lng = typeof pt.lng === 'function' ? pt.lng() : pt.lng;
+  if (Array.isArray(pt) && pt.length >= 2) {
+    const lng = Number(pt[0]);
+    const lat = Number(pt[1]);
+    if (Number.isFinite(lat) && Number.isFinite(lng)) return { lat, lng };
+  }
+  const lat = typeof pt.lat === 'function' ? pt.lat() : Number(pt.lat ?? pt.latitude);
+  const lng = typeof pt.lng === 'function' ? pt.lng() : Number(pt.lng ?? pt.longitude);
   if (!Number.isFinite(lat) || !Number.isFinite(lng)) return null;
   return { lat, lng };
 }
@@ -271,10 +276,13 @@ const DeliveryTrackingMap = ({
   const tripStatus = order?.status || order?.orderStatus || 'pending';
   const isOrderPickedUp = ['picked_up', 'out_for_delivery', 'delivered'].includes(tripStatus.toLowerCase());
 
+  const normRestCoords = useMemo(() => normPt(restaurantCoords), [restaurantCoords]);
+  const normCustCoords = useMemo(() => normPt(customerCoords), [customerCoords]);
+
   // 5. Smart camera: fit bounds
   const lastCameraUpdateRef = useRef({ time: 0, status: null });
   useEffect(() => {
-    if (!map || !restaurantCoords || !customerCoords || !isLoaded) return;
+    if (!map || !normRestCoords || !normCustCoords || !isLoaded) return;
 
     const now = Date.now();
     const statusChanged = lastCameraUpdateRef.current.status !== isOrderPickedUp;
@@ -284,13 +292,13 @@ const DeliveryTrackingMap = ({
     lastCameraUpdateRef.current = { time: now, status: isOrderPickedUp };
 
     const bounds = new window.google.maps.LatLngBounds();
-    bounds.extend(restaurantCoords);
-    bounds.extend(customerCoords);
+    bounds.extend(normRestCoords);
+    bounds.extend(normCustCoords);
     if (riderLocation) bounds.extend(riderLocation);
 
     map.fitBounds(bounds, { top: 100, bottom: 120, left: 60, right: 60 });
     debugLog(`[Camera] Focusing on ${isOrderPickedUp ? 'Delivery' : 'Pickup'} leg`);
-  }, [map, riderLocation, restaurantCoords, customerCoords, isOrderPickedUp, isLoaded]);
+  }, [map, riderLocation, normRestCoords, normCustCoords, isOrderPickedUp, isLoaded]);
 
   // 6. Baseline Directions callback — stores the overview_path as fullRoutePath
   const baselineDirectionsCallback = useCallback((result, status) => {
@@ -313,13 +321,13 @@ const DeliveryTrackingMap = ({
   }, [currentEta, onEtaUpdate]);
 
   const baselineDirectionsOptions = useMemo(() => {
-    if (!restaurantCoords || !customerCoords || cloudPolyline) return null;
+    if (!normRestCoords || !normCustCoords || cloudPolyline) return null;
     return {
-      origin: restaurantCoords,
-      destination: customerCoords,
+      origin: normRestCoords,
+      destination: normCustCoords,
       travelMode: 'DRIVING'
     };
-  }, [restaurantCoords?.lat, restaurantCoords?.lng, customerCoords?.lat, customerCoords?.lng, cloudPolyline]);
+  }, [normRestCoords?.lat, normRestCoords?.lng, normCustCoords?.lat, normCustCoords?.lng, cloudPolyline]);
 
   /**
    * SPLIT POLYLINE LOGIC:
@@ -329,6 +337,9 @@ const DeliveryTrackingMap = ({
    */
   const { traveledPath, remainingPath } = useMemo(() => {
     if (!fullRoutePath || fullRoutePath.length < 2) {
+      if (normRestCoords && normCustCoords) {
+        return { traveledPath: [], remainingPath: [normRestCoords, normCustCoords] };
+      }
       return { traveledPath: [], remainingPath: [] };
     }
     if (isTakeaway || !displayRiderLocation || !isLoaded || !window.google?.maps?.geometry) {
@@ -351,15 +362,15 @@ const DeliveryTrackingMap = ({
     ];
 
     return { traveledPath: traveled, remainingPath: remaining };
-  }, [fullRoutePath, displayRiderLocation, isLoaded]);
+  }, [fullRoutePath, displayRiderLocation, isLoaded, normRestCoords, normCustCoords, isTakeaway]);
 
   // Route color by phase
   const remainingColor = isOrderPickedUp ? '#3b82f6' : '#22c55e';
 
   const center = useMemo(() => {
-    if (isOrderPickedUp) return customerCoords || { lat: 0, lng: 0 };
-    return restaurantCoords || { lat: 0, lng: 0 };
-  }, [isOrderPickedUp, restaurantCoords, customerCoords]);
+    if (isOrderPickedUp) return normCustCoords || { lat: 0, lng: 0 };
+    return normRestCoords || { lat: 0, lng: 0 };
+  }, [isOrderPickedUp, normRestCoords, normCustCoords]);
 
   if (!isLoaded) return <div className="w-full h-full bg-gray-100 animate-pulse" />;
 
@@ -435,31 +446,34 @@ const DeliveryTrackingMap = ({
         )}
 
         {/* ── RESTAURANT PIN ── */}
-        <OverlayView position={restaurantCoords} mapPaneName={OverlayView.MARKER_LAYER}>
-          <div className="relative -translate-x-1/2 -translate-y-full mb-1 group">
-            {!isOrderPickedUp && (
-              <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2">
-                <motion.div
-                  animate={{ scale: [1, 2], opacity: [0.5, 0] }}
-                  transition={{ duration: 2, repeat: Infinity }}
-                  className="w-16 h-16 rounded-full border-4 border-[#DC2626]/50"
+        {normRestCoords && (
+          <OverlayView position={normRestCoords} mapPaneName={OverlayView.MARKER_LAYER}>
+            <div className="relative -translate-x-1/2 -translate-y-full mb-1 group">
+              {!isOrderPickedUp && (
+                <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2">
+                  <motion.div
+                    animate={{ scale: [1, 2], opacity: [0.5, 0] }}
+                    transition={{ duration: 2, repeat: Infinity }}
+                    className="w-16 h-16 rounded-full border-4 border-[#DC2626]/50"
+                  />
+                </div>
+              )}
+              <div className="relative w-11 h-11 rounded-full p-1 bg-white shadow-xl border-2 border-[#DC2626] overflow-hidden group-hover:scale-110 transition-transform">
+                <img
+                  src={order?.restaurantLogo || order?.restaurantId?.logo || order?.restaurantId?.profileImage || `data:image/svg+xml;charset=UTF-8,${encodeURIComponent(RESTAURANT_PIN_SVG)}`}
+                  alt="Restaurant"
+                  className="w-full h-full object-contain rounded-full bg-gray-50"
+                  onError={(e) => { e.target.src = `data:image/svg+xml;charset=UTF-8,${encodeURIComponent(RESTAURANT_PIN_SVG)}`; }}
                 />
               </div>
-            )}
-            <div className="relative w-11 h-11 rounded-full p-1 bg-white shadow-xl border-2 border-[#DC2626] overflow-hidden group-hover:scale-110 transition-transform">
-              <img
-                src={order?.restaurantLogo || order?.restaurantId?.logo || order?.restaurantId?.profileImage || `data:image/svg+xml;charset=UTF-8,${encodeURIComponent(RESTAURANT_PIN_SVG)}`}
-                alt="Restaurant"
-                className="w-full h-full object-contain rounded-full bg-gray-50"
-                onError={(e) => { e.target.src = `data:image/svg+xml;charset=UTF-8,${encodeURIComponent(RESTAURANT_PIN_SVG)}`; }}
-              />
+              <div className="absolute top-[100%] left-1/2 -translate-x-1/2 w-3 h-3 bg-[#DC2626] -mt-1 shadow-sm" style={{ clipPath: 'polygon(50% 100%, 0 0, 100% 0)' }} />
             </div>
-            <div className="absolute top-[100%] left-1/2 -translate-x-1/2 w-3 h-3 bg-[#DC2626] -mt-1 shadow-sm" style={{ clipPath: 'polygon(50% 100%, 0 0, 100% 0)' }} />
-          </div>
-        </OverlayView>
+          </OverlayView>
+        )}
 
         {/* ── CUSTOMER PIN ── */}
-        <OverlayView position={customerCoords} mapPaneName={OverlayView.MARKER_LAYER}>
+        {normCustCoords && (
+          <OverlayView position={normCustCoords} mapPaneName={OverlayView.MARKER_LAYER}>
           <div className="relative -translate-x-1/2 -translate-y-full mb-1 group">
             {isOrderPickedUp && (
               <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2">
@@ -481,6 +495,7 @@ const DeliveryTrackingMap = ({
             <div className="absolute top-[100%] left-1/2 -translate-x-1/2 w-3 h-3 bg-green-500 -mt-1 shadow-sm" style={{ clipPath: 'polygon(50% 100%, 0 0, 100% 0)' }} />
           </div>
         </OverlayView>
+        )}
 
         {/* ── RIDER MARKER ── */}
         {displayRiderLocation && !isTakeaway && (

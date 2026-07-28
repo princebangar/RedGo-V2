@@ -929,9 +929,14 @@ export default function OrderTracking() {
     }
   }, [])
   
+  // Extract initial order from location state or context for instant 0ms rendering
+  const locationOrder = location.state?.order || location.state?.placedOrder
+  const contextOrder = getOrderById(orderId)
+  const initialOrder = locationOrder || contextOrder || null
+
   // State for order data
-  const [order, setOrder] = useState(null)
-  const [loading, setLoading] = useState(true)
+  const [order, setOrder] = useState(() => initialOrder ? transformOrderForTracking(initialOrder) : null)
+  const [loading, setLoading] = useState(() => !initialOrder)
   const [error, setError] = useState(null)
 
   const [showConfirmation, setShowConfirmation] = useState(confirmed)
@@ -1255,11 +1260,8 @@ export default function OrderTracking() {
     resolveOrderFromList: async (rawLookupId) => {
       const needle = normalizeLookupId(rawLookupId)
       if (!needle) return null
-      const maxPages = 3
-      const limit = 50
-
-      for (let page = 1; page <= maxPages; page += 1) {
-        const listResponse = await orderAPI.getOrders({ page, limit })
+      try {
+        const listResponse = await orderAPI.getOrders({ page: 1, limit: 50 })
         let orders = []
         if (listResponse?.data?.success && listResponse?.data?.data?.orders) {
           orders = listResponse.data.data.orders || []
@@ -1276,8 +1278,8 @@ export default function OrderTracking() {
           return candidates.includes(needle)
         })
         if (matched) return matched
-        const totalPages = Number(listResponse?.data?.data?.pagination?.pages) || Number(listResponse?.data?.data?.totalPages) || 1
-        if (page >= totalPages) break
+      } catch (err) {
+        debugWarn('resolveOrderFromList error:', err)
       }
       return null
     },
@@ -1450,7 +1452,7 @@ export default function OrderTracking() {
       link.setAttribute('target', '_self');
       document.body.appendChild(link);
       link.click();
-      document.body.removeChild(link);
+      if (document.body.contains(link)) document.body.removeChild(link);
     } catch (err) {
       debugError('Call failed via link click:', err);
       // Last-ditch fallback
@@ -1559,7 +1561,7 @@ export default function OrderTracking() {
       link.setAttribute('target', '_self');
       document.body.appendChild(link);
       link.click();
-      document.body.removeChild(link);
+      if (document.body.contains(link)) document.body.removeChild(link);
     } catch (err) {
       debugError('Call failed via link click:', err);
       window.location.assign(`tel:${cleanPhone}`);

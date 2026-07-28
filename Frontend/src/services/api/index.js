@@ -1008,6 +1008,25 @@ export const invalidateRestaurantOrdersCache = () => {
   restaurantOrdersInFlightKey = "";
 };
 
+export const optimisticallyUpdateRestaurantOrderStatus = (orderId, targetStatus) => {
+  if (restaurantOrdersCache?.data?.data?.orders) {
+    const orders = restaurantOrdersCache.data.data.orders;
+    const targetStr = String(orderId);
+    orders.forEach((o) => {
+      const matchId = String(o._id || o.orderId || o.id);
+      if (matchId === targetStr) {
+        o.orderStatus = targetStatus;
+        o.status = String(targetStatus).includes("cancel") ? "cancelled" : targetStatus;
+        if (String(targetStatus).includes("cancel")) {
+          o.cancelledAt = new Date().toISOString();
+          o.cancelledBy = "restaurant";
+        }
+      }
+    });
+    restaurantOrdersCacheAt = Date.now();
+  }
+};
+
 /** Restaurant API - OTP login via new backend; no email/password. */
 export const restaurantAPI = {
   sendOTP: (phone, _purpose = "login") => {
@@ -1288,6 +1307,9 @@ export const restaurantAPI = {
   invalidateOrdersCache: () => {
     invalidateRestaurantOrdersCache();
   },
+  optimisticallyUpdateOrderStatus: (orderId, targetStatus) => {
+    optimisticallyUpdateRestaurantOrderStatus(orderId, targetStatus);
+  },
   /** Orders (restaurant dashboard) */
   getOrders: (params = {}) => {
     const key = JSON.stringify({ limit: 50, page: 1, ...params });
@@ -1375,7 +1397,8 @@ export const restaurantAPI = {
       outgoing.orderStatus = normalizeOutgoingStatus(outgoing.orderStatus);
     }
 
-    restaurantAPI.invalidateOrdersCache();
+    // Optimistically update order status in cache so UI does not clear/flash
+    optimisticallyUpdateRestaurantOrderStatus(orderId, outgoing.orderStatus || outgoing.status || "cancelled_by_restaurant");
 
     return apiClient
       .patch(
@@ -1384,7 +1407,7 @@ export const restaurantAPI = {
         { contextModule: "restaurant" },
       )
       .then((res) => {
-        restaurantAPI.invalidateOrdersCache();
+        optimisticallyUpdateRestaurantOrderStatus(orderId, outgoing.orderStatus || outgoing.status || "cancelled_by_restaurant");
         return res;
       });
   },

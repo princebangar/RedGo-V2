@@ -108,7 +108,24 @@ export default function Checkout() {
       clearCart()
       navigate(`/user/orders/${orderId}?confirmed=true`, {
         replace: true,
-        state: { fromOrderPlaced: true, from: 'checkout' }
+        state: {
+          order: {
+            _id: orderId,
+            orderId,
+            items: cart.map(item => ({
+              name: item.name,
+              variantName: item.variantName || item.variant?.name || '',
+              quantity: item.quantity || 1,
+              price: item.price || 0
+            })),
+            pricing: { total: pricing?.total || total },
+            total: pricing?.total || total,
+            restaurant: cart[0]?.restaurant || cart[0]?.name || "Selected Restaurant",
+            status: "confirmed"
+          },
+          fromOrderPlaced: true,
+          from: 'checkout'
+        }
       })
     }, 1500)
   }
