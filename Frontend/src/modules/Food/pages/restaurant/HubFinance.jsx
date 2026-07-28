@@ -655,7 +655,9 @@ export default function HubFinance() {
       debugLog('? Canvas created:', canvas.width, 'x', canvas.height)
       
       // Remove temporary iframe
-      document.body.removeChild(iframe)
+      if (document.body.contains(iframe)) {
+        document.body.removeChild(iframe)
+      }
     
       // Calculate PDF dimensions
       const imgWidth = 210 // A4 width in mm

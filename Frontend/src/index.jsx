@@ -101,6 +101,31 @@ if (typeof window !== 'undefined') {
   }
 }
 
+// ─── DOM Node Safe Patch (Google Translate / Extension DOM Mutation Fix) ──────
+if (typeof window !== 'undefined' && typeof Node !== 'undefined') {
+  const originalRemoveChild = Node.prototype.removeChild
+  Node.prototype.removeChild = function (child) {
+    if (child && child.parentNode !== this) {
+      if (child.parentNode) {
+        return originalRemoveChild.call(child.parentNode, child)
+      }
+      return child
+    }
+    return originalRemoveChild.call(this, child)
+  }
+
+  const originalInsertBefore = Node.prototype.insertBefore
+  Node.prototype.insertBefore = function (newNode, referenceNode) {
+    if (referenceNode && referenceNode.parentNode !== this) {
+      if (referenceNode.parentNode) {
+        return originalInsertBefore.call(referenceNode.parentNode, newNode, referenceNode)
+      }
+      return this.appendChild(newNode)
+    }
+    return originalInsertBefore.call(this, newNode, referenceNode)
+  }
+}
+
 // ─── Suppress known non-critical errors ──────────────────────────────────────
 
 const originalError = console.error
@@ -119,7 +144,10 @@ console.error = (...args) => {
     errorStr.includes('GeolocationPositionError') ||
     errorStr.includes('Geolocation error') ||
     errorStr.includes('User denied Geolocation') ||
-    errorStr.includes('permission denied')
+    errorStr.includes('permission denied') ||
+    errorStr.includes("Failed to execute 'removeChild'") ||
+    errorStr.includes("Failed to execute 'insertBefore'") ||
+    errorStr.includes('The node to be removed is not a child of this node')
   ) return
 
   const hasNetworkError = args.some(arg =>
@@ -144,20 +172,36 @@ console.error = (...args) => {
   originalError.apply(console, args)
 }
 
-window.addEventListener('unhandledrejection', (event) => {
-  const error = event.reason || event
-  const errorMsg = error?.message || String(error) || ''
-  const errorName = error?.name || ''
-  if (
-    errorMsg.includes('Timeout expired') ||
-    errorMsg.includes('User denied Geolocation') ||
-    errorMsg.includes('permission denied') ||
-    errorName === 'GeolocationPositionError'
-  ) {
-    event.preventDefault()
-    return
-  }
-})
+if (typeof window !== 'undefined') {
+  window.addEventListener('error', (event) => {
+    const errorMsg = event?.error?.message || event?.message || ''
+    if (
+      errorMsg.includes("Failed to execute 'removeChild'") ||
+      errorMsg.includes("Failed to execute 'insertBefore'") ||
+      errorMsg.includes('The node to be removed is not a child of this node')
+    ) {
+      event.preventDefault()
+      if (event.stopImmediatePropagation) event.stopImmediatePropagation()
+    }
+  }, true)
+
+  window.addEventListener('unhandledrejection', (event) => {
+    const error = event.reason || event
+    const errorMsg = error?.message || String(error) || ''
+    const errorName = error?.name || ''
+    if (
+      errorMsg.includes('Timeout expired') ||
+      errorMsg.includes('User denied Geolocation') ||
+      errorMsg.includes('permission denied') ||
+      errorMsg.includes("Failed to execute 'removeChild'") ||
+      errorMsg.includes("Failed to execute 'insertBefore'") ||
+      errorMsg.includes('The node to be removed is not a child of this node') ||
+      errorName === 'GeolocationPositionError'
+    ) {
+      event.preventDefault()
+    }
+  })
+}
 
 // ─────────────────────────────────────────────────────────────────────────────
 

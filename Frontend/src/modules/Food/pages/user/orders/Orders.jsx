@@ -412,7 +412,9 @@ export default function Orders() {
       } catch (err) {
         toast.error("Failed to copy link")
       }
-      document.body.removeChild(textArea)
+      if (document.body.contains(textArea)) {
+        document.body.removeChild(textArea)
+      }
     }
   }
 

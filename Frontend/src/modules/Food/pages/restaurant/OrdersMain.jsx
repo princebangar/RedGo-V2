@@ -1272,8 +1272,10 @@ function OrdersMainInner() {
   const [isDetailsExpanded, setIsDetailsExpanded] = useState(false);
   const [showRejectPopup, setShowRejectPopup] = useState(false);
   const [rejectReason, setRejectReason] = useState("");
+  const [isRejectingOrder, setIsRejectingOrder] = useState(false);
   const [showCancelPopup, setShowCancelPopup] = useState(false);
   const [cancelReason, setCancelReason] = useState("");
+  const [isCancellingOrder, setIsCancellingOrder] = useState(false);
   const [orderToCancel, setOrderToCancel] = useState(null);
   const [acceptSwipeProgress, setAcceptSwipeProgress] = useState(0);
   const [orderQueue, setOrderQueue] = useState([]);
@@ -2244,9 +2246,9 @@ function OrdersMainInner() {
   };
 
   const handleRejectConfirm = async () => {
-    if (!rejectReason) return;
+    if (!rejectReason || isRejectingOrder) return;
+    setIsRejectingOrder(true);
 
-    // Use popupOrder (from Socket.IO or API fallback) or newOrder (from hook)
     const orderToReject = popupOrder || newOrder;
 
     if (stopSound) {
@@ -2255,16 +2257,28 @@ function OrdersMainInner() {
 
     const orderId = orderToReject?.orderMongoId || orderToReject?.orderId || orderToReject?._id || orderToReject?.id;
 
+    // Optimistically update status in local memory instantly (0ms delay)
+    if (orderId) {
+      restaurantAPI.optimisticallyUpdateOrderStatus(orderId, "cancelled_by_restaurant");
+    }
+
     // Reject order via API if we have a real order
     if (orderToReject?.orderMongoId || orderToReject?.orderId) {
       try {
         await restaurantAPI.rejectOrder(orderId, rejectReason);
-        debugLog("? Order rejected:", orderId);
-        requestOrdersRefresh();
+        debugLog("✅ Order rejected:", orderId);
+        toast.info("Order rejected successfully");
       } catch (error) {
-        debugError("? Error rejecting order:", error);
-        alert("Failed to reject order. Please try again.");
-        return;
+        debugError("❌ Error rejecting order:", error);
+        const errorMessage = error.response?.data?.message || error.message || "";
+        // If order was already cancelled or status conflict, handle gracefully without alert
+        if (errorMessage.includes("already") || errorMessage.includes("cancelled") || error.response?.status === 400 || error.response?.status === 409) {
+          debugLog("Order already rejected/cancelled");
+        } else {
+          toast.error(errorMessage || "Failed to reject order. Please try again.");
+          setIsRejectingOrder(false);
+          return;
+        }
       }
     }
 
@@ -2278,9 +2292,12 @@ function OrdersMainInner() {
     setRejectReason("");
     setCountdown(0);
     setPrepTime(11);
+    setIsRejectingOrder(false);
+    requestOrdersRefresh();
   };
 
   const handleRejectCancel = () => {
+    if (isRejectingOrder) return;
     setShowRejectPopup(false);
     setRejectReason("");
   };
@@ -2292,19 +2309,25 @@ function OrdersMainInner() {
   };
 
   const handleCancelConfirm = async () => {
-    if (!cancelReason.trim() || !orderToCancel) return;
+    if (!cancelReason.trim() || !orderToCancel || isCancellingOrder) return;
+    setIsCancellingOrder(true);
 
     try {
       const orderId = orderToCancel.mongoId || orderToCancel.orderId;
+      if (orderId) {
+        restaurantAPI.optimisticallyUpdateOrderStatus(orderId, "cancelled_by_restaurant");
+      }
       await restaurantAPI.rejectOrder(orderId, cancelReason.trim());
       toast.success("Order cancelled successfully");
-      requestOrdersRefresh();
       setShowCancelPopup(false);
       setOrderToCancel(null);
       setCancelReason("");
+      requestOrdersRefresh();
     } catch (error) {
-      debugError("? Error cancelling order:", error);
+      debugError("❌ Error cancelling order:", error);
       toast.error(error.response?.data?.message || "Failed to cancel order");
+    } finally {
+      setIsCancellingOrder(false);
     }
   };
 
@@ -3234,30 +3257,69 @@ function OrdersMainInner() {
                           .replace(/ pm/i, " PM")
                       : "Just now";
 
-                    const renderItem = (item, index) => (
-                      <div key={index} className="flex items-start gap-3">
-                        <div
-                          className={`w-2 h-2 rounded-full mt-1.5 shrink-0 ${item.isVeg ? "bg-green-500" : "bg-gradient-to-br from-[#B80B3D] to-[#66001D]"}`}
-                        />
-                        <div className="flex-1">
-                          <div className="flex items-start justify-between">
-                            <div>
-                              <p className="text-sm font-semibold text-gray-900">
-                                {item.quantity} x {item.name}
+                    const renderItem = (item, index) => {
+                      const isVeg = item.isVeg !== false && item.veg !== false && !String(item.type || '').toLowerCase().includes('non');
+                      const variantText = 
+                        (typeof item.variantName === 'string' && item.variantName.trim()) ||
+                        (typeof item.variant === 'string' && item.variant.trim()) ||
+                        (typeof item.variant === 'object' && item.variant?.name) ||
+                        (typeof item.selectedVariant === 'string' && item.selectedVariant.trim()) ||
+                        (typeof item.selectedVariant === 'object' && item.selectedVariant?.name) ||
+                        (typeof item.variant_name === 'string' && item.variant_name.trim()) ||
+                        (typeof item.variation === 'string' && item.variation.trim()) ||
+                        (typeof item.variation === 'object' && item.variation?.name) ||
+                        (typeof item.size === 'string' && item.size.trim()) ||
+                        (typeof item.portion === 'string' && item.portion.trim()) ||
+                        (typeof item.option === 'string' && item.option.trim()) ||
+                        (typeof item.choice === 'string' && item.choice.trim()) ||
+                        '';
+                      const itemAddons = Array.isArray(item.addons) ? item.addons : Array.isArray(item.selectedAddons) ? item.selectedAddons : [];
+
+                      return (
+                        <div key={index} className="flex items-start justify-between gap-3 bg-gradient-to-r from-slate-50/90 via-white to-slate-50/70 p-3 sm:p-3.5 rounded-xl border border-slate-200/90 shadow-xs hover:shadow-sm transition-all">
+                          <div className="flex items-start gap-2.5 flex-1 min-w-0">
+                            {/* Veg / Non-Veg Icon */}
+                            <div className={`w-4 sm:w-5 h-4 sm:h-5 border-2 shrink-0 rounded-[4px] flex items-center justify-center p-[2px] mt-0.5 ${isVeg ? "border-emerald-600 bg-emerald-50/80" : "border-rose-600 bg-rose-50/80"}`}>
+                              <div className={`w-2 sm:w-2.5 h-2 sm:h-2.5 rounded-full ${isVeg ? "bg-emerald-600" : "bg-rose-600"}`} />
+                            </div>
+
+                            {/* Prominent Quantity Badge */}
+                            <span className="shrink-0 px-2 sm:px-2.5 py-0.5 sm:py-1 rounded-lg bg-gray-900 text-amber-400 font-black text-xs sm:text-sm tracking-wider shadow-xs border border-gray-800">
+                              {item.quantity}×
+                            </span>
+
+                            {/* Item Name & Variant */}
+                            <div className="flex flex-col min-w-0 flex-1">
+                              <p className="text-sm sm:text-base font-extrabold text-gray-950 leading-snug">
+                                {item.name}
                               </p>
-                              {item.variantName && (
-                                <span className="text-[10px] text-orange-700 font-semibold bg-orange-50 px-1.5 py-0.5 rounded-full border border-orange-100 mt-0.5 inline-block">
-                                  {item.variantName}
-                                </span>
+                              {variantText && (
+                                <div className="mt-1 flex flex-wrap items-center gap-1">
+                                  <span className="inline-flex items-center gap-1.5 text-xs sm:text-sm font-black text-rose-900 bg-rose-100 border-2 border-rose-300 px-2.5 py-0.5 rounded-lg shadow-xs">
+                                    <span className="w-1.5 h-1.5 rounded-full bg-rose-600 animate-pulse" />
+                                    {variantText}
+                                  </span>
+                                </div>
+                              )}
+                              {itemAddons.length > 0 && (
+                                <div className="mt-1 flex flex-wrap items-center gap-1">
+                                  {itemAddons.map((addon, aIdx) => (
+                                    <span key={aIdx} className="inline-flex items-center text-xs font-bold text-slate-800 bg-slate-100 border border-slate-300 px-2.5 py-0.5 rounded-md">
+                                      + {typeof addon === 'string' ? addon : addon.name}
+                                    </span>
+                                  ))}
+                                </div>
                               )}
                             </div>
-                            <p className="text-sm font-bold text-gray-800 ml-2 whitespace-nowrap">
-                              ₹{item.price * item.quantity}
-                            </p>
                           </div>
+
+                          {/* Item Price */}
+                          <span className="text-sm sm:text-base font-black text-gray-900 shrink-0 ml-2 bg-gray-100/90 border border-gray-200 px-2.5 py-1 rounded-lg">
+                            ₹{item.price * item.quantity}
+                          </span>
                         </div>
-                      </div>
-                    );
+                      );
+                    };
 
                     return (
                       <div className="mb-4">
@@ -3552,17 +3614,25 @@ function OrdersMainInner() {
                 <div className="shrink-0 px-4 py-3 sm:py-4 bg-gray-50 border-t border-gray-200 flex gap-2 sm:gap-3">
                   <button
                     onClick={handleRejectCancel}
-                    className="flex-1 bg-white border-2 border-gray-300 text-gray-700 py-2.5 sm:py-3 rounded-lg font-semibold text-sm hover:bg-gray-50 transition-colors">
+                    disabled={isRejectingOrder}
+                    className="flex-1 bg-white border-2 border-gray-300 text-gray-700 py-2.5 sm:py-3 rounded-lg font-semibold text-sm hover:bg-gray-50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed">
                     Cancel
                   </button>
                   <button
                     onClick={handleRejectConfirm}
-                    disabled={!rejectReason}
-                    className={`flex-1 py-2.5 sm:py-3 rounded-lg font-semibold text-sm transition-colors ${rejectReason
-                        ? "!bg-gradient-to-br from-[#B80B3D] to-[#66001D] !text-white hover:!bg-gradient-to-br from-[#B80B3D] to-[#66001D]/90"
+                    disabled={!rejectReason || isRejectingOrder}
+                    className={`flex-1 py-2.5 sm:py-3 rounded-lg font-semibold text-sm transition-colors flex items-center justify-center gap-2 ${rejectReason
+                        ? "bg-gradient-to-br from-[#B80B3D] to-[#66001D] text-white shadow-md shadow-red-900/20 active:scale-98 disabled:opacity-90 cursor-not-allowed"
                         : "bg-gray-200 text-gray-400 cursor-not-allowed"
                       }`}>
-                    Confirm Rejection
+                    {isRejectingOrder ? (
+                      <>
+                        <Loader2 className="w-4 h-4 animate-spin text-white" />
+                        <span>Confirming...</span>
+                      </>
+                    ) : (
+                      "Confirm Rejection"
+                    )}
                   </button>
                 </div>
               </motion.div>
@@ -3648,17 +3718,25 @@ function OrdersMainInner() {
                 <div className="shrink-0 px-4 py-3 sm:py-4 bg-gray-50 border-t border-gray-200 flex gap-2 sm:gap-3">
                   <button
                     onClick={handleCancelPopupClose}
-                    className="flex-1 bg-white border-2 border-gray-300 text-gray-700 py-2.5 sm:py-3 rounded-lg font-semibold text-sm hover:bg-gray-50 transition-colors">
+                    disabled={isCancellingOrder}
+                    className="flex-1 bg-white border-2 border-gray-300 text-gray-700 py-2.5 sm:py-3 rounded-lg font-semibold text-sm hover:bg-gray-50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed">
                     Cancel
                   </button>
                   <button
                     onClick={handleCancelConfirm}
-                    disabled={!cancelReason}
-                    className={`flex-1 py-2.5 sm:py-3 rounded-lg font-semibold text-sm transition-colors ${cancelReason
-                        ? "!bg-gradient-to-br from-[#B80B3D] to-[#66001D] !text-white hover:bg-red-700"
+                    disabled={!cancelReason || isCancellingOrder}
+                    className={`flex-1 py-2.5 sm:py-3 rounded-lg font-semibold text-sm transition-colors flex items-center justify-center gap-2 ${cancelReason
+                        ? "bg-gradient-to-br from-[#B80B3D] to-[#66001D] text-white shadow-md shadow-red-900/20 active:scale-98 disabled:opacity-90 cursor-not-allowed"
                         : "bg-gray-200 text-gray-400 cursor-not-allowed"
                       }`}>
-                    Confirm Cancellation
+                    {isCancellingOrder ? (
+                      <>
+                        <Loader2 className="w-4 h-4 animate-spin text-white" />
+                        <span>Confirming...</span>
+                      </>
+                    ) : (
+                      "Confirm Cancellation"
+                    )}
                   </button>
                 </div>
               </motion.div>
