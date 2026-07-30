@@ -1197,7 +1197,7 @@ export default function ExploreMore() {
                                     if (item.id === 5) {
                                       handleScheduleOffClick()
                                     } else if (item.route) {
-                                      navigate(item.route)
+                                      navigate(item.route, { state: { from: location.pathname } })
                                     }
                                     setSearchOpen(false)
                                     setSearchQuery("")

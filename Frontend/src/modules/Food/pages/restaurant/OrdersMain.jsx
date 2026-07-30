@@ -84,8 +84,19 @@ const getAllOrdersTimestamp = (order) =>
   new Date().toISOString();
 
 const TERMINAL_STATUSES = new Set(["delivered", "completed", "picked_up", "cancelled"]);
+const HIDDEN_FROM_ORDERS_TAB = new Set([
+  "cancelled",
+  "canceled",
+  "delivered",
+  "completed",
+  "picked_up",
+  "refunded"
+]);
 
 const transformOrderForList = (order) => {
+  const normalizedStatus = String(order?.status || "").toLowerCase();
+  // Filter out cancelled, delivered, refunded, completed orders from front of Orders tab
+  if (HIDDEN_FROM_ORDERS_TAB.has(normalizedStatus)) return null;
   const isTerminal = TERMINAL_STATUSES.has(order.status);
   // Dining orders are handled via Dining Booking tab, not the food order list
   if (String(order.orderType || "").toLowerCase() === "dining") return null;
@@ -924,7 +935,7 @@ function AllOrders({ onSelectOrder, onCancel, onVerifyTakeaway, refreshToken = 0
           <span className="text-xs text-gray-500">({orders.length})</span>
         </div>
         <button
-          onClick={() => navigate('/food/restaurant/orders/all')}
+          onClick={() => navigate('/food/restaurant/orders/all', { state: { from: '/food/restaurant' } })}
           className="text-xs font-bold text-[#B80B3D] hover:underline flex items-center gap-1"
         >
           Full History
@@ -3844,36 +3855,36 @@ function OrdersMainInner() {
       )}
 
 
-      {/* Bottom Sheet for Order Details */}
+      {/* Centered Modal for Order Details */}
       <AnimatePresence>
         {isSheetOpen && selectedOrder && (
           <motion.div
-            className="fixed inset-0 z-[80] bg-black/50/40 flex items-end justify-center"
+            className="fixed inset-0 z-[9999] bg-black/60 backdrop-blur-sm flex items-center justify-center p-4 sm:p-6"
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
             onClick={() => setIsSheetOpen(false)}>
             <motion.div
-              className="w-full max-w-md mx-auto max-h-[90vh] overflow-y-auto bg-white rounded-t-3xl p-4 pb-[calc(1.25rem+env(safe-area-inset-bottom)+6rem)] shadow-lg"
-              initial={{ y: 80 }}
-              animate={{ y: 0 }}
-              exit={{ y: 80 }}
-              transition={{ duration: 0.25 }}
+              className="w-full max-w-sm sm:max-w-md mx-auto max-h-[85vh] overflow-y-auto bg-white rounded-3xl p-5 sm:p-6 shadow-2xl border border-gray-100 relative"
+              initial={{ opacity: 0, scale: 0.95, y: 20 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.95, y: 20 }}
+              transition={{ type: "spring", damping: 25, stiffness: 300 }}
               onClick={(e) => e.stopPropagation()}>
-              {/* Drag handle */}
-              <div className="flex justify-center mb-3">
-                <div className="h-1 w-10 rounded-full bg-gray-300" />
+              {/* Header drag handle / bar */}
+              <div className="flex justify-center mb-2">
+                <div className="h-1 w-10 rounded-full bg-gray-200" />
               </div>
 
               <div className="flex items-start justify-between gap-2 mb-2">
                 <div>
-                  <p className="text-sm font-semibold text-black">
+                  <p className="text-base font-extrabold text-black">
                     Order #{selectedOrder.orderId}
                   </p>
-                  <p className="text-xs text-gray-500 mt-1">
+                  <p className="text-xs font-semibold text-gray-600 mt-0.5">
                     {selectedOrder.customerName}
                   </p>
-                  <p className="text-[11px] text-gray-500 mt-1">
+                  <p className="text-xs text-gray-500 mt-0.5 font-medium">
                     {selectedOrder.type}
                     {selectedOrder.tableOrToken
                       ? ` • ${selectedOrder.tableOrToken}`
@@ -3882,7 +3893,7 @@ function OrdersMainInner() {
                 </div>
                 <div className="flex flex-col items-end gap-1">
                   <span
-                    className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[10px] font-semibold border ${(selectedOrder.status === "Ready" ||
+                    className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-black border uppercase tracking-wider ${(selectedOrder.status === "Ready" ||
                         String(selectedOrder.status).toLowerCase() === "delivered" ||
                         String(selectedOrder.status).toLowerCase() === "completed" ||
                         String(selectedOrder.status).toLowerCase() === "picked_up" ||
@@ -3906,7 +3917,7 @@ function OrdersMainInner() {
                     />
                     {(String(selectedOrder.status).toLowerCase() === "delivered" && selectedOrder.type === "Takeaway") ? "Picked Up" : selectedOrder.status}
                   </span>
-                  <span className="text-[11px] text-gray-500">
+                  <span className="text-[11px] font-medium text-gray-400">
                     {selectedOrder.timePlaced}
                   </span>
                   {/* Delivery Resend Button - Only for preparing/ready orders with no partner */}
@@ -3928,19 +3939,27 @@ function OrdersMainInner() {
 
               <div className="border-t border-gray-100 my-3" />
 
-              <div className="mb-3">
-                <p className="text-xs font-medium text-gray-700 mb-1">Items</p>
-                <p className="text-xs text-gray-600">
-                  {selectedOrder.itemsSummary}
-                </p>
+              <div className="mb-4">
+                <p className="text-xs font-extrabold text-gray-900 mb-2 uppercase tracking-wide">Items</p>
+                <div className="space-y-2">
+                  {String(selectedOrder.itemsSummary || "")
+                    .split(/,\s*/)
+                    .filter(Boolean)
+                    .map((itemStr, idx) => (
+                      <div key={idx} className="text-sm text-slate-900 font-bold flex items-center gap-2 bg-slate-50 px-3.5 py-2.5 rounded-xl border border-slate-200/80 shadow-sm">
+                        <span className="w-2 h-2 rounded-full bg-[#B80B3D] shrink-0" />
+                        <span className="leading-snug">{itemStr}</span>
+                      </div>
+                    ))}
+                </div>
               </div>
 
-              <div className="flex items-center justify-between text-[11px] text-gray-500 mb-4">
+              <div className="flex items-center justify-between text-xs text-gray-600 mb-4 bg-gray-50/80 px-3 py-2 rounded-lg">
                 {/* Hide ETA for ready orders */}
                 {selectedOrder.status !== "ready" && selectedOrder.eta && (
                   <span>
                     ETA:{" "}
-                    <span className="font-medium text-black">
+                    <span className="font-bold text-black">
                       {selectedOrder.eta}
                     </span>
                   </span>
@@ -3954,7 +3973,7 @@ function OrdersMainInner() {
                     <span>
                       Payment:{" "}
                       <span
-                        className={`font-medium ${isCod ? "text-amber-700" : "text-black"}`}>
+                        className={`font-bold ${isCod ? "text-amber-700" : "text-black"}`}>
                         {isCod ? "Cash on Delivery" : "Paid online"}
                       </span>
                     </span>
@@ -3984,7 +4003,7 @@ function OrdersMainInner() {
               )}
 
               <button
-                className="w-full bg-gradient-to-br from-[#B80B3D] to-[#66001D] text-white py-2.5 rounded-xl text-sm font-medium hover:bg-gradient-to-br from-[#B80B3D] to-[#66001D]/90 transition-colors"
+                className="w-full bg-gradient-to-br from-[#B80B3D] to-[#66001D] text-white py-3 rounded-xl text-sm font-bold shadow-md hover:shadow-lg transition-all active:scale-[0.98]"
                 onClick={() => setIsSheetOpen(false)}>
                 Close
               </button>
@@ -4134,10 +4153,18 @@ const OrderCard = memo(function OrderCard({
             </span>
           </div>
 
-          {/* Items Summary - One line only */}
-          <p className="text-[10px] text-slate-600 font-bold truncate italic mb-1">
-            {itemsSummary}
-          </p>
+          {/* Items Summary - Line by line */}
+          <div className="text-xs sm:text-sm text-slate-900 font-extrabold mb-1.5 space-y-1">
+            {String(itemsSummary || "")
+              .split(/,\s*/)
+              .filter(Boolean)
+              .map((itemStr, idx) => (
+                <div key={idx} className="flex items-center gap-1.5 leading-tight">
+                  <span className="w-1.5 h-1.5 rounded-full bg-[#B80B3D] shrink-0" />
+                  <span>{itemStr}</span>
+                </div>
+              ))}
+          </div>
 
           {/* Time Placed */}
           <div className="text-[9px] text-slate-400 font-bold uppercase tracking-tight mb-1">

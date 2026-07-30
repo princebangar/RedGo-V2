@@ -6,9 +6,9 @@ import { useLocation } from "react-router-dom"
 import useRestaurantBackNavigation from "@food/hooks/useRestaurantBackNavigation"
 import BottomNavOrders from "@food/components/restaurant/BottomNavOrders"
 import { restaurantAPI } from "@food/api"
-const debugLog = (...args) => {}
-const debugWarn = (...args) => {}
-const debugError = (...args) => {}
+const debugLog = (...args) => { }
+const debugWarn = (...args) => { }
+const debugError = (...args) => { }
 
 
 export default function HubFinance() {
@@ -126,18 +126,18 @@ export default function HubFinance() {
   // Format restaurant ID to REST###### format (e.g., REST005678)
   const formatRestaurantId = (restaurantId) => {
     if (!restaurantId) return ''
-    
+
     // Extract numeric part from the end (e.g., "REST-1768762345335-5678" -> "5678")
     const strId = String(restaurantId)
     const numericMatch = strId.match(/(\d+)$/)
-    
+
     if (numericMatch) {
       const numericPart = numericMatch[1]
       // Take last 6 digits and pad with zeros if needed
       const lastDigits = numericPart.slice(-6).padStart(6, '0')
       return `REST${lastDigits}`
     }
-    
+
     // Fallback: if no numeric part found, use original
     return strId
   }
@@ -162,7 +162,7 @@ export default function HubFinance() {
 
   const invoiceOrders = useMemo(() => {
     const allOrdersMap = new Map()
-    
+
     // Add current cycle orders first
     const current = financeData?.currentCycle?.orders || []
     current.forEach(order => {
@@ -171,7 +171,7 @@ export default function HubFinance() {
         allOrdersMap.set(id, order)
       }
     })
-    
+
     // Add past cycles orders, avoiding duplicates already in current map
     const past = pastCyclesData?.orders || []
     past.forEach(order => {
@@ -180,7 +180,7 @@ export default function HubFinance() {
         allOrdersMap.set(id, order)
       }
     })
-    
+
     return Array.from(allOrdersMap.values())
   }, [financeData, pastCyclesData])
 
@@ -252,31 +252,31 @@ export default function HubFinance() {
 
       const parts = dateRangeStr.split(' - ')
       if (parts.length !== 2) return null
-      
+
       const startStr = parts[0].trim() // "14 Nov"
       const endStr = parts[1].trim().replace("'", " ") // "14 Dec 25"
-      
+
       const currentYear = new Date().getFullYear()
       const startParts = startStr.split(' ')
       const endParts = endStr.split(' ')
-      
+
       if (startParts.length < 2 || endParts.length < 2) return null
-      
+
       const monthMap = {
         'Jan': 0, 'Feb': 1, 'Mar': 2, 'Apr': 3, 'May': 4, 'Jun': 5,
         'Jul': 6, 'Aug': 7, 'Sep': 8, 'Oct': 9, 'Nov': 10, 'Dec': 11
       }
-      
+
       const startDay = parseInt(startParts[0])
       const startMonth = monthMap[startParts[1]]
       const endDay = parseInt(endParts[0])
       const endMonth = monthMap[endParts[1]]
       const year = endParts.length > 2 ? parseInt('20' + endParts[2]) : currentYear
-      
+
       if (startMonth === undefined || endMonth === undefined || isNaN(startDay) || isNaN(endDay)) {
         return null
       }
-      
+
       const start = new Date(year, startMonth, startDay)
       const end = new Date(year, endMonth, endDay)
 
@@ -302,17 +302,17 @@ export default function HubFinance() {
       // Validate dates and format as ISO strings
       const startDateObj = startDate instanceof Date ? startDate : new Date(startDate)
       const endDateObj = endDate instanceof Date ? endDate : new Date(endDate)
-      
+
       // Check if dates are valid
       if (isNaN(startDateObj.getTime()) || isNaN(endDateObj.getTime())) {
         debugError('Invalid date values:', { startDate, endDate })
         setPastCyclesData(null)
         return
       }
-      
+
       const startDateISO = startDateObj.toISOString().split('T')[0]
       const endDateISO = endDateObj.toISOString().split('T')[0]
-      
+
       const response = await restaurantAPI.getFinance({
         startDate: startDateISO,
         endDate: endDateISO
@@ -353,10 +353,10 @@ export default function HubFinance() {
     const restaurantName = financeData?.restaurant?.name || "Restaurant"
     const restaurantId = financeData?.restaurant?.restaurantId || "N/A"
     const currentCycle = financeData?.currentCycle || {}
-    
+
     // Get all orders (current cycle + past cycles) - DEDUPLICATED
     const allOrdersMap = new Map()
-    
+
     // Add current cycle orders first
     if (financeData?.currentCycle?.orders && Array.isArray(financeData.currentCycle.orders)) {
       financeData.currentCycle.orders.forEach(order => {
@@ -368,7 +368,7 @@ export default function HubFinance() {
         }
       })
     }
-    
+
     // Add past cycles orders (ignoring duplicates already in current map)
     if (pastCyclesData?.orders && Array.isArray(pastCyclesData.orders)) {
       pastCyclesData.orders.forEach(order => {
@@ -380,9 +380,9 @@ export default function HubFinance() {
         }
       })
     }
-    
+
     const allOrders = Array.from(allOrdersMap.values())
-    
+
     return {
       restaurantName,
       restaurantId,
@@ -551,13 +551,13 @@ export default function HubFinance() {
               </thead>
               <tbody>
                 ${reportData.allOrders.map(order => {
-                  const orderDate = order.createdAt ? new Date(order.createdAt).toLocaleDateString('en-IN') : (order.deliveredAt ? new Date(order.deliveredAt).toLocaleDateString('en-IN') : 'N/A')
-                  const foodItems = order.foodNames || (order.items && order.items.map(item => item.name).join(', ')) || 'N/A'
-                  const itemQuantities = order.items ? order.items.map(item => (item.quantity || 1).toString()).join(', ') : 'N/A'
-                  const orderAmount = order.totalAmount || order.orderTotal || order.amount || 0
-                  const earning = order.payout || order.restaurantEarning || 0
-                  
-                  return `
+      const orderDate = order.createdAt ? new Date(order.createdAt).toLocaleDateString('en-IN') : (order.deliveredAt ? new Date(order.deliveredAt).toLocaleDateString('en-IN') : 'N/A')
+      const foodItems = order.foodNames || (order.items && order.items.map(item => item.name).join(', ')) || 'N/A'
+      const itemQuantities = order.items ? order.items.map(item => (item.quantity || 1).toString()).join(', ') : 'N/A'
+      const orderAmount = order.totalAmount || order.orderTotal || order.amount || 0
+      const earning = order.payout || order.restaurantEarning || 0
+
+      return `
                     <tr>
                       <td>${order.cycle || 'N/A'}</td>
                       <td>${order.orderId || 'N/A'}</td>
@@ -568,7 +568,7 @@ export default function HubFinance() {
                       <td>₹${earning.toFixed(2)}</td>
                     </tr>
                   `
-                }).join('')}
+    }).join('')}
               </tbody>
               <tfoot>
                 <tr style="background-color: #e8f5e9; font-weight: bold;">
@@ -598,12 +598,12 @@ export default function HubFinance() {
   const downloadPDF = async () => {
     try {
       setShowDownloadMenu(false)
-      
-    const reportData = getReportData()
-    const htmlContent = generateHTMLContent(reportData)
-    
+
+      const reportData = getReportData()
+      const htmlContent = generateHTMLContent(reportData)
+
       debugLog('?? Generating PDF...')
-      
+
       // Create a temporary hidden iframe to render HTML properly
       const iframe = document.createElement('iframe')
       iframe.style.position = 'absolute'
@@ -613,12 +613,12 @@ export default function HubFinance() {
       iframe.style.height = '297mm'
       iframe.style.border = 'none'
       document.body.appendChild(iframe)
-      
+
       // Write HTML to iframe
       iframe.contentDocument.open()
       iframe.contentDocument.write(htmlContent)
       iframe.contentDocument.close()
-      
+
       // Wait for iframe content to load
       await new Promise((resolve) => {
         if (iframe.contentDocument.readyState === 'complete') {
@@ -628,18 +628,18 @@ export default function HubFinance() {
           setTimeout(resolve, 1000) // Fallback timeout
         }
       })
-      
+
       // Wait a bit more for styles to apply
       await new Promise(resolve => setTimeout(resolve, 500))
-      
+
       // Import html2canvas and jsPDF dynamically
       debugLog('?? Loading libraries...')
       const html2canvas = (await import('html2canvas')).default
       const { default: jsPDF } = await import('jspdf')
-    
+
       // Get the body element from iframe
       const iframeBody = iframe.contentDocument.body
-      
+
       debugLog('?? Converting to canvas...')
       // Convert HTML to canvas
       const canvas = await html2canvas(iframeBody, {
@@ -651,30 +651,30 @@ export default function HubFinance() {
         width: iframeBody.scrollWidth,
         height: iframeBody.scrollHeight
       })
-      
+
       debugLog('? Canvas created:', canvas.width, 'x', canvas.height)
-      
+
       // Remove temporary iframe
       if (document.body.contains(iframe)) {
         document.body.removeChild(iframe)
       }
-    
+
       // Calculate PDF dimensions
       const imgWidth = 210 // A4 width in mm
       const pageHeight = 297 // A4 height in mm
       const imgHeight = (canvas.height * imgWidth) / canvas.width
-      
+
       debugLog('?? PDF dimensions:', imgWidth, 'x', imgHeight, 'mm')
-      
+
       // Create PDF
       const pdf = new jsPDF('p', 'mm', 'a4')
       let heightLeft = imgHeight
       let position = 0
-      
+
       // Add first page
       pdf.addImage(canvas.toDataURL('image/png'), 'PNG', 0, position, imgWidth, imgHeight)
       heightLeft -= pageHeight
-      
+
       // Add additional pages if content is longer than one page
       while (heightLeft > 0) {
         position = heightLeft - imgHeight
@@ -682,7 +682,7 @@ export default function HubFinance() {
         pdf.addImage(canvas.toDataURL('image/png'), 'PNG', 0, position, imgWidth, imgHeight)
         heightLeft -= pageHeight
       }
-      
+
       // Download PDF
       const fileName = `finance-report-${reportData.dateRange.replace(/\s+/g, '-').replace(/'/g, '')}_${new Date().toISOString().split("T")[0]}.pdf`
       debugLog('?? Downloading PDF:', fileName)
@@ -692,7 +692,7 @@ export default function HubFinance() {
       debugError('? Error downloading PDF:', error)
       debugError('Error details:', error.stack)
       alert(`Failed to download PDF: ${error.message}. Please check console for details.`)
-    setShowDownloadMenu(false)
+      setShowDownloadMenu(false)
     }
   }
 
@@ -703,11 +703,11 @@ export default function HubFinance() {
         setShowDownloadMenu(false)
       }
     }
-    
+
     if (showDownloadMenu) {
       document.addEventListener('mousedown', handleClickOutside)
     }
-    
+
     return () => {
       document.removeEventListener('mousedown', handleClickOutside)
     }
@@ -782,21 +782,19 @@ export default function HubFinance() {
         <div className="flex gap-2">
           <button
             onClick={() => setActiveTab("payouts")}
-            className={`flex-1 py-3 px-4 rounded-full font-medium text-sm transition-colors ${
-              activeTab === "payouts"
+            className={`flex-1 py-3 px-4 rounded-full font-medium text-sm transition-colors ${activeTab === "payouts"
                 ? "bg-gradient-to-br from-[#B80B3D] to-[#66001D] text-white"
                 : "bg-white text-gray-600 border border-gray-300"
-            }`}
+              }`}
           >
             Payouts
           </button>
           <button
             onClick={() => setActiveTab("invoices")}
-            className={`flex-1 py-3 px-4 rounded-full font-medium text-sm transition-colors ${
-              activeTab === "invoices"
+            className={`flex-1 py-3 px-4 rounded-full font-medium text-sm transition-colors ${activeTab === "invoices"
                 ? "bg-gradient-to-br from-[#B80B3D] to-[#66001D] text-white"
                 : "bg-white text-gray-600 border border-gray-300"
-            }`}
+              }`}
           >
             Invoices & Taxes
           </button>
@@ -824,11 +822,10 @@ export default function HubFinance() {
                     <button
                       onClick={() => { setWithdrawalAmount(''); setShowWithdrawalModal(true) }}
                       disabled={!(financeData?.currentCycle?.estimatedPayout > 0)}
-                      className={`w-full py-3 px-4 rounded-lg font-semibold flex items-center justify-center gap-2 mt-4 transition-colors ${
-                        financeData?.currentCycle?.estimatedPayout > 0
+                      className={`w-full py-3 px-4 rounded-lg font-semibold flex items-center justify-center gap-2 mt-4 transition-colors ${financeData?.currentCycle?.estimatedPayout > 0
                           ? "bg-gradient-to-br from-[#B80B3D] to-[#66001D] text-white hover:bg-gray-800"
                           : "bg-gray-200 text-gray-500 cursor-not-allowed"
-                      }`}
+                        }`}
                     >
                       <Wallet className="h-5 w-5" />
                       Withdraw
@@ -896,17 +893,17 @@ export default function HubFinance() {
               <div className="space-y-3">
                 <div className="flex gap-2">
                   <div className="flex-1 relative" ref={dateRangePickerRef}>
-                    <button 
+                    <button
                       onClick={() => setShowDateRangePicker(!showDateRangePicker)}
                       className="w-full bg-white rounded-lg px-4 py-3 flex items-center justify-between border border-gray-200 hover:border-gray-300 transition-colors cursor-pointer"
                     >
-                    <div className="flex items-center gap-2">
-                      <Calendar className="w-4 h-4 text-gray-600" />
-                      <span className="text-sm font-medium text-gray-900">{selectedDateRange}</span>
-                    </div>
+                      <div className="flex items-center gap-2">
+                        <Calendar className="w-4 h-4 text-gray-600" />
+                        <span className="text-sm font-medium text-gray-900">{selectedDateRange}</span>
+                      </div>
                       <ChevronDown className={`w-4 h-4 text-gray-600 transition-transform ${showDateRangePicker ? 'rotate-180' : ''}`} />
                     </button>
-                    
+
                     {/* Date Range Picker Dropdown */}
                     <AnimatePresence>
                       {showDateRangePicker && (
@@ -923,17 +920,17 @@ export default function HubFinance() {
                                 const getDateRanges = () => {
                                   const today = new Date()
                                   today.setHours(23, 59, 59, 999)
-                                  
+
                                   // Last 7 days
                                   const last7DaysStart = new Date(today)
                                   last7DaysStart.setDate(today.getDate() - 7)
                                   last7DaysStart.setHours(0, 0, 0, 0)
-                                  
+
                                   // Last 30 days
                                   const last30DaysStart = new Date(today)
                                   last30DaysStart.setDate(today.getDate() - 30)
                                   last30DaysStart.setHours(0, 0, 0, 0)
-                                  
+
                                   // This week (Monday to Sunday)
                                   const currentDay = today.getDay()
                                   const daysFromMonday = currentDay === 0 ? 6 : currentDay - 1
@@ -943,21 +940,21 @@ export default function HubFinance() {
                                   const thisWeekEnd = new Date(thisWeekStart)
                                   thisWeekEnd.setDate(thisWeekStart.getDate() + 6)
                                   thisWeekEnd.setHours(23, 59, 59, 999)
-                                  
+
                                   // Last week
                                   const lastWeekStart = new Date(thisWeekStart)
                                   lastWeekStart.setDate(thisWeekStart.getDate() - 7)
                                   const lastWeekEnd = new Date(thisWeekEnd)
                                   lastWeekEnd.setDate(thisWeekEnd.getDate() - 7)
-                                  
+
                                   // This month
                                   const thisMonthStart = new Date(today.getFullYear(), today.getMonth(), 1)
                                   const thisMonthEnd = new Date(today.getFullYear(), today.getMonth() + 1, 0, 23, 59, 59, 999)
-                                  
+
                                   // Last month
                                   const lastMonthStart = new Date(today.getFullYear(), today.getMonth() - 1, 1)
                                   const lastMonthEnd = new Date(today.getFullYear(), today.getMonth(), 0, 23, 59, 59, 999)
-                                  
+
                                   return {
                                     today,
                                     last7DaysStart,
@@ -972,58 +969,58 @@ export default function HubFinance() {
                                     lastMonthEnd
                                   }
                                 }
-                                
+
                                 const formatDateForDisplay = (date) => {
                                   const day = date.getDate()
                                   const month = date.toLocaleString('en-US', { month: 'short' })
                                   const year = date.getFullYear().toString().slice(-2)
                                   return `${day} ${month}'${year}`
                                 }
-                                
+
                                 const formatDateRange = (start, end) => {
                                   return `${formatDateForDisplay(start)} - ${formatDateForDisplay(end)}`
                                 }
-                                
+
                                 const ranges = getDateRanges()
                                 const dateOptions = [
-                                  { 
-                                    label: "Last 7 days", 
+                                  {
+                                    label: "Last 7 days",
                                     range: formatDateRange(ranges.last7DaysStart, ranges.today),
                                     startDate: ranges.last7DaysStart,
                                     endDate: ranges.today
                                   },
-                                  { 
-                                    label: "Last 30 days", 
+                                  {
+                                    label: "Last 30 days",
                                     range: formatDateRange(ranges.last30DaysStart, ranges.today),
                                     startDate: ranges.last30DaysStart,
                                     endDate: ranges.today
                                   },
-                                  { 
-                                    label: "This week", 
+                                  {
+                                    label: "This week",
                                     range: formatDateRange(ranges.thisWeekStart, ranges.thisWeekEnd),
                                     startDate: ranges.thisWeekStart,
                                     endDate: ranges.thisWeekEnd
                                   },
-                                  { 
-                                    label: "Last week", 
+                                  {
+                                    label: "Last week",
                                     range: formatDateRange(ranges.lastWeekStart, ranges.lastWeekEnd),
                                     startDate: ranges.lastWeekStart,
                                     endDate: ranges.lastWeekEnd
                                   },
-                                  { 
-                                    label: "This month", 
+                                  {
+                                    label: "This month",
                                     range: formatDateRange(ranges.thisMonthStart, ranges.thisMonthEnd),
                                     startDate: ranges.thisMonthStart,
                                     endDate: ranges.thisMonthEnd
                                   },
-                                  { 
-                                    label: "Last month", 
+                                  {
+                                    label: "Last month",
                                     range: formatDateRange(ranges.lastMonthStart, ranges.lastMonthEnd),
                                     startDate: ranges.lastMonthStart,
                                     endDate: ranges.lastMonthEnd
                                   }
                                 ]
-                                
+
                                 return dateOptions.map((option, index) => (
                                   <button
                                     key={index}
@@ -1037,7 +1034,7 @@ export default function HubFinance() {
                                   >
                                     <div className="font-medium text-gray-900">{option.label}</div>
                                     <div className="text-xs text-gray-500">{option.range}</div>
-                  </button>
+                                  </button>
                                 ))
                               })()}
                             </div>
@@ -1047,7 +1044,7 @@ export default function HubFinance() {
                     </AnimatePresence>
                   </div>
                   <div className="relative" ref={downloadMenuRef}>
-                    <button 
+                    <button
                       onClick={() => setShowDownloadMenu(!showDownloadMenu)}
                       className="bg-gradient-to-br from-[#B80B3D] to-[#66001D] text-white rounded-lg px-4 py-3 flex items-center justify-center gap-2 hover:bg-gray-800 transition-colors"
                     >
@@ -1055,7 +1052,7 @@ export default function HubFinance() {
                       <span className="text-sm font-medium">Get report</span>
                       <ChevronDown className="w-4 h-4" />
                     </button>
-                    
+
                     <AnimatePresence>
                       {showDownloadMenu && (
                         <motion.div
@@ -1144,15 +1141,15 @@ export default function HubFinance() {
                         ))}
                       </div>
                     )}
-                    
-                    {(!pastCyclesData || (!pastCyclesData.orders || pastCyclesData.orders.length === 0)) && 
-                     (!financeData?.currentCycle?.orders || financeData.currentCycle.orders.length === 0) && 
-                     !loadingPastCycles && !loading && (
-                      <div className="bg-white rounded-lg p-12 text-center border border-gray-200">
-                        <p className="text-gray-400 mb-2">No transaction history available</p>
-                        <p className="text-xs text-gray-500">Your earnings and order payouts will appear here.</p>
-                      </div>
-                    )}
+
+                    {(!pastCyclesData || (!pastCyclesData.orders || pastCyclesData.orders.length === 0)) &&
+                      (!financeData?.currentCycle?.orders || financeData.currentCycle.orders.length === 0) &&
+                      !loadingPastCycles && !loading && (
+                        <div className="bg-white rounded-lg p-12 text-center border border-gray-200">
+                          <p className="text-gray-400 mb-2">No transaction history available</p>
+                          <p className="text-xs text-gray-500">Your earnings and order payouts will appear here.</p>
+                        </div>
+                      )}
                   </>
                 )}
               </div>
@@ -1248,7 +1245,7 @@ export default function HubFinance() {
                     <X className="w-5 h-5 text-gray-600" />
                   </button>
                 </div>
-                
+
                 <div className="mb-4">
                   <p className="text-sm text-gray-600 mb-2">
                     Available Balance: <span className="font-semibold text-gray-900">₹{(financeData?.currentCycle?.estimatedPayout || 0).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
@@ -1301,7 +1298,7 @@ export default function HubFinance() {
                         alert('Amount cannot exceed available balance')
                         return
                       }
-                      
+
                       try {
                         setSubmittingWithdrawal(true)
                         const response = await restaurantAPI.createWithdrawalRequest(amount)
