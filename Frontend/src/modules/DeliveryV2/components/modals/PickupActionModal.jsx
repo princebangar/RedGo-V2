@@ -110,6 +110,41 @@ export const PickupActionModal = ({
     order.restaurant?.profileImage ||
     'https://cdn-icons-png.flaticon.com/512/3170/3170733.png';
 
+  const customerName =
+    order.customerName ||
+    order.userId?.name ||
+    order.user?.name ||
+    order.deliveryAddress?.fullName ||
+    order.deliveryAddress?.name ||
+    'Customer';
+
+  const customerPhone =
+    order.customerPhone ||
+    order.userPhone ||
+    order.userId?.phone ||
+    order.user?.phone ||
+    order.deliveryAddress?.phone ||
+    '';
+
+  const customerAddress =
+    order.customerAddress ||
+    order.customer_address ||
+    [
+      order.deliveryAddress?.street,
+      order.deliveryAddress?.additionalDetails,
+      order.deliveryAddress?.landmark,
+      order.deliveryAddress?.area,
+      order.deliveryAddress?.city,
+      order.deliveryAddress?.state,
+      order.deliveryAddress?.zipCode || order.deliveryAddress?.pincode,
+    ]
+      .map((v) => String(v || '').trim())
+      .filter(Boolean)
+      .join(', ') ||
+    '';
+
+  const customerLocation = order.customerLocation || order.deliveryLocation || null;
+
   const handleCallRestaurant = () => {
     const num = String(restaurantPhone || '').replace(/\D/g, '');
     if (!num) {
@@ -129,6 +164,30 @@ export const PickupActionModal = ({
       mapsUrl = `https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(restaurantAddress)}&travelmode=driving`;
     } else {
       toast.error('Restaurant location not available');
+      return;
+    }
+    window.open(mapsUrl, '_blank', 'noopener,noreferrer');
+  };
+
+  const handleCallCustomer = () => {
+    const num = String(customerPhone || '').replace(/\D/g, '');
+    if (!num) {
+      toast.error('Customer number not available');
+      return;
+    }
+    window.location.href = `tel:${num}`;
+  };
+
+  const handleNavigateToCustomer = () => {
+    const lat = parseFloat(customerLocation?.lat ?? customerLocation?.latitude);
+    const lng = parseFloat(customerLocation?.lng ?? customerLocation?.longitude);
+    let mapsUrl;
+    if (Number.isFinite(lat) && Number.isFinite(lng)) {
+      mapsUrl = `https://www.google.com/maps/dir/?api=1&destination=${lat},${lng}&travelmode=driving`;
+    } else if (customerAddress) {
+      mapsUrl = `https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(customerAddress)}&travelmode=driving`;
+    } else {
+      toast.error('Customer location not available');
       return;
     }
     window.open(mapsUrl, '_blank', 'noopener,noreferrer');
@@ -155,22 +214,26 @@ export const PickupActionModal = ({
           </button>
         </div>
 
-        {/* Restaurant Header */}
-        <div className="flex items-start justify-between mb-5 sm:mb-8 pb-3 sm:pb-4 border-b border-gray-50">
-          <div className="flex gap-3 sm:gap-4">
-            <div className="w-14 h-14 bg-white rounded-2xl flex items-center justify-center shadow-lg shadow-black/5 overflow-hidden border border-gray-100">
+        {/* Restaurant Header Card */}
+        <div className="flex items-start justify-between mb-4 pb-4 border-b border-gray-100">
+          <div className="flex gap-3 sm:gap-4 min-w-0 flex-1">
+            <div className="w-13 h-13 sm:w-14 sm:h-14 bg-white rounded-2xl flex items-center justify-center shadow-md overflow-hidden border border-gray-100 shrink-0">
               <img src={restaurantLogo} alt="Logo" className="w-full h-full object-cover" />
             </div>
-            <div className="min-w-0 pr-2">
-              <h3 className="text-gray-950 text-lg sm:text-xl font-bold leading-tight">{restaurantName}</h3>
+            <div className="min-w-0 flex-1 pr-1">
+              <div className="flex items-center gap-1.5 text-[10px] font-extrabold uppercase tracking-widest text-green-600">
+                <ChefHat className="w-3.5 h-3.5" />
+                <span>Restaurant Pickup</span>
+              </div>
+              <h3 className="text-gray-950 text-base sm:text-lg font-bold leading-tight truncate mt-0.5">{restaurantName}</h3>
               {restaurantAddress ? (
-                <p className="text-gray-500 text-xs font-medium mt-1 leading-snug line-clamp-2">
+                <p className="text-gray-500 text-xs font-medium mt-0.5 leading-snug line-clamp-2">
                   {restaurantAddress}
                 </p>
               ) : null}
-              <p className="text-gray-500 text-[10px] font-bold uppercase tracking-widest flex items-center gap-1 mt-1.5">
+              <p className="text-gray-500 text-[10px] font-bold uppercase tracking-widest flex items-center gap-1 mt-1">
                 {isAtPickup ? (
-                  <span className="text-green-600">Reached Location √</span>
+                  <span className="text-green-600 font-extrabold">Reached Location √</span>
                 ) : (
                   <span className="text-orange-500">
                     {formatTripDistanceKm(distanceToTarget) === '--'
@@ -182,11 +245,11 @@ export const PickupActionModal = ({
             </div>
           </div>
 
-          <div className="flex gap-2">
+          <div className="flex gap-2 shrink-0 ml-1">
             <button
               type="button"
               onClick={handleCallRestaurant}
-              className="w-10 h-10 rounded-full bg-green-50 flex items-center justify-center text-green-600 border border-green-100 active:scale-95 transition-all"
+              className="w-10 h-10 rounded-full bg-green-50 flex items-center justify-center text-green-600 border border-green-100 active:scale-95 transition-all shadow-sm"
               aria-label="Call restaurant"
             >
               <Phone className="w-5 h-5" />
@@ -194,8 +257,49 @@ export const PickupActionModal = ({
             <button
               type="button"
               onClick={handleNavigateToRestaurant}
-              className="w-10 h-10 rounded-full bg-gray-900 flex items-center justify-center text-white shadow-lg active:scale-95 transition-all"
+              className="w-10 h-10 rounded-full bg-gray-900 flex items-center justify-center text-white shadow-md active:scale-95 transition-all"
               aria-label="Navigate to restaurant"
+            >
+              <Navigation className="w-5 h-5" />
+            </button>
+          </div>
+        </div>
+
+        {/* Customer Drop Card (Requested for SS 2 & SS 3) */}
+        <div className="flex items-start justify-between mb-5 pb-4 border-b border-gray-100">
+          <div className="flex gap-3 sm:gap-4 min-w-0 flex-1">
+            <div className="w-13 h-13 sm:w-14 sm:h-14 bg-blue-50 text-blue-600 rounded-2xl flex items-center justify-center shadow-sm shrink-0 border border-blue-100">
+              <MapPin className="w-6 h-6" />
+            </div>
+            <div className="min-w-0 flex-1 pr-1">
+              <div className="flex items-center gap-1.5 text-[10px] font-extrabold uppercase tracking-widest text-blue-600">
+                <MapPin className="w-3.5 h-3.5" />
+                <span>Customer Drop</span>
+              </div>
+              <h3 className="text-gray-950 text-base sm:text-lg font-bold leading-tight truncate mt-0.5">{customerName}</h3>
+              {customerAddress ? (
+                <p className="text-gray-500 text-xs font-medium mt-0.5 leading-snug line-clamp-2">{customerAddress}</p>
+              ) : null}
+              {customerPhone ? (
+                <p className="text-gray-500 text-[11px] font-semibold mt-0.5">{customerPhone}</p>
+              ) : null}
+            </div>
+          </div>
+
+          <div className="flex gap-2 shrink-0 ml-1">
+            <button
+              type="button"
+              onClick={handleCallCustomer}
+              className="w-10 h-10 rounded-full bg-green-50 flex items-center justify-center text-green-600 border border-green-100 active:scale-95 transition-all shadow-sm"
+              aria-label="Call customer"
+            >
+              <Phone className="w-5 h-5" />
+            </button>
+            <button
+              type="button"
+              onClick={handleNavigateToCustomer}
+              className="w-10 h-10 rounded-full bg-gray-900 flex items-center justify-center text-white shadow-md active:scale-95 transition-all"
+              aria-label="Navigate to customer"
             >
               <Navigation className="w-5 h-5" />
             </button>

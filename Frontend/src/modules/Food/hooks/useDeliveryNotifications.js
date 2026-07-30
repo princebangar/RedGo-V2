@@ -223,8 +223,8 @@ export const useDeliveryNotifications = () => {
   const [claimedOrderId, setClaimedOrderId] = useState(null); // set when another partner claims an order
   const [adminNotification, setAdminNotification] = useState(null);
   const joinedDeliveryRoomRef = useRef(null);
-  const ALERT_LOOP_INTERVAL_MS = 4500;
-  const ALERT_LOOP_MAX_MS = 120000;
+  const ALERT_LOOP_INTERVAL_MS = 1000;
+  const ALERT_LOOP_MAX_MS = 10000; // 10 seconds max ring time per request as requested
   const ALERT_DEDUPE_MS = 15000;
   const BROWSER_NOTIFICATION_DEDUPE_MS = 20000;
   const NOTIFICATION_PERMISSION_ASKED_KEY = 'delivery_notification_permission_asked';
@@ -366,28 +366,31 @@ export const useDeliveryNotifications = () => {
     alertLoopStartedAtRef.current = 0;
 
     if (audioRef.current) {
-      audioRef.current.pause();
-      audioRef.current.currentTime = 0;
+      try {
+        audioRef.current.pause();
+        audioRef.current.currentTime = 0;
+        audioRef.current.loop = false;
+      } catch (_) {}
     }
   }, [clearAlertLoopTimer]);
 
-  const startAlertLoop = useCallback((playSoundFn) => {
-    // Clear only the timer — do NOT pause audio (that delayed the first ring by ~4.5s)
+  const startAlertLoop = useCallback((playSoundFn, orderData) => {
     clearAlertLoopTimer();
+    const targetOrder = orderData || activeOrderRef.current;
+    if (!targetOrder || isOrderAlertMuted(targetOrder)) return;
+
     alertLoopStartedAtRef.current = Date.now();
 
     alertLoopTimerRef.current = setInterval(() => {
       const elapsed = Date.now() - alertLoopStartedAtRef.current;
-      if (elapsed >= ALERT_LOOP_MAX_MS || !activeOrderRef.current) {
+      if (elapsed >= 10000 || !activeOrderRef.current) {
         stopAlertLoop();
         return;
       }
-
-      if (!isOrderAlertMuted(activeOrderRef.current)) {
-        playSoundFn(activeOrderRef.current);
-      }
-    }, ALERT_LOOP_INTERVAL_MS);
+    }, 1000);
   }, [clearAlertLoopTimer, isOrderAlertMuted, stopAlertLoop]);
+
+
   
   const playSynthDeliveryBeep = useCallback(async () => {
     if (typeof window === 'undefined') return;
@@ -467,6 +470,7 @@ export const useDeliveryNotifications = () => {
         audioRef.current.muted = false;
         audioRef.current.volume = 1.0;
         audioRef.current.currentTime = 0;
+        audioRef.current.loop = true;
         const p = audioRef.current.play();
         if (p && typeof p.catch === 'function') {
           p.catch(async (error) => {
@@ -481,6 +485,16 @@ export const useDeliveryNotifications = () => {
       void playSynthDeliveryBeep();
     }
   }, [isOrderAlertMuted, playSynthDeliveryBeep]);
+
+  const triggerOrderAlertFor10Sec = useCallback((orderData) => {
+    const target = orderData || activeOrderRef.current || newOrder;
+    if (!target) return;
+    if (isOrderAlertMuted(target)) return;
+
+    activeOrderRef.current = target;
+    playNotificationSound(target);
+    startAlertLoop(playNotificationSound, target);
+  }, [isOrderAlertMuted, playNotificationSound, startAlertLoop, newOrder]);
 
   const setOrderAlertMuted = useCallback(
     (orderData, nextMuted) => {
@@ -503,14 +517,13 @@ export const useDeliveryNotifications = () => {
         return;
       }
 
-      const activeKeys = collectOrderAlertKeys(activeOrderRef.current);
-      const affectsActive = activeKeys.some((key) => keys.includes(key));
-      if (affectsActive && activeOrderRef.current) {
-        playNotificationSound(activeOrderRef.current);
-        startAlertLoop(playNotificationSound);
+      const targetOrder = orderData || activeOrderRef.current || newOrder;
+      if (targetOrder) {
+        activeOrderRef.current = targetOrder;
+        triggerOrderAlertFor10Sec(targetOrder);
       }
     },
-    [saveMutedOrderIds, stopAlertLoop, playNotificationSound, startAlertLoop],
+    [saveMutedOrderIds, stopAlertLoop, triggerOrderAlertFor10Sec, newOrder],
   );
 
   const toggleOrderAlertMuted = useCallback(
@@ -1426,6 +1439,7 @@ export const useDeliveryNotifications = () => {
     isConnected,
     playNotificationSound,
     stopSound: stopAlertLoop,
+    triggerOrderAlertFor10Sec,
     isOrderAlertMuted,
     setOrderAlertMuted,
     toggleOrderAlertMuted,

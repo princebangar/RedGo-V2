@@ -26,7 +26,7 @@ const resolveRestaurantBackPath = ({ pathname, state }) => {
   const explicitBackPath = toRestaurantPath(state?.backTo) || toRestaurantPath(state?.from)
 
   if (normalizedPath === "/orders/all") {
-    return explicitBackPath || "/food/restaurant/explore"
+    return explicitBackPath || "/food/restaurant"
   }
 
   if (/^\/orders\/[^/]+$/.test(normalizedPath)) {

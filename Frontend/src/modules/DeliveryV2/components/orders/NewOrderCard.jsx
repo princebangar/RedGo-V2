@@ -9,10 +9,13 @@ import {
   Package,
   Volume2,
   VolumeX,
+  Phone,
+  Navigation,
 } from 'lucide-react';
 import { ActionSlider } from '@/modules/DeliveryV2/components/ui/ActionSlider';
 import { useDeliveryStore } from '@/modules/DeliveryV2/store/useDeliveryStore';
 import { computePickupMetrics, formatPickupRouteSummary } from '@/modules/DeliveryV2/utils/pickupMetrics';
+import { toast } from 'sonner';
 
 /** Time / distance cell — live values or locating state (shared with NewOrderModal). */
 export function PickupMetricsValue({ metrics, label, unit, className = '' }) {
@@ -76,6 +79,13 @@ export default function NewOrderCard({
     order.restaurantId?.addressLine1 ||
     order.restaurantId?.location?.address ||
     'Address not available';
+  const restaurantPhone =
+    order.restaurantPhone ||
+    order.restaurant_phone ||
+    order.restaurantId?.primaryContactNumber ||
+    order.restaurantId?.ownerPhone ||
+    order.restaurantId?.phone ||
+    '';
   const deliveryAddress = order?.deliveryAddress || {};
   const geoCoords =
     Array.isArray(deliveryAddress?.location?.coordinates) &&
@@ -105,6 +115,55 @@ export default function NewOrderCard({
   const customerName =
     order.userId?.name || order.customerName || order.user?.name || 'Customer';
   const customerPhone = order.userId?.phone || order.customerPhone || order.user?.phone || '';
+
+  const handleCallRestaurant = () => {
+    const num = String(restaurantPhone || '').replace(/\D/g, '');
+    if (!num) {
+      toast.error('Restaurant phone number not available');
+      return;
+    }
+    window.location.href = `tel:${num}`;
+  };
+
+  const handleNavigateToRestaurant = () => {
+    const restCoords = order.restaurantLocation || order.restaurantId?.location || null;
+    const lat = parseFloat(restCoords?.lat ?? restCoords?.latitude);
+    const lng = parseFloat(restCoords?.lng ?? restCoords?.longitude);
+    let mapsUrl;
+    if (Number.isFinite(lat) && Number.isFinite(lng)) {
+      mapsUrl = `https://www.google.com/maps/dir/?api=1&destination=${lat},${lng}&travelmode=driving`;
+    } else if (restaurantAddress) {
+      mapsUrl = `https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(restaurantAddress)}&travelmode=driving`;
+    } else {
+      toast.error('Restaurant location not available');
+      return;
+    }
+    window.open(mapsUrl, '_blank', 'noopener,noreferrer');
+  };
+
+  const handleCallCustomer = () => {
+    const num = String(customerPhone || '').replace(/\D/g, '');
+    if (!num) {
+      toast.error('Customer phone number not available');
+      return;
+    }
+    window.location.href = `tel:${num}`;
+  };
+
+  const handleNavigateToCustomer = () => {
+    const lat = parseFloat(customerLocation?.lat ?? customerLocation?.latitude);
+    const lng = parseFloat(customerLocation?.lng ?? customerLocation?.longitude);
+    let mapsUrl;
+    if (Number.isFinite(lat) && Number.isFinite(lng)) {
+      mapsUrl = `https://www.google.com/maps/dir/?api=1&destination=${lat},${lng}&travelmode=driving`;
+    } else if (customerAddress) {
+      mapsUrl = `https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(customerAddress)}&travelmode=driving`;
+    } else {
+      toast.error('Customer location not available');
+      return;
+    }
+    window.open(mapsUrl, '_blank', 'noopener,noreferrer');
+  };
 
   return (
     <div
@@ -178,22 +237,63 @@ export default function NewOrderCard({
               <div className="w-4 h-4 rounded-full bg-blue-500 border-4 border-blue-50" />
             </div>
             <div className="flex-1 space-y-4">
-              <div>
-                <div className="flex items-center gap-2 mb-1 text-[10px] font-bold uppercase tracking-widest text-green-600">
-                  <ChefHat className="w-3.5 h-3.5" />
-                  <span>Restaurant Pickup</span>
+              <div className="flex justify-between items-start">
+                <div className="min-w-0 flex-1 pr-2">
+                  <div className="flex items-center gap-2 mb-1 text-[10px] font-bold uppercase tracking-widest text-green-600">
+                    <ChefHat className="w-3.5 h-3.5" />
+                    <span>Restaurant Pickup</span>
+                  </div>
+                  <p className="text-gray-950 font-bold text-sm leading-tight">{restaurantName}</p>
+                  <p className="text-gray-500 text-xs">{restaurantAddress}</p>
                 </div>
-                <p className="text-gray-950 font-bold text-sm leading-tight">{restaurantName}</p>
-                <p className="text-gray-500 text-xs">{restaurantAddress}</p>
+                <div className="flex gap-1.5 shrink-0 mt-1">
+                  <button
+                    type="button"
+                    onClick={handleCallRestaurant}
+                    className="w-8 h-8 rounded-full bg-green-50 flex items-center justify-center text-green-600 border border-green-100 active:scale-95 transition-all shadow-sm"
+                    aria-label="Call restaurant"
+                  >
+                    <Phone className="w-4 h-4" />
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleNavigateToRestaurant}
+                    className="w-8 h-8 rounded-full bg-gray-900 flex items-center justify-center text-white shadow-md active:scale-95 transition-all"
+                    aria-label="Navigate to restaurant"
+                  >
+                    <Navigation className="w-4 h-4" />
+                  </button>
+                </div>
               </div>
-              <div>
-                <div className="flex items-center gap-2 mb-1 text-[10px] font-bold uppercase tracking-widest text-blue-600">
-                  <MapPin className="w-3.5 h-3.5" />
-                  <span>Customer Drop</span>
+
+              <div className="flex justify-between items-start">
+                <div className="min-w-0 flex-1 pr-2">
+                  <div className="flex items-center gap-2 mb-1 text-[10px] font-bold uppercase tracking-widest text-blue-600">
+                    <MapPin className="w-3.5 h-3.5" />
+                    <span>Customer Drop</span>
+                  </div>
+                  <p className="text-gray-950 font-bold text-sm leading-tight">{customerName}</p>
+                  {customerPhone ? <p className="text-gray-500 text-xs">{customerPhone}</p> : null}
+                  <p className="text-gray-500 text-xs line-clamp-2">{customerAddress}</p>
                 </div>
-                <p className="text-gray-950 font-bold text-sm leading-tight">{customerName}</p>
-                {customerPhone ? <p className="text-gray-500 text-xs">{customerPhone}</p> : null}
-                <p className="text-gray-500 text-xs line-clamp-2">{customerAddress}</p>
+                <div className="flex gap-1.5 shrink-0 mt-1">
+                  <button
+                    type="button"
+                    onClick={handleCallCustomer}
+                    className="w-8 h-8 rounded-full bg-green-50 flex items-center justify-center text-green-600 border border-green-100 active:scale-95 transition-all shadow-sm"
+                    aria-label="Call customer"
+                  >
+                    <Phone className="w-4 h-4" />
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleNavigateToCustomer}
+                    className="w-8 h-8 rounded-full bg-gray-900 flex items-center justify-center text-white shadow-md active:scale-95 transition-all"
+                    aria-label="Navigate to customer"
+                  >
+                    <Navigation className="w-4 h-4" />
+                  </button>
+                </div>
               </div>
             </div>
           </div>

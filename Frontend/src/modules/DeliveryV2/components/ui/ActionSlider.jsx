@@ -69,20 +69,11 @@ export const ActionSlider = ({
   return (
     <div 
       ref={containerRef}
-      className={`relative w-full h-[68px] rounded-full p-1.5 overflow-hidden transition-all duration-300 ${
-        'bg-gray-950 shadow-lg shadow-black/10'
-      }`}
+      className="relative w-full h-[68px] rounded-full p-1.5 overflow-hidden transition-all duration-300 bg-gray-950 shadow-lg shadow-black/10 select-none"
     >
-      {/* Background Track */}
-      <div className={`absolute inset-y-0 left-[76px] right-5 flex items-center justify-center text-center font-bold text-[11px] uppercase tracking-[0.14em] leading-none whitespace-nowrap transition-opacity duration-300 ${
-        isSuccess ? 'opacity-0' : disabled ? 'text-white/70' : 'text-white/88'
-      }`}>
-        {disabled ? 'Action Locked' : label}
-      </div>
-
-      {/* Dynamic Progress Fill */}
+      {/* Dynamic Progress Fill (z-0) */}
       <motion.div 
-        className={`absolute inset-0 ${color} rounded-full`}
+        className={`absolute inset-0 ${color} rounded-full z-0`}
         initial={{ width: 0 }}
         animate={{ 
           width: isSuccess ? '100%' : `${progress * 100}%`,
@@ -91,6 +82,16 @@ export const ActionSlider = ({
         transition={{ type: "spring", stiffness: 300, damping: 30 }}
       />
 
+      {/* Context Label Text - z-10, smoothly fades out as progress increases during drag */}
+      <div 
+        style={{
+          opacity: isSuccess ? 0 : disabled ? 0.5 : Math.max(0, 1 - progress * 2.2),
+        }}
+        className="absolute inset-0 px-16 flex items-center justify-center text-center font-extrabold text-xs sm:text-sm uppercase tracking-[0.16em] leading-none whitespace-nowrap pointer-events-none z-10 transition-opacity duration-150 text-white drop-shadow-[0_1px_2px_rgba(0,0,0,0.8)]"
+      >
+        {disabled ? 'Action Locked' : label}
+      </div>
+
       {/* Success View */}
       <AnimatePresence>
         {isSuccess && (
@@ -98,14 +99,14 @@ export const ActionSlider = ({
             initial={{ opacity: 0, scale: 0.8 }}
             animate={{ opacity: 1, scale: 1 }}
             exit={{ opacity: 0 }}
-            className="absolute inset-y-0 left-[76px] right-5 flex items-center justify-center text-center text-white font-bold text-sm uppercase tracking-[0.14em] leading-none z-30"
+            className="absolute inset-0 px-16 flex items-center justify-center text-center text-white font-extrabold text-sm uppercase tracking-[0.16em] leading-none z-20 pointer-events-none drop-shadow-md"
           >
             {successLabel}
           </motion.div>
         )}
       </AnimatePresence>
 
-      {/* The Handle */}
+      {/* The Handle (z-30) */}
       <motion.div
         drag={disabled || isSuccess || isAcceptingRef.current ? false : "x"}
         dragConstraints={{ left: 0, right: containerRef.current?.offsetWidth ? containerRef.current.offsetWidth - 68 : 250 }}
@@ -113,7 +114,7 @@ export const ActionSlider = ({
         onDrag={handleDrag}
         onDragEnd={handleDragEnd}
         animate={controls}
-        className={`relative w-14 h-14 rounded-full flex items-center justify-center z-20 cursor-grab active:cursor-grabbing shadow-xl transition-colors ${
+        className={`relative w-14 h-14 rounded-full flex items-center justify-center z-30 cursor-grab active:cursor-grabbing shadow-xl transition-colors ${
           disabled ? 'bg-gray-200 text-gray-400' : 
           isSuccess ? 'bg-white text-green-600' : 'bg-white text-gray-950'
         }`}
