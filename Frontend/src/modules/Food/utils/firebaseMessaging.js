@@ -1,4 +1,5 @@
 import { toast } from "sonner";
+import { showNotificationToast } from "@/shared/utils/customToasts";
 import { userAPI, restaurantAPI, deliveryAPI, adminAPI } from "@food/api";
 import { initializeApp, getApp, getApps } from "firebase/app";
 const fallbackNotificationSound = "/alert.mp3";
@@ -1236,11 +1237,7 @@ function showForegroundNotification(payload = {}) {
   // Foreground: in-app toast + sound only (no duplicate OS banner while tab is open).
   if (isTabVisible) {
     playPushSound(payload);
-    if (body) {
-      toast.success(`${title}: ${body}`);
-    } else {
-      toast.success(title);
-    }
+    showNotificationToast({ title, message: body });
     return;
   }
 
