@@ -2,7 +2,8 @@ import { sendResponse, sendError } from '../../../../utils/response.js';
 import {
     createBroadcastNotification,
     getBroadcastNotifications,
-    deleteBroadcastNotification
+    deleteBroadcastNotification,
+    searchBroadcastRecipients
 } from '../services/notificationBroadcast.service.js';
 
 export const createBroadcastNotificationController = async (req, res) => {
@@ -35,5 +36,19 @@ export const deleteBroadcastNotificationController = async (req, res) => {
         return sendResponse(res, 200, 'Broadcast notification deleted successfully', data);
     } catch (error) {
         return sendError(res, error.statusCode || 500, error.message || 'Failed to delete broadcast notification');
+    }
+};
+
+export const searchBroadcastRecipientsController = async (req, res) => {
+    try {
+        const data = await searchBroadcastRecipients({
+            search: req.query?.search,
+            targetType: req.query?.targetType,
+            page: req.query?.page,
+            limit: req.query?.limit
+        });
+        return sendResponse(res, 200, 'Recipients searched successfully', data);
+    } catch (error) {
+        return sendError(res, error.statusCode || 500, error.message || 'Failed to search recipients');
     }
 };
