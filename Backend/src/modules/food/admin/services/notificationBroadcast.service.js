@@ -126,12 +126,23 @@ const resolveCustomTargets = async ({ targets = [], targetIds = [] } = {}) => {
         throw new ValidationError('Please select at least one recipient for custom broadcast');
     }
 
-    const users = await FoodUser.find({ _id: { $in: ids }, isActive: true }).select('_id name phone email').lean();
-    return users.map((row) => ({
-        ownerType: 'USER',
-        ownerId: String(row._id),
-        ...buildUserLabel(row)
-    }));
+    const [users, restaurants, deliveryPartners] = await Promise.all([
+        FoodUser.find({ _id: { $in: ids }, isActive: true }).select('_id name phone email').lean(),
+        FoodRestaurant.find({ _id: { $in: ids } }).select('_id restaurantName ownerName ownerPhone ownerEmail').lean(),
+        FoodDeliveryPartner.find({ _id: { $in: ids } }).select('_id name phone email').lean()
+    ]);
+
+    const resolved = [
+        ...users.map((row) => ({ ownerType: 'USER', ownerId: String(row._id), ...buildUserLabel(row) })),
+        ...restaurants.map((row) => ({ ownerType: 'RESTAURANT', ownerId: String(row._id), ...buildRestaurantLabel(row) })),
+        ...deliveryPartners.map((row) => ({ ownerType: 'DELIVERY_PARTNER', ownerId: String(row._id), ...buildDeliveryLabel(row) }))
+    ];
+
+    if (!resolved.length) {
+        throw new ValidationError('Selected recipients not found');
+    }
+
+    return resolved;
 };
 
 const resolveTargets = async ({ targetType, targetIds = [], targets = [] } = {}) => {
@@ -251,9 +262,6 @@ export const createBroadcastNotification = async ({ body = {}, adminId } = {}) =
         )
     });
 
-    // Socket + inbox are enough for the HTTP response to finish quickly.
-    // FCM to every device can take minutes for large audiences — run in background
-    // so admin history GET is not starved / canceled (~30s client timeout).
     emitRealtimeNotifications(resolvedTargets, broadcast);
 
     const pushTargets = resolvedTargets.map((target) => ({
@@ -330,5 +338,86 @@ export const deleteBroadcastNotification = async (broadcastId) => {
     return {
         broadcast,
         deletedInboxCount: Number(result?.deletedCount || 0)
+    };
+};
+
+export const searchBroadcastRecipients = async ({ search = '', targetType = 'ALL', page = 1, limit = 20 } = {}) => {
+    const rawSearch = String(search || '').trim().slice(0, 80);
+    const sanitizedPage = Math.max(1, Number(page) || 1);
+    const sanitizedLimit = Math.max(1, Math.min(100, Number(limit) || 20));
+    const skip = (sanitizedPage - 1) * sanitizedLimit;
+
+    const buildRegexFilter = (fields = []) => {
+        if (!rawSearch) return {};
+        const term = rawSearch.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+        return {
+            $or: fields.map((field) => ({ [field]: { $regex: term, $options: 'i' } }))
+        };
+    };
+
+    const target = String(targetType || 'ALL').toUpperCase();
+    const fetchUsers = target === 'ALL' || target === 'USER';
+    const fetchRestaurants = target === 'ALL' || target === 'RESTAURANT';
+    const fetchDelivery = target === 'ALL' || target === 'DELIVERY' || target === 'DELIVERY_PARTNER';
+
+    const userFilter = { isActive: true, ...buildRegexFilter(['name', 'phone', 'email']) };
+    const restaurantFilter = { status: 'approved', ...buildRegexFilter(['restaurantName', 'ownerName', 'ownerPhone', 'ownerEmail']) };
+    const deliveryFilter = { status: 'approved', ...buildRegexFilter(['name', 'phone', 'email']) };
+
+    const [users, restaurants, deliveryPartners, userCount, restaurantCount, deliveryCount, matchedUserCount, matchedRestaurantCount, matchedDeliveryCount] = await Promise.all([
+        fetchUsers
+            ? FoodUser.find(userFilter)
+                  .select('_id name phone email')
+                  .sort({ _id: -1 })
+                  .skip(target === 'USER' || target === 'ALL' ? skip : 0)
+                  .limit(sanitizedLimit)
+                  .lean()
+            : [],
+        fetchRestaurants
+            ? FoodRestaurant.find(restaurantFilter)
+                  .select('_id restaurantName ownerName ownerPhone ownerEmail')
+                  .sort({ _id: -1 })
+                  .skip(target === 'RESTAURANT' ? skip : 0)
+                  .limit(sanitizedLimit)
+                  .lean()
+            : [],
+        fetchDelivery
+            ? FoodDeliveryPartner.find(deliveryFilter)
+                  .select('_id name phone email')
+                  .sort({ _id: -1 })
+                  .skip(target === 'DELIVERY_PARTNER' || target === 'DELIVERY' ? skip : 0)
+                  .limit(sanitizedLimit)
+                  .lean()
+            : [],
+        FoodUser.countDocuments({ isActive: true }),
+        FoodRestaurant.countDocuments({ status: 'approved' }),
+        FoodDeliveryPartner.countDocuments({ status: 'approved' }),
+        fetchUsers ? FoodUser.countDocuments(userFilter) : 0,
+        fetchRestaurants ? FoodRestaurant.countDocuments(restaurantFilter) : 0,
+        fetchDelivery ? FoodDeliveryPartner.countDocuments(deliveryFilter) : 0
+    ]);
+
+    const recipients = [
+        ...users.map((row) => ({ ownerType: 'USER', ownerId: String(row._id), ...buildUserLabel(row) })),
+        ...restaurants.map((row) => ({ ownerType: 'RESTAURANT', ownerId: String(row._id), ...buildRestaurantLabel(row) })),
+        ...deliveryPartners.map((row) => ({ ownerType: 'DELIVERY_PARTNER', ownerId: String(row._id), ...buildDeliveryLabel(row) }))
+    ].slice(0, sanitizedLimit);
+
+    const matchedTotal = (fetchUsers ? matchedUserCount : 0) + (fetchRestaurants ? matchedRestaurantCount : 0) + (fetchDelivery ? matchedDeliveryCount : 0);
+
+    return {
+        recipients,
+        pagination: {
+            page: sanitizedPage,
+            limit: sanitizedLimit,
+            matchedTotal,
+            totalPages: Math.max(1, Math.ceil(matchedTotal / sanitizedLimit))
+        },
+        counts: {
+            user: userCount,
+            restaurant: restaurantCount,
+            delivery: deliveryCount,
+            total: userCount + restaurantCount + deliveryCount
+        }
     };
 };

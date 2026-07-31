@@ -47,6 +47,7 @@ router.delete('/sub-admins/:id', subAdminController.deleteSubAdmin);
 // ----- Broadcast Notifications -----
 router.post('/notifications/broadcast', notificationBroadcastController.createBroadcastNotificationController);
 router.get('/notifications/broadcast', notificationBroadcastController.getBroadcastNotificationsController);
+router.get('/notifications/recipients-search', notificationBroadcastController.searchBroadcastRecipientsController);
 router.delete('/notifications/broadcast/:id', notificationBroadcastController.deleteBroadcastNotificationController);
 
 // ----- Customers -----
