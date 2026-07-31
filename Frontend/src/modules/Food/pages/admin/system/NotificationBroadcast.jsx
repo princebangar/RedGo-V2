@@ -131,12 +131,22 @@ export default function NotificationBroadcast() {
     }
   }, [form.targetType]);
 
-  const filteredRecipients = allRecipients;
-
   const selectedKeys = useMemo(
     () => new Set(selectedRecipients.map((item) => `${item.ownerType}:${item.ownerId}`)),
     [selectedRecipients]
   );
+
+  const filteredRecipients = useMemo(() => {
+    const list = [...allRecipients];
+    list.sort((a, b) => {
+      const aKey = `${a.ownerType}:${a.ownerId}`;
+      const bKey = `${b.ownerType}:${b.ownerId}`;
+      const aSel = selectedKeys.has(aKey) ? 1 : 0;
+      const bSel = selectedKeys.has(bKey) ? 1 : 0;
+      return bSel - aSel;
+    });
+    return list;
+  }, [allRecipients, selectedKeys]);
 
   const pageNumbers = useMemo(() => {
     const pages = [];
@@ -256,9 +266,12 @@ export default function NotificationBroadcast() {
           <button
             type="button"
             onClick={() => setShowHistoryModal(true)}
-            className="inline-flex items-center gap-2 px-4 py-2.5 text-xs font-semibold rounded-2xl border border-slate-200 bg-white text-slate-700 hover:bg-slate-50 shadow-sm transition-all self-start sm:self-auto"
+            className="inline-flex items-center gap-2.5 px-5 py-3 text-sm font-bold rounded-2xl bg-gradient-to-r from-blue-600 to-indigo-600 text-white shadow-md shadow-blue-500/25 hover:shadow-lg hover:shadow-blue-500/35 hover:scale-[1.02] active:scale-[0.98] transition-all self-start sm:self-auto cursor-pointer"
           >
-            <History className="w-4 h-4 text-blue-600" /> View History ({history.length})
+            <History className="w-5 h-5 text-white" /> View History
+            <span className="bg-white/25 text-white text-xs px-2.5 py-0.5 rounded-full font-extrabold ml-0.5">
+              {history.length}
+            </span>
           </button>
         </div>
 
@@ -279,7 +292,7 @@ export default function NotificationBroadcast() {
               <select
                 value={form.targetType}
                 onChange={(event) => handleTargetTypeChange(event.target.value)}
-                className="mt-2 w-full rounded-2xl border border-slate-200 px-4 py-3 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+                className="mt-2 w-full rounded-2xl border border-slate-200 px-4 py-3 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100 font-semibold"
               >
                 {TARGET_OPTIONS.map((option) => (
                   <option key={option.value} value={option.value}>
@@ -305,7 +318,7 @@ export default function NotificationBroadcast() {
             <button
               type="submit"
               disabled={submitting}
-              className="inline-flex items-center gap-2 rounded-2xl bg-blue-600 px-6 py-3 text-sm font-semibold text-white hover:bg-blue-700 disabled:opacity-60 shadow-md shadow-blue-500/20 transition-all"
+              className="inline-flex items-center gap-2 rounded-2xl bg-blue-600 px-6 py-3 text-sm font-bold text-white hover:bg-blue-700 disabled:opacity-60 shadow-md shadow-blue-500/20 hover:shadow-lg hover:scale-[1.01] active:scale-[0.99] transition-all cursor-pointer"
             >
               {submitting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
               Send Broadcast
@@ -419,7 +432,9 @@ export default function NotificationBroadcast() {
                     return (
                       <label
                         key={key}
-                        className="flex items-start gap-3 px-4 py-3 cursor-pointer hover:bg-slate-50"
+                        className={`flex items-start gap-3 px-4 py-3 cursor-pointer transition-colors ${
+                          checked ? "bg-blue-50/70 hover:bg-blue-50" : "hover:bg-slate-50"
+                        }`}
                       >
                         <input
                           type="checkbox"
@@ -427,11 +442,18 @@ export default function NotificationBroadcast() {
                           onChange={() => toggleRecipient(recipient)}
                           className="mt-1 h-4 w-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500"
                         />
-                        <div className="min-w-0">
-                          <div className="text-sm font-semibold text-slate-900">
-                            {recipient.label}
+                        <div className="min-w-0 flex-1">
+                          <div className="flex items-center justify-between">
+                            <div className="text-sm font-semibold text-slate-900">
+                              {recipient.label}
+                            </div>
+                            {checked && (
+                              <span className="text-[10px] font-bold px-2 py-0.5 rounded-md bg-blue-600 text-white">
+                                Selected
+                              </span>
+                            )}
                           </div>
-                          <div className="text-xs text-slate-500">
+                          <div className="text-xs text-slate-500 mt-0.5">
                             <span
                               className={`inline-block px-2 py-0.5 rounded text-[10px] font-bold mr-1.5 ${
                                 recipient.ownerType === "USER"
@@ -519,65 +541,90 @@ export default function NotificationBroadcast() {
       </div>
 
       {showHistoryModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 backdrop-blur-sm p-4 overflow-y-auto">
-          <div className="bg-white rounded-3xl border border-slate-200 shadow-2xl w-full max-w-4xl max-h-[85vh] flex flex-col overflow-hidden animate-in fade-in zoom-in-95 duration-200">
-            <div className="flex items-center justify-between p-6 border-b border-slate-200 bg-slate-50/50">
-              <div>
-                <h2 className="text-xl font-bold text-slate-900">Broadcast History</h2>
-                <p className="text-sm text-slate-500 mt-0.5">Latest sent broadcasts and their targets.</p>
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-md p-4 overflow-y-auto">
+          <div className="bg-white rounded-3xl border border-slate-200 shadow-2xl w-full max-w-6xl max-h-[85vh] flex flex-col overflow-hidden animate-in fade-in zoom-in-95 duration-200">
+            <div className="flex items-center justify-between p-6 border-b border-slate-200 bg-slate-900 text-white">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-2xl bg-white/10 flex items-center justify-center text-blue-400">
+                  <History className="w-5 h-5" />
+                </div>
+                <div>
+                  <h2 className="text-xl font-bold text-white">Broadcast History</h2>
+                  <p className="text-xs text-slate-400 mt-0.5">View and manage sent broadcast notifications.</p>
+                </div>
               </div>
               <button
                 type="button"
                 onClick={() => setShowHistoryModal(false)}
-                className="p-2 rounded-xl text-slate-400 hover:bg-slate-200/60 hover:text-slate-700 transition-colors"
+                className="p-2 rounded-xl text-slate-400 hover:bg-white/10 hover:text-white transition-colors cursor-pointer"
               >
                 <X className="w-5 h-5" />
               </button>
             </div>
 
-            <div className="p-6 overflow-y-auto flex-1">
+            <div className="p-6 overflow-y-auto flex-1 bg-slate-50/50">
               {historyLoading ? (
-                <div className="py-12 text-sm text-slate-500 flex items-center justify-center gap-2">
-                  <Loader2 className="w-5 h-5 animate-spin text-blue-600" />
-                  Loading history...
+                <div className="py-16 text-sm text-slate-500 flex flex-col items-center justify-center gap-3">
+                  <Loader2 className="w-8 h-8 animate-spin text-blue-600" />
+                  <span>Loading history...</span>
                 </div>
               ) : history.length === 0 ? (
-                <div className="py-12 text-center text-sm text-slate-500">No broadcast notifications found.</div>
+                <div className="py-16 text-center text-sm text-slate-500 flex flex-col items-center justify-center gap-2">
+                  <BellRing className="w-10 h-10 text-slate-300" />
+                  <span className="font-semibold text-slate-700">No broadcast notifications found</span>
+                  <span className="text-xs text-slate-400">Broadcasts you send will show up here.</span>
+                </div>
               ) : (
-                <div className="overflow-x-auto">
-                  <table className="min-w-full text-sm">
-                    <thead>
-                      <tr className="text-left text-slate-500 border-b border-slate-200">
-                        <th className="py-3 pr-4 font-semibold">Title</th>
-                        <th className="py-3 pr-4 font-semibold">Message</th>
-                        <th className="py-3 pr-4 font-semibold">Target</th>
-                        <th className="py-3 pr-4 font-semibold">Recipients</th>
-                        <th className="py-3 pr-4 font-semibold">Date</th>
-                        <th className="py-3 text-right font-semibold">Action</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {history.map((item) => (
-                        <tr key={item?._id} className={`border-b border-slate-100 align-top transition-opacity duration-300 ${deletingIds.has(item?._id) ? 'opacity-0' : 'opacity-100'}`}>
-                          <td className="py-4 pr-4 font-semibold text-slate-900">{item?.title || "Notification"}</td>
-                          <td className="py-4 pr-4 text-slate-600 max-w-sm">{item?.message || "-"}</td>
-                          <td className="py-4 pr-4 text-slate-700">{item?.targetLabel || item?.targetType}</td>
-                          <td className="py-4 pr-4 text-slate-700">{item?.targetCount || item?.targets?.length || 0}</td>
-                          <td className="py-4 pr-4 text-slate-500 whitespace-nowrap">{toDateLabel(item?.createdAt)}</td>
-                          <td className="py-4 text-right">
-                            <button
-                              type="button"
-                              onClick={() => handleDelete(item?._id)}
-                              className="inline-flex items-center gap-2 rounded-xl border border-red-200 px-3 py-2 text-xs font-semibold text-red-600 hover:bg-red-50"
-                            >
-                              <Trash2 className="w-4 h-4" />
-                              Delete
-                            </button>
-                          </td>
+                <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-sm">
+                      <thead>
+                        <tr className="text-left text-xs uppercase font-bold tracking-wider text-slate-500 bg-slate-100/80 border-b border-slate-200">
+                          <th className="py-3.5 px-4 w-44">Title</th>
+                          <th className="py-3.5 px-4">Message</th>
+                          <th className="py-3.5 px-4 w-40">Target Type</th>
+                          <th className="py-3.5 px-4 w-28 text-center">Recipients</th>
+                          <th className="py-3.5 px-4 w-44">Sent At</th>
+                          <th className="py-3.5 px-4 w-32 text-right pr-5">Action</th>
                         </tr>
-                      ))}
-                    </tbody>
-                  </table>
+                      </thead>
+                      <tbody className="divide-y divide-slate-100">
+                        {history.map((item) => (
+                          <tr key={item?._id} className={`align-middle hover:bg-slate-50/80 transition-all ${deletingIds.has(item?._id) ? 'opacity-30' : 'opacity-100'}`}>
+                            <td className="py-4 px-4 font-bold text-slate-900 w-44 truncate" title={item?.title}>
+                              {item?.title || "Notification"}
+                            </td>
+                            <td className="py-4 px-4 text-slate-600 max-w-[280px]">
+                              <p className="truncate text-xs font-medium text-slate-700" title={item?.message}>
+                                {item?.message || "-"}
+                              </p>
+                            </td>
+                            <td className="py-4 px-4 w-40">
+                              <span className="inline-block px-2.5 py-1 rounded-lg text-xs font-bold bg-blue-50 text-blue-700 border border-blue-100/80 whitespace-nowrap">
+                                {item?.targetLabel || item?.targetType}
+                              </span>
+                            </td>
+                            <td className="py-4 px-4 w-28 text-center font-bold text-slate-800">
+                              {item?.targetCount || item?.targets?.length || 0}
+                            </td>
+                            <td className="py-4 px-4 w-44 text-slate-500 whitespace-nowrap text-xs">
+                              {toDateLabel(item?.createdAt)}
+                            </td>
+                            <td className="py-4 px-4 w-32 text-right pr-5 whitespace-nowrap">
+                              <button
+                                type="button"
+                                onClick={() => handleDelete(item?._id)}
+                                className="inline-flex items-center gap-1.5 rounded-xl border border-red-200 bg-red-50/60 px-3 py-1.5 text-xs font-semibold text-red-600 hover:bg-red-600 hover:text-white transition-all cursor-pointer shadow-xs"
+                              >
+                                <Trash2 className="w-3.5 h-3.5" />
+                                Delete
+                              </button>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
                 </div>
               )}
             </div>
