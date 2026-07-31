@@ -1758,14 +1758,7 @@ export async function getPaymentStatus(orderId, deliveryPartnerId) {
 // ----- Admin -----
 export async function listOrdersAdmin(query) {
   const { page, limit, skip } = buildPaginationOptions(query);
-  // Exclude active online orders that have incomplete payments (keeps COD, paid online, and cancelled orders visible)
-  const filter = {
-    $or: [
-      { "payment.method": { $in: ["cash", "wallet"] } },
-      { "payment.status": { $in: ["paid", "authorized", "captured", "settled", "refunded"] } },
-      { "orderStatus": { $in: ["cancelled_by_user", "cancelled_by_restaurant", "cancelled_by_admin"] } }
-    ]
-  };
+  const filter = {};
 
   const rawStatus =
     typeof query.status === "string" ? query.status.trim().toLowerCase() : "";
