@@ -72,13 +72,8 @@ function getAccessToken(config) {
     const moduleToken = localStorage.getItem(key);
     if (moduleToken) return moduleToken;
 
-    // 2. Fallback to legacy generic token only for user module.
-    // Using generic token for delivery/restaurant can send wrong role token
-    // and trigger 403 on protected role-based endpoints.
-    if (module === "user") {
-      return localStorage.getItem("accessToken") || null;
-    }
-    return null;
+    // 2. Fallback to generic token if module-specific token is missing
+    return localStorage.getItem("accessToken") || null;
   } catch {
     return null;
   }
@@ -90,11 +85,8 @@ function getRefreshToken(module) {
     const moduleRefreshToken = localStorage.getItem(`${module}_refreshToken`);
     if (moduleRefreshToken) return moduleRefreshToken;
 
-    // 2. Fallback to legacy generic refresh token only for user module.
-    if (module === "user") {
-      return localStorage.getItem("refreshToken") || null;
-    }
-    return null;
+    // 2. Fallback to generic refresh token
+    return localStorage.getItem("refreshToken") || null;
   } catch {
     return null;
   }

@@ -495,7 +495,7 @@ export default function AdminHome() {
                   <p className="text-sm text-neutral-500">Distribution by state</p>
                 </div>
                 <span className="rounded-full bg-neutral-100 px-3 py-1 text-xs text-neutral-700">
-                  {orderStats.reduce((s, o) => s + o.value, 0)} orders
+                  {ordersTotal.toLocaleString("en-IN")} orders
                 </span>
               </CardHeader>
               <CardContent className="min-w-0 pt-4">

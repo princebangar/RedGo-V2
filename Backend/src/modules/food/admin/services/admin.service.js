@@ -500,8 +500,7 @@ export async function getDashboardStats(query = {}) {
         ? await FoodRestaurant.find({ zoneId }).distinct('_id')
         : null;
 
-    // Include ALL orders in the period/zone — money metrics already gate on delivered.
-    // Old payment $or filter dropped some delivered rows and also hid open COD from counts.
+    // Include ALL orders in the period/zone matching Transaction Report and All Orders
     const orderMatch = {};
     if (periodRange) {
         orderMatch.createdAt = { $gte: periodRange.start, $lte: periodRange.end };
