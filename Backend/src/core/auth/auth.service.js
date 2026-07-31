@@ -224,24 +224,13 @@ export const verifyUserOtpAndLogin = async (
 
   // Update FCM token if provided
   if (fcmToken) {
-    let isModified = false;
-    if (platform === "mobile") {
-      if (!userDoc.fcmTokenMobile) userDoc.fcmTokenMobile = [];
-      if (!userDoc.fcmTokenMobile.includes(fcmToken)) {
-        userDoc.fcmTokenMobile.push(fcmToken);
-        isModified = true;
-      }
-    } else {
-      // Default to web if not explicitly mobile
-      if (!userDoc.fcmTokens) userDoc.fcmTokens = [];
-      if (!userDoc.fcmTokens.includes(fcmToken)) {
-        userDoc.fcmTokens.push(fcmToken);
-        isModified = true;
-      }
-    }
-    if (isModified) {
-      await userDoc.save();
-    }
+    const { upsertFirebaseDeviceToken } = await import("../notifications/firebase.service.js");
+    await upsertFirebaseDeviceToken({
+      ownerType: "USER",
+      ownerId: String(userDoc._id),
+      token: fcmToken,
+      platform: platform === "mobile" ? "mobile" : "web",
+    });
   }
 
   // Ensure referralCode exists (used for share links on older accounts).
@@ -496,23 +485,13 @@ export const verifyRestaurantOtpAndLogin = async (phone, otp, fcmToken, platform
 
   // Update FCM token if provided
   if (fcmToken) {
-    let isModified = false;
-    if (platform === "mobile") {
-      if (!restaurant.fcmTokenMobile) restaurant.fcmTokenMobile = [];
-      if (!restaurant.fcmTokenMobile.includes(fcmToken)) {
-        restaurant.fcmTokenMobile.push(fcmToken);
-        isModified = true;
-      }
-    } else {
-      if (!restaurant.fcmTokens) restaurant.fcmTokens = [];
-      if (!restaurant.fcmTokens.includes(fcmToken)) {
-        restaurant.fcmTokens.push(fcmToken);
-        isModified = true;
-      }
-    }
-    if (isModified) {
-      await restaurant.save();
-    }
+    const { upsertFirebaseDeviceToken } = await import("../notifications/firebase.service.js");
+    await upsertFirebaseDeviceToken({
+      ownerType: "RESTAURANT",
+      ownerId: String(restaurant._id),
+      token: fcmToken,
+      platform: platform === "mobile" ? "mobile" : "web",
+    });
   }
 
   if (restaurant.status && (restaurant.status === "banned" || restaurant.status === "deleted")) {

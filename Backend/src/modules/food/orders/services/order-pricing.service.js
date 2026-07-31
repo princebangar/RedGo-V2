@@ -35,9 +35,9 @@ export async function calculateOrderPricing(userId, dto) {
     deliveryFee: 25,
     deliveryFeeRanges: [],
     freeDeliveryUpTo: 0,
-    platformFee: 5,
+    platformFee: 0,
     packagingFee: 0,
-    gstRate: 5,
+    gstRate: 0,
   };
 
   const basePackagingFee = feeSettings.packagingFee != null ? Number(feeSettings.packagingFee) : 0;
