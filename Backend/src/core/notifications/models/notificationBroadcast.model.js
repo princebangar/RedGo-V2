@@ -74,5 +74,7 @@ const notificationBroadcastSchema = new mongoose.Schema(
 );
 
 notificationBroadcastSchema.index({ createdAt: -1 });
+// TTL Index: Auto-delete broadcast logs older than 3 days (259,200 seconds) for 512MB Free DB Tier safety
+notificationBroadcastSchema.index({ createdAt: 1 }, { expireAfterSeconds: 3 * 24 * 60 * 60 });
 
 export const BroadcastNotification = mongoose.model('BroadcastNotification', notificationBroadcastSchema);
