@@ -326,47 +326,50 @@ export const listOwnerTokens = async ({ ownerType, ownerId, platform }) => {
 export const upsertFirebaseDeviceToken = async ({ ownerType, ownerId, token, platform = 'web' }) => {
     try {
         const normalizedToken = sanitizeString(token);
-        // console.log(`[FCM-DEBUG] upsertFirebaseDeviceToken: ownerType=${ownerType}, ownerId=${ownerId}, platform=${platform}, tokenPreview=${normalizedToken?.slice(0, 10)}...`);
-
         if (!ownerType || !ownerId || !normalizedToken) {
-            // console.error('[FCM-DEBUG] upsert - Missing required fields');
             throw new Error('ownerType, ownerId, and token are required.');
         }
 
         const normalizedPlatform = platform === 'mobile' ? 'mobile' : 'web';
         const model = getOwnerModel(ownerType);
         if (!model) {
-            // console.error(`[FCM-DEBUG] upsert - Unsupported owner type: ${ownerType}`);
             throw new Error(`Unsupported owner type: ${ownerType}`);
         }
 
-        // Basic ID validation before DB call
         if (!mongoose.Types.ObjectId.isValid(ownerId)) {
             throw new Error(`Invalid owner ID: ${ownerId}`);
         }
 
         const doc = await model.findById(ownerId);
         if (!doc) {
-            // console.error(`[FCM-DEBUG] upsert - Owner profile not found for id ${ownerId}`);
             throw new Error('Owner profile not found.');
         }
 
-        const field = getTokenFieldForPlatform(normalizedPlatform);
-        const existingTokens = Array.isArray(doc[field]) ? doc[field] : [];
-        
-        // Add only if not already present
+        const targetField = getTokenFieldForPlatform(normalizedPlatform);
+        const otherField = getTokenFieldForPlatform(normalizedPlatform === 'mobile' ? 'web' : 'mobile');
+
+        let isModified = false;
+
+        // 1. Remove this token from the other platform array to prevent cross-contamination / duplicate notifications
+        const otherTokens = Array.isArray(doc[otherField]) ? doc[otherField] : [];
+        if (otherTokens.includes(normalizedToken)) {
+            doc[otherField] = normalizeTokenList(otherTokens.filter((t) => t !== normalizedToken));
+            isModified = true;
+        }
+
+        // 2. Add to target field if not already present
+        const existingTokens = Array.isArray(doc[targetField]) ? doc[targetField] : [];
         if (!existingTokens.includes(normalizedToken)) {
-            const tokens = normalizeTokenList([...existingTokens, normalizedToken]);
-            doc[field] = tokens;
+            doc[targetField] = normalizeTokenList([...existingTokens, normalizedToken]);
+            isModified = true;
+        }
+
+        if (isModified) {
             await doc.save();
-            // console.log(`[FCM-DEBUG] upsert - Token list updated. New count: ${tokens.length}`);
-        } else {
-            // console.log('[FCM-DEBUG] upsert - Token already exists in DB, skipping save');
         }
 
         return { success: true };
     } catch (error) {
-        // console.error('[FCM-DEBUG] upsert failed:', error.message);
         throw error;
     }
 };
@@ -456,60 +459,52 @@ export const sendNotificationToOwner = async ({ ownerType, ownerId, payload, pla
     // Clone payload so broadcast loops don't mutate a shared object
     const enrichedPayload = { ...payload };
 
-    const sendForPlatform = async (platformName) => {
-        const tokens = await listOwnerTokens({ ownerType, ownerId, platform: platformName });
+    try {
+        // Retrieve tokens for requested platform or combine all tokens if platform is undefined
+        const rawTokens = await listOwnerTokens({ ownerType, ownerId, platform });
+        
+        // Deduplicate token list strictly so no single FCM device token receives duplicate notifications
         const targetTokens =
             payload?.sendToAllDevices === true
-                ? normalizeTokenList(tokens)
-                : pickLatestTokenOnly(tokens);
+                ? normalizeTokenList(rawTokens)
+                : pickLatestTokenOnly(rawTokens);
+
         if (!targetTokens.length) {
-            return { successCount: 0, failureCount: 0, results: [], platform: platformName };
+            logger.warn(`[FCM] No device tokens for ${ownerType}:${ownerId} — push skipped`);
+            return { successCount: 0, failureCount: 0, results: [] };
         }
-        const response = await sendPushNotification(targetTokens, enrichedPayload, {
-            platform: platformName,
-        });
+
+        // Single dispatch call to FCM with deduplicated tokens
+        const response = await sendPushNotification(targetTokens, enrichedPayload, { platform });
+
+        // Clean up any stale or unregistered tokens across both web and mobile fields
         const invalidTokens = (response.results || [])
             .filter((item) => !item.ok && item.remove)
             .map((item) => item.token)
             .filter(Boolean);
+
         if (invalidTokens.length > 0) {
             const model = getOwnerModel(ownerType);
             const doc = model ? await model.findById(ownerId) : null;
             if (doc) {
-                const field = getTokenFieldForPlatform(platformName);
-                doc[field] = normalizeTokenList(
-                    (Array.isArray(doc[field]) ? doc[field] : []).filter((t) => !invalidTokens.includes(t)),
+                doc.fcmTokens = normalizeTokenList(
+                    (Array.isArray(doc.fcmTokens) ? doc.fcmTokens : []).filter((t) => !invalidTokens.includes(t))
+                );
+                doc.fcmTokenMobile = normalizeTokenList(
+                    (Array.isArray(doc.fcmTokenMobile) ? doc.fcmTokenMobile : []).filter((t) => !invalidTokens.includes(t))
                 );
                 await doc.save();
             }
         }
-        return { ...response, platform: platformName };
-    };
 
-    try {
-        let responses = [];
-        if (platform) {
-            responses = [await sendForPlatform(platform === 'mobile' ? 'mobile' : 'web')];
-        } else {
-            responses = await Promise.all([sendForPlatform('web'), sendForPlatform('mobile')]);
-        }
+        console.log(
+            `[FCM] Sending to ${ownerType}:${ownerId}. Title: "${enrichedPayload.title || 'Data Only'}" success=${response.successCount} failure=${response.failureCount}`
+        );
+        logger.info(
+            `FCM push sent to ${ownerType}:${ownerId} (${platform || 'all'}). Success=${response.successCount}, Failure=${response.failureCount}`
+        );
 
-        const successCount = responses.reduce((sum, r) => sum + (r.successCount || 0), 0);
-        const failureCount = responses.reduce((sum, r) => sum + (r.failureCount || 0), 0);
-        const results = responses.flatMap((r) => r.results || []);
-
-        if (!successCount && !failureCount) {
-            logger.warn(`[FCM] No device tokens for ${ownerType}:${ownerId} — push skipped`);
-        } else {
-            console.log(
-                `[FCM] Sending to ${ownerType}:${ownerId}. Title: "${enrichedPayload.title || 'Data Only'}" success=${successCount} failure=${failureCount}`,
-            );
-            logger.info(
-                `FCM push sent to ${ownerType}:${ownerId} (${platform || 'web+mobile'}). Success=${successCount}, Failure=${failureCount}`,
-            );
-        }
-
-        return { successCount, failureCount, results };
+        return response;
     } catch (error) {
         logger.warn(`FCM push failed for ${ownerType}:${ownerId}: ${error.message}`);
         return { successCount: 0, failureCount: 1, error: error.message };

@@ -4,7 +4,7 @@ import mongoose from 'mongoose';
 
 const RESTAURANT_COMMISSION_CACHE_MS = 60 * 1000;
 /** Platform fallback when a restaurant has no commission rule configured */
-export const DEFAULT_RESTAURANT_COMMISSION_PERCENT = 18;
+export const DEFAULT_RESTAURANT_COMMISSION_PERCENT = 18.1;
 let restaurantCommissionRulesCache = null;
 let restaurantCommissionRulesLoadedAt = 0;
 
