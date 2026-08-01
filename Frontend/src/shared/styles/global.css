@@ -115,9 +115,16 @@
 @layer base {
   * {
     @apply border-border outline-ring/50;
+    -webkit-touch-callout: none;
+    -webkit-user-select: none;
+    user-select: none;
   }
   body {
     @apply bg-background text-foreground m-0 min-h-screen;
+  }
+  input, textarea, [contenteditable="true"] {
+    -webkit-user-select: auto;
+    user-select: auto;
   }
 }
 

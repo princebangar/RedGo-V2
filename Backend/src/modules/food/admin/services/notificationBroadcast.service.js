@@ -303,6 +303,7 @@ export const getBroadcastNotifications = async ({ page = 1, limit = 10 } = {}) =
             .sort({ createdAt: -1 })
             .skip(skip)
             .limit(meta.limit)
+            .select('-targets -targetIds')
             .populate('createdBy', 'name email')
             .lean(),
         BroadcastNotification.countDocuments({})
