@@ -467,7 +467,7 @@ export default function RestaurantOTP() {
                 </motion.div>
               )}
 
-              <div className="relative flex justify-between gap-3" onClick={() => inputRefs.current[0]?.focus()}>
+              <div className="relative flex justify-between gap-3">
                 <input
                   ref={(el) => (inputRefs.current[0] = el)}
                   type="tel"
@@ -478,7 +478,7 @@ export default function RestaurantOTP() {
                   autoFocus
                   value={otp.join("")}
                   onChange={handleSingleInputChange}
-                  className="absolute inset-0 w-full h-full opacity-0 z-10 cursor-text text-[16px]"
+                  className="absolute inset-0 w-full h-full bg-transparent text-transparent caret-transparent outline-none focus:outline-none focus:ring-0 z-10 cursor-text text-[16px]"
                 />
                 {[0, 1, 2, 3].map((index) => (
                   <div
