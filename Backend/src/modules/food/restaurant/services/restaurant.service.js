@@ -1808,13 +1808,16 @@ export const listRestaurantsUnderPriceLimit = async (query = {}, priceLimit = 25
 
     const restaurantIds = restaurantsInZone.map(r => r._id);
 
-    // 2. Fetch only the eligible food items for these specific restaurants
+    // 2. Fetch only the eligible food items for these specific restaurants (lightweight projection for fast listing)
     const eligibleItems = await FoodItem.find({
         restaurantId: { $in: restaurantIds },
-        price: { $lte: priceLimit },
+        $or: [
+            { price: { $lte: priceLimit } },
+            { "variants.price": { $lte: priceLimit } }
+        ],
         isAvailable: true,
         approvalStatus: 'approved'
-    }).select('restaurantId name price image foodType description isVeg isRecommended variants variations').lean();
+    }).select('restaurantId name price image foodType description isVeg isRecommended categoryName categoryId category variants').lean();
 
     if (eligibleItems.length === 0) {
         return { restaurants: [], total: 0 };
@@ -1851,19 +1854,19 @@ export const listRestaurantsUnderPriceLimit = async (query = {}, priceLimit = 25
         return { restaurants: [], total: 0 };
     }
 
-    // Full-menu non-veg check (any price) — Under 250 payload alone can miss chicken > priceLimit
+    // 4. Parallelize full-menu non-veg check and outlet timings fetch
     const eligibleRestaurantIds = eligibleRestaurants.map((r) => r._id);
-    const nonVegRestaurantIds = await FoodItem.distinct('restaurantId', {
-        restaurantId: { $in: eligibleRestaurantIds },
-        approvalStatus: 'approved',
-        foodType: 'Non-Veg',
-    });
+    const [nonVegRestaurantIds, outletTimingsRaw] = await Promise.all([
+        FoodItem.distinct('restaurantId', {
+            restaurantId: { $in: eligibleRestaurantIds },
+            approvalStatus: 'approved',
+            foodType: 'Non-Veg',
+        }),
+        FoodRestaurantOutletTimings.find({
+            restaurantId: { $in: eligibleRestaurantIds }
+        }).lean()
+    ]);
     const nonVegRestaurantIdSet = new Set(nonVegRestaurantIds.map((id) => String(id)));
-
-    // 4. Fetch outlet timings only for the eligible restaurants
-    const outletTimingsRaw = await FoodRestaurantOutletTimings.find({
-        restaurantId: { $in: eligibleRestaurantIds }
-    }).lean();
 
     const timingsMap = {};
     outletTimingsRaw.forEach(t => {

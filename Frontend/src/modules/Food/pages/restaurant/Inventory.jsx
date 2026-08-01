@@ -23,6 +23,7 @@ import { useNavigate } from "react-router-dom"
 import { restaurantAPI, uploadAPI } from "@food/api"
 import { toast } from "sonner"
 import { openGallery } from "@food/utils/imageUploadUtils"
+import dishFallbackImage from "@food/assets/dish_fallback.webp"
 const debugLog = (...args) => {}
 const debugWarn = (...args) => {}
 const debugError = (...args) => {}
@@ -2356,18 +2357,16 @@ export default function Inventory() {
                           <div key={item.id} className="group px-1">
                             <div className="flex items-center justify-between gap-3 sm:gap-4 rounded-[28px] border border-slate-100/80 bg-white p-3 sm:p-4 shadow-[0_8px_20px_-12px_rgba(0,0,0,0.08)] hover:shadow-[0_20px_40px_-20px_rgba(0,0,0,0.12)] hover:border-slate-200 transition-all duration-500">
                               <div className="flex min-w-0 flex-1 items-center gap-3 sm:gap-5">
-                                {item.image && (
-                                  <div className="w-16 h-16 sm:w-20 sm:h-20 md:w-24 md:h-24 flex-shrink-0 rounded-[20px] overflow-hidden shadow-md border-2 border-white ring-1 ring-slate-100/50">
+                                  <div className="w-16 h-16 sm:w-20 sm:h-20 md:w-24 md:h-24 flex-shrink-0 rounded-[20px] overflow-hidden shadow-md border-2 border-white ring-1 ring-slate-100/50 bg-slate-100">
                                     <img
-                                      src={item.image}
+                                      src={item.image || dishFallbackImage}
                                       alt={item.name}
                                       className="w-full h-full object-cover transform group-hover:scale-110 transition-transform duration-700"
                                       onError={(e) => {
-                                        e.target.style.display = 'none';
+                                        e.target.src = dishFallbackImage;
                                       }}
                                     />
                                   </div>
-                                )}
                                 <div className="min-w-0 flex-1">
                                   <h4 className="line-clamp-1 text-sm sm:text-base md:text-lg font-black text-slate-950 tracking-tight leading-tight mb-1.5">
                                     {item.name}

@@ -64,6 +64,7 @@ import {
 import { RestaurantDetailSkeleton } from "@food/components/ui/loading-skeletons"
 import OptimizedImage from "@food/components/OptimizedImage"
 import { isVegMenuItem } from "@food/utils/vegMode"
+import dishFallbackImage from "@food/assets/dish_fallback.webp"
 
 const fssaiLogo = "/fssai.png?v=3"
 
@@ -75,27 +76,23 @@ const debugError = (...args) => { }
 
 
 
-const FOOD_IMAGE_FALLBACK = "https://picsum.photos/seed/food-fallback/800/600"
+const FOOD_IMAGE_FALLBACK = dishFallbackImage
 const RUPEE_SYMBOL = "₹"
 const RESTAURANT_DETAILS_FILTERS_STORAGE_KEY = "food-restaurant-details-filters"
 
 // Optimized Image for Dishes
 const DishImage = ({ src, alt, className }) => (
   <div className={`relative overflow-hidden ${className}`}>
-    {src ? (
-      <img
-        src={src}
-        alt={alt}
-        className="w-full h-full object-cover transition-transform duration-500 hover:scale-110"
-        onError={(e) => {
-          e.target.src = FOOD_IMAGE_FALLBACK
-        }}
-      />
-    ) : (
-      <div className="w-full h-full bg-gray-100 dark:bg-gray-800 flex items-center justify-center text-xs text-gray-400">
-        No image
-      </div>
-    )}
+    <img
+      src={src || FOOD_IMAGE_FALLBACK}
+      alt={alt || "Dish"}
+      className="w-full h-full object-cover transition-transform duration-500 hover:scale-110"
+      onError={(e) => {
+        if (e.currentTarget.src !== FOOD_IMAGE_FALLBACK) {
+          e.currentTarget.src = FOOD_IMAGE_FALLBACK
+        }
+      }}
+    />
   </div>
 )
 
@@ -3001,23 +2998,18 @@ function RestaurantDetailsContent() {
                                   className="w-full h-full rounded-2xl overflow-hidden cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-[#DC2626]"
                                   aria-label={`View ${item.name} details`}
                                 >
-                                  {item.image ? (
-                                    <OptimizedImage
-                                      src={item.image}
-                                      alt={item.name}
-                                      priority={isPriority}
-                                      className="w-full h-full object-cover rounded-2xl shadow-sm"
-                                      onError={(e) => {
-                                        if (e.currentTarget.src !== FOOD_IMAGE_FALLBACK) {
-                                          e.currentTarget.src = FOOD_IMAGE_FALLBACK
-                                        }
-                                      }}
-                                    />
-                                  ) : (
-                                    <div className="w-full h-full bg-gray-200 dark:bg-gray-700 rounded-2xl flex items-center justify-center">
-                                      <span className="text-xs text-gray-400">No image</span>
-                                    </div>
-                                  )}
+                                   <OptimizedImage
+                                     src={item.image || FOOD_IMAGE_FALLBACK}
+                                     alt={item.name}
+                                     priority={isPriority}
+                                     className="w-full h-full object-cover rounded-2xl shadow-sm"
+                                     fallbackImage={FOOD_IMAGE_FALLBACK}
+                                     onError={(e) => {
+                                       if (e.currentTarget.src !== FOOD_IMAGE_FALLBACK) {
+                                         e.currentTarget.src = FOOD_IMAGE_FALLBACK
+                                       }
+                                     }}
+                                   />
                                 </button>
                                 {quantity > 0 ? (
                                   <div
@@ -3230,23 +3222,18 @@ function RestaurantDetailsContent() {
                                             className="w-full h-full rounded-2xl overflow-hidden cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-[#DC2626]"
                                             aria-label={`View ${item.name} details`}
                                           >
-                                            {item.image ? (
-                                              <OptimizedImage
-                                                src={item.image}
-                                                alt={item.name}
-                                                priority={isPriority}
-                                                className="w-full h-full object-cover rounded-2xl shadow-sm"
-                                                onError={(e) => {
-                                                  if (e.currentTarget.src !== FOOD_IMAGE_FALLBACK) {
-                                                    e.currentTarget.src = FOOD_IMAGE_FALLBACK
-                                                  }
-                                                }}
-                                              />
-                                            ) : (
-                                              <div className="w-full h-full bg-gray-200 dark:bg-gray-700 rounded-2xl flex items-center justify-center">
-                                                <span className="text-xs text-gray-400">No image</span>
-                                              </div>
-                                            )}
+                                            <OptimizedImage
+                                              src={item.image || FOOD_IMAGE_FALLBACK}
+                                              alt={item.name}
+                                              priority={isPriority}
+                                              className="w-full h-full object-cover rounded-2xl shadow-sm"
+                                              fallbackImage={FOOD_IMAGE_FALLBACK}
+                                              onError={(e) => {
+                                                if (e.currentTarget.src !== FOOD_IMAGE_FALLBACK) {
+                                                  e.currentTarget.src = FOOD_IMAGE_FALLBACK
+                                                }
+                                              }}
+                                            />
                                           </button>
                                           {quantity > 0 ? (
                                             <motion.div
@@ -3934,27 +3921,17 @@ function RestaurantDetailsContent() {
 
                   {/* Image Section — uses the same cached URL as the list thumb for instant paint */}
                   <div className="relative w-full h-64 overflow-hidden rounded-t-3xl bg-gray-100 dark:bg-gray-800">
-                    {(selectedItem.displayImage || selectedItem.image) ? (
-                      <img
-                        src={selectedItem.displayImage || selectedItem.image}
-                        alt={selectedItem.name}
-                        className="w-full h-full object-cover"
-                        decoding="sync"
-                        loading="eager"
-                        fetchPriority="high"
-                        onError={(e) => {
-                          if (selectedItem.image && e.currentTarget.src !== selectedItem.image) {
-                            e.currentTarget.src = selectedItem.image
-                          } else if (e.currentTarget.src !== FOOD_IMAGE_FALLBACK) {
-                            e.currentTarget.src = FOOD_IMAGE_FALLBACK
-                          }
-                        }}
-                      />
-                    ) : (
-                      <div className="w-full h-full bg-gray-200 dark:bg-gray-700 flex items-center justify-center">
-                        <span className="text-sm text-gray-400">No image available</span>
-                      </div>
-                    )}
+                    <img
+                      src={selectedItem.displayImage || selectedItem.image || FOOD_IMAGE_FALLBACK}
+                      alt={selectedItem.name}
+                      className="w-full h-full object-cover"
+                      decoding="sync"
+                      loading="eager"
+                      fetchPriority="high"
+                      onError={(e) => {
+                        e.currentTarget.src = FOOD_IMAGE_FALLBACK
+                      }}
+                    />
                   </div>
 
                   {/* Content Section */}

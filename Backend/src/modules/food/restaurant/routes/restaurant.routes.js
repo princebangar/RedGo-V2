@@ -44,7 +44,8 @@ import {
 } from '../controllers/outletTimings.controller.js';
 import {
     createRestaurantFoodController,
-    updateRestaurantFoodController
+    updateRestaurantFoodController,
+    deleteRestaurantFoodController
 } from '../controllers/restaurantFood.controller.js';
 import {
     listAddonsController,
@@ -105,7 +106,7 @@ router.get('/restaurants', cacheResponse(300, 'restaurants'), listApprovedRestau
 router.get('/restaurants/:id', cacheResponse(600, 'restaurant_detail'), getApprovedRestaurantController);
 router.get('/restaurants/:id/menu', cacheResponse(600, 'restaurant_menu'), getPublicRestaurantMenuController);
 router.get('/restaurants/:id/outlet-timings', cacheResponse(600, 'restaurant_timings'), getOutletTimingsByRestaurantIdController);
-router.get('/under-250', cacheResponse(300, 'under_250'), listRestaurantsUnder250Controller);
+router.get('/under-250', listRestaurantsUnder250Controller);
 router.get('/offers', cacheResponse(300, 'offers'), listPublicOffersController);
 // Public: categories list (zone-aware; returns zone categories + global)
 router.get('/categories/public', cacheResponse(600, 'categories'), listCategoriesController);
@@ -236,6 +237,13 @@ router.patch('/foods/:id', authMiddleware, requireApprovedRestaurant, async (req
     await invalidateCache('under_250:*');
     next();
 }, updateRestaurantFoodController);
+router.delete('/foods/:id', authMiddleware, requireApprovedRestaurant, async (req, res, next) => {
+    await invalidateCache('restaurant_menu:*');
+    await invalidateCache('search:*');
+    await invalidateCache('categories:*');
+    await invalidateCache('under_250:*');
+    next();
+}, deleteRestaurantFoodController);
 
 // Add-ons (restaurant dashboard) - approval handled by admin
 router.get('/addons', authMiddleware, requireApprovedRestaurant, listAddonsController);

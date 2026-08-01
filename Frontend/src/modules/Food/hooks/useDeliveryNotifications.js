@@ -1049,7 +1049,7 @@ export const useDeliveryNotifications = () => {
 
     socketRef.current = io(socketUrl, {
       path: '/socket.io/',
-      transports: ['polling', 'websocket'], // Allow both
+      transports: ['websocket', 'polling'], // WebSocket first for instant connection
       reconnection: true,
       reconnectionDelay: 1000,
       reconnectionDelayMax: 5000,

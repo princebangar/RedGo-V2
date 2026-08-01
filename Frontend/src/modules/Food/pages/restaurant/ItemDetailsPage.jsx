@@ -25,6 +25,7 @@ import { toast } from "sonner"
 import { ImageSourcePicker } from "@food/components/ImageSourcePicker"
 import { isFlutterBridgeAvailable } from "@food/utils/imageUploadUtils"
 import { getFoodVariants } from "@food/utils/foodVariants"
+import dishFallbackImage from "@food/assets/dish_fallback.webp"
 const debugLog = (...args) => {}
 const debugWarn = (...args) => {}
 const debugError = (...args) => {}
@@ -103,10 +104,32 @@ export default function ItemDetailsPage() {
   const [isItemSizePopupOpen, setIsItemSizePopupOpen] = useState(false)
   const [isGstPopupOpen, setIsGstPopupOpen] = useState(false)
   const [isTagsPopupOpen, setIsTagsPopupOpen] = useState(false)
+  const [showRemoveImageConfirm, setShowRemoveImageConfirm] = useState(false)
+  const [showDeleteItemConfirm, setShowDeleteItemConfirm] = useState(false)
+  const [isDeletingItem, setIsDeletingItem] = useState(false)
   const [categories, setCategories] = useState([])
   const [loadingCategories, setLoadingCategories] = useState(true)
   const [loadingItem, setLoadingItem] = useState(false)
   const [keyboardInset, setKeyboardInset] = useState(0)
+
+  const handleDeleteItem = async () => {
+    if (isNewItem) return
+    const itemId = String(itemData?.id || id || "")
+    if (!itemId) return
+    try {
+      setIsDeletingItem(true)
+      await restaurantAPI.deleteFood(itemId)
+      toast.success("Item deleted from restaurant menu")
+      window.dispatchEvent(new CustomEvent("foodsChanged"))
+      navigate("/food/restaurant/inventory", { replace: true })
+    } catch (error) {
+      debugError("Failed to delete food item:", error)
+      toast.error(error.response?.data?.message || "Failed to delete item")
+    } finally {
+      setIsDeletingItem(false)
+      setShowDeleteItemConfirm(false)
+    }
+  }
 
   const maxNameLength = 70
   const maxDescriptionLength = 1000
@@ -561,17 +584,7 @@ export default function ItemDetailsPage() {
       return
     }
 
-    const hasExistingHttpImage = images.some(
-      (img) =>
-        typeof img === "string" &&
-        (img.startsWith("http://") || img.startsWith("https://")) &&
-        !img.startsWith("blob:"),
-    )
-    const hasPendingUpload = imageFiles.size > 0
-    if (!hasExistingHttpImage && !hasPendingUpload) {
-      toast.error("Please add an item image")
-      return
-    }
+
 
     try {
       setUploadingImages(true)
@@ -638,11 +651,7 @@ export default function ItemDetailsPage() {
         self.indexOf(url) === index
       ).slice(0, 1)
 
-      if (allImageUrls.length === 0) {
-        toast.error("Please add an item image")
-        setUploadingImages(false)
-        return
-      }
+
 
       // Debug: Log image URLs
       debugLog('=== IMAGE UPLOAD SUMMARY ===')
@@ -774,11 +783,10 @@ export default function ItemDetailsPage() {
         debugWarn("Failed to persist recommended state after save:", recommendedError)
       }
 
-      const imageCount = allImageUrls.length
       toast.success(
         isNewItem
-          ? `Item created successfully with ${imageCount} image(s)`
-          : `Item updated and sent for approval again with ${imageCount} image(s)`
+          ? "Item created successfully"
+          : "Item updated and sent for approval again"
       )
       await new Promise((resolve) => setTimeout(resolve, 200))
       navigate("/food/restaurant/inventory", { replace: true })
@@ -905,23 +913,15 @@ export default function ItemDetailsPage() {
                   </>
                 )}
 
-                {/* Delete Item button (Top Right) */}
-                {!isNewItem && (
+                {/* Remove Dish Photo button (Top Right) */}
+                {images.length > 0 && (
                   <button
-                    onClick={handleDelete}
-                    className="absolute top-4 right-4 w-10 h-10 bg-gradient-to-br from-[#B80B3D] to-[#66001D] rounded-full flex items-center justify-center shadow-lg hover:bg-gradient-to-br from-[#B80B3D] to-[#66001D] transition-all z-20"
+                    type="button"
+                    onClick={() => setShowRemoveImageConfirm(true)}
+                    className="absolute top-4 right-4 w-10 h-10 bg-[#B80B3D] hover:bg-[#990831] rounded-full flex items-center justify-center shadow-md transition-all z-20 text-white active:scale-95 border border-white/30"
+                    title="Remove Dish Photo"
                   >
-                    <Trash2 className="w-5 h-5 text-[#B80B3D]" />
-                  </button>
-                )}
-
-                {/* Delete current image button (if multiple images) - optional/secondary */}
-                {images.length > 1 && (
-                  <button
-                    onClick={() => handleImageDelete(currentImageIndex)}
-                    className="absolute top-4 right-16 w-10 h-10 bg-white/90 backdrop-blur-sm rounded-full flex items-center justify-center shadow-lg hover:bg-white transition-all z-10"
-                  >
-                    <X className="w-5 h-5 text-gray-900" />
+                    <Trash2 className="w-5 h-5 text-white stroke-[2.2]" />
                   </button>
                 )}
 
@@ -955,13 +955,20 @@ export default function ItemDetailsPage() {
               )}
             </div>
           ) : (
-            <div className="relative w-full h-80 bg-gradient-to-br from-gray-100 to-gray-200 flex items-center justify-center">
-              <div className="text-center">
-                <div className="w-20 h-20 bg-white/80 rounded-full flex items-center justify-center mx-auto mb-3 shadow-lg">
-                  <Camera className="w-10 h-10 text-gray-400" />
+            <div className="relative w-full h-80 bg-gray-100 overflow-hidden">
+              <img
+                src={dishFallbackImage}
+                alt="Dish Fallback"
+                className="w-full h-full object-cover"
+              />
+              <div className="absolute inset-0 bg-black/30 backdrop-blur-[1px] flex items-center justify-center">
+                <div className="text-center bg-white/90 dark:bg-gray-900/90 backdrop-blur-md px-6 py-4 rounded-2xl shadow-xl border border-white/20">
+                  <div className="w-12 h-12 bg-gray-100 dark:bg-gray-800 rounded-full flex items-center justify-center mx-auto mb-2">
+                    <Camera className="w-6 h-6 text-gray-600 dark:text-gray-300" />
+                  </div>
+                  <p className="text-sm font-bold text-gray-900 dark:text-gray-100">No Image Uploaded</p>
+                  <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">Optional: Tap button below to add a photo</p>
                 </div>
-                <p className="text-sm font-medium text-gray-600">Item image required</p>
-                <p className="text-xs text-gray-500 mt-1">Add one photo before saving this dish</p>
               </div>
             </div>
           )}
@@ -982,7 +989,7 @@ export default function ItemDetailsPage() {
               <div className="w-5 h-5 rounded-full bg-white/20 flex items-center justify-center">
                 <Plus className="w-4 h-4" />
               </div>
-              <span>{images.length > 0 ? "Replace Image" : "Add Image (Required)"}</span>
+              <span>{images.length > 0 ? "Replace Image" : "Add Image (Optional)"}</span>
             </button>
           </div>
         </div>
@@ -1016,7 +1023,7 @@ export default function ItemDetailsPage() {
                 value={itemName}
                 onChange={(e) => setItemName(e.target.value)}
                 maxLength={maxNameLength}
-                className="w-full px-4 py-3 pr-12 border border-gray-300 rounded-lg text-sm text-gray-900 bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                className="w-full px-4 py-3 pr-12 border border-gray-300 rounded-lg text-sm text-gray-900 bg-white focus:outline-none focus:ring-2 focus:ring-[#B80B3D] focus:border-transparent"
                 placeholder="Enter item name"
               />
               <button className="absolute right-3 top-1/2 -translate-y-1/2 p-1 rounded-full hover:bg-gray-100">
@@ -1042,7 +1049,7 @@ export default function ItemDetailsPage() {
                 maxLength={maxDescriptionLength}
                 rows={4}
                 placeholder="Eg: Yummy veg paneer burger with a soft patty, veggies, cheese, and special sauce"
-                className="w-full px-4 py-3 pr-12 border border-gray-300 rounded-lg text-sm text-gray-900 bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent resize-none"
+                className="w-full px-4 py-3 pr-12 border border-gray-300 rounded-lg text-sm text-gray-900 bg-white focus:outline-none focus:ring-2 focus:ring-[#B80B3D] focus:border-transparent resize-none"
               />
               <button className="absolute right-3 top-3 p-1 rounded-full hover:bg-gray-100">
                 <EditIcon className="w-4 h-4 text-gray-500" />
@@ -1113,7 +1120,7 @@ export default function ItemDetailsPage() {
                           }
                         }}
                         placeholder="Enter price"
-                        className="w-full pl-8 pr-12 py-3 border border-gray-300 rounded-lg text-sm text-gray-900 bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                        className="w-full pl-8 pr-12 py-3 border border-gray-300 rounded-lg text-sm text-gray-900 bg-gray-50 focus:outline-none focus:ring-2 focus:ring-[#B80B3D] focus:border-transparent"
                       />
                       <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm text-gray-600">{"\u20B9"}</span>
                       <button className="absolute right-3 top-1/2 -translate-y-1/2 p-1 rounded-full hover:bg-gray-100">
@@ -1156,7 +1163,7 @@ export default function ItemDetailsPage() {
                               value={variant.name}
                               onChange={(e) => handleVariantChange(variant.localId, "name", e.target.value)}
                               placeholder={index === 0 ? "e.g., Half" : "e.g., Full"}
-                              className="w-full px-3 py-2.5 border border-gray-300 rounded-lg text-sm text-gray-900 bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                              className="w-full px-3 py-2.5 border border-gray-300 rounded-lg text-sm text-gray-900 bg-white focus:outline-none focus:ring-2 focus:ring-[#B80B3D] focus:border-transparent"
                             />
                           </div>
                           <div>
@@ -1174,7 +1181,7 @@ export default function ItemDetailsPage() {
                                   handleVariantChange(variant.localId, "price", cleanedValue)
                                 }}
                                 placeholder="Enter price"
-                                className="w-full pl-8 pr-3 py-2.5 border border-gray-300 rounded-lg text-sm text-gray-900 bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                                className="w-full pl-8 pr-3 py-2.5 border border-gray-300 rounded-lg text-sm text-gray-900 bg-white focus:outline-none focus:ring-2 focus:ring-[#B80B3D] focus:border-transparent"
                               />
                               <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm text-gray-600">{"\u20B9"}</span>
                             </div>
@@ -1202,7 +1209,7 @@ export default function ItemDetailsPage() {
                   <select
                     value={preparationTime}
                     onChange={(e) => setPreparationTime(e.target.value)}
-                    className="w-full pl-4 pr-10 py-3 border border-gray-300 rounded-lg text-sm text-gray-900 bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent appearance-none"
+                    className="w-full pl-4 pr-10 py-3 border border-gray-300 rounded-lg text-sm text-gray-900 bg-gray-50 focus:outline-none focus:ring-2 focus:ring-[#B80B3D] focus:border-transparent appearance-none"
                   >
                     <option value="">Select timing</option>
                     <option value="10-20 mins">10-20 mins</option>
@@ -1447,7 +1454,19 @@ export default function ItemDetailsPage() {
         className="fixed left-0 right-0 bg-white border-t border-gray-200 z-40"
         style={{ bottom: `${keyboardInset}px` }}
       >
-        <div className="flex gap-3 px-4 py-4">
+        {!isNewItem && (
+          <div className="pt-2 pb-0 text-center border-b border-gray-100">
+            <button
+              type="button"
+              onClick={() => setShowDeleteItemConfirm(true)}
+              className="text-xs font-semibold text-rose-600 hover:text-rose-700 hover:underline flex items-center justify-center gap-1.5 mx-auto py-1.5 px-3 rounded-lg hover:bg-rose-50 transition-colors"
+            >
+              <Trash2 className="w-3.5 h-3.5" />
+              <span>Delete Entire Item from Menu</span>
+            </button>
+          </div>
+        )}
+        <div className="flex gap-3 px-4 py-3">
           <button
             onClick={goBack}
             className="flex-1 py-3 px-4 border border-gray-300 rounded-lg text-sm font-bold text-gray-900 bg-white hover:bg-gray-50 transition-colors uppercase"
@@ -1470,6 +1489,102 @@ export default function ItemDetailsPage() {
           </button>
         </div>
       </div>
+
+      {/* Photo Removal Confirmation Modal */}
+      <AnimatePresence>
+        {showRemoveImageConfirm && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.95 }}
+              className="w-full max-w-sm bg-white dark:bg-gray-900 rounded-2xl p-6 shadow-2xl border border-gray-100 dark:border-gray-800 text-center"
+            >
+              <div className="w-14 h-14 rounded-full bg-rose-50 dark:bg-rose-950/40 text-rose-600 flex items-center justify-center mx-auto mb-4 border border-rose-100 dark:border-rose-900/50">
+                <Trash2 className="w-7 h-7" />
+              </div>
+              <h3 className="text-lg font-bold text-gray-900 dark:text-white mb-2">
+                Remove Dish Photo?
+              </h3>
+              <p className="text-xs text-gray-500 dark:text-gray-400 mb-6 leading-relaxed">
+                Are you sure you want to remove this dish photo? The photo will be removed once you click <strong>SAVE</strong>.
+              </p>
+              <div className="flex gap-3">
+                <button
+                  type="button"
+                  onClick={() => setShowRemoveImageConfirm(false)}
+                  className="flex-1 py-3 px-4 rounded-xl border border-gray-200 dark:border-gray-700 text-sm font-semibold text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setImages([]);
+                    setImageFiles(new Map());
+                    setCurrentImageIndex(0);
+                    setShowRemoveImageConfirm(false);
+                    toast.info("Photo removed. Click SAVE to apply changes.");
+                  }}
+                  className="flex-1 py-3 px-4 rounded-xl bg-rose-600 text-white text-sm font-semibold hover:bg-rose-700 transition-colors shadow-md shadow-rose-600/20"
+                >
+                  Yes, Remove
+                </button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      {/* Entire Dish Item Deletion Confirmation Modal */}
+      <AnimatePresence>
+        {showDeleteItemConfirm && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.95 }}
+              className="w-full max-w-sm bg-white dark:bg-gray-900 rounded-2xl p-6 shadow-2xl border border-gray-100 dark:border-gray-800 text-center"
+            >
+              <div className="w-14 h-14 rounded-full bg-rose-50 dark:bg-rose-950/40 text-rose-600 flex items-center justify-center mx-auto mb-4 border border-rose-100 dark:border-rose-900/50">
+                <Trash2 className="w-7 h-7" />
+              </div>
+              <h3 className="text-lg font-bold text-gray-900 dark:text-white mb-2">
+                Delete Dish Item?
+              </h3>
+              <p className="text-xs text-gray-500 dark:text-gray-400 mb-6 leading-relaxed">
+                Are you sure you want to delete <strong>{itemName || "this item"}</strong> from your restaurant menu? This action cannot be undone.
+              </p>
+              <div className="flex gap-3">
+                <button
+                  type="button"
+                  disabled={isDeletingItem}
+                  onClick={() => setShowDeleteItemConfirm(false)}
+                  className="flex-1 py-3 px-4 rounded-xl border border-gray-200 dark:border-gray-700 text-sm font-semibold text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors disabled:opacity-50"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  disabled={isDeletingItem}
+                  onClick={handleDeleteItem}
+                  className="flex-1 py-3 px-4 rounded-xl bg-rose-600 text-white text-sm font-semibold hover:bg-rose-700 transition-colors shadow-md shadow-rose-600/20 disabled:opacity-50 flex items-center justify-center gap-2"
+                >
+                  {isDeletingItem ? (
+                    <>
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                      <span>Deleting...</span>
+                    </>
+                  ) : (
+                    "Yes, Delete"
+                  )}
+                </button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
       {/* Photo Picker */}
       <ImageSourcePicker
         isOpen={isPhotoPickerOpen}
