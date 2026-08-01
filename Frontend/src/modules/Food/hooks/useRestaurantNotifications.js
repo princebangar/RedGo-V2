@@ -792,6 +792,13 @@ export const useRestaurantNotifications = () => {
               const now = Date.now();
               return scheduledTime <= now + 30 * 60000;
             }
+            
+            // Ignore stale test/bugged orders older than 2 hours to prevent sound playing repeatedly on login
+            const createdAt = new Date(o.createdAt || o.updatedAt).getTime();
+            if (Date.now() - createdAt > 2 * 60 * 60 * 1000) {
+              return false;
+            }
+            
             return true;
           })
           .sort((a, b) => {

@@ -189,14 +189,18 @@ export default function DeliveryOTP() {
     setOtp(newOtp)
 
     if (value && index < 3) {
-      inputRefs.current[index + 1]?.focus()
+      setTimeout(() => {
+        inputRefs.current[index + 1]?.focus()
+      }, 10)
     }
   }
 
   const handleKeyDown = (index, e) => {
     if (e.key === "Backspace") {
       if (!otp[index] && index > 0) {
-        inputRefs.current[index - 1]?.focus()
+        setTimeout(() => {
+          inputRefs.current[index - 1]?.focus()
+        }, 10)
         const newOtp = [...otp]
         newOtp[index - 1] = ""
         setOtp(newOtp)
