@@ -927,26 +927,30 @@ export const useRestaurantNotifications = () => {
           } catch (_) {}
         }
 
-        // Unlock HTML5 Audio element specifically for iOS WebKit
+        // Unlock HTML5 Audio element specifically for iOS WebKit using a tiny silent audio clip
         if (!globalAudio && typeof window !== 'undefined') {
           globalAudio = new Audio();
           globalAudio.preload = 'auto';
           globalAudio.volume = 1;
-          preloadAudio().then(src => {
-            if (globalAudio) globalAudio.src = src;
-          });
+          // Silent MP3 base64 to safely unlock the Audio element without any "leaked" sound
+          globalAudio.src = 'data:audio/mpeg;base64,//OlkAAAAAAAAAAAAAAAAAAAAAAASWAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA';
         }
         if (globalAudio) {
           try {
-            globalAudio.muted = true;
             const p = globalAudio.play();
             if (p && typeof p.then === 'function') {
               p.then(() => {
                 globalAudio.pause();
                 globalAudio.currentTime = 0;
-                globalAudio.muted = false;
+                // Once unlocked, switch to the actual alert sound so it's ready
+                preloadAudio().then(src => {
+                  if (globalAudio) globalAudio.src = src;
+                });
               }).catch(() => {
-                globalAudio.muted = false;
+                // If it failed to play, still try to load the actual source
+                preloadAudio().then(src => {
+                  if (globalAudio) globalAudio.src = src;
+                });
               });
             }
           } catch (_) {}
