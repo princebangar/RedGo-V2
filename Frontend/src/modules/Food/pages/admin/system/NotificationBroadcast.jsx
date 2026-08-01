@@ -269,8 +269,12 @@ export default function NotificationBroadcast() {
             className="inline-flex items-center gap-2.5 px-5 py-3 text-sm font-bold rounded-2xl bg-gradient-to-r from-blue-600 to-indigo-600 text-white shadow-md shadow-blue-500/25 hover:shadow-lg hover:shadow-blue-500/35 hover:scale-[1.02] active:scale-[0.98] transition-all self-start sm:self-auto cursor-pointer"
           >
             <History className="w-5 h-5 text-white" /> View History
-            <span className="bg-white/25 text-white text-xs px-2.5 py-0.5 rounded-full font-extrabold ml-0.5">
-              {history.length}
+            <span className="bg-white/25 text-white text-xs px-2.5 py-0.5 rounded-full font-extrabold ml-0.5 inline-flex items-center justify-center min-w-[28px] min-h-[24px]">
+              {historyLoading ? (
+                <span className="block w-2.5 h-3 bg-white/40 rounded animate-pulse" />
+              ) : (
+                history.length
+              )}
             </span>
           </button>
         </div>
