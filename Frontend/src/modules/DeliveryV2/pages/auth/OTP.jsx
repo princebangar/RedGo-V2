@@ -161,76 +161,17 @@ export default function DeliveryOTP() {
     return () => clearTimeout(timer)
   }, [])
 
-  const handleChange = (index, value) => {
-    if (index === 0 && value) {
-      setError("")
+  const handleSingleInputChange = (e) => {
+    let val = e.target.value.replace(/\D/g, "");
+    if (val.length > 4) val = val.slice(0, 4);
+    
+    if (val.length > 0) setError("");
+    
+    const newOtp = ["", "", "", ""];
+    for (let i = 0; i < val.length; i++) {
+      newOtp[i] = val[i];
     }
-
-    // Handle multi-character inputs (e.g. autofill suggestions or pastes)
-    if (value.length > 1) {
-      const digits = value.replace(/\D/g, "").slice(0, 4 - index).split("")
-      if (digits.length > 0) {
-        const newOtp = [...otp]
-        digits.forEach((digit, i) => {
-          if (index + i < 4) {
-            newOtp[index + i] = digit
-          }
-        })
-        setOtp(newOtp)
-        inputRefs.current[Math.min(3, index + digits.length)]?.focus({ preventScroll: true })
-      }
-      return
-    }
-
-    if (value && !/^\d$/.test(value)) return
-
-    const newOtp = [...otp]
-    newOtp[index] = value
-    setOtp(newOtp)
-
-    if (value && index < 3) {
-      inputRefs.current[index + 1]?.focus({ preventScroll: true })
-    }
-  }
-
-  const handleKeyDown = (index, e) => {
-    if (e.key === "Backspace") {
-      if (!otp[index] && index > 0) {
-        inputRefs.current[index - 1]?.focus({ preventScroll: true })
-        const newOtp = [...otp]
-        newOtp[index - 1] = ""
-        setOtp(newOtp)
-      } else if (otp[index]) {
-        const newOtp = [...otp]
-        newOtp[index] = ""
-        setOtp(newOtp)
-      }
-    }
-    // Handle paste keyboard shortcut (Ctrl+V / Cmd+V)
-    if (e.key === "v" && (e.ctrlKey || e.metaKey)) {
-      e.preventDefault()
-      navigator.clipboard.readText().then((text) => {
-        const digits = text.replace(/\D/g, "").slice(0, 4).split("")
-        const newOtp = [...otp]
-        digits.forEach((digit, i) => {
-          if (i < 4) newOtp[i] = digit
-        })
-        setOtp(newOtp)
-        inputRefs.current[Math.min(digits.length, 3)]?.focus({ preventScroll: true })
-      })
-    }
-  }
-
-  const handlePaste = (e) => {
-    e.preventDefault()
-    const pastedData = e.clipboardData.getData("text")
-    const digits = pastedData.replace(/\D/g, "").slice(0, 4).split("")
-    const newOtp = [...otp]
-    digits.forEach((digit, i) => {
-      if (i < 4) newOtp[i] = digit
-    })
-    setOtp(newOtp)
-    inputRefs.current[Math.min(digits.length, 3)]?.focus({ preventScroll: true })
+    setOtp(newOtp);
   }
 
   const handleVerify = async (otpValue = null, confirmAction = null) => {
@@ -711,25 +652,32 @@ export default function DeliveryOTP() {
                   </motion.div>
                 )}
 
-                <div className="flex justify-between gap-3">
-                  {[0, 1, 2, 3].map((index) => (
-                    <input
-                      key={index}
-                      ref={(el) => (inputRefs.current[index] = el)}
-                      type="tel"
-                      inputMode="numeric"
-                      required
-                      disabled={isLoading || blockTimer > 0}
-                      autoFocus={index === 0}
-                      value={otp[index]}
-                      onChange={(e) => handleChange(index, e.target.value)}
-                      onKeyDown={(e) => handleKeyDown(index, e)}
-                      onPaste={index === 0 ? handlePaste : undefined}
-                      className={`w-14 h-14 sm:w-16 sm:h-16 text-center text-2xl font-bold bg-gray-50 dark:bg-gray-800 border-2 border-gray-300 dark:border-gray-600 shadow-sm rounded-[20px] outline-none transition-all duration-300 text-gray-900 dark:text-white focus:bg-white dark:focus:bg-gray-900 focus:border-[#0E4B9C] focus:ring-4 focus:ring-[#0E4B9C]/10 hover:border-gray-400 ${blockTimer > 0 ? "opacity-50 cursor-not-allowed border-red-400 bg-red-50 text-red-800" : ""}`}
-                      placeholder="•"
-                    />
-                  ))}
-                </div>
+                <div className="relative flex justify-between gap-3" onClick={() => inputRefs.current[0]?.focus()}>
+                <input
+                  ref={(el) => (inputRefs.current[0] = el)}
+                  type="tel"
+                  inputMode="numeric"
+                  maxLength={4}
+                  required
+                  disabled={isLoading || blockTimer > 0}
+                  autoFocus
+                  value={otp.join("")}
+                  onChange={handleSingleInputChange}
+                  className="absolute inset-0 w-full h-full opacity-0 z-10 cursor-text text-[16px]"
+                />
+                {[0, 1, 2, 3].map((index) => (
+                  <div
+                    key={index}
+                    className={`flex items-center justify-center w-14 h-14 sm:w-16 sm:h-16 text-center text-2xl font-bold bg-gray-50 dark:bg-gray-800 border-2 shadow-sm rounded-[20px] transition-all duration-300 text-gray-900 dark:text-white 
+                      ${blockTimer > 0 ? "opacity-50 border-red-400 bg-red-50 text-red-800" : 
+                        (otp.join("").length === index && !(isLoading || blockTimer > 0)) ? "bg-white dark:bg-gray-900 border-[#0E4B9C] ring-4 ring-[#0E4B9C]/10" : 
+                        (otp[index] ? "border-[#0E4B9C]" : "border-gray-300 dark:border-gray-600")}
+                    `}
+                  >
+                    {otp[index] ? otp[index] : <span className="text-gray-300 dark:text-gray-600 font-normal">•</span>}
+                  </div>
+                ))}
+              </div>
 
                 <div className="flex flex-col items-center gap-4">
                   <div className="flex items-center gap-2 text-xs font-semibold">
