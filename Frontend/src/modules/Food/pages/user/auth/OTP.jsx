@@ -108,7 +108,9 @@ export default function OTP() {
 
     // Auto-focus next input (4 boxes only)
     if (value && index < 3) {
-      inputRefs.current[index + 1]?.focus()
+      setTimeout(() => {
+        inputRefs.current[index + 1]?.focus()
+      }, 10)
     }
 
     // Auto-submit when all 4 digits are entered
@@ -127,7 +129,9 @@ export default function OTP() {
         setOtp(newOtp)
       } else if (index > 0) {
         // If current input is empty, move to previous and clear it
-        inputRefs.current[index - 1]?.focus()
+        setTimeout(() => {
+          inputRefs.current[index - 1]?.focus()
+        }, 10)
         const newOtp = [...otp]
         newOtp[index - 1] = ""
         setOtp(newOtp)
