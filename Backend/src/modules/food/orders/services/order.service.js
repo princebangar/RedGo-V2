@@ -256,6 +256,15 @@ export async function createOrder(userId, dto) {
         throw new ValidationError(`Cash on Delivery is currently disabled for ${orderType} orders`);
       }
     }
+
+    // 3. User-specific COD Auto Blocking
+    const featureConfig = await FoodSystemConfig.findOne({ key: "cod_blocking_feature_enabled" }).select("value").lean();
+    if (featureConfig && featureConfig.value !== false) { // enabled by default
+      const user = await FoodUser.findById(userId).select("isCodBlocked").lean();
+      if (user && user.isCodBlocked) {
+        throw new ValidationError("Cash on Delivery is blocked for your account due to multiple cancellations.");
+      }
+    }
   }
 
   if (isWallet) {
@@ -1125,6 +1134,21 @@ export async function cancelOrder(orderId, userId, reason, refundDestination = "
     } catch (err) {
       console.error(`Wallet refund processing error for Order ${orderId}:`, err);
       order.payment.refund = { status: "failed", destination: "wallet", amount: order.pricing.total };
+    }
+  }
+
+  // Auto COD Blocking logic: If cash payment method, increment cancellation count
+  if (paymentMethod === "cash") {
+    const featureConfig = await FoodSystemConfig.findOne({ key: "cod_blocking_feature_enabled" }).select("value").lean();
+    if (!featureConfig || featureConfig.value !== false) { // enabled by default
+      const user = await FoodUser.findById(userId);
+      if (user) {
+        user.codCancellationCount = (user.codCancellationCount || 0) + 1;
+        if (user.codCancellationCount >= 4) {
+          user.isCodBlocked = true;
+        }
+        await user.save();
+      }
     }
   }
 
@@ -2267,6 +2291,15 @@ export async function completeTakeawayOrderRestaurant(orderId, restaurantId, otp
 
   await order.save();
 
+  // Reset COD Cancellation Count on any successful delivery
+  if (order.userId) {
+    const user = await FoodUser.findById(order.userId);
+    if (user) {
+      user.codCancellationCount = 0;
+      await user.save();
+    }
+  }
+
   // Sync to FoodTransaction ledger
   await foodTransactionService.updateTransactionStatus(order._id, 'takeaway_completed_and_paid', {
     status: 'captured',
@@ -2618,6 +2651,15 @@ export async function updateOrderStatusesAdmin(orderId, adminId, { orderStatus, 
   }
 
   await order.save();
+
+  // Reset COD Cancellation Count if marked delivered
+  if (nextOrderStatus === "delivered" && order.userId) {
+    const user = await FoodUser.findById(order.userId);
+    if (user) {
+      user.codCancellationCount = 0;
+      await user.save();
+    }
+  }
 
   try {
     const io = getIO();

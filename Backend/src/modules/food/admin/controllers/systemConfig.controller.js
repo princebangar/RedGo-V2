@@ -37,6 +37,11 @@ const CUSTOMIZATION_TOGGLES = [
         key: 'default_location_enabled',
         defaultValue: false,
         description: 'Enforce default Indore location and disable auto-prompt for new users/guests (App Store mode)'
+    },
+    {
+        key: 'cod_blocking_feature_enabled',
+        defaultValue: true,
+        description: 'Global toggle to enable/disable the automatic COD blocking feature (blocks COD for users with 4 consecutive COD cancellations)'
     }
 ];
 

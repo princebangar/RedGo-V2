@@ -268,6 +268,8 @@ export default function Cart() {
     if (methodId === "razorpay") return customizationSettings.online_payment_enabled !== false
     if (methodId === "wallet") return customizationSettings.wallet_payment_enabled !== false
     if (methodId === "cash") {
+      if (customizationSettings.cod_blocking_feature_enabled !== false && userProfile?.isCodBlocked) return false
+      
       // General COD toggle (Excludes Takeaway)
       if (orderType !== "takeaway") {
         if (customizationSettings.cod_enabled === false) return false
@@ -292,7 +294,7 @@ export default function Cart() {
         setSelectedPaymentMethod("cash")
       }
     }
-  }, [orderType, customizationSettings, selectedPaymentMethod])
+  }, [orderType, customizationSettings, selectedPaymentMethod, userProfile])
 
   useEffect(() => {
     orderSuccessAudioRef.current = null;

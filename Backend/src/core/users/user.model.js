@@ -139,6 +139,15 @@ const userSchema = new mongoose.Schema(
             type: [userAddressSchema],
             default: []
         },
+        codCancellationCount: {
+            type: Number,
+            default: 0,
+            min: 0
+        },
+        isCodBlocked: {
+            type: Boolean,
+            default: false
+        },
         deletedAt: {
             type: Date
         }

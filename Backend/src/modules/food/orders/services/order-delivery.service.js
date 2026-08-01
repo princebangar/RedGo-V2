@@ -1215,6 +1215,15 @@ export async function completeDelivery(orderId, deliveryPartnerId, body = {}) {
 
   await order.save();
 
+  // Reset COD Cancellation Count on any successful delivery
+  if (order.userId) {
+    const user = await FoodUser.findById(order.userId);
+    if (user) {
+      user.codCancellationCount = 0;
+      await user.save();
+    }
+  }
+
   // Create inbox notifications for user and restaurant
   try {
     const orderId = order.orderId || order._id.toString();

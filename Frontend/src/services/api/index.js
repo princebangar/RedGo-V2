@@ -564,6 +564,12 @@ export const adminAPI = {
       { isActive: isActive !== false },
       { contextModule: "admin" },
     ),
+  updateCustomerCodStatus: (id, isCodBlocked) =>
+    apiClient.patch(
+      `/food/admin/customers/${String(id)}/cod-status`,
+      { isCodBlocked: isCodBlocked === true },
+      { contextModule: "admin" },
+    ),
 
   /** Sub Admins */
   getSubAdmins: (params = {}) =>

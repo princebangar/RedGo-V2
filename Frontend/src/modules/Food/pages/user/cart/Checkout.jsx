@@ -14,22 +14,30 @@ import { Textarea } from "@food/components/ui/textarea"
 import { useCart } from "@food/context/CartContext"
 import { useProfile } from "@food/context/ProfileContext"
 import { useOrders } from "@food/context/OrdersContext"
-import { api, restaurantAPI, adminAPI } from "@food/api"
+import { api, restaurantAPI, adminAPI, userAPI } from "@food/api"
 
 export default function Checkout() {
   const navigate = useNavigate()
   const { cart, clearCart } = useCart()
-  const { getDefaultAddress, getDefaultPaymentMethod, setDefaultAddress, addresses, paymentMethods, orderType } = useProfile()
+  const { getDefaultAddress, getDefaultPaymentMethod, setDefaultAddress, addresses, paymentMethods, orderType, userProfile } = useProfile()
   const { createOrder } = useOrders()
   const getAddressId = (address) => address?.id || address?._id || ""
   const [selectedAddressId, setSelectedAddressId] = useState(getAddressId(getDefaultAddress()))
   const [selectedPayment, setSelectedPayment] = useState(getDefaultPaymentMethod()?.id || "")
   const [isPlacingOrder, setIsPlacingOrder] = useState(false)
   const [isTakeawayCodEnabled, setIsTakeawayCodEnabled] = useState(true)
+  const [isCodBlockingFeatureEnabled, setIsCodBlockingFeatureEnabled] = useState(true)
 
   const restaurantId = cart[0]?.restaurantId
 
   useEffect(() => {
+    userAPI.getCustomizationSettings()
+      .then(res => {
+        if (res?.data?.data) {
+          setIsCodBlockingFeatureEnabled(res.data.data.cod_blocking_feature_enabled !== false)
+        }
+      })
+      .catch(() => {})
     if (orderType === "takeaway") {
       // Fetch global takeaway COD status
       adminAPI.getTakeawayCodStatus()
@@ -40,12 +48,15 @@ export default function Checkout() {
     }
   }, [orderType])
 
-  // If takeaway and COD is not enabled, and current selection is COD, switch to razorpay
+  // If takeaway and COD is not enabled (or user is blocked), and current selection is COD, switch to razorpay
   useEffect(() => {
-    if (orderType === "takeaway" && !isTakeawayCodEnabled && selectedPayment === "cod") {
+    const isTakeawayCodDisabled = orderType === "takeaway" && !isTakeawayCodEnabled;
+    const isUserBlocked = userProfile?.isCodBlocked && isCodBlockingFeatureEnabled;
+    
+    if ((isTakeawayCodDisabled || isUserBlocked) && selectedPayment === "cod") {
       setSelectedPayment("razorpay")
     }
-  }, [orderType, isTakeawayCodEnabled, selectedPayment])
+  }, [orderType, isTakeawayCodEnabled, selectedPayment, userProfile, isCodBlockingFeatureEnabled])
 
   const selectedAddress = addresses.find(addr => getAddressId(addr) === selectedAddressId) || getDefaultAddress()
   const defaultPayment = paymentMethods.find(pm => pm.id === selectedPayment) || getDefaultPaymentMethod()
@@ -277,18 +288,28 @@ export default function Checkout() {
                     {/* Cash on Delivery */}
                     {(orderType !== "takeaway" || isTakeawayCodEnabled) && (
                       <div
-                        className={`border-2 rounded-lg p-4 cursor-pointer transition-colors ${selectedPayment === "cod"
-                            ? "border-[#DC2626] bg-orange-50"
-                            : "border-gray-200 hover:border-orange-300"
-                          }`}
-                        onClick={() => setSelectedPayment("cod")}
+                        className={`border-2 rounded-lg p-4 transition-colors ${
+                          (userProfile?.isCodBlocked && isCodBlockingFeatureEnabled)
+                            ? "border-gray-200 bg-gray-50 opacity-60 cursor-not-allowed"
+                            : `cursor-pointer ${selectedPayment === "cod" ? "border-[#DC2626] bg-orange-50" : "border-gray-200 hover:border-orange-300"}`
+                        }`}
+                        onClick={() => {
+                          if (userProfile?.isCodBlocked && isCodBlockingFeatureEnabled) return;
+                          setSelectedPayment("cod");
+                        }}
                       >
                         <div className="flex items-center justify-between">
                           <div className="flex items-center gap-3">
-                            <CreditCard className="h-5 w-5 text-gray-500" />
+                            <CreditCard className={`h-5 w-5 ${
+                              (userProfile?.isCodBlocked && isCodBlockingFeatureEnabled) ? "text-gray-400" : "text-gray-500"
+                            }`} />
                             <div>
                               <p className="font-semibold">Cash on Delivery</p>
-                              <p className="text-xs text-muted-foreground">Pay when you {orderType === "takeaway" ? "pickup" : "receive"} your order</p>
+                              {userProfile?.isCodBlocked && isCodBlockingFeatureEnabled ? (
+                                <p className="text-xs text-[#DC2626] mt-1 font-medium">Not available due to multiple cancellations</p>
+                              ) : (
+                                <p className="text-xs text-muted-foreground">Pay when you {orderType === "takeaway" ? "pickup" : "receive"} your order</p>
+                              )}
                             </div>
                           </div>
                           {selectedPayment === "cod" && (
