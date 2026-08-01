@@ -95,76 +95,20 @@ export default function OTP() {
     }
   }, [showNameInput])
 
-  const handleChange = (index, value) => {
-    // Only allow digits; OTP is exactly 4 digits
-    if (value && !/^\d$/.test(value)) {
-      return
+  const handleSingleInputChange = (e) => {
+    let val = e.target.value.replace(/\D/g, "");
+    if (val.length > 4) val = val.slice(0, 4);
+    
+    if (val.length > 0) setError("");
+    
+    const newOtp = ["", "", "", ""];
+    for (let i = 0; i < val.length; i++) {
+      newOtp[i] = val[i];
     }
-
-    const newOtp = [...otp]
-    newOtp[index] = value
-    setOtp(newOtp)
-    setError("")
-
-    // Auto-focus next input (4 boxes only)
-    if (value && index < 3) {
-      inputRefs.current[index + 1]?.focus({ preventScroll: true })
-    }
-
-    // Auto-submit when all 4 digits are entered
-    if (!showNameInput && newOtp.slice(0, 4).every((digit) => digit !== "")) {
-      handleVerify(newOtp.slice(0, 4).join(""))
-    }
-  }
-
-  const handleKeyDown = (index, e) => {
-    // Handle backspace
-    if (e.key === "Backspace") {
-      if (otp[index]) {
-        // If current input has value, clear it
-        const newOtp = [...otp]
-        newOtp[index] = ""
-        setOtp(newOtp)
-      } else if (index > 0) {
-        // If current input is empty, move to previous and clear it
-        inputRefs.current[index - 1]?.focus({ preventScroll: true })
-        const newOtp = [...otp]
-        newOtp[index - 1] = ""
-        setOtp(newOtp)
-      }
-    }
-    // Handle paste (4 digits only)
-    if (e.key === "v" && (e.ctrlKey || e.metaKey)) {
-      e.preventDefault()
-      navigator.clipboard.readText().then((text) => {
-        const digits = text.replace(/\D/g, "").slice(0, 4).split("")
-        const newOtp = [...otp]
-        digits.forEach((digit, i) => {
-          if (i < 4) newOtp[i] = digit
-        })
-        setOtp(newOtp)
-        if (!showNameInput && digits.length === 4) {
-          handleVerify(newOtp.slice(0, 4).join(""))
-        } else {
-          inputRefs.current[Math.min(digits.length, 3)]?.focus({ preventScroll: true })
-        }
-      })
-    }
-  }
-
-  const handlePaste = (e) => {
-    e.preventDefault()
-    const pastedData = e.clipboardData.getData("text")
-    const digits = pastedData.replace(/\D/g, "").slice(0, 4).split("")
-    const newOtp = [...otp]
-    digits.forEach((digit, i) => {
-      if (i < 4) newOtp[i] = digit
-    })
-    setOtp(newOtp)
-    if (!showNameInput && digits.length === 4) {
-      handleVerify(newOtp.slice(0, 4).join(""))
-    } else {
-      inputRefs.current[Math.min(digits.length, 3)]?.focus({ preventScroll: true })
+    setOtp(newOtp);
+    
+    if (!showNameInput && val.length === 4) {
+      handleVerify(val);
     }
   }
 
@@ -484,25 +428,32 @@ export default function OTP() {
           {/* OTP Input Fields */}
           {!showNameInput && (
             <div className="space-y-6">
-              <div className="flex justify-between gap-3 sm:gap-4 max-w-[280px] mx-auto">
-                {otp.map((digit, index) => (
-                  <input
-                    key={index}
-                    ref={(el) => (inputRefs.current[index] = el)}
-                    type="text"
-                    inputMode="numeric"
-                    pattern="[0-9]*"
-                    maxLength={1}
-                    value={digit}
-                    onChange={(e) => handleChange(index, e.target.value)}
-                    onKeyDown={(e) => handleKeyDown(index, e)}
-                    onPaste={index === 0 ? handlePaste : undefined}
-                    disabled={isLoading}
-                    aria-label={`OTP digit ${index + 1} of 4`}
-                    className="w-12 h-12 sm:w-14 sm:h-14 text-center text-xl font-bold border-2 border-gray-200 dark:border-gray-700 rounded-xl focus:border-primary focus:ring-1 focus:ring-primary bg-white dark:bg-[#2a2a2a] text-gray-900 dark:text-white transition-all outline-none"
-                  />
-                ))}
-              </div>
+                  <div className="relative flex justify-between gap-3 w-full" onClick={() => inputRefs.current[0]?.focus()}>
+                    <input
+                      ref={(el) => (inputRefs.current[0] = el)}
+                      type="tel"
+                      inputMode="numeric"
+                      maxLength={4}
+                      required
+                      disabled={isLoading}
+                      autoFocus
+                      value={otp.join("")}
+                      onChange={handleSingleInputChange}
+                      className="absolute inset-0 w-full h-full opacity-0 z-10 cursor-text text-[16px]"
+                    />
+                    {[0, 1, 2, 3].map((index) => (
+                      <div
+                        key={index}
+                        className={`flex items-center justify-center w-12 h-12 sm:w-14 sm:h-14 text-center text-xl font-bold border-2 rounded-xl transition-all outline-none bg-white dark:bg-[#2a2a2a] text-gray-900 dark:text-white
+                          ${isLoading ? "opacity-50" : 
+                            (otp.join("").length === index && !isLoading) ? "border-primary ring-1 ring-primary" : 
+                            (otp[index] ? "border-primary" : "border-gray-200 dark:border-gray-700")}
+                        `}
+                      >
+                        {otp[index]}
+                      </div>
+                    ))}
+                  </div>
 
               {error && (
                 <div className="flex items-center justify-center gap-1.5 text-xs text-red-500 bg-red-50 dark:bg-red-900/10 py-2 rounded-lg">
