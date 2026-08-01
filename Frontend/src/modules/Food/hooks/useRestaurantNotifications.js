@@ -777,6 +777,18 @@ export const useRestaurantNotifications = () => {
 
     const pollOrders = async () => {
       try {
+        const token = localStorage.getItem('restaurant_accessToken') || localStorage.getItem('accessToken');
+        const isAuthPage = window.location.pathname.includes('/login') || window.location.pathname.includes('/otp') || window.location.pathname.includes('/signup');
+        
+        if (!token || isAuthPage) {
+          if (globalActiveOrder) {
+            globalActiveOrder = null;
+            updateGlobalState({ activeOrder: null });
+            stopGlobalAlertLoop();
+          }
+          return;
+        }
+
         const response = await restaurantAPI.getOrders({ page: 1, limit: 30 });
         const rows = response?.data?.data?.orders || response?.data?.data?.data?.orders || [];
 
@@ -793,9 +805,9 @@ export const useRestaurantNotifications = () => {
               return scheduledTime <= now + 30 * 60000;
             }
             
-            // Ignore stale test/bugged orders older than 2 hours to prevent sound playing repeatedly on login
+            // Ignore stale test/bugged orders older than 30 minutes to prevent sound playing repeatedly on login
             const createdAt = new Date(o.createdAt || o.updatedAt || 0).getTime();
-            if (!createdAt || Date.now() - createdAt > 2 * 60 * 60 * 1000) {
+            if (!createdAt || Date.now() - createdAt > 30 * 60 * 1000) {
               return false;
             }
             
@@ -815,6 +827,13 @@ export const useRestaurantNotifications = () => {
               handleIncomingOrderAlert(o, 'poll');
             }
           });
+        } else {
+          // If there are NO pending orders, ensure we clear any stale active order that might be playing sound
+          if (globalActiveOrder) {
+            globalActiveOrder = null;
+            updateGlobalState({ activeOrder: null });
+            stopGlobalAlertLoop();
+          }
         }
       } catch (error) {
         // ignore
