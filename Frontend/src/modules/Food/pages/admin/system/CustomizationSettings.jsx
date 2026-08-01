@@ -56,6 +56,13 @@ const CUSTOMIZATION_TOGGLES = [
       "Bypasses device location permissions and sets default location to Indore for all users.",
     defaultValue: false,
   },
+  {
+    key: "cod_blocking_feature_enabled",
+    label: "Global COD Blocked",
+    description:
+      "Global toggle to enable/disable the automatic COD blocking feature (blocks COD for users with 4 consecutive COD cancellations).",
+    defaultValue: true,
+  },
 ];
 
 const getAdminToastOffsetPx = () => {

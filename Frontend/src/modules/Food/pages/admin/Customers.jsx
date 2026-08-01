@@ -30,6 +30,27 @@ export default function Customers() {
     chooseFirst: "",
   })
 
+  const [globalCodBlockedFeatureEnabled, setGlobalCodBlockedFeatureEnabled] = useState(true)
+
+  useEffect(() => {
+    let cancelled = false
+    const fetchGlobalConfig = async () => {
+      try {
+        const res = await adminAPI.getCustomizationSettings()
+        if (!cancelled && res?.data?.data) {
+          const config = res.data.data
+          if (config.cod_blocking_feature_enabled !== undefined) {
+            setGlobalCodBlockedFeatureEnabled(config.cod_blocking_feature_enabled)
+          }
+        }
+      } catch (err) {
+        debugError("Error fetching global config", err)
+      }
+    }
+    fetchGlobalConfig()
+    return () => { cancelled = true }
+  }, [])
+
   const filteredCustomers = useMemo(() => {
     let result = [...customers]
 
@@ -190,6 +211,28 @@ export default function Customers() {
       // Revert optimistic update
       setCustomers(customers.map(c =>
         c.id === customerId ? { ...c, status: !c.status } : c
+      ))
+    }
+  }
+
+  const handleToggleCodStatus = async (customerId) => {
+    try {
+      const customer = customers.find(c => (c._id || c.id) === customerId)
+      if (!customer) return
+
+      const newCodStatus = !customer.isCodBlocked
+
+      setCustomers(customers.map(c =>
+        (c.id || c._id) === customerId ? { ...c, isCodBlocked: newCodStatus } : c
+      ))
+
+      await adminAPI.updateCustomerCodStatus(customerId, newCodStatus)
+      toast.success(`User COD ${newCodStatus ? 'blocked' : 'unblocked'} successfully`)
+    } catch (error) {
+      debugError('Error updating COD status:', error)
+      toast.error('Failed to update COD status')
+      setCustomers(customers.map(c =>
+        (c.id || c._id) === customerId ? { ...c, isCodBlocked: !c.isCodBlocked } : c
       ))
     }
   }
@@ -430,39 +473,42 @@ export default function Customers() {
 
           {/* Table */}
           <div className="overflow-x-auto">
-            <table className="w-full min-w-[980px]">
+            <table className="w-full min-w-full">
               <thead className="bg-slate-50 border-b border-slate-200">
                 <tr>
-                  <th className="px-6 py-4 text-left text-[10px] font-bold text-slate-700 uppercase tracking-wider">Sl</th>
-                  <th className="px-6 py-4 text-left text-[10px] font-bold text-slate-700 uppercase tracking-wider">Name</th>
-                  <th className="px-6 py-4 text-left text-[10px] font-bold text-slate-700 uppercase tracking-wider">Contact Information</th>
-                  <th className="px-6 py-4 text-left text-[10px] font-bold text-slate-700 uppercase tracking-wider">Total Order</th>
-                  <th className="px-6 py-4 text-left text-[10px] font-bold text-slate-700 uppercase tracking-wider">Total Order Amount</th>
-                  <th className="px-6 py-4 text-left text-[10px] font-bold text-slate-700 uppercase tracking-wider">Joining Date</th>
-                  <th className="px-6 py-4 text-left text-[10px] font-bold text-slate-700 uppercase tracking-wider">Active/Inactive</th>
-                  <th className="px-6 py-4 text-center text-[10px] font-bold text-slate-700 uppercase tracking-wider">Actions</th>
+                  <th className="px-3 py-4 text-left text-[10px] font-bold text-slate-700 uppercase tracking-wider">Sl</th>
+                  <th className="px-3 py-4 text-left text-[10px] font-bold text-slate-700 uppercase tracking-wider">Name</th>
+                  <th className="px-3 py-4 text-left text-[10px] font-bold text-slate-700 uppercase tracking-wider">Contact Info</th>
+                  <th className="px-3 py-4 text-left text-[10px] font-bold text-slate-700 uppercase tracking-wider">Total Order</th>
+                  <th className="px-3 py-4 text-left text-[10px] font-bold text-slate-700 uppercase tracking-wider">Total Amount</th>
+                  <th className="px-3 py-4 text-left text-[10px] font-bold text-slate-700 uppercase tracking-wider">Joining Date</th>
+                  <th className="px-3 py-4 text-left text-[10px] font-bold text-slate-700 uppercase tracking-wider">Active/Inactive</th>
+                  {globalCodBlockedFeatureEnabled && (
+                    <th className="px-3 py-4 text-left text-[10px] font-bold text-slate-700 uppercase tracking-wider">COD Blocked</th>
+                  )}
+                  <th className="px-3 py-4 text-center text-[10px] font-bold text-slate-700 uppercase tracking-wider">Actions</th>
                 </tr>
               </thead>
               <tbody className="bg-white divide-y divide-slate-100">
                 {loading ? (
                   <tr>
-                    <td colSpan={8} className="px-6 py-8 text-center">
+                    <td colSpan={globalCodBlockedFeatureEnabled ? 9 : 8} className="px-6 py-8 text-center">
                       <div className="text-sm text-slate-500">Loading customers...</div>
                     </td>
                   </tr>
                 ) : filteredCustomers.length === 0 ? (
                   <tr>
-                    <td colSpan={8} className="px-6 py-8 text-center">
+                    <td colSpan={globalCodBlockedFeatureEnabled ? 9 : 8} className="px-6 py-8 text-center">
                       <div className="text-sm text-slate-500">No customers found</div>
                     </td>
                   </tr>
                 ) : (
                   filteredCustomers.map((customer, index) => (
                     <tr key={customer.id || customer.sl} className="hover:bg-slate-50 transition-colors">
-                      <td className="px-6 py-4 whitespace-nowrap">
+                      <td className="px-3 py-4 whitespace-nowrap">
                         <span className="text-sm font-medium text-slate-700">{(currentPage - 1) * pageSize + index + 1}</span>
                       </td>
-                      <td className="px-6 py-4">
+                      <td className="px-3 py-4">
                         <div className="flex items-center gap-3">
                           <div 
                             className="w-10 h-10 rounded-full flex items-center justify-center shrink-0 overflow-hidden cursor-pointer hover:opacity-80 transition-all border border-slate-200"
@@ -487,22 +533,22 @@ export default function Customers() {
                           </span>
                         </div>
                       </td>
-                      <td className="px-6 py-4">
+                      <td className="px-3 py-4">
                         <div className="flex flex-col">
                           <span className="text-sm text-slate-700">{customer.email || "NA"}</span>
                           <span className="text-xs text-slate-500">{customer.phone}</span>
                         </div>
                       </td>
-                      <td className="px-6 py-4 whitespace-nowrap">
+                      <td className="px-3 py-4 whitespace-nowrap">
                         <span className="text-sm text-slate-700">{customer.totalOrder || 0}</span>
                       </td>
-                      <td className="px-6 py-4 whitespace-nowrap">
+                      <td className="px-3 py-4 whitespace-nowrap">
                         <span className="text-sm font-medium text-slate-900">{"\u20B9"} {(customer.totalOrderAmount || 0).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
                       </td>
-                      <td className="px-6 py-4 whitespace-nowrap">
+                      <td className="px-3 py-4 whitespace-nowrap">
                         <span className="text-sm text-slate-700">{formatDateTime(customer.joiningDate)}</span>
                       </td>
-                      <td className="px-6 py-4 whitespace-nowrap">
+                      <td className="px-3 py-4 whitespace-nowrap">
                         <button
                           onClick={() => handleToggleStatus(customer.id || customer.sl)}
                           className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-green-500 focus:ring-offset-2 ${customer.status ? "bg-green-600" : "bg-slate-300"
@@ -514,7 +560,21 @@ export default function Customers() {
                           />
                         </button>
                       </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-center">
+                      {globalCodBlockedFeatureEnabled && (
+                        <td className="px-3 py-4 whitespace-nowrap">
+                          <button
+                            onClick={() => handleToggleCodStatus(customer.id || customer.sl || customer._id)}
+                            className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-offset-2 ${customer.isCodBlocked ? "bg-red-600" : "bg-slate-300"
+                              }`}
+                          >
+                            <span
+                              className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${customer.isCodBlocked ? "translate-x-6" : "translate-x-1"
+                                }`}
+                            />
+                          </button>
+                        </td>
+                      )}
+                      <td className="px-3 py-4 whitespace-nowrap text-center">
                         <button
                           onClick={() => handleViewDetails(customer._id || customer.id || customer.sl)}
                           className="p-1.5 rounded text-blue-600 hover:bg-blue-50 transition-colors"
