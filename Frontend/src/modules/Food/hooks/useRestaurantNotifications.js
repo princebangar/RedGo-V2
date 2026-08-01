@@ -633,7 +633,7 @@ export const useRestaurantNotifications = () => {
 
     globalSocket = io(socketUrl, {
       path: '/socket.io/',
-      transports: ['polling'],
+      transports: ['websocket', 'polling'],
       reconnection: true,
       reconnectionDelay: 1000,
       reconnectionDelayMax: 5000,

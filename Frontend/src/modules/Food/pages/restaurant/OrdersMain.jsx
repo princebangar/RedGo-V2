@@ -612,12 +612,16 @@ function TableBookings() {
 
   useEffect(() => {
     let isMounted = true;
+    let cachedRestaurant = null;
 
     const fetchBookings = async () => {
       try {
-        const res = await restaurantAPI.getCurrentRestaurant();
-        const restaurant =
-          res.data?.data?.restaurant || res.data?.restaurant || res.data?.data;
+        let restaurant = cachedRestaurant;
+        if (!restaurant) {
+          const res = await restaurantAPI.getCurrentRestaurant();
+          restaurant = res.data?.data?.restaurant || res.data?.restaurant || res.data?.data;
+          cachedRestaurant = restaurant;
+        }
         const restaurantId = restaurant?._id || restaurant?.id;
 
         if (restaurantId) {

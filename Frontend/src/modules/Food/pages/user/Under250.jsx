@@ -1,6 +1,6 @@
 import { Link, useNavigate } from "react-router-dom"
 import { useState, useMemo, useCallback, useEffect, useRef } from "react"
-import { Star, Clock, MapPin, ArrowDownUp, Timer, ArrowRight, ChevronDown, Bookmark, Share2, Plus, Minus, X, Check, UtensilsCrossed, Wallet } from "lucide-react"
+import { Star, Clock, MapPin, ArrowDownUp, Timer, ArrowRight, ChevronDown, Bookmark, Share2, Plus, Minus, X, Check, Utensils, UtensilsCrossed, Wallet } from "lucide-react"
 import { motion, AnimatePresence } from "framer-motion"
 import { toast } from "sonner"
 import AnimatedPage from "@food/components/user/AnimatedPage"
@@ -98,6 +98,7 @@ export default function Under250({ isTabActive = true }) {
     dragging: false,
   })
   const [categories, setCategories] = useState([])
+  const [loadingCategories, setLoadingCategories] = useState(true)
   const [bannerImages, setBannerImages] = useState([])
   const [loadingBanner, setLoadingBanner] = useState(true)
   const [currentBannerIndex, setCurrentBannerIndex] = useState(0)
@@ -203,15 +204,19 @@ export default function Under250({ isTabActive = true }) {
     if (activeCategory) {
       const selectedCat = categories.find((cat) => cat.id === activeCategory)
       if (selectedCat) {
-        const catNameLower = selectedCat.name.toLowerCase()
+        const catNameLower = String(selectedCat.name || "").toLowerCase()
         filtered = filtered
           .map((restaurant) => {
-            const matches = restaurant.menuItems.filter(
-              (item) =>
-                (item.category || "").toLowerCase() === catNameLower ||
-                (item.sectionName || "").toLowerCase() === catNameLower ||
-                (item.subsectionName || "").toLowerCase() === catNameLower,
-            )
+            const matches = restaurant.menuItems.filter((item) => {
+              const itemCat = String(item.categoryName || item.category || item.sectionName || item.subsectionName || "").toLowerCase()
+              const itemName = String(item.name || "").toLowerCase()
+              const itemDesc = String(item.description || "").toLowerCase()
+              return (
+                (itemCat && (itemCat.includes(catNameLower) || catNameLower.includes(itemCat))) ||
+                (itemName && (itemName.includes(catNameLower) || catNameLower.includes(itemName))) ||
+                (itemDesc && itemDesc.includes(catNameLower))
+              )
+            })
             if (matches.length > 0) {
               return { ...restaurant, menuItems: matches }
             }
@@ -298,9 +303,37 @@ export default function Under250({ isTabActive = true }) {
   ])
 
   const displayCategories = useMemo(() => {
-    if (!vegMode) return categories
-    return categories.filter((cat) => !isNonVegCategoryScope(cat))
-  }, [categories, vegMode])
+    let baseCats = categories
+    if (vegMode) {
+      baseCats = baseCats.filter((cat) => !isNonVegCategoryScope(cat))
+    }
+    if (!under250Restaurants || under250Restaurants.length === 0) {
+      return baseCats
+    }
+
+    const availableItems = under250Restaurants.flatMap((r) => r.menuItems || [])
+    if (availableItems.length === 0) return baseCats
+
+    return baseCats.filter((cat) => {
+      const catNameLower = String(cat.name || "").toLowerCase().trim()
+      const catWords = catNameLower.split(/\s+/).filter(w => w.length > 2)
+
+      return availableItems.some((item) => {
+        const itemCat = String(item.categoryName || item.category || item.sectionName || item.subsectionName || item.categoryId || "").toLowerCase().trim()
+        const itemName = String(item.name || "").toLowerCase().trim()
+        const itemDesc = String(item.description || "").toLowerCase().trim()
+
+        if (itemCat && (itemCat.includes(catNameLower) || catNameLower.includes(itemCat))) return true
+        if (itemName && (itemName.includes(catNameLower) || catNameLower.includes(itemName))) return true
+        if (itemDesc && itemDesc.includes(catNameLower)) return true
+
+        if (catWords.length > 0) {
+          return catWords.some(word => itemCat.includes(word) || itemName.includes(word) || itemDesc.includes(word))
+        }
+        return false
+      })
+    })
+  }, [categories, vegMode, under250Restaurants])
 
   // If active category was non-veg and veg mode turns on, clear it
   useEffect(() => {
@@ -441,7 +474,7 @@ export default function Under250({ isTabActive = true }) {
 
     const fetchRestaurantsUnder250 = async () => {
       try {
-        setLoadingRestaurants(true)
+        setLoadingRestaurants((prev) => under250Restaurants.length === 0 ? true : false)
         // Use the new dedicated backend endpoint for high performance
         const response = await restaurantAPI.getRestaurantsUnder250(zoneId ? { zoneId } : {})
         
@@ -487,11 +520,7 @@ export default function Under250({ isTabActive = true }) {
             price: Number(item.price || 0),
             foodType: item.foodType || (item.isVeg ? "Veg" : "Non-Veg"),
             isVeg: isVegMenuItem(item),
-            image:
-              item?.image ||
-              restaurant?.profileImage?.url ||
-              restaurant?.profileImage ||
-              ""
+            image: item?.image || ""
           }))
           const hasNonVegInPayload = mappedItems.some((item) => !item.isVeg)
           const hasNonVegMenu =
@@ -547,6 +576,7 @@ export default function Under250({ isTabActive = true }) {
 
     const fetchCategories = async () => {
       try {
+        setLoadingCategories((prev) => categories.length === 0 ? true : false)
         const response = await adminAPI.getPublicCategories(zoneId ? { zoneId } : {})
         const categoriesRaw = Array.isArray(response?.data?.data?.categories)
           ? response.data.data.categories
@@ -573,10 +603,14 @@ export default function Under250({ isTabActive = true }) {
 
         if (!cancelled) {
           setCategories(mappedCategories)
+          setLoadingCategories(false)
         }
       } catch (error) {
         debugError("Error fetching under-250 categories:", error)
-        if (!cancelled) setCategories([])
+        if (!cancelled) {
+          setCategories([])
+          setLoadingCategories(false)
+        }
       }
     }
 
@@ -1042,43 +1076,52 @@ export default function Under250({ isTabActive = true }) {
                 whileTap={{ scale: 0.95 }}
                 transition={{ type: "spring", stiffness: 300, damping: 20 }}
               >
-                <div className={`w-14 h-14 sm:w-20 sm:h-20 md:w-24 md:h-24 rounded-full overflow-hidden shadow-md transition-all flex items-center justify-center bg-white ${!activeCategory ? 'ring-2 ring-[#DC2626] ring-offset-2' : ''}`}>
-                   <div className={`w-full h-full flex items-center justify-center ${!activeCategory ? 'bg-[#DC2626]/10 text-[#DC2626]' : 'bg-gray-50 text-gray-400'}`}>
-                      <UtensilsCrossed className="w-6 h-6 sm:w-10 sm:h-10 md:w-12 md:h-12" />
-                   </div>
+                <div className={`w-14 h-14 sm:w-20 sm:h-20 md:w-24 md:h-24 rounded-full overflow-hidden shadow-md transition-all flex items-center justify-center ${!activeCategory ? 'bg-gradient-to-br from-[#DC2626] to-[#991B1B] text-white ring-2 ring-[#DC2626] ring-offset-2' : 'bg-white dark:bg-[#1a1a1a] border border-gray-200 dark:border-gray-800 text-gray-700 dark:text-gray-200'}`}>
+                  <Utensils className="w-6 h-6 sm:w-10 sm:h-10 md:w-12 md:h-12" />
                 </div>
-                <span className={`text-xs sm:text-sm md:text-base font-semibold text-gray-800 dark:text-gray-200 text-center pb-1 ${!activeCategory ? 'text-[#DC2626]' : ''}`}>
+                <span className={`text-xs sm:text-sm md:text-base font-bold text-center pb-1 ${!activeCategory ? 'text-[#DC2626]' : 'text-gray-800 dark:text-gray-200'}`}>
                   All
                 </span>
               </motion.div>
             </div>
-            {displayCategories.map((category, index) => {
-              const isActive = activeCategory === category.id
-              return (
-                <div key={category.id} className="flex-shrink-0 cursor-pointer" onClick={() => setActiveCategory(isActive ? null : category.id)}>
-                    <motion.div
-                      className="flex flex-col items-center gap-2 w-[62px] sm:w-24 md:w-28"
-                      whileHover={{ scale: 1.1, y: -4 }}
-                      whileTap={{ scale: 0.95 }}
-                      transition={{ type: "spring", stiffness: 300, damping: 20 }}
-                    >
-                      <div className={`w-14 h-14 sm:w-20 sm:h-20 md:w-24 md:h-24 rounded-full overflow-hidden shadow-md transition-all ${isActive ? 'ring-2 ring-[#DC2626] ring-offset-2' : ''}`}>
-                        <OptimizedImage
-                          src={category.image}
-                          alt={category.name}
-                          className="w-full h-full bg-white rounded-full"
-                          objectFit="cover"
-                          sizes="(max-width: 640px) 62px, (max-width: 768px) 96px, 112px"
-                          placeholder="blur"
-                        />
-                      </div>
-                      <span className={`text-xs sm:text-sm md:text-base font-semibold text-gray-800 dark:text-gray-200 text-center pb-1 ${isActive ? 'text-[#DC2626]' : ''}`}>
-                        {category.name.length > 7 ? `${category.name.slice(0, 7)}...` : category.name}
-                      </span>
-                    </motion.div>
-                </div>
-              )
-            })}
+            {loadingCategories ? (
+              <>
+                {[1, 2, 3, 4, 5, 6].map((i) => (
+                  <div key={i} className="flex-shrink-0 flex flex-col items-center gap-2 w-[62px] sm:w-24 md:w-28">
+                    <div className="w-14 h-14 sm:w-20 sm:h-20 md:w-24 md:h-24 rounded-full skeleton-shimmer" />
+                    <div className="h-3.5 skeleton-shimmer rounded w-12" />
+                  </div>
+                ))}
+              </>
+            ) : (
+              displayCategories.map((category, index) => {
+                const isActive = activeCategory === category.id
+                return (
+                  <div key={category.id} className="flex-shrink-0 cursor-pointer" onClick={() => setActiveCategory(isActive ? null : category.id)}>
+                      <motion.div
+                        className="flex flex-col items-center gap-2 w-[62px] sm:w-24 md:w-28"
+                        whileHover={{ scale: 1.1, y: -4 }}
+                        whileTap={{ scale: 0.95 }}
+                        transition={{ type: "spring", stiffness: 300, damping: 20 }}
+                      >
+                        <div className={`w-14 h-14 sm:w-20 sm:h-20 md:w-24 md:h-24 rounded-full overflow-hidden shadow-md transition-all ${isActive ? 'ring-2 ring-[#DC2626] ring-offset-2' : ''}`}>
+                          <OptimizedImage
+                            src={category.image}
+                            alt={category.name}
+                            className="w-full h-full bg-white rounded-full"
+                            objectFit="cover"
+                            sizes="(max-width: 640px) 62px, (max-width: 768px) 96px, 112px"
+                            placeholder="blur"
+                          />
+                        </div>
+                        <span className={`text-xs sm:text-sm md:text-base font-semibold text-gray-800 dark:text-gray-200 text-center pb-1 ${isActive ? 'text-[#DC2626]' : ''}`}>
+                          {category.name.length > 7 ? `${category.name.slice(0, 7)}...` : category.name}
+                        </span>
+                      </motion.div>
+                  </div>
+                )
+              })
+            )}
           </div>
         </section>
 
@@ -1113,20 +1156,27 @@ export default function Under250({ isTabActive = true }) {
         {/* Restaurant Menu Sections */}
         {(loadingRestaurants || showGlobalLoader) ? (
           <div className="space-y-8 pt-4 sm:pt-6 md:pt-8 lg:pt-10">
-            {[1, 2].map((i) => (
-              <div key={i} className="animate-pulse space-y-4">
+            {[1, 2, 3].map((i) => (
+              <div key={i} className="space-y-4">
                 {/* Skeleton Header */}
                 <div className="flex flex-col gap-2">
-                  <div className="h-6 sm:h-8 w-48 bg-gray-200 dark:bg-gray-800 rounded-lg"></div>
+                  <div className="h-6 sm:h-8 w-48 skeleton-shimmer rounded-lg"></div>
                   <div className="flex gap-4">
-                    <div className="h-4 w-24 bg-gray-100 dark:bg-gray-900 rounded"></div>
-                    <div className="h-4 w-24 bg-gray-100 dark:bg-gray-900 rounded"></div>
+                    <div className="h-4 w-24 skeleton-shimmer rounded"></div>
+                    <div className="h-4 w-24 skeleton-shimmer rounded"></div>
                   </div>
                 </div>
                 {/* Skeleton Grid */}
                 <div className="flex gap-4 overflow-hidden pb-4">
-                  {[1, 2, 3].map((j) => (
-                    <div key={j} className="flex-shrink-0 w-[200px] sm:w-[220px] h-64 bg-gray-50 dark:bg-[#1a1a1a] rounded-xl border border-gray-100 dark:border-gray-800"></div>
+                  {[1, 2, 3, 4].map((j) => (
+                    <div key={j} className="flex-shrink-0 w-[200px] sm:w-[220px] h-64 bg-white dark:bg-[#1a1a1a] rounded-xl border border-gray-200 dark:border-gray-800 p-3 space-y-3 shadow-sm">
+                      <div className="w-full h-32 skeleton-shimmer rounded-lg" />
+                      <div className="h-4 skeleton-shimmer rounded w-3/4" />
+                      <div className="flex justify-between items-center pt-2">
+                        <div className="h-5 skeleton-shimmer rounded w-16" />
+                        <div className="h-8 skeleton-shimmer rounded w-16" />
+                      </div>
+                    </div>
                   ))}
                 </div>
               </div>
@@ -1199,11 +1249,8 @@ export default function Under250({ isTabActive = true }) {
                               isOffline ? 'grayscale opacity-75' : ''
                             }`}
                             onClick={() => handleItemClick(item, restaurant)}
-                            initial={{ opacity: 0, y: 20 }}
-                            whileInView={{ opacity: 1, y: 0 }}
-                            viewport={{ once: true, margin: "-50px" }}
-                            transition={{ duration: 0.4, delay: itemIndex * 0.05 }}
-                            whileHover={isOffline ? {} : { y: -8, scale: 1.02 }}
+                            whileHover={isOffline ? {} : { y: -4, scale: 1.01 }}
+                            transition={{ duration: 0.2 }}
                             style={{ boxShadow: "0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06)" }}
                           >
                             {/* Item Image */}
@@ -1267,15 +1314,36 @@ export default function Under250({ isTabActive = true }) {
                                   )}
                                 </div>
                                 {quantity > 0 && !isRestaurantOffline ? (
-                                  <Link to="/user/cart" onClick={(e) => e.stopPropagation()}>
-                                    <Button
-                                      variant={"ghost"}
-                                      size="sm"
-                                      className="bg-[#DC2626] text-white hover:bg-[#991B1B] h-7 md:h-8 lg:h-9 px-3 md:px-4 lg:px-5 text-xs md:text-sm lg:text-base font-bold shadow-md transition-all active:scale-95"
+                                  <div
+                                    className="flex items-center gap-1.5 bg-[#DC2626] text-white rounded-lg p-1 shadow-md"
+                                    onClick={(e) => e.stopPropagation()}
+                                  >
+                                    <button
+                                      type="button"
+                                      onClick={(e) => {
+                                        e.stopPropagation()
+                                        const defaultVariant = getDefaultFoodVariant(item)
+                                        updateItemQuantity(item, quantity - 1, e, restaurant.name, defaultVariant)
+                                      }}
+                                      className="w-6 h-6 sm:w-7 sm:h-7 flex items-center justify-center hover:bg-black/20 rounded transition-colors text-white"
                                     >
-                                      View cart
-                                    </Button>
-                                  </Link>
+                                      <Minus className="w-3.5 h-3.5 text-white" />
+                                    </button>
+                                    <span className="px-1 text-xs sm:text-sm font-bold min-w-[1.25rem] text-center text-white">
+                                      {quantity}
+                                    </span>
+                                    <button
+                                      type="button"
+                                      onClick={(e) => {
+                                        e.stopPropagation()
+                                        const defaultVariant = getDefaultFoodVariant(item)
+                                        updateItemQuantity(item, quantity + 1, e, restaurant.name, defaultVariant)
+                                      }}
+                                      className="w-6 h-6 sm:w-7 sm:h-7 flex items-center justify-center hover:bg-black/20 rounded transition-colors text-white"
+                                    >
+                                      <Plus className="w-3.5 h-3.5 text-white" />
+                                    </button>
+                                  </div>
                                 ) : (
                                   <Button
                                     variant={"ghost"}
@@ -1585,9 +1653,9 @@ export default function Under250({ isTabActive = true }) {
                         }
                       }}
                       disabled={itemDetailQuantity <= 1 || shouldShowGrayscale || selectedItem.isRestaurantOffline}
-                      className={`${(shouldShowGrayscale || selectedItem.isRestaurantOffline)
+                      className={`${(shouldShowGrayscale || selectedItem.isRestaurantOffline || itemDetailQuantity <= 1)
                         ? 'text-gray-300 dark:text-gray-600 cursor-not-allowed'
-                        : 'text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200 disabled:text-gray-300 dark:disabled:text-gray-600 disabled:cursor-not-allowed'
+                        : 'text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200'
                         }`}
                     >
                       <Minus className="h-5 w-5 md:h-6 md:w-6 lg:h-7 lg:w-7" />
@@ -1616,7 +1684,7 @@ export default function Under250({ isTabActive = true }) {
                     </button>
                   </div>
 
-                  {/* Add Item Button */}
+                  {/* Add / Update Item Button */}
                   <Button
                     className={`flex-1 h-[44px] md:h-[50px] lg:h-[56px] rounded-lg md:rounded-xl font-semibold flex items-center justify-center gap-2 text-sm md:text-base lg:text-lg ${
                       (shouldShowGrayscale || selectedItem.isRestaurantOffline)
@@ -1632,34 +1700,28 @@ export default function Under250({ isTabActive = true }) {
                     }}
                     disabled={shouldShowGrayscale || selectedItem.isRestaurantOffline}
                   >
-                    {hasFoodVariants(selectedItem) ? (
-                      (() => {
-                        const defaultVariant = getDefaultFoodVariant(selectedItem)
-                        return (
-                          <>
-                            <span>Add {defaultVariant?.name || ""}</span>
-                            <span className="text-base md:text-lg lg:text-xl font-bold">
-                              {RUPEE_SYMBOL}{Math.round(defaultVariant?.price ?? selectedItem.price)}
-                            </span>
-                          </>
-                        )
-                      })()
-                    ) : (
-                      <>
-                        <span>Add item</span>
-                        <div className="flex items-center gap-1 md:gap-2">
-                          {selectedItem.originalPrice && selectedItem.originalPrice > selectedItem.price && (
-                            <span className="text-sm md:text-base lg:text-lg line-through text-red-200">
-                              {RUPEE_SYMBOL}{Math.round(selectedItem.originalPrice)}
-                            </span>
-                          )}
-                          <span className="text-base md:text-lg lg:text-xl font-bold">
-                            {RUPEE_SYMBOL}{Math.round(selectedItem.price)}
-                          </span>
-                        </div>
-                      </>
-                    )}
+                    <span>{quantities[getLineItemIdForDish(selectedItem, getDefaultFoodVariant(selectedItem))] > 0 ? "Update item" : "Add item"}</span>
+                    <span className="text-base md:text-lg lg:text-xl font-bold">
+                      {RUPEE_SYMBOL}{Math.round((getDefaultFoodVariant(selectedItem)?.price ?? selectedItem.price) * itemDetailQuantity)}
+                    </span>
                   </Button>
+
+                  {/* Remove Button when item is in cart */}
+                  {quantities[getLineItemIdForDish(selectedItem, getDefaultFoodVariant(selectedItem))] > 0 && (
+                    <Button
+                      variant="outline"
+                      className="h-[44px] md:h-[50px] lg:h-[56px] px-3 md:px-4 rounded-lg md:rounded-xl font-semibold text-red-600 border-red-200 hover:bg-red-50 text-xs md:text-sm"
+                      onClick={(e) => {
+                        if (!shouldShowGrayscale && !selectedItem.isRestaurantOffline) {
+                          const defaultVariant = getDefaultFoodVariant(selectedItem)
+                          updateItemQuantity(selectedItem, 0, e, selectedItem.restaurant, defaultVariant)
+                          closeItemDetail()
+                        }
+                      }}
+                    >
+                      Remove
+                    </Button>
+                  )}
                 </div>
               </div>
             </motion.div>

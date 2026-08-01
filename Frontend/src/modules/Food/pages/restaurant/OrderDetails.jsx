@@ -19,6 +19,7 @@ import {
   FileText,
 } from "lucide-react"
 import ResendNotificationButton from "@food/components/restaurant/ResendNotificationButton"
+import dishFallbackImage from "@food/assets/dish_fallback.webp"
 const debugLog = (...args) => {}
 const debugWarn = (...args) => {}
 const debugError = (...args) => {}
@@ -872,16 +873,14 @@ export default function OrderDetails() {
           {orderData.items.map((item, index) => (
             <div key={index} className="bg-white rounded-lg p-4">
               <div className="flex items-start gap-4">
-                {item.image && (
                   <div className="w-16 h-16 flex-shrink-0 rounded-xl overflow-hidden shadow-sm border border-gray-100">
                     <img 
-                      src={item.image} 
+                      src={item.image || dishFallbackImage} 
                       alt={item.name} 
                       className="w-full h-full object-cover transform hover:scale-110 transition-transform duration-500"
-                      onError={(e) => { e.target.style.display = 'none'; }}
+                      onError={(e) => { e.target.src = dishFallbackImage; }}
                     />
                   </div>
-                )}
                 <div className="flex-1">
                   <div className="flex items-center justify-between mb-1">
                     <div className="flex items-center gap-2">

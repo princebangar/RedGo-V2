@@ -22,6 +22,7 @@ import { toast } from "sonner"
 import { jsPDF } from "jspdf"
 import autoTable from "jspdf-autotable"
 import { getCompanyNameAsync } from "@food/utils/businessSettings"
+import dishFallbackImage from "@food/assets/dish_fallback.webp"
 const debugLog = (...args) => {}
 const debugWarn = (...args) => {}
 const debugError = (...args) => {}
@@ -521,16 +522,14 @@ export default function UserOrderDetails() {
           {items.map((item, idx) => (
             <div key={idx} className="flex justify-between items-start mt-4 first:mt-0">
               <div className="flex items-center gap-3">
-                {item.image && (
                   <div className="w-16 h-16 md:w-20 md:h-20 flex-shrink-0 rounded-xl overflow-hidden shadow-sm border border-gray-100 dark:border-gray-800">
                     <img 
-                      src={item.image} 
+                      src={item.image || dishFallbackImage} 
                       alt={item.name} 
                       className="w-full h-full object-cover transform hover:scale-110 transition-transform duration-500"
-                      onError={(e) => { e.target.style.display = 'none'; }}
+                      onError={(e) => { e.target.src = dishFallbackImage; }}
                     />
                   </div>
-                )}
                 <div>
                   <div className="flex items-center gap-2">
                     <div

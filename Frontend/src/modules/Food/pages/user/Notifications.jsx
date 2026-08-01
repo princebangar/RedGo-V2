@@ -50,6 +50,7 @@ export default function Notifications() {
     markAsRead: markBroadcastAsRead,
     dismiss: dismissBroadcastNotification,
     dismissAll: dismissAllBroadcastNotifications,
+    loading: isLoadingInbox,
   } = useNotificationInbox("user", { limit: 100 })
 
   // One-time purge of legacy mock seeds stuck in localStorage
@@ -70,11 +71,13 @@ export default function Notifications() {
     } catch {
       /* ignore */
     }
-    window.dispatchEvent(
-      new CustomEvent("notificationsUpdated", {
-        detail: { count: notificationsList.filter((n) => !n.read).length },
-      }),
-    )
+    queueMicrotask(() => {
+      window.dispatchEvent(
+        new CustomEvent("notificationsUpdated", {
+          detail: { count: notificationsList.filter((n) => !n.read).length },
+        }),
+      )
+    })
   }, [notificationsList])
 
   // Keep in sync when UserLayout (or others) write order alerts to localStorage
@@ -118,13 +121,18 @@ export default function Notifications() {
         iconColor: "text-[#991B1B]",
       }
       setNotificationsList((prev) => {
-        if (prev.some((n) => n.id === newNotification.id)) return prev
-        return [newNotification, ...prev]
+        const cleaned = prev.filter((item) => !isLegacyMockNotification(item))
+        const dedupeKey = `otp-${orderId || "x"}`
+        const already = cleaned.some(
+          (n) => String(n.id || "").startsWith(dedupeKey) || (n.title === newNotification.title && n.message === newNotification.message)
+        )
+        if (already) return prev
+        return [newNotification, ...cleaned].slice(0, 100)
       })
     }
 
-    window.addEventListener("deliveryDropOtp", handleDeliveryOtp)
-    return () => window.removeEventListener("deliveryDropOtp", handleDeliveryOtp)
+    window.addEventListener("deliveryOtpReceived", handleDeliveryOtp)
+    return () => window.removeEventListener("deliveryOtpReceived", handleDeliveryOtp)
   }, [])
 
   const mergedNotifications = useMemo(() => {
@@ -168,35 +176,12 @@ export default function Notifications() {
       markBroadcastAsRead(id)
       return
     }
-    setNotificationsList((prev) => {
-      const next = prev.map((n) => (n.id === id ? { ...n, read: true } : n))
-      try {
-        localStorage.setItem(STORAGE_KEY, JSON.stringify(next))
-      } catch {
-        /* ignore */
-      }
-      window.dispatchEvent(
-        new CustomEvent("notificationsUpdated", {
-          detail: { count: next.filter((n) => !n.read).length },
-        }),
-      )
-      return next
-    })
+    setNotificationsList((prev) => prev.map((n) => (n.id === id ? { ...n, read: true } : n)))
   }
 
   const handleClearAll = () => {
     setNotificationsList([])
-    try {
-      localStorage.setItem(STORAGE_KEY, "[]")
-    } catch {
-      /* ignore */
-    }
     dismissAllBroadcastNotifications()
-    window.dispatchEvent(
-      new CustomEvent("notificationsUpdated", {
-        detail: { count: 0 },
-      }),
-    )
   }
 
   const handleDeleteOne = (id, source = "local") => {
@@ -204,20 +189,7 @@ export default function Notifications() {
       dismissBroadcastNotification(id)
       return
     }
-    setNotificationsList((prev) => {
-      const next = prev.filter((notification) => notification.id !== id)
-      try {
-        localStorage.setItem(STORAGE_KEY, JSON.stringify(next))
-      } catch {
-        /* ignore */
-      }
-      window.dispatchEvent(
-        new CustomEvent("notificationsUpdated", {
-          detail: { count: next.filter((n) => !n.read).length },
-        }),
-      )
-      return next
-    })
+    setNotificationsList((prev) => prev.filter((notification) => notification.id !== id))
   }
 
   return (
@@ -252,79 +224,95 @@ export default function Notifications() {
           )}
         </div>
 
-        {/* Notifications List */}
-        <div className="space-y-3 md:space-y-4">
-          {mergedNotifications.map((notification) => {
-            const Icon = ICON_MAP[notification.icon] || Bell
-            return (
-              <Card
-                key={`${notification.source}-${notification.id}`}
-                onClick={() => handleMarkAsRead(notification.id, notification.source)}
-                className={`relative cursor-pointer transition-all duration-200 py-1 hover:shadow-md ${
-                  !notification.read
-                    ? "bg-red-50/50 dark:bg-red-900/20 border-red-200 dark:border-red-800"
-                    : "bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700"
-                }`}
+        {/* Notifications List / Loading State */}
+        {isLoadingInbox && mergedNotifications.length === 0 ? (
+          <div className="space-y-3 md:space-y-4 pt-1">
+            {[1, 2, 3].map((i) => (
+              <div
+                key={i}
+                className="animate-pulse bg-white dark:bg-gray-800 rounded-2xl p-4 border border-gray-200 dark:border-gray-700 flex items-start gap-4"
               >
-                {!notification.read && (
-                  <div className="absolute top-2 right-2 w-2.5 h-2.5 md:w-3 md:h-3 bg-[#DC2626] rounded-full" />
-                )}
+                <div className="w-10 h-10 sm:w-12 sm:h-12 rounded-full bg-gray-200 dark:bg-gray-700 shrink-0" />
+                <div className="flex-1 space-y-2 py-1">
+                  <div className="h-4 bg-gray-200 dark:bg-gray-700 rounded w-1/3" />
+                  <div className="h-3.5 bg-gray-200 dark:bg-gray-700 rounded w-5/6" />
+                  <div className="h-3 bg-gray-150 dark:bg-gray-750 rounded w-1/4" />
+                </div>
+              </div>
+            ))}
+          </div>
+        ) : mergedNotifications.length > 0 ? (
+          <div className="space-y-3 md:space-y-4">
+            {mergedNotifications.map((notification) => {
+              const Icon = ICON_MAP[notification.icon] || Bell
+              return (
+                <Card
+                  key={`${notification.source}-${notification.id}`}
+                  onClick={() => handleMarkAsRead(notification.id, notification.source)}
+                  className={`relative cursor-pointer transition-all duration-200 py-1 hover:shadow-md ${
+                    !notification.read
+                      ? "bg-red-50/50 dark:bg-red-900/20 border-red-200 dark:border-red-800"
+                      : "bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700"
+                  }`}
+                >
+                  {!notification.read && (
+                    <div className="absolute top-2 right-2 w-2.5 h-2.5 md:w-3 md:h-3 bg-[#DC2626] rounded-full" />
+                  )}
 
-                <CardContent className="p-3 md:p-4 lg:p-5">
-                  <div className="flex items-start gap-3 sm:gap-4 md:gap-5">
-                    <div
-                      className={`flex-shrink-0 w-10 h-10 sm:w-12 sm:h-12 md:w-14 md:h-14 rounded-full flex items-center justify-center ${
-                        notification.type === "order"
-                          ? "bg-green-100 dark:bg-green-900/40"
-                          : notification.type === "offer"
-                            ? "bg-red-100 dark:bg-red-900/40"
-                            : notification.type === "broadcast"
-                              ? "bg-blue-100 dark:bg-blue-900/40"
-                              : "bg-orange-100 dark:bg-orange-900/40"
-                      }`}
-                    >
-                      <Icon className={`h-5 w-5 sm:h-6 sm:w-6 md:h-7 md:w-7 ${notification.iconColor}`} />
-                    </div>
-
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-start justify-between gap-2 mb-1 md:mb-2">
-                        <h3
-                          className={`text-sm sm:text-base md:text-lg font-semibold ${
-                            !notification.read
-                              ? "text-gray-900 dark:text-white"
-                              : "text-gray-700 dark:text-gray-300"
-                          }`}
-                        >
-                          {notification.title}
-                        </h3>
-                        <button
-                          type="button"
-                          aria-label="Delete notification"
-                          onClick={(e) => {
-                            e.stopPropagation()
-                            handleDeleteOne(notification.id, notification.source)
-                          }}
-                          className="flex-shrink-0 rounded-full p-1 text-gray-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors"
-                        >
-                          <X className="h-4 w-4" />
-                        </button>
+                  <CardContent className="p-3 md:p-4 lg:p-5">
+                    <div className="flex items-start gap-3 sm:gap-4 md:gap-5">
+                      <div
+                        className={`flex-shrink-0 w-10 h-10 sm:w-12 sm:h-12 md:w-14 md:h-14 rounded-full flex items-center justify-center ${
+                          notification.type === "order"
+                            ? "bg-green-100 dark:bg-green-900/40"
+                            : notification.type === "offer"
+                              ? "bg-red-100 dark:bg-red-900/40"
+                              : notification.type === "broadcast"
+                                ? "bg-blue-100 dark:bg-blue-900/40"
+                                : "bg-orange-100 dark:bg-orange-900/40"
+                        }`}
+                      >
+                        <Icon className={`h-5 w-5 sm:h-6 sm:w-6 md:h-7 md:w-7 ${notification.iconColor}`} />
                       </div>
-                      <p className="text-xs sm:text-sm md:text-base text-gray-600 dark:text-gray-400 mb-2 md:mb-3 line-clamp-2">
-                        {notification.message}
-                      </p>
-                      <div className="flex items-center gap-1 text-xs md:text-sm text-gray-500 dark:text-gray-400">
-                        <Clock className="h-3 w-3 md:h-4 md:w-4" />
-                        <span>{notification.time}</span>
+
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-start justify-between gap-2 mb-1 md:mb-2">
+                          <h3
+                            className={`text-sm sm:text-base md:text-lg font-semibold ${
+                              !notification.read
+                                ? "text-gray-900 dark:text-white"
+                                : "text-gray-700 dark:text-gray-300"
+                            }`}
+                          >
+                            {notification.title}
+                          </h3>
+                          <button
+                            type="button"
+                            aria-label="Delete notification"
+                            onClick={(e) => {
+                              e.stopPropagation()
+                              handleDeleteOne(notification.id, notification.source)
+                            }}
+                            className="flex-shrink-0 rounded-full p-1 text-gray-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors"
+                          >
+                            <X className="h-4 w-4" />
+                          </button>
+                        </div>
+                        <p className="text-xs sm:text-sm md:text-base text-gray-600 dark:text-gray-400 mb-2 md:mb-3 whitespace-pre-line break-words">
+                          {notification.message}
+                        </p>
+                        <div className="flex items-center gap-1 text-xs md:text-sm text-gray-500 dark:text-gray-400">
+                          <Clock className="h-3 w-3 md:h-4 md:w-4" />
+                          <span>{notification.time}</span>
+                        </div>
                       </div>
                     </div>
-                  </div>
-                </CardContent>
-              </Card>
-            )
-          })}
-        </div>
-
-        {mergedNotifications.length === 0 && (
+                  </CardContent>
+                </Card>
+              )
+            })}
+          </div>
+        ) : (
           <div className="text-center py-12 md:py-16 lg:py-20">
             <Bell className="h-16 w-16 md:h-20 md:w-20 lg:h-24 lg:w-24 text-gray-300 dark:text-gray-600 mx-auto mb-4 md:mb-5 lg:mb-6" />
             <h3 className="text-lg md:text-xl lg:text-2xl font-semibold text-gray-700 dark:text-gray-300 mb-2 md:mb-3">

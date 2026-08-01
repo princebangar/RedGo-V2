@@ -492,19 +492,20 @@ const TrackingCardContent = memo(({
       exit={{ y: 100, opacity: 0 }}
       transition={{ type: "spring", damping: 25, stiffness: 200 }}
       onAnimationComplete={() => setAnimationCompleted(true)}
-      className={`fixed ${hasBottomNav ? "bottom-28" : "bottom-6"} left-4 right-4 z-[9999] antialiased`}
+      className={`fixed ${hasBottomNav ? "bottom-32" : "bottom-6"} left-4 right-4 z-40 pointer-events-none antialiased`}
       style={{
         transform: shouldClearTransform ? "none" : undefined,
         transformStyle: shouldClearTransform ? "flat" : "preserve-3d",
       }}
     >
       <div 
-        onClick={() =>
+        onClick={(e) => {
+          e.stopPropagation();
           navigate(
             `/food/user/orders/${activeOrder.id || activeOrder._id || activeOrder.orderId}`,
-          )
-        }
-        className="relative bg-white rounded-[20px] p-4 shadow-[0_8px_30px_rgba(235,89,14,0.15)] border border-orange-100/60 overflow-visible cursor-pointer group select-none"
+          );
+        }}
+        className="relative pointer-events-auto bg-white rounded-[20px] p-4 shadow-[0_8px_30px_rgba(235,89,14,0.15)] border border-orange-100/60 overflow-visible cursor-pointer group select-none"
         style={{
           WebkitFontSmoothing: "antialiased",
           MozOsxFontSmoothing: "grayscale",

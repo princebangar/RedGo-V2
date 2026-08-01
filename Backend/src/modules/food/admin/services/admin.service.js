@@ -3669,7 +3669,7 @@ export async function getFoods(query) {
     const [list, total] = await Promise.all([
         FoodItem.find(filter)
             .select('-oldData -newData')
-            .sort({ createdAt: -1 })
+            .sort({ _id: -1 })
             .skip(skip)
             .limit(limit)
             .lean(),
@@ -3817,7 +3817,6 @@ export async function createFood(body) {
     }
     const { price, variants } = getAdminFoodCreatePricing(body);
     const image = typeof body.image === 'string' ? body.image.trim() : '';
-    if (!image) throw new ValidationError('Food image is required');
 
     let categoryName = typeof body.categoryName === 'string' ? body.categoryName.trim() : '';
     if (!categoryName && typeof body.category === 'string') categoryName = body.category.trim();
@@ -3878,10 +3877,7 @@ export async function updateFood(id, body) {
     }
     if (body.image !== undefined) {
         const image = String(body.image || '').trim();
-        if (!image) throw new ValidationError('Food image is required');
         doc.image = image;
-    } else if (!String(doc.image || '').trim()) {
-        throw new ValidationError('Food image is required');
     }
     if (body.foodType !== undefined) doc.foodType = targetFoodType;
     if (body.isAvailable !== undefined) doc.isAvailable = body.isAvailable !== false;

@@ -62,6 +62,12 @@ export function shouldPreserveMainTabsUnderPath(pathname) {
   if (n === "/user/categories" || n === "/categories") {
     return true;
   }
+  if (n === "/user/notifications" || n === "/notifications") {
+    return true;
+  }
+  if (n === "/user/wallet" || n === "/wallet") {
+    return true;
+  }
   return false;
 }
 

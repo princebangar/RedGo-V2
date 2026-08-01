@@ -1088,10 +1088,7 @@ export const restaurantAPI = {
       contextModule: "restaurant"
     }),
   /** Platform restaurant settings (public). */
-  getRestaurantSettings: () =>
-    apiClient.get("/food/public/restaurant-settings", {
-      contextModule: "restaurant",
-    }),
+  getRestaurantSettings: () => getRestaurantSettingsOnce(),
   /** Update restaurant profile fields (name/cuisines/location/menuImages). */
   updateProfile: (body) =>
     apiClient
@@ -1128,10 +1125,7 @@ export const restaurantAPI = {
     apiClient.post("/food/restaurant/dining-settings/request", body ?? {}, {
       contextModule: "restaurant",
     }),
-  getPendingDiningRequest: () =>
-    apiClient.get("/food/restaurant/dining-settings/pending", {
-      contextModule: "restaurant",
-    }),
+  getPendingDiningRequest: () => getPendingDiningOnce(),
   /** PATCH /food/restaurant/availability. Body: { isAcceptingOrders: boolean } */
   updateAcceptingOrders: (isAcceptingOrders) =>
     apiClient
@@ -1309,6 +1303,10 @@ export const restaurantAPI = {
     apiClient.patch(`/food/restaurant/foods/${String(id)}`, body ?? {}, {
       contextModule: "restaurant",
     }),
+  deleteFood: (id) =>
+    apiClient.delete(`/food/restaurant/foods/${String(id)}`, {
+      contextModule: "restaurant",
+    }),
   invalidateOrdersCache: () => {
     invalidateRestaurantOrdersCache();
   },
@@ -1320,7 +1318,7 @@ export const restaurantAPI = {
     const key = JSON.stringify({ limit: 50, page: 1, ...params });
     const now = Date.now();
 
-    if (restaurantOrdersCache && restaurantOrdersCacheKey === key && now - restaurantOrdersCacheAt < 800) {
+    if (restaurantOrdersCache && restaurantOrdersCacheKey === key && now - restaurantOrdersCacheAt < 3000) {
       return Promise.resolve(restaurantOrdersCache);
     }
 
@@ -1788,7 +1786,7 @@ const getPublicRestaurantOutletTimingsOnce = (id, config = {}) => {
 let restaurantCurrentInFlight = null;
 let restaurantCurrentCached = null;
 let restaurantCurrentCacheTime = 0;
-const RESTAURANT_CURRENT_CACHE_MS = 3000;
+const RESTAURANT_CURRENT_CACHE_MS = 15000;
 
 const getRestaurantCurrentOnce = () => {
   const now = Date.now();
@@ -1811,6 +1809,64 @@ const getRestaurantCurrentOnce = () => {
       });
   }
   return restaurantCurrentInFlight;
+};
+
+/** Single in-flight + short cache for public restaurant-settings */
+let restaurantSettingsInFlight = null;
+let restaurantSettingsCached = null;
+let restaurantSettingsCacheTime = 0;
+const RESTAURANT_SETTINGS_CACHE_MS = 15000;
+
+const getRestaurantSettingsOnce = () => {
+  const now = Date.now();
+  if (
+    restaurantSettingsCached &&
+    now - restaurantSettingsCacheTime < RESTAURANT_SETTINGS_CACHE_MS
+  ) {
+    return Promise.resolve(restaurantSettingsCached);
+  }
+  if (!restaurantSettingsInFlight) {
+    restaurantSettingsInFlight = apiClient
+      .get("/food/public/restaurant-settings", { contextModule: "restaurant" })
+      .then((res) => {
+        restaurantSettingsCached = res;
+        restaurantSettingsCacheTime = Date.now();
+        return res;
+      })
+      .finally(() => {
+        restaurantSettingsInFlight = null;
+      });
+  }
+  return restaurantSettingsInFlight;
+};
+
+/** Single in-flight + short cache for pending dining requests */
+let pendingDiningInFlight = null;
+let pendingDiningCached = null;
+let pendingDiningCacheTime = 0;
+const PENDING_DINING_CACHE_MS = 10000;
+
+const getPendingDiningOnce = () => {
+  const now = Date.now();
+  if (
+    pendingDiningCached &&
+    now - pendingDiningCacheTime < PENDING_DINING_CACHE_MS
+  ) {
+    return Promise.resolve(pendingDiningCached);
+  }
+  if (!pendingDiningInFlight) {
+    pendingDiningInFlight = apiClient
+      .get("/food/restaurant/dining-settings/pending", { contextModule: "restaurant" })
+      .then((res) => {
+        pendingDiningCached = res;
+        pendingDiningCacheTime = Date.now();
+        return res;
+      })
+      .finally(() => {
+        pendingDiningInFlight = null;
+      });
+  }
+  return pendingDiningInFlight;
 };
 
 /** Single in-flight + short cache for delivery /auth/me - one call per page load / refresh. */

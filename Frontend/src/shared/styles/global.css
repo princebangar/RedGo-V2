@@ -188,6 +188,27 @@
 .animate-slide-in-left { animation: slide-in-left 0.8s ease-out; }
 .animate-fade-down { animation: fade-down 0.5s ease-out; }
 
+@keyframes skeleton-shimmer-wave {
+  0% {
+    background-position: -200% 0;
+  }
+  100% {
+    background-position: 200% 0;
+  }
+}
+
+.skeleton-shimmer {
+  background: linear-gradient(90deg, #e2e8f0 25%, #f1f5f9 50%, #e2e8f0 75%);
+  background-size: 200% 100%;
+  animation: skeleton-shimmer-wave 1.6s infinite linear;
+}
+
+.dark .skeleton-shimmer {
+  background: linear-gradient(90deg, #1e293b 25%, #334155 50%, #1e293b 75%);
+  background-size: 200% 100%;
+  animation: skeleton-shimmer-wave 1.6s infinite linear;
+}
+
 .leaflet-container { height: 100%; width: 100%; z-index: 1; }
 .custom-marker { background: transparent; border: none; }
 .touch-none { touch-action: none; }

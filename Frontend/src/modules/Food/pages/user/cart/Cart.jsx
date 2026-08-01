@@ -23,6 +23,7 @@ import { useCompanyName } from "@food/hooks/useCompanyName"
 import { getRestaurantAvailabilityStatus } from "@food/utils/restaurantAvailability"
 import useAppBackNavigation from "@food/hooks/useAppBackNavigation"
 import { filterPublicOffers, mapPublicOfferToCartCoupon } from "@food/utils/offerUtils"
+import dishFallbackImage from "@food/assets/dish_fallback.webp"
 const zoopSound = "/zomato_sms.mp3"
 const debugLog = (...args) => { }
 const debugWarn = (...args) => { }
@@ -2525,18 +2526,16 @@ export default function Cart() {
                           </div>
 
                           <div className="flex-1 min-w-0 flex items-center gap-4">
-                            {item.image && (
                               <div className="w-16 h-16 md:w-20 md:h-20 flex-shrink-0 rounded-2xl overflow-hidden shadow-sm border border-gray-100 dark:border-gray-800">
                                 <img
-                                  src={item.image}
+                                  src={item.image || dishFallbackImage}
                                   alt={item.name}
                                   className="w-full h-full object-cover transform hover:scale-110 transition-transform duration-700"
                                   onError={(e) => {
-                                    e.target.style.display = 'none';
+                                    e.target.src = dishFallbackImage;
                                   }}
                                 />
                               </div>
-                            )}
                             <div className="min-w-0 flex-1">
                               <h3 className="text-sm md:text-base font-bold text-gray-900 dark:text-gray-100 leading-tight">{item.name}</h3>
                               {item.variantName ? (

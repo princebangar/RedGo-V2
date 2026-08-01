@@ -4,6 +4,7 @@ import { useCart } from "@food/context/CartContext";
 import { useProfile } from "@food/context/ProfileContext";
 import { useEffect, useRef, useState } from 'react';
 import { gsap } from 'gsap';
+import dishFallbackImage from "@food/assets/dish_fallback.webp";
 const debugLog = (...args) => {}
 const debugWarn = (...args) => {}
 const debugError = (...args) => {}
@@ -390,17 +391,16 @@ export default function AddToCartAnimation({
             objectFit: 'cover',
           }}
         >
-          {removedProduct.product?.imageUrl ? (
-            <img
-              src={removedProduct.product.imageUrl}
-              alt={removedProduct.product.name}
-              className="w-full h-full object-cover rounded-full"
-            />
-          ) : (
-            <div className="w-full h-full flex items-center justify-center bg-neutral-200 text-neutral-400 text-xs font-semibold rounded-full">
-              {removedProduct.product?.name?.charAt(0).toUpperCase() || '?'}
-            </div>
-          )}
+          <img
+            src={removedProduct?.image || removedProduct?.product?.imageUrl || dishFallbackImage}
+            alt={removedProduct?.name || removedProduct?.product?.name || 'Item'}
+            className="w-full h-full object-cover rounded-full"
+            onError={(e) => {
+              if (e.currentTarget.src !== dishFallbackImage) {
+                e.currentTarget.src = dishFallbackImage
+              }
+            }}
+          />
         </div>
       )}
 
@@ -414,17 +414,16 @@ export default function AddToCartAnimation({
             objectFit: 'cover',
           }}
         >
-          {flyingProduct?.product?.imageUrl ? (
-            <img
-              src={flyingProduct.product.imageUrl}
-              alt={flyingProduct?.product?.name || 'Item'}
-              className="w-full h-full object-cover rounded-full"
-            />
-          ) : (
-            <div className="w-full h-full flex items-center justify-center bg-neutral-200 text-neutral-400 text-xs font-semibold rounded-full">
-              {flyingProduct?.product?.name?.charAt(0)?.toUpperCase() || '?'}
-            </div>
-          )}
+          <img
+            src={flyingProduct?.image || flyingProduct?.product?.imageUrl || dishFallbackImage}
+            alt={flyingProduct?.name || flyingProduct?.product?.name || 'Item'}
+            className="w-full h-full object-cover rounded-full"
+            onError={(e) => {
+              if (e.currentTarget.src !== dishFallbackImage) {
+                e.currentTarget.src = dishFallbackImage
+              }
+            }}
+          />
         </div>
       )}
 
@@ -463,32 +462,34 @@ export default function AddToCartAnimation({
             >
               {/* Left: Product thumbnails */}
               <div className="flex items-center -space-x-4">
-                {thumbnailItems.map((item, idx) => (
-                  <motion.div
-                    key={item?.product?.id || item?.id || `thumb-${idx}`}
-                    initial={{ scale: 0, opacity: 0 }}
-                    animate={{ scale: 1, opacity: 1 }}
-                    transition={{
-                      delay: idx * 0.1,
-                      type: 'spring',
-                      stiffness: 500,
-                      damping: 25,
-                    }}
-                    className="w-7 h-7 rounded-full border-2 border-white/90 overflow-hidden bg-white flex-shrink-0 shadow-md"
-                  >
-                    {item?.product?.imageUrl ? (
+                {thumbnailItems.map((item, idx) => {
+                  const imgSrc = item?.image || item?.product?.imageUrl || item?.imageUrl || dishFallbackImage
+                  return (
+                    <motion.div
+                      key={item?.product?.id || item?.id || `thumb-${idx}`}
+                      initial={{ scale: 0, opacity: 0 }}
+                      animate={{ scale: 1, opacity: 1 }}
+                      transition={{
+                        delay: idx * 0.1,
+                        type: 'spring',
+                        stiffness: 500,
+                        damping: 25,
+                      }}
+                      className="w-7 h-7 rounded-full border-2 border-white/90 overflow-hidden bg-white flex-shrink-0 shadow-md"
+                    >
                       <img
-                        src={item.product.imageUrl}
-                        alt={item?.product?.name || 'Item'}
+                        src={imgSrc}
+                        alt={item?.name || item?.product?.name || 'Item'}
                         className="w-full h-full object-cover"
+                        onError={(e) => {
+                          if (e.currentTarget.src !== dishFallbackImage) {
+                            e.currentTarget.src = dishFallbackImage
+                          }
+                        }}
                       />
-                    ) : (
-                      <div className="w-full h-full flex items-center justify-center bg-neutral-200 text-neutral-400 text-xs font-semibold">
-                        {item?.product?.name?.charAt(0)?.toUpperCase() || '?'}
-                      </div>
-                    )}
-                  </motion.div>
-                ))}
+                    </motion.div>
+                  )
+                })}
               </div>
 
               {/* Middle: Text */}

@@ -187,7 +187,6 @@ export async function createRestaurantFood(restaurantId, body = {}) {
 
     const description = toStr(body.description);
     const image = toStr(body.image);
-    if (!image) throw new ValidationError('Item image is required');
     const isAvailable = body.isAvailable !== false;
     const foodType = normalizeFoodType(body.foodType);
     const preparationTime = toStr(body.preparationTime);
@@ -286,7 +285,6 @@ export async function updateRestaurantFood(restaurantId, foodId, body = {}) {
     if (body.description !== undefined) update.description = toStr(body.description);
     if (body.image !== undefined) {
         const image = toStr(body.image);
-        if (!image) throw new ValidationError('Item image is required');
         update.image = image;
     }
     Object.assign(update, getUpdatedFoodPricing(existing, body));
@@ -366,4 +364,15 @@ export async function updateRestaurantFood(restaurantId, foodId, body = {}) {
     }
 
     return updated;
+}
+
+export async function deleteRestaurantFood(restaurantId, foodId) {
+    if (!foodId || !mongoose.Types.ObjectId.isValid(String(foodId))) {
+        throw new ValidationError('Invalid food item id');
+    }
+    const food = await FoodItem.findOneAndDelete({
+        _id: foodId,
+        restaurantId: new mongoose.Types.ObjectId(String(restaurantId))
+    }).lean();
+    return food;
 }

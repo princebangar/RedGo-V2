@@ -7,6 +7,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@food/componen
 import { Popover, PopoverContent, PopoverTrigger } from "@food/components/ui/popover"
 import { getFoodDisplayPrice, getFoodVariants } from "@food/utils/foodVariants"
 import AdminListPagination from "@food/components/admin/AdminListPagination"
+import dishFallbackImage from "@food/assets/dish_fallback.webp"
 const debugLog = (...args) => {}
 const debugWarn = (...args) => {}
 const debugError = (...args) => {}
@@ -77,22 +78,10 @@ function FoodImageThumb({ name, src, size = "md", className = "" }) {
   const sizeClass =
     size === "lg" ? "w-20 h-20 rounded-xl text-2xl" : "w-10 h-10 rounded-full text-sm"
 
-  if (!hasImage) {
-    return (
-      <div
-        className={`${sizeClass} ${getPlaceholderColor(name)} flex items-center justify-center text-white font-bold shadow-sm ${className}`}
-        title={name || "Food"}
-        aria-label={name || "Food"}
-      >
-        {getFoodInitial(name)}
-      </div>
-    )
-  }
-
   return (
     <div className={`${sizeClass} overflow-hidden bg-slate-100 flex items-center justify-center ${className}`}>
       <img
-        src={src}
+        src={hasImage ? src : dishFallbackImage}
         alt={name || "Food"}
         className="w-full h-full object-cover"
         loading="lazy"
@@ -567,11 +556,6 @@ export default function FoodsList() {
           imageUrl
       }
 
-      if (!String(imageUrl || "").trim()) {
-        toast.error("Please upload a food image")
-        return
-      }
-
       const payload = {
         restaurantId: foodForm.restaurantId,
         categoryId: foodForm.categoryId || undefined,
@@ -1033,7 +1017,7 @@ export default function FoodsList() {
               </div>
               <div>
                 <label className="block text-sm font-medium text-slate-700 mb-1">
-                  Upload Image <span className="text-red-500">*</span>
+                  Upload Image <span className="text-slate-400 font-normal">(Optional)</span>
                 </label>
                 <input
                   type="file"
@@ -1049,11 +1033,7 @@ export default function FoodsList() {
                   }}
                   className="w-full px-3 py-2.5 border border-slate-300 rounded-lg text-sm bg-white file:mr-3 file:rounded file:border-0 file:bg-slate-100 file:px-3 file:py-1.5 file:text-sm"
                 />
-                {!selectedImageFile && !String(foodForm.image || "").trim() ? (
-                  <p className="mt-1 text-xs text-red-500">Image is required</p>
-                ) : (
-                  <p className="mt-1 text-xs text-slate-500">Required — food will not save without an image</p>
-                )}
+                <p className="mt-1 text-xs text-slate-500">Optional — food image</p>
               </div>
               <div>
                 <label className="block text-sm font-medium text-slate-700 mb-1">Timing</label>
