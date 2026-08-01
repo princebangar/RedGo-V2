@@ -118,6 +118,7 @@
     -webkit-touch-callout: none;
     -webkit-user-select: none;
     user-select: none;
+    -webkit-user-drag: none;
   }
   body {
     @apply bg-background text-foreground m-0 min-h-screen;
