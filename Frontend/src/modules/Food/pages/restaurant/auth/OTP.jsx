@@ -158,7 +158,7 @@ export default function RestaurantOTP() {
           }
         })
         setOtp(newOtp)
-        inputRefs.current[Math.min(3, index + digits.length)]?.focus()
+        inputRefs.current[Math.min(3, index + digits.length)]?.focus({ preventScroll: true })
       }
       return
     }
@@ -170,18 +170,14 @@ export default function RestaurantOTP() {
     setOtp(newOtp)
 
     if (value && index < 3) {
-      setTimeout(() => {
-        inputRefs.current[index + 1]?.focus()
-      }, 10)
+      inputRefs.current[index + 1]?.focus({ preventScroll: true })
     }
   }
 
   const handleKeyDown = (index, e) => {
     if (e.key === "Backspace") {
       if (!otp[index] && index > 0) {
-        setTimeout(() => {
-          inputRefs.current[index - 1]?.focus()
-        }, 10)
+        inputRefs.current[index - 1]?.focus({ preventScroll: true })
         const newOtp = [...otp]
         newOtp[index - 1] = ""
         setOtp(newOtp)
@@ -197,7 +193,7 @@ export default function RestaurantOTP() {
           if (i < 4) newOtp[i] = digit
         })
         setOtp(newOtp)
-        inputRefs.current[Math.min(digits.length, 3)]?.focus()
+        inputRefs.current[Math.min(digits.length, 3)]?.focus({ preventScroll: true })
       })
     }
   }

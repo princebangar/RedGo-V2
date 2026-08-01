@@ -687,10 +687,18 @@ export const useDeliveryNotifications = () => {
 
       const recoverableOrder = availableOrders.find((order) => {
         const dispatchStatus = order?.dispatch?.status;
-        return (
-          ['unassigned', 'assigned'].includes(dispatchStatus) &&
-          ['preparing', 'ready_for_pickup'].includes(order?.orderStatus)
-        );
+        const isEligibleStatus = ['unassigned', 'assigned'].includes(dispatchStatus) &&
+          ['preparing', 'ready_for_pickup'].includes(order?.orderStatus);
+          
+        if (!isEligibleStatus) return false;
+        
+        // Ignore stale test/bugged orders older than 2 hours to prevent sound playing repeatedly on login
+        const createdAt = new Date(order.createdAt || order.updatedAt).getTime();
+        if (Date.now() - createdAt > 2 * 60 * 60 * 1000) {
+          return false;
+        }
+        
+        return true;
       });
 
       if (availablePayload?.capacity) {
