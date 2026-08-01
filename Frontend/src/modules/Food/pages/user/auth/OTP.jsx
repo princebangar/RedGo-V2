@@ -85,7 +85,7 @@ export default function OTP() {
       const timer = setTimeout(() => {
         const el = inputRefs.current[0]
         if (el) {
-          el.focus()
+          el.focus({ preventScroll: true })
           // In mobile WebView the soft keyboard often won't open on a
           // programmatic focus alone, so also trigger a click to force it.
           el.click()
@@ -108,9 +108,7 @@ export default function OTP() {
 
     // Auto-focus next input (4 boxes only)
     if (value && index < 3) {
-      setTimeout(() => {
-        inputRefs.current[index + 1]?.focus()
-      }, 10)
+      inputRefs.current[index + 1]?.focus({ preventScroll: true })
     }
 
     // Auto-submit when all 4 digits are entered
@@ -129,9 +127,7 @@ export default function OTP() {
         setOtp(newOtp)
       } else if (index > 0) {
         // If current input is empty, move to previous and clear it
-        setTimeout(() => {
-          inputRefs.current[index - 1]?.focus()
-        }, 10)
+        inputRefs.current[index - 1]?.focus({ preventScroll: true })
         const newOtp = [...otp]
         newOtp[index - 1] = ""
         setOtp(newOtp)
@@ -150,7 +146,7 @@ export default function OTP() {
         if (!showNameInput && digits.length === 4) {
           handleVerify(newOtp.slice(0, 4).join(""))
         } else {
-          inputRefs.current[Math.min(digits.length, 3)]?.focus()
+          inputRefs.current[Math.min(digits.length, 3)]?.focus({ preventScroll: true })
         }
       })
     }
@@ -168,7 +164,7 @@ export default function OTP() {
     if (!showNameInput && digits.length === 4) {
       handleVerify(newOtp.slice(0, 4).join(""))
     } else {
-      inputRefs.current[Math.min(digits.length, 3)]?.focus()
+      inputRefs.current[Math.min(digits.length, 3)]?.focus({ preventScroll: true })
     }
   }
 
