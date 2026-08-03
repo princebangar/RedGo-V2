@@ -3208,7 +3208,11 @@ export default function Cart() {
                   <div className="flex items-center gap-3">
                     <div className="text-right">
                       <p className="text-sm font-black text-gray-900 dark:text-white">
-                        {RUPEE_SYMBOL}{total.toFixed(2)}
+                        {loadingPricing ? (
+                          <span className="inline-block h-5 w-16 rounded bg-gray-200 dark:bg-gray-700 animate-pulse align-middle" />
+                        ) : (
+                          `${RUPEE_SYMBOL}${total.toFixed(2)}`
+                        )}
                       </p>
                     </div>
                     <div className="w-7 h-7 rounded-full bg-slate-50 dark:bg-gray-800 group-hover:bg-[#DC2626]/5 flex items-center justify-center transition-all border border-slate-100 dark:border-gray-700 group-hover:border-[#DC2626]/20">
@@ -3221,7 +3225,13 @@ export default function Cart() {
                   <div className="mt-4 pt-4 border-t border-dashed border-gray-200 dark:border-gray-800 space-y-3">
                     <div className="flex justify-between text-sm">
                       <span className="text-gray-600 dark:text-gray-400">Item Total</span>
-                      <span className="text-gray-800 dark:text-gray-200 font-medium">{RUPEE_SYMBOL}{subtotal.toFixed(2)}</span>
+                      <span className="text-gray-800 dark:text-gray-200 font-medium">
+                        {loadingPricing ? (
+                          <span className="inline-block h-4 w-12 rounded bg-gray-200 dark:bg-gray-700 animate-pulse align-middle" />
+                        ) : (
+                          `${RUPEE_SYMBOL}${subtotal.toFixed(2)}`
+                        )}
+                      </span>
                     </div>
 
                     {orderType !== "takeaway" && (
@@ -3229,7 +3239,11 @@ export default function Cart() {
                         <div className="flex justify-between text-sm">
                           <span className="text-gray-600 dark:text-gray-400">Delivery Fee</span>
                            <span className={deliveryFee === 0 ? "text-[#DC2626] font-medium" : "text-gray-800 dark:text-gray-200 font-medium"}>
-                             {deliveryFee === 0 ? "FREE" : `${RUPEE_SYMBOL}${deliveryFee.toFixed(2)}`}
+                             {loadingPricing ? (
+                               <span className="inline-block h-4 w-12 rounded bg-gray-200 dark:bg-gray-700 animate-pulse align-middle" />
+                             ) : (
+                               deliveryFee === 0 ? "FREE" : `${RUPEE_SYMBOL}${deliveryFee.toFixed(2)}`
+                             )}
                            </span>
                         </div>
                         {deliveryFeeBreakdownText && (
@@ -3255,19 +3269,37 @@ export default function Cart() {
                     {platformFee > 0 && (
                       <div className="flex justify-between text-sm">
                         <span className="text-gray-600 dark:text-gray-400 font-medium">Platform Fee</span>
-                        <span className="text-gray-800 dark:text-gray-200 font-bold">{RUPEE_SYMBOL}{platformFee.toFixed(2)}</span>
+                        <span className="text-gray-800 dark:text-gray-200 font-bold">
+                          {loadingPricing ? (
+                            <span className="inline-block h-4 w-12 rounded bg-gray-200 dark:bg-gray-700 animate-pulse align-middle" />
+                          ) : (
+                            `${RUPEE_SYMBOL}${platformFee.toFixed(2)}`
+                          )}
+                        </span>
                       </div>
                     )}
                     {(packagingFee > 0 || gstCharges > 0) && (
                       <div className="flex justify-between text-sm">
                         <span className="text-gray-600 dark:text-gray-400 font-medium">GST and Restaurant Charges</span>
-                        <span className="text-gray-800 dark:text-gray-200 font-bold">{RUPEE_SYMBOL}{(packagingFee + gstCharges).toFixed(2)}</span>
+                        <span className="text-gray-800 dark:text-gray-200 font-bold">
+                          {loadingPricing ? (
+                            <span className="inline-block h-4 w-12 rounded bg-gray-200 dark:bg-gray-700 animate-pulse align-middle" />
+                          ) : (
+                            `${RUPEE_SYMBOL}${(packagingFee + gstCharges).toFixed(2)}`
+                          )}
+                        </span>
                       </div>
                     )}
                     {discount > 0 && (
                        <div className="flex justify-between text-sm text-[#DC2626] font-medium">
                          <span>Coupon Discount</span>
-                         <span>-{RUPEE_SYMBOL}{discount.toFixed(2)}</span>
+                         <span>
+                           {loadingPricing ? (
+                             <span className="inline-block h-4 w-12 rounded bg-[#DC2626]/20 animate-pulse align-middle" />
+                           ) : (
+                             `-${RUPEE_SYMBOL}${discount.toFixed(2)}`
+                           )}
+                         </span>
                        </div>
                     )}
 
@@ -3366,7 +3398,7 @@ export default function Cart() {
             {/* Place Order Button */}
             <button
               onClick={handlePlaceOrder}
-              disabled={isPlacingOrder || isCartZoneMismatch || (selectedPaymentMethod === "wallet" && walletBalance < total) || isRestaurantClosed}
+              disabled={isPlacingOrder || loadingPricing || isCartZoneMismatch || (selectedPaymentMethod === "wallet" && walletBalance < total) || isRestaurantClosed}
               className="w-full bg-gradient-to-r from-[#DC2626] to-[#991B1B] hover:from-[#991B1B] hover:to-[#7F1D1D] text-white px-6 h-12 md:h-14 rounded-2xl font-black shadow-lg shadow-[#DC2626]/30 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-between transition-all active:scale-[0.98] border-b-4 border-red-900/30"
             >
               {(selectedPaymentMethod === "razorpay" || selectedPaymentMethod === "wallet" || selectedPaymentMethod === "cash") && (
@@ -3382,6 +3414,8 @@ export default function Cart() {
                     ? "Not Deliverable Here"
                   : isPlacingOrder
                     ? "Processing..."
+                  : loadingPricing
+                    ? "Calculating..."
                     : (orderType !== "takeaway" && !hasSavedAddress)
                       ? "Select Address"
                       : "Place Order"}
