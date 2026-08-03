@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react"
-import { Eye, MapPin, Package, User, Phone, Mail, Calendar, Clock, Truck, CreditCard, Receipt, CheckCircle2, FileText, Loader2 } from "lucide-react"
+import { Eye, MapPin, Package, User, Phone, Mail, Calendar, Clock, Truck, CreditCard, Receipt, CheckCircle2, FileText, Loader2, CheckCircle, XCircle } from "lucide-react"
 import {
   Dialog,
   DialogContent,
@@ -120,6 +120,8 @@ const resolveDisplayPaymentStatus = (order) => {
 
 export default function ViewOrderDialog({ isOpen, onOpenChange, order, onOrderUpdated }) {
   const [customerTotalOrders, setCustomerTotalOrders] = useState(undefined)
+  const [customerDeliveredOrders, setCustomerDeliveredOrders] = useState(undefined)
+  const [customerCancelledOrders, setCustomerCancelledOrders] = useState(undefined)
   const [loadingCustomerOrders, setLoadingCustomerOrders] = useState(false)
   const [loadedCustomerId, setLoadedCustomerId] = useState(null)
   const [draftOrderStatus, setDraftOrderStatus] = useState("Pending")
@@ -132,6 +134,12 @@ export default function ViewOrderDialog({ isOpen, onOpenChange, order, onOrderUp
     setDraftPaymentStatus(resolveDisplayPaymentStatus(order))
   }, [isOpen, order?.id, order?.orderId, order?.orderStatus, order?.paymentStatus, order?.payment?.status])
 
+  useEffect(() => {
+    if (draftOrderStatus === "Delivered" && draftPaymentStatus !== "Paid") {
+      setDraftPaymentStatus("Paid")
+    }
+  }, [draftOrderStatus])
+
   const baselineOrderStatus = resolveDisplayOrderStatus(order)
   const baselinePaymentStatus = resolveDisplayPaymentStatus(order)
   const hasAdminStatusChanges =
@@ -143,6 +151,8 @@ export default function ViewOrderDialog({ isOpen, onOpenChange, order, onOrderUp
     const customerId = resolveCustomerId(order)
     if (!customerId) {
       setCustomerTotalOrders(null)
+      setCustomerDeliveredOrders(null)
+      setCustomerCancelledOrders(null)
       setLoadingCustomerOrders(false)
       setLoadedCustomerId(null)
       return
@@ -151,6 +161,8 @@ export default function ViewOrderDialog({ isOpen, onOpenChange, order, onOrderUp
     let cancelled = false
     setLoadingCustomerOrders(true)
     setCustomerTotalOrders(undefined)
+    setCustomerDeliveredOrders(undefined)
+    setCustomerCancelledOrders(undefined)
     setLoadedCustomerId(null)
 
     ;(async () => {
@@ -160,12 +172,16 @@ export default function ViewOrderDialog({ isOpen, onOpenChange, order, onOrderUp
         const user = data?.user || data?.customer
         if (!cancelled) {
           setCustomerTotalOrders(Number(user?.totalOrders ?? user?.totalOrder ?? 0))
+          setCustomerDeliveredOrders(Number(user?.totalDeliveredOrders ?? 0))
+          setCustomerCancelledOrders(Number(user?.totalCancelledOrders ?? 0))
           setLoadedCustomerId(customerId)
         }
       } catch (error) {
         debugError("Error fetching customer order count:", error)
         if (!cancelled) {
           setCustomerTotalOrders(null)
+          setCustomerDeliveredOrders(null)
+          setCustomerCancelledOrders(null)
           setLoadedCustomerId(customerId)
         }
       } finally {
@@ -310,7 +326,7 @@ export default function ViewOrderDialog({ isOpen, onOpenChange, order, onOrderUp
   return (
     <Dialog open={isOpen} onOpenChange={onOpenChange}>
       <DialogContent
-        className="max-w-4xl max-h-[90vh] bg-white p-0 overflow-y-auto lg:left-[calc(50%+var(--admin-sidebar-offset,10rem))]"
+        className="max-w-5xl max-h-[90vh] bg-white p-0 overflow-y-auto lg:left-[calc(50%+var(--admin-sidebar-offset,10rem))]"
         onOpenAutoFocus={(e) => e.preventDefault()}
       >
         <DialogHeader className="px-6 pt-6 pb-4 border-b border-slate-200 sticky top-0 bg-white z-10">
@@ -340,21 +356,60 @@ export default function ViewOrderDialog({ isOpen, onOpenChange, order, onOrderUp
                 </p>
                 <p className="text-sm font-medium text-slate-900">{order.date}{order.time ? `, ${order.time}` : ""}</p>
               </div>
-              <div className="inline-flex flex-col self-start w-fit min-w-[8.5rem] bg-blue-100 border border-blue-200 rounded-lg p-3">
-                <div className="flex items-center gap-2 mb-1">
-                  <Package className="w-4 h-4 text-blue-600 shrink-0" />
-                  <span className="text-xs font-semibold text-slate-700 whitespace-nowrap">Total Orders</span>
+              <div className="flex flex-wrap gap-3 mt-4">
+                {/* Total Orders Box */}
+                <div className="inline-flex flex-col self-start w-fit min-w-[8.5rem] bg-blue-100 border border-blue-200 rounded-lg p-3">
+                  <div className="flex items-center gap-2 mb-1">
+                    <Package className="w-4 h-4 text-blue-600 shrink-0" />
+                    <span className="text-xs font-semibold text-slate-700 whitespace-nowrap">Total Orders</span>
+                  </div>
+                  {showTotalOrdersSkeleton ? (
+                    <span
+                      className="inline-block h-7 w-10 rounded bg-blue-200/70 animate-pulse"
+                      aria-label="Loading total orders"
+                    />
+                  ) : !customerId ? (
+                    <p className="text-xl font-bold text-blue-600">-</p>
+                  ) : (
+                    <p className="text-xl font-bold text-blue-600">{customerTotalOrders ?? "-"}</p>
+                  )}
                 </div>
-                {showTotalOrdersSkeleton ? (
-                  <span
-                    className="inline-block h-7 w-10 rounded bg-blue-200/70 animate-pulse"
-                    aria-label="Loading total orders"
-                  />
-                ) : !customerId ? (
-                  <p className="text-xl font-bold text-blue-600">—</p>
-                ) : (
-                  <p className="text-xl font-bold text-blue-600">{customerTotalOrders ?? "—"}</p>
-                )}
+
+                {/* Delivered Orders Box */}
+                <div className="inline-flex flex-col self-start w-fit min-w-[8.5rem] bg-green-100 border border-green-200 rounded-lg p-3">
+                  <div className="flex items-center gap-2 mb-1">
+                    <CheckCircle className="w-4 h-4 text-green-600 shrink-0" />
+                    <span className="text-xs font-semibold text-slate-700 whitespace-nowrap">Delivered</span>
+                  </div>
+                  {showTotalOrdersSkeleton ? (
+                    <span
+                      className="inline-block h-7 w-10 rounded bg-green-200/70 animate-pulse"
+                      aria-label="Loading delivered orders"
+                    />
+                  ) : !customerId ? (
+                    <p className="text-xl font-bold text-green-600">-</p>
+                  ) : (
+                    <p className="text-xl font-bold text-green-600">{customerDeliveredOrders ?? "-"}</p>
+                  )}
+                </div>
+
+                {/* Cancelled Orders Box */}
+                <div className="inline-flex flex-col self-start w-fit min-w-[8.5rem] bg-red-100 border border-red-200 rounded-lg p-3">
+                  <div className="flex items-center gap-2 mb-1">
+                    <XCircle className="w-4 h-4 text-red-600 shrink-0" />
+                    <span className="text-xs font-semibold text-slate-700 whitespace-nowrap">Cancelled</span>
+                  </div>
+                  {showTotalOrdersSkeleton ? (
+                    <span
+                      className="inline-block h-7 w-10 rounded bg-red-200/70 animate-pulse"
+                      aria-label="Loading cancelled orders"
+                    />
+                  ) : !customerId ? (
+                    <p className="text-xl font-bold text-red-600">-</p>
+                  ) : (
+                    <p className="text-xl font-bold text-red-600">{customerCancelledOrders ?? "-"}</p>
+                  )}
+                </div>
               </div>
               {order.orderOtp && (
                 <div className="space-y-1">

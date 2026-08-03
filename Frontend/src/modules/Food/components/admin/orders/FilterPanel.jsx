@@ -1,6 +1,15 @@
 import { X } from "lucide-react"
+import { useState, useEffect } from "react"
 
 export default function FilterPanel({ isOpen, onClose, filters, setFilters, onApply, onReset, restaurants = [] }) {
+  const [localFilters, setLocalFilters] = useState(filters)
+
+  useEffect(() => {
+    if (isOpen) {
+      setLocalFilters(filters)
+    }
+  }, [isOpen, filters])
+
   if (!isOpen) return null
 
   const today = new Date().toISOString().split("T")[0]
@@ -43,9 +52,9 @@ export default function FilterPanel({ isOpen, onClose, filters, setFilters, onAp
               {["All", "paid", "pending", "failed", "refunded"].map((status) => (
                 <button
                   key={status}
-                  onClick={() => setFilters(prev => ({ ...prev, paymentStatus: status === "All" ? "" : status }))}
+                  onClick={() => setLocalFilters(prev => ({ ...prev, paymentStatus: status === "All" ? "" : status }))}
                   className={`px-4 py-2 rounded-lg text-sm font-medium transition-all ${
-                    filters.paymentStatus === status || (status === "All" && !filters.paymentStatus)
+                    localFilters.paymentStatus === status || (status === "All" && !localFilters.paymentStatus)
                       ? "bg-blue-600 text-white shadow-md"
                       : "bg-slate-100 text-slate-700 hover:bg-slate-200"
                   }`}
@@ -65,9 +74,9 @@ export default function FilterPanel({ isOpen, onClose, filters, setFilters, onAp
               {["All", "home_delivery", "take_away", "dine_in"].map((type) => (
                 <button
                   key={type}
-                  onClick={() => setFilters(prev => ({ ...prev, deliveryType: type === "All" ? "" : type }))}
+                  onClick={() => setLocalFilters(prev => ({ ...prev, deliveryType: type === "All" ? "" : type }))}
                   className={`px-4 py-2 rounded-lg text-sm font-medium transition-all ${
-                    filters.deliveryType === type || (type === "All" && !filters.deliveryType)
+                    localFilters.deliveryType === type || (type === "All" && !localFilters.deliveryType)
                       ? "bg-blue-600 text-white shadow-md"
                       : "bg-slate-100 text-slate-700 hover:bg-slate-200"
                   }`}
@@ -86,9 +95,9 @@ export default function FilterPanel({ isOpen, onClose, filters, setFilters, onAp
               </label>
               <input
                 type="number"
-                value={filters.minAmount || ""}
+                value={localFilters.minAmount || ""}
                 min="0"
-                onChange={(e) => setFilters(prev => ({ ...prev, minAmount: sanitizeAmountInput(e.target.value) }))}
+                onChange={(e) => setLocalFilters(prev => ({ ...prev, minAmount: sanitizeAmountInput(e.target.value) }))}
                 placeholder="0"
                 className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
               />
@@ -99,9 +108,9 @@ export default function FilterPanel({ isOpen, onClose, filters, setFilters, onAp
               </label>
               <input
                 type="number"
-                value={filters.maxAmount || ""}
+                value={localFilters.maxAmount || ""}
                 min="0"
-                onChange={(e) => setFilters(prev => ({ ...prev, maxAmount: sanitizeAmountInput(e.target.value) }))}
+                onChange={(e) => setLocalFilters(prev => ({ ...prev, maxAmount: sanitizeAmountInput(e.target.value) }))}
                 placeholder="10000"
                 className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
               />
@@ -116,10 +125,10 @@ export default function FilterPanel({ isOpen, onClose, filters, setFilters, onAp
               </label>
               <input
                 type="date"
-                value={filters.fromDate || ""}
-                max={filters.toDate ? clampDateValue(filters.toDate) : today}
+                value={localFilters.fromDate || ""}
+                max={localFilters.toDate ? clampDateValue(localFilters.toDate) : today}
                 onChange={(e) =>
-                  setFilters((prev) => {
+                  setLocalFilters((prev) => {
                     const nextFromDate = clampDateValue(e.target.value)
                     const nextToDate =
                       prev.toDate && prev.toDate < nextFromDate ? nextFromDate : prev.toDate
@@ -140,11 +149,11 @@ export default function FilterPanel({ isOpen, onClose, filters, setFilters, onAp
               </label>
               <input
                 type="date"
-                value={filters.toDate || ""}
-                min={filters.fromDate || undefined}
+                value={localFilters.toDate || ""}
+                min={localFilters.fromDate || undefined}
                 max={today}
                 onChange={(e) =>
-                  setFilters((prev) => ({
+                  setLocalFilters((prev) => ({
                     ...prev,
                     toDate: clampDateValue(e.target.value),
                   }))
@@ -161,8 +170,8 @@ export default function FilterPanel({ isOpen, onClose, filters, setFilters, onAp
                 Restaurant
               </label>
               <select
-                value={filters.restaurant || ""}
-                onChange={(e) => setFilters(prev => ({ ...prev, restaurant: e.target.value }))}
+                value={localFilters.restaurant || ""}
+                onChange={(e) => setLocalFilters(prev => ({ ...prev, restaurant: e.target.value }))}
                 className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
               >
                 <option value="">All Restaurants</option>
@@ -182,7 +191,7 @@ export default function FilterPanel({ isOpen, onClose, filters, setFilters, onAp
             Reset
           </button>
           <button
-            onClick={onApply}
+            onClick={() => { setFilters(localFilters); onApply(); }}
             className="px-4 py-2 text-sm font-medium rounded-lg bg-blue-600 text-white hover:bg-blue-700 transition-all shadow-md"
           >
             Apply Filters

@@ -1745,7 +1745,13 @@ export async function getCustomerById(id) {
             $group: {
                 _id: '$userId',
                 totalOrders: { $sum: 1 },
-                totalOrderAmount: { $sum: { $ifNull: ['$pricing.total', 0] } }
+                totalOrderAmount: { $sum: { $ifNull: ['$pricing.total', 0] } },
+                totalDeliveredOrders: {
+                    $sum: { $cond: [{ $eq: ['$orderStatus', 'delivered'] }, 1, 0] }
+                },
+                totalCancelledOrders: {
+                    $sum: { $cond: [{ $eq: ['$orderStatus', 'cancelled'] }, 1, 0] }
+                }
             }
         }
     ]);
@@ -1770,6 +1776,8 @@ export async function getCustomerById(id) {
         totalOrders: Number(stats.totalOrders || 0),
         totalOrder: Number(stats.totalOrders || 0),
         totalOrderAmount: Number(stats.totalOrderAmount || 0),
+        totalDeliveredOrders: Number(stats.totalDeliveredOrders || 0),
+        totalCancelledOrders: Number(stats.totalCancelledOrders || 0),
         joiningDate: u.createdAt,
         createdAt: u.createdAt,
         updatedAt: u.updatedAt

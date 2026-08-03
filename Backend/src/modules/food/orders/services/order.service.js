@@ -1857,8 +1857,22 @@ export async function listOrdersAdmin(query) {
     }
   }
 
-  if (restaurantIdRaw && mongoose.Types.ObjectId.isValid(restaurantIdRaw)) {
-    filter.restaurantId = new mongoose.Types.ObjectId(restaurantIdRaw);
+  if (restaurantIdRaw) {
+    if (mongoose.Types.ObjectId.isValid(restaurantIdRaw)) {
+      filter.restaurantId = new mongoose.Types.ObjectId(restaurantIdRaw);
+    } else {
+      // Frontend passes restaurant name as restaurantId in the filter
+      const restaurantDoc = await FoodRestaurant.findOne({ 
+        restaurantName: new RegExp(`^${restaurantIdRaw}$`, 'i') 
+      }).select('_id').lean();
+      
+      if (restaurantDoc) {
+        filter.restaurantId = restaurantDoc._id;
+      } else {
+        // If name doesn't match any restaurant, ensure query returns nothing
+        filter.restaurantId = new mongoose.Types.ObjectId();
+      }
+    }
   }
 
   const userIdRaw =
@@ -1886,6 +1900,8 @@ export async function listOrdersAdmin(query) {
       createdAt.$gte = start;
     }
     if (end && !Number.isNaN(end.getTime())) {
+      // Ensure the end date covers the entire day until 23:59:59.999
+      end.setUTCHours(23, 59, 59, 999);
       createdAt.$lte = end;
     }
     if (Object.keys(createdAt).length > 0) {

@@ -333,134 +333,6 @@ export default function OrdersPage({ statusKey = "all" }) {
     }
   }, [statusKey])
 
-  const fetchOrders = useCallback(async (options = {}) => {
-    const { silent = false, withRingCheck = false } = options
-
-    try {
-      if (!silent) setIsLoading(true)
-      const params = {
-        page: currentPage,
-        limit: pageSize,
-        status:
-          statusKey === "all"
-            ? undefined
-            : statusKey === "restaurant-cancelled"
-              ? "cancelled"
-              : statusKey,
-        cancelledBy: statusKey === "restaurant-cancelled" ? "restaurant" : undefined,
-        search: debouncedSearch || undefined,
-      }
-
-      const response = await adminAPI.getOrders(params)
-
-      const payload = response?.data?.data || response?.data || {}
-      const rawOrders =
-        payload?.orders ??
-        payload?.docs ??
-        payload?.data ??
-        (Array.isArray(payload) ? payload : [])
-      const nextOrders = Array.isArray(rawOrders) ? rawOrders : []
-      const meta = payload?.meta || payload?.pagination || {}
-      const nextTotal = Number(meta.total ?? payload?.total ?? nextOrders.length) || 0
-
-      if (response.data?.success) {
-        const nextOrderIds = new Set(
-          nextOrders
-            .map((order) => order.id || order._id || order.orderId)
-            .filter(Boolean),
-        )
-
-        if (statusKey === "all") {
-          // If no order is still pending (created), there is nothing to alert about —
-          // stop any ongoing alert (e.g. after restaurant/admin accepted the order).
-          const hasPendingOrder = nextOrders.some((order) => {
-            const status = String(order.orderStatus || order.status || "").toLowerCase()
-            return !status || status === "created" || status === "pending"
-          })
-          if (!hasPendingOrder) {
-            stopOrderAlert()
-          }
-        }
-
-        let detectedNewOrder = false
-        if (withRingCheck && !isFirstLoadRef.current && statusKey === "all" && currentPage === 1) {
-          detectedNewOrder = [...nextOrderIds].some(
-            (id) => !seenOrderIdsRef.current.has(id),
-          )
-          if (detectedNewOrder) {
-            activeOrderAlertRef.current = { orderId: "polling-new-order" }
-            playDefaultRing()
-            startAlertLoop()
-            if (typeof document !== "undefined" && document.visibilityState === "hidden") {
-              showBrowserNotification(
-                "New order received",
-                "A new order arrived",
-                `admin-order-poll-${Date.now()}`,
-              )
-            }
-            toast.info("New order received")
-          }
-        }
-
-        seenOrderIdsRef.current = nextOrderIds
-        isFirstLoadRef.current = false
-        setOrders(nextOrders)
-        setTotalOrders(nextTotal)
-
-        if (detectedNewOrder) {
-          const now = Date.now()
-          if (now - lastSidebarBadgeRefreshAtRef.current >= 20000) {
-            lastSidebarBadgeRefreshAtRef.current = now
-            refreshSidebarBadges(undefined, { reloadNotifications: false })
-          }
-        }
-      } else {
-        debugError("Failed to fetch orders:", response.data)
-        if (!silent) toast.error("Failed to fetch orders")
-        setOrders([])
-        setTotalOrders(0)
-      }
-    } catch (error) {
-      debugError("Error fetching orders:", error)
-      const status = Number(error?.response?.status || 0)
-      if (!silent && status !== 429) {
-        toast.error(error.response?.data?.message || "Failed to fetch orders")
-      }
-      if (!silent && status !== 429) {
-        setOrders([])
-        setTotalOrders(0)
-      }
-    } finally {
-      if (!silent) setIsLoading(false)
-    }
-  }, [statusKey, currentPage, pageSize, debouncedSearch, playDefaultRing, showBrowserNotification, startAlertLoop, stopOrderAlert])
-
-  useEffect(() => {
-    const t = setTimeout(() => {
-      const next = searchQuery.trim()
-      setDebouncedSearch((prev) => {
-        if (prev !== next) {
-          // Reset to first page when the effective search term changes
-          setTimeout(() => setCurrentPage(1), 0)
-        }
-        return next
-      })
-    }, 350)
-    return () => clearTimeout(t)
-  }, [searchQuery])
-
-  useEffect(() => {
-    setCurrentPage(1)
-    setSearchQuery("")
-    setDebouncedSearch("")
-    isFirstLoadRef.current = true
-    seenOrderIdsRef.current = new Set()
-  }, [statusKey])
-
-  useEffect(() => {
-    fetchOrders({ silent: false, withRingCheck: false })
-  }, [fetchOrders])
-
   const normalizedOrders = useMemo(() => {
     const safeOrders = Array.isArray(orders) ? orders : []
 
@@ -658,6 +530,140 @@ export default function OrdersPage({ statusKey = "all" }) {
     searchQuery,
     setSearchQuery,
   })
+
+  const fetchOrders = useCallback(async (options = {}) => {
+    const { silent = false, withRingCheck = false } = options
+
+    try {
+      if (!silent) setIsLoading(true)
+      const params = {
+        page: currentPage,
+        limit: pageSize,
+        status:
+          statusKey === "all"
+            ? undefined
+            : statusKey === "restaurant-cancelled"
+              ? "cancelled"
+              : statusKey,
+        cancelledBy: statusKey === "restaurant-cancelled" ? "restaurant" : undefined,
+        search: debouncedSearch || undefined,
+        restaurantId: filters.restaurant || undefined,
+        startDate: filters.fromDate || undefined,
+        endDate: filters.toDate || undefined,
+        minAmount: filters.minAmount || undefined,
+        maxAmount: filters.maxAmount || undefined,
+      }
+
+      const response = await adminAPI.getOrders(params)
+
+      const payload = response?.data?.data || response?.data || {}
+      const rawOrders =
+        payload?.orders ??
+        payload?.docs ??
+        payload?.data ??
+        (Array.isArray(payload) ? payload : [])
+      const nextOrders = Array.isArray(rawOrders) ? rawOrders : []
+      const meta = payload?.meta || payload?.pagination || {}
+      const nextTotal = Number(meta.total ?? payload?.total ?? nextOrders.length) || 0
+
+      if (response.data?.success) {
+        const nextOrderIds = new Set(
+          nextOrders
+            .map((order) => order.id || order._id || order.orderId)
+            .filter(Boolean),
+        )
+
+        if (statusKey === "all") {
+          // If no order is still pending (created), there is nothing to alert about —
+          // stop any ongoing alert (e.g. after restaurant/admin accepted the order).
+          const hasPendingOrder = nextOrders.some((order) => {
+            const status = String(order.orderStatus || order.status || "").toLowerCase()
+            return !status || status === "created" || status === "pending"
+          })
+          if (!hasPendingOrder) {
+            stopOrderAlert()
+          }
+        }
+
+        let detectedNewOrder = false
+        if (withRingCheck && !isFirstLoadRef.current && statusKey === "all" && currentPage === 1) {
+          detectedNewOrder = [...nextOrderIds].some(
+            (id) => !seenOrderIdsRef.current.has(id),
+          )
+          if (detectedNewOrder) {
+            activeOrderAlertRef.current = { orderId: "polling-new-order" }
+            playDefaultRing()
+            startAlertLoop()
+            if (typeof document !== "undefined" && document.visibilityState === "hidden") {
+              showBrowserNotification(
+                "New order received",
+                "A new order arrived",
+                `admin-order-poll-${Date.now()}`,
+              )
+            }
+            toast.info("New order received")
+          }
+        }
+
+        seenOrderIdsRef.current = nextOrderIds
+        isFirstLoadRef.current = false
+        setOrders(nextOrders)
+        setTotalOrders(nextTotal)
+
+        if (detectedNewOrder) {
+          const now = Date.now()
+          if (now - lastSidebarBadgeRefreshAtRef.current >= 20000) {
+            lastSidebarBadgeRefreshAtRef.current = now
+            refreshSidebarBadges(undefined, { reloadNotifications: false })
+          }
+        }
+      } else {
+        debugError("Failed to fetch orders:", response.data)
+        if (!silent) toast.error("Failed to fetch orders")
+        setOrders([])
+        setTotalOrders(0)
+      }
+    } catch (error) {
+      debugError("Error fetching orders:", error)
+      const status = Number(error?.response?.status || 0)
+      if (!silent && status !== 429) {
+        toast.error(error.response?.data?.message || "Failed to fetch orders")
+      }
+      if (!silent && status !== 429) {
+        setOrders([])
+        setTotalOrders(0)
+      }
+    } finally {
+      if (!silent) setIsLoading(false)
+    }
+  }, [statusKey, currentPage, pageSize, debouncedSearch, filters, playDefaultRing, showBrowserNotification, startAlertLoop, stopOrderAlert])
+
+  useEffect(() => {
+    const t = setTimeout(() => {
+      const next = searchQuery.trim()
+      setDebouncedSearch((prev) => {
+        if (prev !== next) {
+          // Reset to first page when the effective search term changes
+          setTimeout(() => setCurrentPage(1), 0)
+        }
+        return next
+      })
+    }, 350)
+    return () => clearTimeout(t)
+  }, [searchQuery])
+
+  useEffect(() => {
+    setCurrentPage(1)
+    setSearchQuery("")
+    setDebouncedSearch("")
+    isFirstLoadRef.current = true
+    seenOrderIdsRef.current = new Set()
+  }, [statusKey])
+
+  useEffect(() => {
+    fetchOrders({ silent: false, withRingCheck: false })
+  }, [fetchOrders])
+
 
   useEffect(() => {
     const handleScroll = () => {
@@ -1031,7 +1037,7 @@ export default function OrdersPage({ statusKey = "all" }) {
     <div className="p-4 lg:p-6 bg-slate-50 min-h-screen w-full max-w-full overflow-x-hidden">
       <OrdersTopbar 
         title={config.title} 
-        count={totalOrders || count} 
+        count={totalOrders !== null && totalOrders !== undefined ? totalOrders : count} 
         searchQuery={searchQuery}
         setSearchQuery={setSearchQuery}
         onFilterClick={() => setIsFilterOpen(true)}
@@ -1049,8 +1055,14 @@ export default function OrdersPage({ statusKey = "all" }) {
             onClose={() => setIsFilterOpen(false)}
             filters={filters}
             setFilters={setFilters}
-            onApply={handleApplyFilters}
-            onReset={handleResetFilters}
+            onApply={() => {
+              setCurrentPage(1);
+              handleApplyFilters();
+            }}
+            onReset={() => {
+              setCurrentPage(1);
+              handleResetFilters();
+            }}
             restaurants={restaurants}
           />
           <SettingsDialog

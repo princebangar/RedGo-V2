@@ -75,6 +75,10 @@ export default function RegularOrderReport() {
     return () => clearTimeout(t)
   }, [searchQuery])
 
+  useEffect(() => {
+    setCurrentPage(1)
+  }, [debouncedSearch, filters])
+
   // Fetch zones, restaurants, and customers for filter dropdowns
   useEffect(() => {
     const fetchFilterData = async () => {
