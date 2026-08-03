@@ -14,6 +14,7 @@ import {
 
 // Import shared food images - prevents duplication
 import { foodImages } from "@food/constants/images"
+import dishFallbackImage from "@food/assets/dish_fallback.webp"
 import api from "@food/api"
 import { restaurantAPI, adminAPI, searchAPI } from "@food/api"
 import { API_BASE_URL } from "@food/api/config"
@@ -935,7 +936,7 @@ export default function CategoryPage({
       id: dish?.itemId || dish?.id || dish?._id || `${dish?.name}-${dish?.price}`,
       name: dish?.name || "Unnamed Item",
       price: Number(dish?.price || 0),
-      image: dish?.image || coverImage,
+      image: dish?.image || "",
       foodType,
     }
   }
@@ -2212,22 +2213,26 @@ export default function CategoryPage({
                       >
                         <div className={`group ${shouldShowGrayscale || closed ? "grayscale opacity-75" : ""}`}>
                           <div className="relative aspect-square rounded-xl md:rounded-2xl overflow-hidden mb-2 bg-gray-200 dark:bg-gray-800">
-                            {(restaurant.categoryDishImage || restaurant.image) ? (
-                              <img
-                                src={restaurant.categoryDishImage || restaurant.image}
-                                alt={restaurant.categoryDishName || restaurant.name}
-                                loading="lazy"
-                                decoding="async"
-                                className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
-                                onError={(e) => {
-                                  if (restaurant.categoryDishImage && restaurant.image && e.target.src !== restaurant.image) {
-                                    e.target.src = restaurant.image
-                                  } else {
-                                    e.target.style.visibility = "hidden"
-                                  }
-                                }}
-                              />
-                            ) : null}
+                            {(() => {
+                              const displayImg = isCategoryView
+                                ? (restaurant.categoryDishImage || dishFallbackImage)
+                                : (restaurant.categoryDishImage || restaurant.image || dishFallbackImage);
+
+                              return (
+                                <img
+                                  src={displayImg}
+                                  alt={restaurant.categoryDishName || restaurant.name}
+                                  loading="lazy"
+                                  decoding="async"
+                                  className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300 bg-gray-50 dark:bg-gray-800"
+                                  onError={(e) => {
+                                    if (!e.target.src.includes(dishFallbackImage)) {
+                                      e.target.src = dishFallbackImage;
+                                    }
+                                  }}
+                                />
+                              );
+                            })()}
 
                             {restaurant.offer && (
                               <div className="absolute top-1.5 left-1.5 bg-gradient-to-r from-[#DC2626] to-[#991B1B] text-white text-[10px] md:text-xs font-semibold px-1.5 py-0.5 rounded shadow-sm">
@@ -2341,27 +2346,28 @@ export default function CategoryPage({
                             backFrom={categoryBackPath}
                             focusId={restaurant.id}
                             visibleCount={visibleAllCount}
+                            categoryFallbackImage={dishFallbackImage}
                           />
-                        ) : restaurant.image ? (
-                          <img
-                            src={restaurant.image}
-                            alt={restaurant.name}
-                            loading="lazy"
-                            decoding="async"
-                            className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
-                            onError={(e) => {
-                              e.target.style.display = 'none'
-                              const placeholder = document.createElement('div')
-                              placeholder.className = 'w-full h-full flex items-center justify-center bg-gray-100 dark:bg-gray-800 text-6xl'
-                              placeholder.textContent = '???'
-                              e.target.parentElement.appendChild(placeholder)
-                            }}
-                          />
-                        ) : (
-                          <div className="w-full h-full flex items-center justify-center bg-gray-100 dark:bg-gray-800 text-6xl">
-                            ???
-                          </div>
-                        )}
+                        ) : (() => {
+                          const singleImg = isCategoryView
+                            ? (restaurant.categoryDishImage || dishFallbackImage)
+                            : (restaurant.image || dishFallbackImage);
+
+                          return (
+                            <img
+                              src={singleImg}
+                              alt={restaurant.name}
+                              loading="lazy"
+                              decoding="async"
+                              className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500 bg-gray-50 dark:bg-gray-800"
+                              onError={(e) => {
+                                if (!e.target.src.includes(dishFallbackImage)) {
+                                  e.target.src = dishFallbackImage;
+                                }
+                              }}
+                            />
+                          );
+                        })()}
 
                         {/* Featured dish badge only when not using category dish carousel */}
                         {!isCategoryView && (restaurant.categoryDishName || restaurant.featuredDish) && (
@@ -2815,4 +2821,5 @@ export default function CategoryPage({
     </div>
   )
 }
+
 
