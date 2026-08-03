@@ -2630,6 +2630,24 @@ export async function updateOrderStatusesAdmin(orderId, adminId, { orderStatus, 
         order.deliveryState.deliveredAt = new Date();
       }
       order.deliveryState.currentPhase = "delivered";
+
+      try {
+        const finalPayMethod = order.payment?.method || 'cash';
+        const ledgerKind =
+          finalPayMethod === 'cash' || finalPayMethod === 'wallet' || finalPayMethod === 'cod'
+            ? 'cod_marked_paid_on_delivery' 
+            : (finalPayMethod === 'razorpay_qr' ? 'cod_collect_qr_settled' : 'payment_snapshot_sync');
+
+        await foodTransactionService.updateTransactionStatus(order._id, ledgerKind, {
+          status: 'captured',
+          paymentMethod: finalPayMethod,
+          recordedByRole: 'ADMIN',
+          recordedById: adminId,
+          note: `Admin marked order delivered.`,
+        });
+      } catch (err) {
+        console.error(`[AdminStatusSync] Error syncing transaction for order ${order._id}:`, err);
+      }
     } else if (nextOrderStatus === "picked_up" || nextOrderStatus === "reached_drop") {
       order.deliveryState.currentPhase =
         nextOrderStatus === "reached_drop" ? "at_drop" : "en_route_to_delivery";

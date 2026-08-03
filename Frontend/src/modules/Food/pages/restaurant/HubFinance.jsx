@@ -253,8 +253,8 @@ export default function HubFinance() {
       const parts = dateRangeStr.split(' - ')
       if (parts.length !== 2) return null
 
-      const startStr = parts[0].trim() // "14 Nov"
-      const endStr = parts[1].trim().replace("'", " ") // "14 Dec 25"
+      const startStr = parts[0].trim().replace("'", " ")
+      const endStr = parts[1].trim().replace("'", " ")
 
       const currentYear = new Date().getFullYear()
       const startParts = startStr.split(' ')
@@ -271,14 +271,16 @@ export default function HubFinance() {
       const startMonth = monthMap[startParts[1]]
       const endDay = parseInt(endParts[0])
       const endMonth = monthMap[endParts[1]]
-      const year = endParts.length > 2 ? parseInt('20' + endParts[2]) : currentYear
+      
+      const startYear = startParts.length > 2 ? parseInt('20' + startParts[2]) : currentYear
+      const endYear = endParts.length > 2 ? parseInt('20' + endParts[2]) : currentYear
 
       if (startMonth === undefined || endMonth === undefined || isNaN(startDay) || isNaN(endDay)) {
         return null
       }
 
-      const start = new Date(year, startMonth, startDay)
-      const end = new Date(year, endMonth, endDay)
+      const start = new Date(startYear, startMonth, startDay)
+      const end = new Date(endYear, endMonth, endDay)
 
       return {
         startDate: start.toISOString(),
@@ -310,8 +312,13 @@ export default function HubFinance() {
         return
       }
 
-      const startDateISO = startDateObj.toISOString().split('T')[0]
-      const endDateISO = endDateObj.toISOString().split('T')[0]
+      const formatLocalISO = (d) => {
+        const pad = (n) => String(n).padStart(2, '0')
+        return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`
+      }
+
+      const startDateISO = formatLocalISO(startDateObj)
+      const endDateISO = formatLocalISO(endDateObj)
 
       const response = await restaurantAPI.getFinance({
         startDate: startDateISO,
@@ -921,6 +928,10 @@ export default function HubFinance() {
                                   const today = new Date()
                                   today.setHours(23, 59, 59, 999)
 
+                                  // Today
+                                  const todayStart = new Date(today)
+                                  todayStart.setHours(0, 0, 0, 0)
+
                                   // Last 7 days
                                   const last7DaysStart = new Date(today)
                                   last7DaysStart.setDate(today.getDate() - 7)
@@ -957,6 +968,7 @@ export default function HubFinance() {
 
                                   return {
                                     today,
+                                    todayStart,
                                     last7DaysStart,
                                     last30DaysStart,
                                     thisWeekStart,
@@ -983,6 +995,12 @@ export default function HubFinance() {
 
                                 const ranges = getDateRanges()
                                 const dateOptions = [
+                                  {
+                                    label: "Today",
+                                    range: formatDateRange(ranges.todayStart, ranges.today),
+                                    startDate: ranges.todayStart,
+                                    endDate: ranges.today
+                                  },
                                   {
                                     label: "Last 7 days",
                                     range: formatDateRange(ranges.last7DaysStart, ranges.today),
@@ -1092,6 +1110,9 @@ export default function HubFinance() {
                                 <p className="text-sm font-semibold text-gray-900 mb-1">
                                   Order ID: {order.orderId || 'N/A'}
                                 </p>
+                                <p className="text-xs text-gray-500 mb-1">
+                                  {formatDateTime(order.createdAt || order.deliveredAt)}
+                                </p>
                                 <p className="text-xs text-gray-600">
                                   {order.foodNames || (order.items && order.items.map(item => item.name).join(', ')) || 'N/A'}
                                 </p>
@@ -1123,6 +1144,9 @@ export default function HubFinance() {
                               <div className="flex-1">
                                 <p className="text-sm font-semibold text-gray-900 mb-1">
                                   Order ID: {order.orderId || 'N/A'}
+                                </p>
+                                <p className="text-xs text-gray-500 mb-1">
+                                  {formatDateTime(order.createdAt || order.deliveredAt)}
                                 </p>
                                 <p className="text-xs text-gray-600">
                                   {order.foodNames || (order.items && order.items.map(item => item.name).join(', ')) || 'N/A'}
