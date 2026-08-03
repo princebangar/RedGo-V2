@@ -4,6 +4,7 @@ import OptimizedImage from "@food/components/OptimizedImage";
 import { useProfile } from "@food/context/ProfileContext";
 import { isVegMenuItem } from "@food/utils/vegMode";
 import { saveBrowseScroll, saveCategoryBrowseClick } from "@food/utils/browseScrollMemory";
+import dishFallbackImage from "@food/assets/dish_fallback.webp";
 import { toFoodUserPath, getRestaurantRouteId } from "@food/utils/mainTabRoutes";
 
 const WEBVIEW_SESSION_CACHE_BUSTER = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
@@ -19,6 +20,7 @@ const RestaurantImageCarousel = React.memo(
     backFrom = "",
     focusId = "",
     visibleCount,
+    categoryFallbackImage = null,
   }) => {
     const webviewSessionKeyRef = useRef(WEBVIEW_SESSION_CACHE_BUSTER);
     const navigate = useNavigate();
@@ -61,28 +63,37 @@ const RestaurantImageCarousel = React.memo(
 
     const slideItems = useMemo(() => {
       let items = [];
-      if (Array.isArray(restaurant.recommendedDishes) && restaurant.recommendedDishes.length > 0) {
-        restaurant.recommendedDishes.forEach((dish, idx) => {
-          if (vegMode && !isVegMenuItem(dish)) return;
-          if (dish.image) items.push({ id: dish.id || idx, src: withCacheBuster(dish.image), dish });
-        });
-      }
-
-      if (items.length === 0) {
-        const sourceImages =
-          Array.isArray(restaurant.images) && restaurant.images.length > 0
-            ? restaurant.images
-            : [restaurant.image];
-        const validImages = sourceImages
-          .filter((img) => typeof img === "string")
-          .map((img) => img.trim())
-          .filter(Boolean);
-        if (validImages.length > 0) {
-          items.push({ id: "fallback", src: withCacheBuster(validImages[0]), dish: null });
+        if (Array.isArray(restaurant.recommendedDishes) && restaurant.recommendedDishes.length > 0) {
+          restaurant.recommendedDishes.forEach((dish, idx) => {
+            if (vegMode && !isVegMenuItem(dish)) return;
+            const dishImg = dish.image || categoryFallbackImage;
+            if (dishImg) {
+              const finalSrc = dishImg === dishFallbackImage ? dishImg : withCacheBuster(dishImg);
+              items.push({ id: dish.id || idx, src: finalSrc, dish });
+            }
+          });
         }
-      }
+
+        if (items.length === 0) {
+          const sourceImages =
+            Array.isArray(restaurant.images) && restaurant.images.length > 0
+              ? restaurant.images
+              : [restaurant.image];
+          const validImages = sourceImages
+            .filter((img) => typeof img === "string")
+            .map((img) => img.trim())
+            .filter(Boolean);
+          if (validImages.length > 0) {
+            items.push({ id: "fallback", src: withCacheBuster(validImages[0]), dish: null });
+          } else if (categoryFallbackImage) {
+            const finalSrc = categoryFallbackImage === dishFallbackImage ? dishFallbackImage : withCacheBuster(categoryFallbackImage);
+            items.push({ id: "fallback", src: finalSrc, dish: null });
+          } else {
+            items.push({ id: "fallback", src: dishFallbackImage, dish: null });
+          }
+        }
       return items;
-    }, [restaurant.recommendedDishes, restaurant.images, restaurant.image, withCacheBuster, vegMode]);
+    }, [restaurant.recommendedDishes, restaurant.images, restaurant.image, withCacheBuster, vegMode, categoryFallbackImage]);
 
     const [currentIndex, setCurrentIndex] = useState(0);
     const [isImageUnavailable, setIsImageUnavailable] = useState(false);
@@ -339,3 +350,4 @@ const RestaurantImageCarousel = React.memo(
 RestaurantImageCarousel.displayName = "RestaurantImageCarousel";
 
 export default RestaurantImageCarousel;
+
