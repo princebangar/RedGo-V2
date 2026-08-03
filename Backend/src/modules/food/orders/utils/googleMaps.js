@@ -29,19 +29,32 @@ export async function fetchPolyline(origin, destination) {
   try {
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 5000);
-    const originStr = `${origin.lat},${origin.lng}`;
-    const destStr = `${destination.lat},${destination.lng}`;
-    const url = `https://maps.googleapis.com/maps/api/directions/json?origin=${encodeURIComponent(originStr)}&destination=${encodeURIComponent(destStr)}&mode=driving&region=in&key=${apiKey}`;
+    const url = 'https://routes.googleapis.com/directions/v2:computeRoutes';
+    const body = JSON.stringify({
+      origin: { location: { latLng: { latitude: Number(origin.lat), longitude: Number(origin.lng) } } },
+      destination: { location: { latLng: { latitude: Number(destination.lat), longitude: Number(destination.lng) } } },
+      travelMode: 'DRIVE',
+      routingPreference: 'TRAFFIC_UNAWARE',
+    });
 
-    const res = await fetch(url, { signal: controller.signal });
+    const res = await fetch(url, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-Goog-Api-Key': apiKey,
+        'X-Goog-FieldMask': 'routes.polyline.encodedPolyline',
+      },
+      body,
+      signal: controller.signal,
+    });
     clearTimeout(timeout);
     const data = await res.json();
 
-    if (data.status === 'OK' && data.routes?.length > 0) {
-      return data.routes[0].overview_polyline?.points || '';
+    if (data.routes && data.routes.length > 0 && data.routes[0].polyline?.encodedPolyline) {
+      return data.routes[0].polyline.encodedPolyline;
     }
     logger.warn(
-      `Google Directions API returned status: ${data.status}. Message: ${data.error_message || 'No routes found'}`,
+      `Google Routes API (Polyline) returned: ${JSON.stringify(data)}`,
     );
   } catch (err) {
     logger.error(`Error fetching polyline from Google: ${err.message}`);
@@ -72,31 +85,36 @@ export async function fetchDrivingDistanceKm(origin, destination) {
   try {
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 6000);
-    const originStr = `${oLat},${oLng}`;
-    const destStr = `${dLat},${dLng}`;
-    const url =
-      `https://maps.googleapis.com/maps/api/directions/json` +
-      `?origin=${encodeURIComponent(originStr)}` +
-      `&destination=${encodeURIComponent(destStr)}` +
-      `&mode=driving&units=metric&region=in&key=${apiKey}`;
+    const url = 'https://routes.googleapis.com/directions/v2:computeRoutes';
+    const body = JSON.stringify({
+      origin: { location: { latLng: { latitude: oLat, longitude: oLng } } },
+      destination: { location: { latLng: { latitude: dLat, longitude: dLng } } },
+      travelMode: 'DRIVE',
+      routingPreference: 'TRAFFIC_UNAWARE',
+    });
 
-    const res = await fetch(url, { signal: controller.signal });
+    const res = await fetch(url, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-Goog-Api-Key': apiKey,
+        'X-Goog-FieldMask': 'routes.distanceMeters',
+      },
+      body,
+      signal: controller.signal,
+    });
     clearTimeout(timeout);
     const data = await res.json();
 
-    if (data.status === 'OK' && data.routes?.[0]?.legs?.length) {
-      const meters = data.routes[0].legs.reduce(
-        (sum, leg) => sum + Number(leg.distance?.value || 0),
-        0,
-      );
-      const km = meters / 1000;
+    if (data.routes && data.routes.length > 0 && data.routes[0].distanceMeters != null) {
+      const km = data.routes[0].distanceMeters / 1000;
       if (Number.isFinite(km) && km > 0) {
         return Math.round(km * 100) / 100;
       }
     }
 
     logger.warn(
-      `Driving distance failed: ${data.status}${data.error_message ? ` - ${data.error_message}` : ''}`,
+      `Driving distance failed: ${JSON.stringify(data)}`,
     );
   } catch (err) {
     logger.error(`Error fetching driving distance: ${err.message}`);
