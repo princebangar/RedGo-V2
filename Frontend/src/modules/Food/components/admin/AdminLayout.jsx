@@ -241,7 +241,7 @@ export default function AdminLayout() {
   }, [location.pathname, showBackButton]);
 
   return (
-    <div className="h-screen bg-neutral-200 flex overflow-hidden">
+    <div className="h-screen bg-neutral-200 flex overflow-hidden admin-module-container">
       {/* Mobile Overlay */}
       {sidebarOpen && (
         <div

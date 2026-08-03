@@ -127,6 +127,13 @@
     -webkit-user-select: auto;
     user-select: auto;
   }
+  
+  /* Allow text selection in the Admin Panel */
+  .admin-module-container,
+  .admin-module-container * {
+    -webkit-user-select: text;
+    user-select: text;
+  }
 }
 
 @layer utilities {
