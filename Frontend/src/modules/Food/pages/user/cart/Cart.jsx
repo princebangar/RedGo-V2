@@ -394,6 +394,74 @@ export default function Cart() {
     preloadRazorpayScript()
   }, [])
 
+  // Handle Razorpay redirect callback
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const searchParams = new URLSearchParams(window.location.search);
+    const razorpay_payment_id = searchParams.get('razorpay_payment_id');
+    const razorpay_order_id = searchParams.get('razorpay_order_id');
+    const razorpay_signature = searchParams.get('razorpay_signature');
+    const error_code = searchParams.get('error[code]');
+
+    if (error_code) {
+        toast.error("Payment failed: " + (searchParams.get('error[description]') || "Unknown error"));
+        window.history.replaceState({}, '', window.location.pathname);
+    } else if (razorpay_payment_id && razorpay_order_id && razorpay_signature) {
+        const processRedirectPayment = async () => {
+            const savedPayloadRaw = window.localStorage.getItem('pendingOrderPayload');
+            const savedSavingsRaw = window.localStorage.getItem('pendingOrderSavings');
+            if (savedPayloadRaw) {
+                try {
+                    setIsPlacingOrder(true);
+                    const orderPayload = JSON.parse(savedPayloadRaw);
+                    const platformPricingSavings = savedSavingsRaw ? JSON.parse(savedSavingsRaw) : { totalSavings: 0, items: [], savingsPercentage: 0 };
+                    
+                    const createOrderPayload = {
+                      ...orderPayload,
+                      razorpayOrderId: razorpay_order_id,
+                      razorpayPaymentId: razorpay_payment_id,
+                      razorpaySignature: razorpay_signature,
+                    };
+
+                    const createResponse = await orderAPI.createOrder(createOrderPayload);
+                    if (createResponse.data?.success) {
+                      const { order } = createResponse.data.data;
+                      setPlacedOrderId(order._id || order.orderId);
+                      setPlacedOrderObj(order);
+                      setOrderSuccessSavingsAmount(platformPricingSavings.totalSavings > 0 ? platformPricingSavings.totalSavings : 0);
+                      if (platformPricingSavings.totalSavings > 0) {
+                        setCongratssSavingsAmount(platformPricingSavings.totalSavings);
+                        setCongratssSavingsPercentage(platformPricingSavings.savingsPercentage);
+                        setCongratssSavingsItems(platformPricingSavings.items);
+                        setShowSavingsCongrats(true);
+                      } else {
+                        setShowOrderSuccess(true);
+                      }
+                      window.dispatchEvent(new CustomEvent('order-placed', { detail: { order } }));
+                      clearCart();
+                      setRestaurantNote("");
+                      setShowRestaurantNoteInput(false);
+                      try { window.localStorage.removeItem(CART_ORDER_NOTE_STORAGE_KEY) } catch {}
+                      window.localStorage.removeItem('pendingOrderPayload');
+                      window.localStorage.removeItem('pendingOrderSavings');
+                    }
+                } catch (error) {
+                    debugError("Order creation after redirect payment error:", error);
+                    const errorMessage =
+                      error?.response?.data?.message ||
+                      error?.message ||
+                      "Payment verified but order creation failed. Please contact support.";
+                    alert(errorMessage);
+                } finally {
+                    setIsPlacingOrder(false);
+                    window.history.replaceState({}, '', window.location.pathname);
+                }
+            }
+        };
+        processRedirectPayment();
+    }
+  }, []);
+
   useEffect(() => {
     if (showAutoCouponPopup || showCouponSheet) {
       document.body.style.overflow = "hidden"
@@ -2228,6 +2296,18 @@ export default function Cart() {
       // Flag to prevent duplicate execution (onError + onClose)
       let paymentHandled = false
 
+      // Store payload in localStorage for redirect-based checkout (PhonePe intent fix)
+      try {
+        window.localStorage.setItem('pendingOrderPayload', JSON.stringify(orderPayload))
+        window.localStorage.setItem('pendingOrderSavings', JSON.stringify(platformPricingSavings))
+      } catch (err) {
+        debugError("Failed to save pending order payload to localStorage", err)
+      }
+
+      // API_BASE_URL usually ends with /api/v1 or similar. We strip the /v1 part to form the webhook URL.
+      const baseUrlStr = String(API_BASE_URL).replace(/\/v1\/?$/, '');
+      const callbackUrl = `${baseUrlStr}/v1/payments/webhook/razorpay-redirect?frontendUrl=${encodeURIComponent(window.location.origin + window.location.pathname)}`
+
       // Initialize Razorpay payment modal
       await initRazorpayPayment({
         key: razorpay.key,
@@ -2236,6 +2316,8 @@ export default function Cart() {
         order_id: razorpay.orderId,
         name: companyName,
         description: `Order Payment - ${RUPEE_SYMBOL}${(razorpay.amount / 100).toFixed(2)}`,
+        callback_url: callbackUrl,
+        redirect: true,
         prefill: {
           name: userName,
           email: userEmail,
