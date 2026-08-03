@@ -18,7 +18,7 @@ import { API_BASE_URL } from "@food/api/config"
 import { initRazorpayPayment, preloadRazorpayScript } from "@food/utils/razorpay"
 import { toast } from "sonner"
 import { getCompanyNameAsync } from "@food/utils/businessSettings"
-import { calculateDistance } from "@food/utils/common"
+import { calculateDistance, removePlusCode } from "@food/utils/common"
 import { useCompanyName } from "@food/hooks/useCompanyName"
 import { getRestaurantAvailabilityStatus } from "@food/utils/restaurantAvailability"
 import useAppBackNavigation from "@food/hooks/useAppBackNavigation"
@@ -54,7 +54,7 @@ const formatFullAddress = (address) => {
     // If formattedAddress is still raw coordinates, don't show it as-is.
     // Fall back to composing from city/state/area instead.
     if (!looksLikeLatLng(address.formattedAddress)) {
-      return address.formattedAddress
+      return removePlusCode(address.formattedAddress)
     }
   }
 
@@ -67,12 +67,12 @@ const formatFullAddress = (address) => {
   if (address.zipCode) addressParts.push(address.zipCode)
 
   if (addressParts.length > 0) {
-    return addressParts.join(', ')
+    return removePlusCode(addressParts.join(', '))
   }
 
   // Priority 3: Use address field if available
   if (address.address && address.address !== "Select location") {
-    return address.address
+    return removePlusCode(address.address)
   }
 
   return ""
@@ -3157,7 +3157,7 @@ export default function Cart() {
                         )}
                         {Number((pricing?.freeDeliveryUpTo ?? feeSettings.freeDeliveryUpTo) || 0) > 0 && (
                           <div className="-mt-1.5">
-                            <div className="inline-flex items-center gap-1.5 rounded-full bg-gradient-to-r from-[#DC2626]/10 via-[#DC2626]/20 to-[#DC2626]/10 text-[#DC2626] border border-[#DC2626]/25 px-2.5 py-1 text-[11px] font-semibold shadow-sm animate-pulse">
+                            <div className="inline-flex items-center gap-1.5 rounded-full bg-gradient-to-r from-[#DC2626]/10 via-[#DC2626]/20 to-[#DC2626]/10 text-[#DC2626] border border-[#DC2626]/25 px-2.5 py-1 text-[11px] font-semibold shadow-sm">
                               <Sparkles className="h-3 w-3" />
                               <span>Free delivery at</span>
                               <span className="text-[#991B1B]">

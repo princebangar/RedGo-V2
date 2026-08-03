@@ -2941,15 +2941,22 @@ function RestaurantDetailsContent() {
 
                                 {/* Highly Reordered Progress Bar - Removed static version */}
 
-                                <div className="flex items-center gap-3 mt-1">
-                                  <p className="font-semibold text-gray-900 dark:text-white">{getFoodPriceLabel(item)}</p>
-                                  {/* Preparation Time - Show if available */}
-                                  {item.preparationTime && String(item.preparationTime).trim() && (
-                                    <div className="flex items-center gap-1.5 text-xs font-medium text-gray-600 dark:text-gray-400 bg-gray-100 dark:bg-gray-800 px-2 py-0.5 rounded-full">
-                                      <Clock size={12} className="text-gray-500" />
-                                      <span>{String(item.preparationTime).trim()}</span>
-                                    </div>
+                                <div className="flex flex-col gap-0.5 mt-1">
+                                  {hasFoodVariants(item) && (
+                                    <p className="text-xs font-medium text-gray-500 dark:text-gray-400">Starting from</p>
                                   )}
+                                  <div className="flex items-center gap-3">
+                                    <p className="font-semibold text-gray-900 dark:text-white">
+                                      ₹{Math.round(getFoodDisplayPrice(item))}
+                                    </p>
+                                    {/* Preparation Time - Show if available */}
+                                    {item.preparationTime && String(item.preparationTime).trim() && (
+                                      <div className="flex items-center gap-1.5 text-xs font-medium text-gray-600 dark:text-gray-400 bg-gray-100 dark:bg-gray-800 px-2 py-0.5 rounded-full">
+                                        <Clock size={12} className="text-gray-500" />
+                                        <span>{String(item.preparationTime).trim()}</span>
+                                      </div>
+                                    )}
+                                  </div>
                                 </div>
 
                                 {/* Description - Show if available */}
@@ -3165,15 +3172,22 @@ function RestaurantDetailsContent() {
 
                                           {/* Highly Reordered Progress Bar - Removed static version */}
 
-                                          <div className="flex items-center gap-3 mt-1">
-                                            <p className="font-semibold text-gray-900 dark:text-white">{getFoodPriceLabel(item)}</p>
-                                            {/* Preparation Time - Show if available */}
-                                            {item.preparationTime && String(item.preparationTime).trim() && (
-                                              <div className="flex items-center gap-1.5 text-xs font-medium text-gray-600 dark:text-gray-400 bg-gray-100 dark:bg-gray-800 px-2 py-0.5 rounded-full">
-                                                <Clock size={12} className="text-gray-500" />
-                                                <span>{String(item.preparationTime).trim()}</span>
-                                              </div>
+                                          <div className="flex flex-col gap-0.5 mt-1">
+                                            {hasFoodVariants(item) && (
+                                              <p className="text-xs font-medium text-gray-500 dark:text-gray-400">Starting from</p>
                                             )}
+                                            <div className="flex items-center gap-3">
+                                              <p className="font-semibold text-gray-900 dark:text-white">
+                                                ₹{Math.round(getFoodDisplayPrice(item))}
+                                              </p>
+                                              {/* Preparation Time - Show if available */}
+                                              {item.preparationTime && String(item.preparationTime).trim() && (
+                                                <div className="flex items-center gap-1.5 text-xs font-medium text-gray-600 dark:text-gray-400 bg-gray-100 dark:bg-gray-800 px-2 py-0.5 rounded-full">
+                                                  <Clock size={12} className="text-gray-500" />
+                                                  <span>{String(item.preparationTime).trim()}</span>
+                                                </div>
+                                              )}
+                                            </div>
                                           </div>
 
                                           {/* Description - Show if available */}
