@@ -16,6 +16,7 @@ import {
 } from "@food/components/ui/select"
 import { adminAPI } from "@food/api"
 import { toast } from "sonner"
+import { removePlusCode } from "@food/utils/common"
 
 const debugLog = (...args) => {}
 const debugWarn = (...args) => {}
@@ -294,7 +295,7 @@ export default function ViewOrderDialog({ isOpen, onOpenChange, order, onOrderUp
       uniqueParts.push(part)
     })
 
-    return uniqueParts.length > 0 ? uniqueParts.join(", ") : "Address not available"
+    return uniqueParts.length > 0 ? removePlusCode(uniqueParts.join(", ")) : "Address not available"
   }
 
   // Get coordinates if available
@@ -707,11 +708,6 @@ export default function ViewOrderDialog({ isOpen, onOpenChange, order, onOrderUp
               </h3>
               <div className="space-y-2 p-4 bg-slate-50 rounded-lg">
                 <p className="text-sm text-slate-900">{formatAddress(order.address)}</p>
-                {getCoordinates(order.address) && (
-                  <p className="text-xs text-slate-500 mt-2">
-                    <span className="font-medium">Coordinates:</span> {getCoordinates(order.address)}
-                  </p>
-                )}
                 {order.address.label && (
                   <p className="text-xs text-slate-500">
                     <span className="font-medium">Label:</span> {order.address.label}

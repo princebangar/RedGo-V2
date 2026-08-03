@@ -108,3 +108,20 @@ export const slugify = (value) =>
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, "-")
     .replace(/(^-|-$)/g, "");
+
+/**
+ * Removes Google Plus Codes (e.g. RW52+FGM, W2XM+VCP) from address strings
+ */
+export const removePlusCode = (addressStr) => {
+  if (!addressStr || typeof addressStr !== 'string') return addressStr;
+  return addressStr
+    // Remove the plus code and optional trailing commas/spaces
+    .replace(/\b[A-Z0-9]{2,8}\+[A-Z0-9]{2,5}[,\s]*/ig, '')
+    // Also remove if it's at the very beginning without a word boundary
+    .replace(/^[A-Z0-9]{2,8}\+[A-Z0-9]{2,5}[,\s]*/ig, '')
+    .trim()
+    // Clean up any leading or trailing commas that might be left over
+    .replace(/^,\s*/, '')
+    .replace(/,\s*,/g, ', ')
+    .replace(/,\s*$/, '');
+};
