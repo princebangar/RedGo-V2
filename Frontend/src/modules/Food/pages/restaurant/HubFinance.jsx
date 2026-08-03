@@ -6,6 +6,7 @@ import { useLocation } from "react-router-dom"
 import useRestaurantBackNavigation from "@food/hooks/useRestaurantBackNavigation"
 import BottomNavOrders from "@food/components/restaurant/BottomNavOrders"
 import { restaurantAPI } from "@food/api"
+import { DateRangeCalendar } from "@food/components/ui/date-range-calendar"
 const debugLog = (...args) => { }
 const debugWarn = (...args) => { }
 const debugError = (...args) => { }
@@ -24,6 +25,9 @@ export default function HubFinance() {
   const [selectedDateRange, setSelectedDateRange] = useState("Last 30 days")
   const [showDownloadMenu, setShowDownloadMenu] = useState(false)
   const [showDateRangePicker, setShowDateRangePicker] = useState(false)
+  const [showCalendar, setShowCalendar] = useState(false)
+  const [startDate, setStartDate] = useState(null)
+  const [endDate, setEndDate] = useState(null)
   const downloadMenuRef = useRef(null)
   const dateRangePickerRef = useRef(null)
   const [financeData, setFinanceData] = useState(null)
@@ -34,13 +38,13 @@ export default function HubFinance() {
   const [loadingRestaurant, setLoadingRestaurant] = useState(true)
   const [showWithdrawalModal, setShowWithdrawalModal] = useState(false)
   useEffect(() => {
-    if (showWithdrawalModal) {
+    if (showWithdrawalModal || showDateRangePicker || showCalendar) {
       document.body.style.overflow = 'hidden'
     } else {
       document.body.style.overflow = ''
     }
     return () => { document.body.style.overflow = '' }
-  }, [showWithdrawalModal])
+  }, [showWithdrawalModal, showDateRangePicker, showCalendar])
   const [withdrawalAmount, setWithdrawalAmount] = useState('')
   const [submittingWithdrawal, setSubmittingWithdrawal] = useState(false)
   const [withdrawalRequests, setWithdrawalRequests] = useState([])
@@ -914,16 +918,31 @@ export default function HubFinance() {
                     {/* Date Range Picker Dropdown */}
                     <AnimatePresence>
                       {showDateRangePicker && (
-                        <motion.div
-                          initial={{ opacity: 0, y: -10 }}
-                          animate={{ opacity: 1, y: 0 }}
-                          exit={{ opacity: 0, y: -10 }}
-                          className="absolute top-full left-0 right-0 mt-2 bg-white rounded-lg shadow-lg border border-gray-200 z-50"
-                        >
-                          <div className="p-4">
-                            <h3 className="text-sm font-semibold text-gray-900 mb-3">Select Date Range</h3>
-                            <div className="space-y-2">
-                              {(() => {
+                        <>
+                          <motion.div
+                            initial={{ opacity: 0 }}
+                            animate={{ opacity: 1 }}
+                            exit={{ opacity: 0 }}
+                            className="fixed inset-0 bg-black/50 z-[60]"
+                            onClick={() => setShowDateRangePicker(false)}
+                          />
+                          <motion.div
+                            initial={{ opacity: 0, scale: 0.95 }}
+                            animate={{ opacity: 1, scale: 1 }}
+                            exit={{ opacity: 0, scale: 0.95 }}
+                            className="fixed inset-0 z-[60] flex items-center justify-center p-4"
+                            onClick={() => setShowDateRangePicker(false)}
+                          >
+                            <div onClick={(e) => e.stopPropagation()} className="bg-white rounded-xl shadow-xl border border-gray-200 w-full max-w-sm max-h-[80vh] flex flex-col">
+                              <div className="p-4 border-b border-gray-100 flex items-center justify-between shrink-0">
+                                <h3 className="text-lg font-bold text-gray-900">Select Date Range</h3>
+                                <button onClick={() => setShowDateRangePicker(false)} className="p-1 hover:bg-gray-100 rounded-full transition-colors">
+                                  <X className="w-5 h-5 text-gray-500" />
+                                </button>
+                              </div>
+                              <div className="p-2 overflow-y-auto custom-scrollbar">
+                                <div className="space-y-1">
+                                  {(() => {
                                 const getDateRanges = () => {
                                   const today = new Date()
                                   today.setHours(23, 59, 59, 999)
@@ -1036,6 +1055,10 @@ export default function HubFinance() {
                                     range: formatDateRange(ranges.lastMonthStart, ranges.lastMonthEnd),
                                     startDate: ranges.lastMonthStart,
                                     endDate: ranges.lastMonthEnd
+                                  },
+                                  {
+                                    label: "Custom date range",
+                                    custom: true
                                   }
                                 ]
 
@@ -1043,24 +1066,82 @@ export default function HubFinance() {
                                   <button
                                     key={index}
                                     onClick={() => {
-                                      setSelectedDateRange(option.range)
-                                      setShowDateRangePicker(false)
-                                      // Fetch data for selected range
-                                      fetchPastCyclesData(option.startDate, option.endDate)
+                                      if (option.custom) {
+                                        setShowDateRangePicker(false)
+                                        setShowCalendar(true)
+                                      } else {
+                                        setSelectedDateRange(option.range)
+                                        setStartDate(option.startDate)
+                                        setEndDate(option.endDate)
+                                        setShowDateRangePicker(false)
+                                        fetchPastCyclesData(option.startDate, option.endDate)
+                                      }
                                     }}
                                     className="w-full text-left px-3 py-2 rounded-md hover:bg-gray-100 transition-colors text-sm"
                                   >
                                     <div className="font-medium text-gray-900">{option.label}</div>
-                                    <div className="text-xs text-gray-500">{option.range}</div>
+                                    {!option.custom && <div className="text-xs text-gray-500">{option.range}</div>}
                                   </button>
                                 ))
                               })()}
                             </div>
                           </div>
-                        </motion.div>
-                      )}
-                    </AnimatePresence>
-                  </div>
+                        </div>
+                      </motion.div>
+                    </>
+                  )}
+                </AnimatePresence>
+
+              {/* Custom Date Range Calendar */}
+              <AnimatePresence>
+                {showCalendar && (
+                  <>
+                    <motion.div
+                      initial={{ opacity: 0 }}
+                      animate={{ opacity: 1 }}
+                      exit={{ opacity: 0 }}
+                      transition={{ duration: 0.2 }}
+                      className="fixed inset-0 bg-black/50 z-[60]"
+                      onClick={() => setShowCalendar(false)}
+                    />
+                    <motion.div
+                      initial={{ opacity: 0, scale: 0.96, y: 16 }}
+                      animate={{ opacity: 1, scale: 1, y: 0 }}
+                      exit={{ opacity: 0, scale: 0.96, y: 16 }}
+                      transition={{ duration: 0.2 }}
+                      className="fixed inset-0 z-[60] flex items-center justify-center p-4"
+                      onClick={() => setShowCalendar(false)}
+                    >
+                      <div onClick={(e) => e.stopPropagation()} className="w-full max-w-sm">
+                        <DateRangeCalendar
+                          startDate={startDate}
+                          endDate={endDate}
+                          onDateRangeChange={(start, end) => {
+                            setStartDate(start)
+                            setEndDate(end)
+                            
+                            if (start && end) {
+                              const formatDateForDisplay = (date) => {
+                                const day = date.getDate()
+                                const month = date.toLocaleString('en-US', { month: 'short' })
+                                const year = date.getFullYear().toString().slice(-2)
+                                return `${day} ${month}'${year}`
+                              }
+                              
+                              setSelectedDateRange(`${formatDateForDisplay(start)} - ${formatDateForDisplay(end)}`)
+                              setShowCalendar(false)
+                              fetchPastCyclesData(start, end)
+                            }
+                          }}
+                          onClose={() => setShowCalendar(false)}
+                        />
+                      </div>
+                    </motion.div>
+                  </>
+                )}
+              </AnimatePresence>
+
+              </div>
                   <div className="relative" ref={downloadMenuRef}>
                     <button
                       onClick={() => setShowDownloadMenu(!showDownloadMenu)}
@@ -1094,6 +1175,14 @@ export default function HubFinance() {
                     </AnimatePresence>
                   </div>
                 </div>
+                
+                {/* Order count */}
+                {!loadingPastCycles && pastCyclesData && pastCyclesData.orders && (
+                  <p className="text-sm font-medium text-gray-500 mb-3 px-1">
+                    {pastCyclesData.orders.length} orders found
+                  </p>
+                )}
+
                 {loadingPastCycles ? (
                   <div className="bg-white rounded-lg p-4">
                     <p className="text-sm text-gray-600 text-center">Loading past cycles...</p>

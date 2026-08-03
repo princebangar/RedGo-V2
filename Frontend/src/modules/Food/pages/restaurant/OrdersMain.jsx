@@ -4055,6 +4055,7 @@ const OrderCard = memo(function OrderCard({
   restaurantNote = null,
   onVerifyTakeaway,
   acceptedAt = null,
+  adminStatusNote
 }) {
   const normalizedStatus = String(status || "").toLowerCase();
   const normalizedType = String(type || "").toLowerCase();
@@ -4119,6 +4120,12 @@ const OrderCard = memo(function OrderCard({
                 }`}>
                 {statusLabel}
               </span>
+
+              {adminStatusNote && (
+                <div className="mt-1 text-[8px] font-medium text-slate-500 italic truncate max-w-[150px]">
+                  {adminStatusNote}
+                </div>
+              )}
 
               {isPreparing && onCancel && (
                 <button

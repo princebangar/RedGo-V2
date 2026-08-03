@@ -37,6 +37,10 @@ export default function SafetyEmergencyReports() {
   const [totalPages, setTotalPages] = useState(1)
 
   useEffect(() => {
+    setCurrentPage(1)
+  }, [searchQuery, statusFilter, priorityFilter])
+
+  useEffect(() => {
     fetchReports()
   }, [statusFilter, priorityFilter, currentPage, searchQuery])
 

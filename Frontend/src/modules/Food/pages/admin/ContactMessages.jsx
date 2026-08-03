@@ -33,6 +33,10 @@ export default function ContactMessages() {
   const [totalPages, setTotalPages] = useState(1)
 
   useEffect(() => {
+    setCurrentPage(1)
+  }, [searchQuery, ratingFilter])
+
+  useEffect(() => {
     fetchFeedbacks()
   }, [ratingFilter, currentPage, searchQuery])
 

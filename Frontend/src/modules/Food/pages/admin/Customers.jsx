@@ -124,6 +124,10 @@ export default function Customers() {
 
   // Fetch customers from API
   useEffect(() => {
+    setCurrentPage(1)
+  }, [searchQuery])
+
+  useEffect(() => {
     let cancelled = false
     const fetchCustomers = async () => {
       try {

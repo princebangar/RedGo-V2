@@ -338,8 +338,11 @@ export default function AllOrdersPage() {
   const handleDateRangeChange = (start, end) => {
     setStartDate(start)
     setEndDate(end)
-    setSelectedDateRange({ label: "custom date range", start, end, custom: true })
-    setShowCalendar(false)
+    
+    if (start && end) {
+      setSelectedDateRange({ label: "custom date range", start, end, custom: true })
+      setShowCalendar(false)
+    }
   }
 
   const handleDateRangeSelect = (option) => {
@@ -722,23 +725,15 @@ export default function AllOrdersPage() {
             />
 
             <motion.div
-              initial={{ y: "100%" }}
-              animate={{ y: 0 }}
-              exit={{ y: "100%" }}
-              transition={{
-                type: "spring",
-                damping: 30,
-                stiffness: 300
-              }}
-              className="fixed bottom-0 left-0 right-0 bg-white rounded-t-2xl shadow-2xl z-50"
-              onClick={(e) => e.stopPropagation()}
+              initial={{ opacity: 0, scale: 0.95 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.95 }}
+              className="fixed inset-0 z-50 flex items-center justify-center p-4"
+              onClick={() => setShowDateRangePopup(false)}
             >
-              <div className="flex justify-center pt-2 pb-1">
-                <div className="w-10 h-1 bg-gray-300 rounded-full"></div>
-              </div>
-
-              <div className="flex items-center justify-between px-4 py-3 border-b border-gray-200">
-                <h2 className="text-lg font-bold text-gray-900">Select date range</h2>
+              <div onClick={(e) => e.stopPropagation()} className="bg-white rounded-xl shadow-xl border border-gray-200 w-full max-w-sm max-h-[80vh] flex flex-col">
+                <div className="p-4 border-b border-gray-100 flex items-center justify-between shrink-0">
+                  <h2 className="text-lg font-bold text-gray-900">Select date range</h2>
                 <button
                   onClick={() => setShowDateRangePopup(false)}
                   className="p-1.5 hover:bg-gray-100 rounded-lg transition-colors"
@@ -748,39 +743,42 @@ export default function AllOrdersPage() {
                 </button>
               </div>
 
-              <div className="px-4 py-3 pb-6 space-y-2">
-                {dateRangeOptions.map((option) => {
-                  const isSelected =
-                    selectedDateRange?.label?.toLowerCase() === option.label.toLowerCase()
+              <div className="p-2 overflow-y-auto custom-scrollbar">
+                <div className="space-y-1">
+                  {dateRangeOptions.map((option) => {
+                    const isSelected =
+                      selectedDateRange?.label?.toLowerCase() === option.label.toLowerCase()
 
-                  return (
-                    <button
-                      key={option.label}
-                      type="button"
-                      onClick={() => handleDateRangeSelect(option)}
-                      className={`w-full flex items-center justify-between rounded-xl border px-4 py-3 text-left transition-colors ${
-                        isSelected
-                          ? "border-blue-500 bg-blue-50"
-                          : "border-gray-200 bg-white hover:bg-gray-50"
-                      }`}
-                    >
-                      <div>
-                        <p className="text-sm font-semibold text-gray-900 capitalize">{option.label}</p>
-                        {!option.custom && (
-                          <p className="text-xs text-gray-500 mt-0.5">
-                            {(() => {
-                              const dates = option.getDates()
-                              const start = dates.start.toLocaleDateString("en-US", { day: "numeric", month: "short" })
-                              const end = dates.end.toLocaleDateString("en-US", { day: "numeric", month: "short" })
-                              return `${start} - ${end}`
-                            })()}
-                          </p>
-                        )}
-                      </div>
-                      {isSelected && <span className="text-xs font-semibold text-[#B80B3D]">Selected</span>}
-                    </button>
-                  )
-                })}
+                    return (
+                      <button
+                        key={option.label}
+                        type="button"
+                        onClick={() => handleDateRangeSelect(option)}
+                        className={`w-full flex items-center justify-between rounded-xl border px-4 py-3 text-left transition-colors ${
+                          isSelected
+                            ? "border-blue-500 bg-blue-50"
+                            : "border-gray-200 bg-white hover:bg-gray-50"
+                        }`}
+                      >
+                        <div>
+                          <p className="text-sm font-semibold text-gray-900 capitalize">{option.label}</p>
+                          {!option.custom && (
+                            <p className="text-xs text-gray-500 mt-0.5">
+                              {(() => {
+                                const dates = option.getDates()
+                                const start = dates.start.toLocaleDateString("en-US", { day: "numeric", month: "short" })
+                                const end = dates.end.toLocaleDateString("en-US", { day: "numeric", month: "short" })
+                                return `${start} - ${end}`
+                              })()}
+                            </p>
+                          )}
+                        </div>
+                        {isSelected && <span className="text-xs font-semibold text-[#B80B3D]">Selected</span>}
+                      </button>
+                    )
+                  })}
+                </div>
+              </div>
               </div>
             </motion.div>
           </>

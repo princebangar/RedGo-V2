@@ -176,6 +176,9 @@ export function normalizeOrderForClient(orderDoc) {
   const order = orderDoc?.toObject ? orderDoc.toObject() : orderDoc || {};
   const mongoId = (order._id || orderDoc?._id || "").toString();
   const displayId = order.order_id || mongoId;
+  const statusHistory = Array.isArray(order.statusHistory) ? order.statusHistory : [];
+  const lastHistory = statusHistory.length > 0 ? statusHistory[statusHistory.length - 1] : null;
+
   return {
     ...order,
     orderMongoId: mongoId,
@@ -188,7 +191,10 @@ export function normalizeOrderForClient(orderDoc) {
     rating: order?.ratings?.restaurant?.rating ?? order?.rating ?? null,
     restaurantNote: order?.restaurantNote || "",
     cancellationReason: (order?.orderStatus?.includes('cancel') || order?.status?.includes('cancel')) 
-      ? (order.statusHistory?.findLast(h => h.to?.includes('cancel'))?.note || "")
+      ? (statusHistory.findLast(h => h.to?.includes('cancel'))?.note || "")
+      : null,
+    adminStatusNote: (lastHistory && lastHistory.byRole === 'ADMIN' && lastHistory.note?.includes('Admin override'))
+      ? `${lastHistory.note} from ${lastHistory.from} to ${lastHistory.to}`
       : null,
     deliveryState: {
       ...(order?.deliveryState || {}),
