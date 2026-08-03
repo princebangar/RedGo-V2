@@ -85,11 +85,13 @@ export async function getRestaurantFinance(restaurantId, query = {}) {
         status: { $in: ['captured', 'authorized'] },
         createdAt: { $gte: nowWindow.start, $lte: nowWindow.end }
     })
-        .populate('orderId', 'orderId createdAt items pricing deliveryState orderStatus')
+        .populate({ path: 'orderId', select: 'order_id createdAt items pricing deliveryState orderStatus' })
         .sort({ createdAt: -1 })
         .lean();
 
-    const currentCycleOrders = currentTransactions.map((tx) => {
+    const currentCycleOrders = currentTransactions
+        .filter((tx) => tx.orderId && ['delivered', 'completed'].includes(tx.orderId.orderStatus))
+        .map((tx) => {
         const order = tx.orderId || {};
         const items = Array.isArray(order.items) ? order.items : [];
         const foodNames = items.map((it) => it?.name).filter(Boolean).join(', ');
@@ -98,7 +100,7 @@ export async function getRestaurantFinance(restaurantId, query = {}) {
             Number(order?.pricing?.total ?? 0) - Number(order?.pricing?.tax ?? 0) || 0
         );
         return {
-            orderId: order?.orderId || tx.orderReadableId,
+            orderId: order?.order_id || tx.orderReadableId,
             createdAt: tx.createdAt,
             items,
             foodNames,
@@ -122,12 +124,14 @@ export async function getRestaurantFinance(restaurantId, query = {}) {
         restaurantId: rid,
         status: { $in: ['captured', 'authorized'] },
         'settlement.isRestaurantSettled': { $ne: true }
-    }).select('amounts.restaurantShare').lean();
+    }).populate({ path: 'orderId', select: 'orderStatus' }).lean();
 
-    const globalEstimatedPayout = allUnsettledTransactions.reduce(
-        (sum, tx) => sum + (Number(tx.amounts?.restaurantShare) || 0),
-        0
-    );
+    const globalEstimatedPayout = allUnsettledTransactions
+        .filter((tx) => tx.orderId && ['delivered', 'completed'].includes(tx.orderId.orderStatus))
+        .reduce(
+            (sum, tx) => sum + (Number(tx.amounts?.restaurantShare) || 0),
+            0
+        );
 
     // Deduct all effective withdrawals from available balance.
     // Both pending and approved reduce withdrawable amount; rejected should not.
@@ -178,11 +182,13 @@ export async function getRestaurantFinance(restaurantId, query = {}) {
             status: { $in: ['captured', 'authorized'] },
             createdAt: { $gte: startDate, $lte: endDate }
         })
-            .populate('orderId', 'orderId createdAt items pricing deliveryState orderStatus')
+            .populate({ path: 'orderId', select: 'order_id createdAt items pricing deliveryState orderStatus payment' })
             .sort({ createdAt: -1 })
             .lean();
 
-        const pastCycleOrders = pastTransactions.map((tx) => {
+        const pastCycleOrders = pastTransactions
+            .filter((tx) => tx.orderId && ['delivered', 'completed'].includes(tx.orderId.orderStatus))
+            .map((tx) => {
             const order = tx.orderId || {};
             const items = Array.isArray(order.items) ? order.items : [];
             const foodNames = items.map((it) => it?.name).filter(Boolean).join(', ');
@@ -192,7 +198,7 @@ export async function getRestaurantFinance(restaurantId, query = {}) {
             );
 
             return {
-                orderId: order?.orderId || tx.orderReadableId,
+                orderId: order?.order_id || tx.orderReadableId,
                 createdAt: tx.createdAt,
                 items,
                 foodNames,
