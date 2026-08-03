@@ -13,7 +13,7 @@ import { useOrders } from "@food/context/OrdersContext"
 import { useLocation as useUserLocation } from "@food/hooks/useLocation"
 import { useZone } from "@food/hooks/useZone"
 import { useLocationSelector } from "@food/components/user/UserLayout"
-import { orderAPI, restaurantAPI, adminAPI, userAPI, API_ENDPOINTS } from "@food/api"
+import { authAPI, orderAPI, restaurantAPI, adminAPI, userAPI, API_ENDPOINTS } from "@food/api"
 import { API_BASE_URL } from "@food/api/config"
 import { initRazorpayPayment, preloadRazorpayScript } from "@food/utils/razorpay"
 import { toast } from "sonner"
@@ -162,22 +162,7 @@ export default function Cart() {
       setManualCouponCode("")
     }
   }, [cart.length])
-  const [selectedPaymentMethod, setSelectedPaymentMethod] = useState(() => {
-    try {
-      if (typeof window === "undefined") return "cash"
-      return localStorage.getItem("selectedPaymentMethod") || "cash"
-    } catch {
-      return "cash"
-    }
-  })
-
-  useEffect(() => {
-    try {
-      if (typeof window !== "undefined") {
-        localStorage.setItem("selectedPaymentMethod", selectedPaymentMethod)
-      }
-    } catch {}
-  }, [selectedPaymentMethod])
+  const [selectedPaymentMethod, setSelectedPaymentMethod] = useState("cash")
   const [showPaymentSheet, setShowPaymentSheet] = useState(false)
   const [walletBalance, setWalletBalance] = useState(0)
   const [isLoadingWallet, setIsLoadingWallet] = useState(false)
@@ -286,15 +271,31 @@ export default function Cart() {
   // Auto-switch payment method if current one becomes disabled
   useEffect(() => {
     if (!isPaymentMethodEnabled(selectedPaymentMethod)) {
-      if (isPaymentMethodEnabled("razorpay")) {
+      if (isPaymentMethodEnabled("cash")) {
+        setSelectedPaymentMethod("cash")
+      } else if (isPaymentMethodEnabled("razorpay")) {
         setSelectedPaymentMethod("razorpay")
       } else if (isPaymentMethodEnabled("wallet")) {
         setSelectedPaymentMethod("wallet")
-      } else if (isPaymentMethodEnabled("cash")) {
-        setSelectedPaymentMethod("cash")
       }
     }
   }, [orderType, customizationSettings, selectedPaymentMethod, userProfile])
+
+  // Fetch latest user profile to ensure COD block status is up to date when entering Cart
+  useEffect(() => {
+    const checkLatestProfile = async () => {
+      try {
+        const res = await authAPI.getCurrentUser();
+        const user = res?.data?.data?.user || res?.data?.user || res?.data;
+        if (user && userProfile && user.isCodBlocked !== userProfile.isCodBlocked) {
+           window.dispatchEvent(new Event("userAuthChanged"));
+        }
+      } catch (e) {
+        console.error("Error checking latest profile", e);
+      }
+    };
+    if (userProfile) checkLatestProfile();
+  }, []);
 
   useEffect(() => {
     orderSuccessAudioRef.current = null;

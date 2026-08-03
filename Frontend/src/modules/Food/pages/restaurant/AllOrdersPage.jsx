@@ -22,47 +22,37 @@ const debugError = (...args) => {}
 
 const formatMoney = (value) => `₹${Number(value || 0).toFixed(2)}`
 
-// Initialize with current week if needed
-const getCurrentWeek = () => {
+// Date Range Helpers
+const getToday = () => {
   const today = new Date()
-  const startOfWeek = new Date(today)
-  startOfWeek.setDate(today.getDate() - today.getDay() + 1) // Monday
-  const endOfWeek = new Date(startOfWeek)
-  endOfWeek.setDate(startOfWeek.getDate() + 6) // Sunday
-  return { start: startOfWeek, end: endOfWeek }
+  return { start: today, end: today }
 }
 
-const getLastWeek = () => {
+const getLast7Days = () => {
   const today = new Date()
-  const startOfLastWeek = new Date(today)
-  startOfLastWeek.setDate(today.getDate() - today.getDay() - 6) // Monday of last week
-  const endOfLastWeek = new Date(startOfLastWeek)
-  endOfLastWeek.setDate(startOfLastWeek.getDate() + 6) // Sunday of last week
-  return { start: startOfLastWeek, end: endOfLastWeek }
-}
-
-const getLast2Days = () => {
-  const today = new Date()
-  const twoDaysAgo = new Date(today)
-  twoDaysAgo.setDate(today.getDate() - 2)
-  return { start: twoDaysAgo, end: today }
+  const start = new Date(today)
+  start.setDate(today.getDate() - 6) // includes today (7 days)
+  return { start, end: today }
 }
 
 const getLast30Days = () => {
   const today = new Date()
-  const thirtyDaysAgo = new Date(today)
-  thirtyDaysAgo.setDate(today.getDate() - 30)
-  return { start: thirtyDaysAgo, end: today }
+  const start = new Date(today)
+  start.setDate(today.getDate() - 29)
+  return { start, end: today }
 }
 
-const currentWeekDates = getCurrentWeek()
-const lastWeekDates = getLastWeek()
+const getThisMonth = () => {
+  const today = new Date()
+  const start = new Date(today.getFullYear(), today.getMonth(), 1)
+  return { start, end: today }
+}
 
 const dateRangeOptions = [
-  { label: "last 2 days", getDates: getLast2Days },
-  { label: "this week", getDates: getCurrentWeek },
-  { label: "last week", getDates: getLastWeek },
+  { label: "today", getDates: getToday },
+  { label: "last 7 days", getDates: getLast7Days },
   { label: "last 30 days", getDates: getLast30Days },
+  { label: "this month", getDates: getThisMonth },
   { label: "custom date range", custom: true }
 ]
 
@@ -126,9 +116,9 @@ export default function AllOrdersPage() {
   const [searchQuery, setSearchQuery] = useState("")
   const [showCalendar, setShowCalendar] = useState(false)
   const [showDateRangePopup, setShowDateRangePopup] = useState(false)
-  const [selectedDateRange, setSelectedDateRange] = useState(dateRangeOptions[1]) // Default to "this week"
-  const [startDate, setStartDate] = useState(currentWeekDates.start)
-  const [endDate, setEndDate] = useState(currentWeekDates.end)
+  const [selectedDateRange, setSelectedDateRange] = useState(dateRangeOptions[1]) // Default to "last 7 days"
+  const [startDate, setStartDate] = useState(() => dateRangeOptions[1].getDates().start)
+  const [endDate, setEndDate] = useState(() => dateRangeOptions[1].getDates().end)
   const calendarRef = useRef(null)
   
   // Filter states
