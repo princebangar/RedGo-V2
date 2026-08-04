@@ -1750,7 +1750,15 @@ export async function getCustomerById(id) {
                     $sum: { $cond: [{ $eq: ['$orderStatus', 'delivered'] }, 1, 0] }
                 },
                 totalCancelledOrders: {
-                    $sum: { $cond: [{ $eq: ['$orderStatus', 'cancelled'] }, 1, 0] }
+                    $sum: {
+                        $cond: [{
+                            $in: ['$orderStatus', [
+                                'cancelled_by_user',
+                                'cancelled_by_restaurant',
+                                'cancelled_by_admin'
+                            ]]
+                        }, 1, 0]
+                    }
                 }
             }
         }

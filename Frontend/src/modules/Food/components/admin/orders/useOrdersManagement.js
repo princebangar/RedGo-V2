@@ -361,11 +361,20 @@ export function useOrdersManagement(orders, statusKey, title, options = {}) {
         order.dispatch?.deliveryPartnerId?.phone,
       )
       const orderStatus = formatDisplayText(order.orderStatus || order.status)
-      const paymentStatus = formatDisplayText(
+      const paymentStatusRaw = order.payment?.status
+      let resolvedPaymentStatus = "Pending"
+      if (paymentStatusRaw === "paid" || paymentStatusRaw === "captured" || paymentStatusRaw === "settled") resolvedPaymentStatus = "Paid"
+      else if (paymentStatusRaw === "cod_pending") resolvedPaymentStatus = "COD Pending"
+      else if (paymentStatusRaw === "refunded") resolvedPaymentStatus = "Refunded"
+      else if (paymentStatusRaw === "failed") resolvedPaymentStatus = "Failed"
+      else if (order.paymentStatus === "Collected" || order.paymentStatus === "Paid") resolvedPaymentStatus = "Paid"
+      else if (order.paymentStatus === "Not Collected" || order.paymentStatus === "COD Pending") resolvedPaymentStatus = "COD Pending"
+      else resolvedPaymentStatus = formatDisplayText(
         order.paymentStatus
           || order.paymentCollectionStatus
-          || (paymentType === "Cash on Delivery" ? "COD Pending" : null),
+          || (paymentType === "Cash on Delivery" ? "COD Pending" : null)
       )
+      const paymentStatus = resolvedPaymentStatus
       const customerName = formatDisplayText(order.customerName)
       const customerPhone = formatDisplayText(order.customerPhone)
       const restaurantName = formatDisplayText(order.restaurant)

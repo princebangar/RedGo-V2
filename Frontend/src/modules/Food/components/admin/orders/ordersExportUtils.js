@@ -37,7 +37,11 @@ export const exportToCSV = (orders, filename = "orders") => {
       order.customerPhone,
       order.restaurant,
       order.total || formatMoney(order.totalAmount || 0),
-      order.paymentStatus || "",
+      (order.payment?.status === "paid" || order.payment?.status === "captured" || order.payment?.status === "settled" ? "Paid" :
+       order.payment?.status === "cod_pending" ? "COD Pending" :
+       order.payment?.status === "refunded" ? "Refunded" :
+       order.payment?.status === "failed" ? "Failed" :
+       order.paymentStatus || ""),
       order.orderStatus || "",
       order.deliveryType || ""
     ])
@@ -92,7 +96,12 @@ export const exportToExcel = (orders, filename = "orders") => {
     rows = orders.map((order, index) => {
       const originalOrder = order.originalOrder || {}
       const totalAmount = originalOrder.pricing?.total || originalOrder.totalAmount || originalOrder.total || 0
-      const paymentStatus = originalOrder.payment?.status || originalOrder.paymentStatus || 'N/A'
+      const s = String(originalOrder.payment?.status || "").toLowerCase()
+      let paymentStatus = originalOrder.paymentStatus || 'N/A'
+      if (s === "paid" || s === "captured" || s === "settled") paymentStatus = "Paid"
+      else if (s === "cod_pending") paymentStatus = "COD Pending"
+      else if (s === "refunded") paymentStatus = "Refunded"
+      else if (s === "failed") paymentStatus = "Failed"
       
       return [
         order.sl || index + 1,
@@ -119,7 +128,11 @@ export const exportToExcel = (orders, filename = "orders") => {
       order.customerPhone || 'N/A',
       order.restaurant || 'N/A',
       order.total || formatMoney(order.totalAmount || 0),
-      order.paymentStatus || 'N/A',
+      (order.payment?.status === "paid" || order.payment?.status === "captured" || order.payment?.status === "settled" ? "Paid" :
+       order.payment?.status === "cod_pending" ? "COD Pending" :
+       order.payment?.status === "refunded" ? "Refunded" :
+       order.payment?.status === "failed" ? "Failed" :
+       order.paymentStatus || 'N/A'),
       order.orderStatus || 'N/A',
       order.deliveryType || 'N/A'
     ])
@@ -259,7 +272,12 @@ export const exportToPDF = async (orders, filename = "orders") => {
       tableData = orders.map((order, index) => {
         const originalOrder = order.originalOrder || {}
         const totalAmount = originalOrder.pricing?.total || originalOrder.totalAmount || originalOrder.total || 0
-        const paymentStatus = originalOrder.payment?.status || originalOrder.paymentStatus || 'N/A'
+        const s = String(originalOrder.payment?.status || "").toLowerCase()
+        let paymentStatus = originalOrder.paymentStatus || 'N/A'
+        if (s === "paid" || s === "captured" || s === "settled") paymentStatus = "Paid"
+        else if (s === "cod_pending") paymentStatus = "COD Pending"
+        else if (s === "refunded") paymentStatus = "Refunded"
+        else if (s === "failed") paymentStatus = "Failed"
         
         return [
           order.sl || index + 1,
@@ -292,7 +310,11 @@ export const exportToPDF = async (orders, filename = "orders") => {
           order.customerPhone || 'N/A',
           order.restaurant || 'N/A',
           amount ? formatMoney(amount) : 'N/A',
-          order.paymentStatus || 'N/A',
+          (order.payment?.status === "paid" || order.payment?.status === "captured" || order.payment?.status === "settled" ? "Paid" :
+           order.payment?.status === "cod_pending" ? "COD Pending" :
+           order.payment?.status === "refunded" ? "Refunded" :
+           order.payment?.status === "failed" ? "Failed" :
+           order.paymentStatus || 'N/A'),
           order.orderStatus || 'N/A',
           order.deliveryType || 'N/A'
         ]

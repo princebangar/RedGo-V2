@@ -1268,6 +1268,11 @@ export async function completeDelivery(orderId, deliveryPartnerId, body = {}) {
     note: `Rider finalized payment as ${finalPayMethod}. Order is now delivered.`,
   });
 
+  // Update memory object so emitOrderUpdate and API response have the latest state
+  if (!order.payment) order.payment = {};
+  order.payment.status = 'paid';
+  order.payment.method = finalPayMethod;
+
   emitOrderUpdate(order, deliveryPartnerId);
   
   enqueueOrderEvent('delivery_completed', {

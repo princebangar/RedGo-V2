@@ -160,7 +160,7 @@ export default function MasterLandingPage() {
         </video>
 
         {/* Dark overlay */}
-        <div className="absolute inset-0 bg-gradient-to-b from-[#0B0B0B]/80 via-[#0B0B0B]/60 to-[#0B0B0B] z-10" />
+        <div className="absolute inset-0 bg-gradient-to-b from-[#0B0B0B]/80 via-[#0B0B0B]/60 to-[#0B0B0B] z-10 pointer-events-none" />
 
         <div className="relative z-20 max-w-7xl mx-auto px-6 text-center flex flex-col items-center mt-20">
           {/* Logo */}
@@ -200,22 +200,34 @@ export default function MasterLandingPage() {
             initial={{ opacity: 0, y: 30 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.8, delay: 0.6, ease: "easeOut" }}
-            className="flex flex-col sm:flex-row items-center gap-4 justify-center"
+            className="flex flex-col sm:flex-row items-center gap-4 justify-center relative z-30"
           >
-            <button className="flex items-center gap-3 bg-black border border-gray-600 text-white px-5 py-2 rounded-xl hover:-translate-y-2 hover:scale-[1.03] hover:border-gray-400 hover:shadow-2xl transition-all duration-200 w-48 justify-center">
-              <img src="/playstore_img-removebg-preview.webp" alt="Google Play" className="w-6 h-6 object-contain" />
-              <div className="text-left leading-tight">
+            <a
+              href="https://play.google.com/store/apps/details?id=com.redgo.user"
+              target="_blank"
+              rel="noopener noreferrer"
+              style={{ cursor: 'pointer' }}
+              className="cursor-pointer flex items-center gap-3 bg-black border border-gray-600 text-white px-5 py-2 rounded-xl hover:-translate-y-2 hover:scale-[1.03] hover:border-gray-400 hover:shadow-2xl transition-all duration-200 w-48 justify-center relative z-30"
+            >
+              <img src="/playstore_img-removebg-preview.webp" alt="Google Play" className="w-6 h-6 object-contain pointer-events-none" />
+              <div className="text-left leading-tight pointer-events-none">
                 <div className="text-[10px] uppercase tracking-wide text-gray-300">GET IT ON</div>
                 <div className="text-sm font-semibold">Google Play</div>
               </div>
-            </button>
-            <button className="flex items-center gap-3 bg-black border border-gray-600 text-white px-5 py-2 rounded-xl hover:-translate-y-2 hover:scale-[1.03] hover:border-gray-400 hover:shadow-2xl transition-all duration-200 w-48 justify-center">
-              <svg viewBox="0 0 384 512" className="w-6 h-6 fill-current text-white"><path d="M318.7 268.7c-.2-36.7 16.4-64.4 50-84.8-18.8-26.9-47.2-41.7-84.7-44.6-35.5-2.8-74.3 20.7-88.5 20.7-15 0-49.4-19.7-76.4-19.7C63.3 141.2 4 184.8 4 273.5q0 39.3 14.4 81.2c12.8 36.7 59 126.7 107.2 125.2 25.2-.6 43-17.9 75.8-17.9 31.8 0 48.3 17.9 76.4 17.9 48.6-.7 90.4-82.5 102.6-119.3-65.2-30.7-61.7-90-61.7-91.9zm-56.6-164.2c27.3-32.4 24.8-61.9 24-72.5-24.1 1.4-52 16.4-67.9 34.9-17.5 19.8-27.8 44.3-25.6 71.9 26.1 2 49.9-11.4 69.5-34.3z" /></svg>
-              <div className="text-left leading-tight">
+            </a>
+            <a
+              href="https://apps.apple.com/in/app/redgo-food-delivery-takeaway/id6746978568"
+              target="_blank"
+              rel="noopener noreferrer"
+              style={{ cursor: 'pointer' }}
+              className="cursor-pointer flex items-center gap-3 bg-black border border-gray-600 text-white px-5 py-2 rounded-xl hover:-translate-y-2 hover:scale-[1.03] hover:border-gray-400 hover:shadow-2xl transition-all duration-200 w-48 justify-center relative z-30"
+            >
+              <svg viewBox="0 0 384 512" className="w-6 h-6 fill-current text-white pointer-events-none"><path d="M318.7 268.7c-.2-36.7 16.4-64.4 50-84.8-18.8-26.9-47.2-41.7-84.7-44.6-35.5-2.8-74.3 20.7-88.5 20.7-15 0-49.4-19.7-76.4-19.7C63.3 141.2 4 184.8 4 273.5q0 39.3 14.4 81.2c12.8 36.7 59 126.7 107.2 125.2 25.2-.6 43-17.9 75.8-17.9 31.8 0 48.3 17.9 76.4 17.9 48.6-.7 90.4-82.5 102.6-119.3-65.2-30.7-61.7-90-61.7-91.9zm-56.6-164.2c27.3-32.4 24.8-61.9 24-72.5-24.1 1.4-52 16.4-67.9 34.9-17.5 19.8-27.8 44.3-25.6 71.9 26.1 2 49.9-11.4 69.5-34.3z" /></svg>
+              <div className="text-left leading-tight pointer-events-none">
                 <div className="text-[10px] uppercase tracking-wide text-gray-300">Download on the</div>
                 <div className="text-sm font-semibold">App Store</div>
               </div>
-            </button>
+            </a>
           </motion.div>
 
         </div>
@@ -563,7 +575,7 @@ export default function MasterLandingPage() {
       {/* 8. Download App */}
       <section ref={mobileSectionRef} className="py-24 px-6 bg-gradient-to-b from-[#111] to-[#0B0B0B]">
         <div className="max-w-6xl mx-auto bg-gradient-to-br from-[#1A1A1A] to-[#0A0A0A] rounded-[32px] md:rounded-[48px] border border-white/10 p-8 md:p-20 overflow-hidden relative shadow-2xl">
-          <div className="absolute inset-0 bg-[#D32F2F]/5 blur-3xl" />
+          <div className="absolute inset-0 bg-[#D32F2F]/5 blur-3xl pointer-events-none" />
 
           <div className="relative z-10 flex flex-col md:flex-row items-center justify-between gap-12">
             <div className="w-full md:w-1/2 text-center md:text-left">
@@ -574,27 +586,39 @@ export default function MasterLandingPage() {
                 Download our app for the fastest booking experience, exclusive offers, and live order tracking.
               </p>
 
-              <div className="flex flex-col sm:flex-row items-center gap-4 justify-center md:justify-start">
-                <button className="flex items-center gap-3 bg-transparent border border-white/20 text-white px-6 py-3 rounded-2xl hover:-translate-y-2 hover:scale-[1.03] hover:border-gray-400 hover:shadow-2xl transition-all duration-200 w-full sm:w-[230px] justify-center md:justify-start">
-                  <div className="w-8 h-8 flex items-center justify-center shrink-0">
+              <div className="flex flex-col sm:flex-row items-center gap-4 justify-center md:justify-start relative z-30">
+                <a
+                  href="https://play.google.com/store/apps/details?id=com.redgo.user"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  style={{ cursor: 'pointer' }}
+                  className="cursor-pointer flex items-center gap-3 bg-transparent border border-white/20 text-white px-6 py-3 rounded-2xl hover:-translate-y-2 hover:scale-[1.03] hover:border-gray-400 hover:shadow-2xl transition-all duration-200 w-full sm:w-[230px] justify-center md:justify-start relative z-30"
+                >
+                  <div className="w-8 h-8 flex items-center justify-center shrink-0 pointer-events-none">
                     <img src="/playstore_img-removebg-preview.webp" alt="Google Play" className="w-7 h-7 object-contain scale-110" />
                   </div>
-                  <div className="text-left flex-1">
+                  <div className="text-left flex-1 pointer-events-none">
                     <div className="text-[10px] font-bold uppercase tracking-wide text-gray-400">Get it on</div>
                     <div className="text-lg font-bold leading-none text-white tracking-tight">Google Play</div>
                   </div>
-                </button>
-                <button className="flex items-center gap-3 bg-transparent border border-white/20 text-white px-6 py-3 rounded-2xl hover:-translate-y-2 hover:scale-[1.03] hover:border-gray-400 hover:shadow-2xl transition-all duration-200 w-full sm:w-[230px] justify-center md:justify-start">
-                  <div className="flex items-center justify-center text-white w-8 h-8 shrink-0">
+                </a>
+                <a
+                  href="https://apps.apple.com/in/app/redgo-food-delivery-takeaway/id6746978568"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  style={{ cursor: 'pointer' }}
+                  className="cursor-pointer flex items-center gap-3 bg-transparent border border-white/20 text-white px-6 py-3 rounded-2xl hover:-translate-y-2 hover:scale-[1.03] hover:border-gray-400 hover:shadow-2xl transition-all duration-200 w-full sm:w-[230px] justify-center md:justify-start relative z-30"
+                >
+                  <div className="flex items-center justify-center text-white w-8 h-8 shrink-0 pointer-events-none">
                     <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 384 512" fill="currentColor" className="w-6 h-6 ml-1">
                       <path d="M318.7 268.7c-.2-36.7 16.4-64.4 50-84.8-18.8-26.9-47.2-41.7-84.7-44.6-35.5-2.8-74.3 20.7-88.5 20.7-15 0-49.4-19.7-76.4-19.7C63.3 141.2 4 184.8 4 273.5q0 39.3 14.4 81.2c12.8 36.7 59 126.7 107.2 125.2 25.2-.6 43-17.9 75.8-17.9 31.8 0 48.3 17.9 76.4 17.9 48.6-.7 90.4-82.5 102.6-119.3-65.2-30.7-61.7-90-61.7-91.9zm-56.6-164.2c27.3-32.4 24.8-61.9 24-72.5-24.1 1.4-52 16.4-67.9 34.9-17.5 19.8-27.8 44.3-25.6 71.9 26.1 2 49.9-11.4 69.5-34.3z" />
                     </svg>
                   </div>
-                  <div className="text-left flex-1">
+                  <div className="text-left flex-1 pointer-events-none">
                     <div className="text-[10px] font-bold uppercase tracking-wide text-gray-400">Download on the</div>
                     <div className="text-lg font-bold leading-none text-white tracking-tight">App Store</div>
                   </div>
-                </button>
+                </a>
               </div>
             </div>
 
@@ -668,12 +692,26 @@ export default function MasterLandingPage() {
               <p className="text-gray-400 text-sm mb-6 leading-relaxed">
                 India's smartest dining and takeaway platform. Skip the lines, discover new tastes, and dine better.
               </p>
-              <div className="flex gap-4">
-                <a href="#" className="w-10 h-10 rounded-full bg-white/5 flex items-center justify-center text-gray-400 hover:bg-[#D32F2F] hover:text-white transition-all group">
-                  <img src="/playstore_img-removebg-preview.webp" alt="Google Play" className="w-5 h-5 object-contain opacity-70 group-hover:opacity-100 transition-all" />
+              <div className="flex gap-4 relative z-30">
+                <a
+                  href="https://play.google.com/store/apps/details?id=com.redgo.user"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  style={{ cursor: 'pointer' }}
+                  className="cursor-pointer w-10 h-10 rounded-full bg-white/5 flex items-center justify-center text-gray-400 hover:bg-[#D32F2F] hover:text-white transition-all group relative z-30"
+                  title="Google Play Store"
+                >
+                  <img src="/playstore_img-removebg-preview.webp" alt="Google Play" className="w-5 h-5 object-contain opacity-70 group-hover:opacity-100 transition-all pointer-events-none" />
                 </a>
-                <a href="#" className="w-10 h-10 rounded-full bg-white/5 flex items-center justify-center text-gray-400 hover:bg-[#D32F2F] hover:text-white transition-all">
-                  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 384 512" fill="currentColor" className="w-5 h-5 pb-[1px]">
+                <a
+                  href="https://apps.apple.com/in/app/redgo-food-delivery-takeaway/id6746978568"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  style={{ cursor: 'pointer' }}
+                  className="cursor-pointer w-10 h-10 rounded-full bg-white/5 flex items-center justify-center text-gray-400 hover:bg-[#D32F2F] hover:text-white transition-all relative z-30"
+                  title="Apple App Store"
+                >
+                  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 384 512" fill="currentColor" className="w-5 h-5 pb-[1px] pointer-events-none">
                     <path d="M318.7 268.7c-.2-36.7 16.4-64.4 50-84.8-18.8-26.9-47.2-41.7-84.7-44.6-35.5-2.8-74.3 20.7-88.5 20.7-15 0-49.4-19.7-76.4-19.7C63.3 141.2 4 184.8 4 273.5q0 39.3 14.4 81.2c12.8 36.7 59 126.7 107.2 125.2 25.2-.6 43-17.9 75.8-17.9 31.8 0 48.3 17.9 76.4 17.9 48.6-.7 90.4-82.5 102.6-119.3-65.2-30.7-61.7-90-61.7-91.9zm-56.6-164.2c27.3-32.4 24.8-61.9 24-72.5-24.1 1.4-52 16.4-67.9 34.9-17.5 19.8-27.8 44.3-25.6 71.9 26.1 2 49.9-11.4 69.5-34.3z" />
                   </svg>
                 </a>
