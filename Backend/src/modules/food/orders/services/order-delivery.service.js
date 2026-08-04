@@ -1,5 +1,6 @@
 import mongoose from 'mongoose';
 import { FoodOrder } from '../models/order.model.js';
+import { FoodUser } from '../../../../core/users/user.model.js';
 import { FoodRestaurant } from '../../restaurant/models/restaurant.model.js';
 import { FoodTransaction } from '../models/foodTransaction.model.js';
 import { FoodDeliveryPartner } from '../../delivery/models/deliveryPartner.model.js';
@@ -1222,10 +1223,14 @@ export async function completeDelivery(orderId, deliveryPartnerId, body = {}) {
 
   // Reset COD Cancellation Count on any successful delivery
   if (order.userId) {
-    const user = await FoodUser.findById(order.userId);
-    if (user) {
-      user.codCancellationCount = 0;
-      await user.save();
+    try {
+      const user = await FoodUser.findById(order.userId);
+      if (user) {
+        user.codCancellationCount = 0;
+        await user.save();
+      }
+    } catch (err) {
+      logger.error('Failed to reset COD cancellation count:', err.message);
     }
   }
 
@@ -1274,6 +1279,7 @@ export async function completeDelivery(orderId, deliveryPartnerId, body = {}) {
       note: `Rider finalized payment as ${finalPayMethod}. Order is now delivered.`,
     });
   } catch (txErr) {
+    import('fs').then(fs => fs.appendFileSync('c:\\Users\\princeb\\.gemini\\antigravity-ide\\brain\\6e556dc8-03b6-43c7-8fad-7c0a061a566e\\scratch\\txErr.log', txErr.stack + '\\n'));
     logger.error(`Failed to update transaction status for order ${order._id}:`, txErr);
   }
 
