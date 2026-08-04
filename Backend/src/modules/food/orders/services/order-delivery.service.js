@@ -1189,6 +1189,11 @@ export async function completeDelivery(orderId, deliveryPartnerId, body = {}) {
     );
   }
 
+  // Update memory object before saving order so that DB is correctly updated
+  if (!order.payment) order.payment = {};
+  order.payment.status = 'paid';
+  order.payment.method = finalPayMethod;
+
   // 5. Update Order State
   order.orderStatus = 'delivered';
   order.deliveryState = {
@@ -1253,25 +1258,24 @@ export async function completeDelivery(orderId, deliveryPartnerId, body = {}) {
     logger.warn('Failed to create delivered notifications:', notifErr?.message);
   }
 
-  // 5. Update Financial Ledger (FoodTransaction)
+  // 6. Update Financial Ledger (FoodTransaction)
   // This triggers the sync back to FoodOrder.payment.method which updates the Rider's Cash Limit (if cash) or Pocket (always).
   const ledgerKind =
     finalPayMethod === 'cash' 
       ? 'cod_marked_paid_on_delivery' 
       : (finalPayMethod === 'razorpay_qr' ? 'cod_collect_qr_settled' : 'payment_snapshot_sync');
 
-  await foodTransactionService.updateTransactionStatus(order._id, ledgerKind, {
-    status: 'captured', // This marks payment as 'paid'
-    paymentMethod: finalPayMethod,
-    recordedByRole: 'DELIVERY_PARTNER',
-    recordedById: deliveryPartnerId,
-    note: `Rider finalized payment as ${finalPayMethod}. Order is now delivered.`,
-  });
-
-  // Update memory object so emitOrderUpdate and API response have the latest state
-  if (!order.payment) order.payment = {};
-  order.payment.status = 'paid';
-  order.payment.method = finalPayMethod;
+  try {
+    await foodTransactionService.updateTransactionStatus(order._id, ledgerKind, {
+      status: 'captured', // This marks payment as 'paid'
+      paymentMethod: finalPayMethod,
+      recordedByRole: 'DELIVERY_PARTNER',
+      recordedById: deliveryPartnerId,
+      note: `Rider finalized payment as ${finalPayMethod}. Order is now delivered.`,
+    });
+  } catch (txErr) {
+    logger.error(`Failed to update transaction status for order ${order._id}:`, txErr);
+  }
 
   emitOrderUpdate(order, deliveryPartnerId);
   
