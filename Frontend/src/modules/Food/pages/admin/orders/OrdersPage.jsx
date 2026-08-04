@@ -389,15 +389,13 @@ export default function OrdersPage({ statusKey = "all" }) {
       if (paymentStatus === "Collected") paymentStatus = "Paid"
       if (paymentStatus === "Not Collected") paymentStatus = "COD Pending"
       const paymentStatusRaw = order.payment?.status || ""
-      if (!paymentStatus) {
-        const s = String(paymentStatusRaw || "").toLowerCase()
-        if (s === "refunded") paymentStatus = "Refunded"
-        else if (s === "paid" || s === "authorized" || s === "captured" || s === "settled") paymentStatus = "Paid"
-        else if (s === "failed") paymentStatus = "Failed"
-        else if (s === "cod_pending") paymentStatus = "COD Pending"
-        else if (isQrPayment) paymentStatus = "Paid"
-        else paymentStatus = "Pending"
-      }
+      const s = String(paymentStatusRaw || "").toLowerCase()
+      if (s === "refunded") paymentStatus = "Refunded"
+      else if (s === "paid" || s === "authorized" || s === "captured" || s === "settled") paymentStatus = "Paid"
+      else if (s === "failed") paymentStatus = "Failed"
+      else if (s === "cod_pending") paymentStatus = "COD Pending"
+      else if (isQrPayment && s !== "cod_pending" && s !== "pending") paymentStatus = "Paid"
+      else if (!paymentStatus) paymentStatus = "Pending"
 
       // Method detail for COD orders as requested by user
       let paymentMethodDetail = "COD"

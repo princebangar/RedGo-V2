@@ -100,13 +100,6 @@ const resolveDisplayOrderStatus = (order) => {
 const resolveDisplayPaymentStatus = (order) => {
   if (!order) return "Pending"
 
-  // Legacy UI labels → current friendly labels
-  if (order.paymentStatus === "Collected") return "Paid"
-  if (order.paymentStatus === "Not Collected") return "COD Pending"
-  if (ADMIN_PAYMENT_STATUS_OPTIONS.includes(order.paymentStatus)) {
-    return order.paymentStatus
-  }
-
   // 1:1 with DB payment.status (friendly labels only)
   const raw = String(order.payment?.status || "").toLowerCase()
   if (raw === "refunded") return "Refunded"
@@ -115,6 +108,14 @@ const resolveDisplayPaymentStatus = (order) => {
     return "Paid"
   }
   if (raw === "cod_pending") return "COD Pending"
+
+  // Legacy UI labels → current friendly labels
+  if (order.paymentStatus === "Collected") return "Paid"
+  if (order.paymentStatus === "Not Collected") return "COD Pending"
+  if (ADMIN_PAYMENT_STATUS_OPTIONS.includes(order.paymentStatus)) {
+    return order.paymentStatus
+  }
+
   return "Pending"
 }
 
