@@ -202,6 +202,10 @@ export default function ViewOrderDialog({ isOpen, onOpenChange, order, onOrderUp
     Boolean(customerId) &&
     (loadingCustomerOrders || loadedCustomerId !== customerId)
 
+  const customerPendingOrders = typeof customerTotalOrders === 'number'
+    ? Math.max(0, customerTotalOrders - (customerDeliveredOrders || 0) - (customerCancelledOrders || 0))
+    : undefined
+
   const displayOrderStatus = resolveDisplayOrderStatus(order)
   const displayPaymentStatus = resolveDisplayPaymentStatus(order)
 
@@ -409,6 +413,24 @@ export default function ViewOrderDialog({ isOpen, onOpenChange, order, onOrderUp
                     <p className="text-xl font-bold text-red-600">-</p>
                   ) : (
                     <p className="text-xl font-bold text-red-600">{customerCancelledOrders ?? "-"}</p>
+                  )}
+                </div>
+
+                {/* Pending Orders Box */}
+                <div className="inline-flex flex-col self-start w-fit min-w-[8.5rem] bg-amber-100 border border-amber-200 rounded-lg p-3">
+                  <div className="flex items-center gap-2 mb-1">
+                    <Clock className="w-4 h-4 text-amber-600 shrink-0" />
+                    <span className="text-xs font-semibold text-slate-700 whitespace-nowrap">Pending</span>
+                  </div>
+                  {showTotalOrdersSkeleton ? (
+                    <span
+                      className="inline-block h-7 w-10 rounded bg-amber-200/70 animate-pulse"
+                      aria-label="Loading pending orders"
+                    />
+                  ) : !customerId ? (
+                    <p className="text-xl font-bold text-amber-600">-</p>
+                  ) : (
+                    <p className="text-xl font-bold text-amber-600">{customerPendingOrders ?? "-"}</p>
                   )}
                 </div>
               </div>
