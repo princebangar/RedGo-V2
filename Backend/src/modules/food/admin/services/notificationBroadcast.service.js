@@ -272,7 +272,6 @@ export const createBroadcastNotification = async ({ body = {}, adminId } = {}) =
         title,
         body: message,
         link: link || '/',
-        channelId: 'restaurant_orders',
         sendToAllDevices: true,
         data: {
             type: 'admin_broadcast',

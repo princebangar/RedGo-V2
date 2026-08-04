@@ -176,7 +176,7 @@ const buildMessagePayload = (payload = {}, token, { platform } = {}) => {
     const message = { token };
     const isWeb = platform === 'web';
     const isDataOnly = payload.dataOnly === true;
-    const androidChannel = sanitizeString(payload.channelId) || 'restaurant_orders';
+    const androidChannel = sanitizeString(payload.channelId) || 'high_importance_channel';
 
     if (!isDataOnly) {
         message.notification = { ...notification };
@@ -298,11 +298,7 @@ const normalizeTokenList = (tokens = []) => {
     return normalized.slice(-10);
 };
 
-const pickLatestTokenOnly = (tokens = []) => {
-    const normalized = normalizeTokenList(tokens);
-    if (!normalized.length) return [];
-    return [normalized[normalized.length - 1]];
-};
+// pickLatestTokenOnly removed as we want to push to all active devices of a user
 
 const readTokensFromDoc = (doc, platform) => {
     if (!doc) return [];
@@ -464,10 +460,7 @@ export const sendNotificationToOwner = async ({ ownerType, ownerId, payload, pla
         const rawTokens = await listOwnerTokens({ ownerType, ownerId, platform });
         
         // Deduplicate token list strictly so no single FCM device token receives duplicate notifications
-        const targetTokens =
-            payload?.sendToAllDevices === true
-                ? normalizeTokenList(rawTokens)
-                : pickLatestTokenOnly(rawTokens);
+        const targetTokens = normalizeTokenList(rawTokens);
 
         if (!targetTokens.length) {
             logger.warn(`[FCM] No device tokens for ${ownerType}:${ownerId} — push skipped`);
@@ -512,22 +505,28 @@ export const sendNotificationToOwner = async ({ ownerType, ownerId, payload, pla
 };
 
 export const sendNotificationToOwners = async (targets = [], payload = {}) => {
-    // 🔍 Tip #6: Deduplicate targets by ownerType:ownerId before sending
+    // 🔍 Deduplicate targets by ownerType:ownerId before sending
     // This prevents duplicate notifications if the same person is listed twice (e.g. as USER and partner)
     const uniqueTargets = Array.isArray(targets)
         ? [...new Map(targets.filter(t => t?.ownerType && t?.ownerId).map(t => [`${t.ownerType}:${t.ownerId}`, t])).values()]
         : [];
 
     const results = [];
-    for (const target of uniqueTargets) {
-        results.push(
-            await sendNotificationToOwner({
-                ownerType: target.ownerType,
-                ownerId: target.ownerId,
-                platform: target.platform,
-                payload
-            })
+    // Chunking to avoid overwhelming the event loop during large broadcasts
+    const CHUNK_SIZE = 50;
+    for (let i = 0; i < uniqueTargets.length; i += CHUNK_SIZE) {
+        const chunk = uniqueTargets.slice(i, i + CHUNK_SIZE);
+        const chunkResults = await Promise.all(
+            chunk.map((target) =>
+                sendNotificationToOwner({
+                    ownerType: target.ownerType,
+                    ownerId: target.ownerId,
+                    platform: target.platform,
+                    payload
+                })
+            )
         );
+        results.push(...chunkResults);
     }
     return results;
 };
