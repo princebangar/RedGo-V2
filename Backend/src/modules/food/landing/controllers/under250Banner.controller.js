@@ -31,7 +31,9 @@ export const uploadUnder250BannersController = async (req, res, next) => {
         };
 
         const results = await createUnder250BannersFromFiles(req.files, meta);
-        return sendResponse(res, 201, 'Under 250 banners uploaded', { banners: results });
+        const banners = results.filter((r) => r.success).map((r) => r.banner);
+        const errors = results.filter((r) => !r.success).map((r) => r.error);
+        return sendResponse(res, 201, 'Under 250 banners uploaded', { banners, errors, results });
     } catch (error) {
         next(error);
     }

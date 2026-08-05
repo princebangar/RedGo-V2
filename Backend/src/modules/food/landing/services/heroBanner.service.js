@@ -2,7 +2,32 @@ import { FoodHeroBanner } from '../models/heroBanner.model.js';
 import { v2 as cloudinary } from 'cloudinary';
 
 export const listHeroBanners = async () => {
-    return FoodHeroBanner.find().sort({ sortOrder: 1, createdAt: -1 }).lean();
+    const banners = await FoodHeroBanner.find()
+        .populate({
+            path: 'linkedRestaurantIds',
+            select: 'restaurantName name restaurantId profileImage rating'
+        })
+        .sort({ sortOrder: 1, createdAt: -1 })
+        .lean();
+
+    return banners.map((b) => {
+        const { linkedRestaurantIds, ...rest } = b;
+        const linked = Array.isArray(linkedRestaurantIds)
+            ? linkedRestaurantIds.map((r) => {
+                if (typeof r === 'object' && r !== null) {
+                    return {
+                        ...r,
+                        name: r.restaurantName || r.name || ''
+                    };
+                }
+                return r;
+            })
+            : [];
+        return {
+            ...rest,
+            linkedRestaurants: linked
+        };
+    });
 };
 
 export const createHeroBannersFromFiles = async (files, meta = {}) => {
@@ -45,6 +70,38 @@ export const createHeroBannersFromFiles = async (files, meta = {}) => {
     return results;
 };
 
+export const linkRestaurantsToHeroBanner = async (id, restaurantIds) => {
+    const updatedBanner = await FoodHeroBanner.findByIdAndUpdate(
+        id,
+        { linkedRestaurantIds: restaurantIds },
+        { new: true }
+    )
+        .populate({
+            path: 'linkedRestaurantIds',
+            select: 'restaurantName name restaurantId profileImage rating'
+        })
+        .lean();
+
+    if (!updatedBanner) return null;
+
+    const { linkedRestaurantIds, ...rest } = updatedBanner;
+    const linked = Array.isArray(linkedRestaurantIds)
+        ? linkedRestaurantIds.map((r) => {
+            if (typeof r === 'object' && r !== null) {
+                return {
+                    ...r,
+                    name: r.restaurantName || r.name || ''
+                };
+            }
+            return r;
+        })
+        : [];
+    return {
+        ...rest,
+        linkedRestaurants: linked
+    };
+};
+
 export const deleteHeroBanner = async (id) => {
     const doc = await FoodHeroBanner.findById(id);
     if (!doc) {
@@ -73,11 +130,12 @@ export const updateHeroBannerOrder = async (id, sortOrder) => {
 };
 
 export const toggleHeroBannerStatus = async (id, isActive) => {
-    const updated = await FoodHeroBanner.findByIdAndUpdate(
-        id,
-        { isActive },
-        { new: true }
-    ).lean();
-    return updated;
+    const banner = await FoodHeroBanner.findById(id);
+    if (!banner) return null;
+
+    const newStatus = typeof isActive === 'boolean' ? isActive : !banner.isActive;
+    banner.isActive = newStatus;
+    await banner.save();
+    return banner.toObject();
 };
 

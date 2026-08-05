@@ -3,6 +3,7 @@ import { upload } from '../../../../middleware/upload.js';
 import {
     listHeroBannersController,
     uploadHeroBannersController,
+    linkRestaurantsToHeroBannerController,
     deleteHeroBannerController,
     updateHeroBannerOrderController,
     toggleHeroBannerStatusController
@@ -76,6 +77,7 @@ router.post(
 router.delete('/hero-banners/:id', deleteHeroBannerController);
 router.patch('/hero-banners/:id/order', updateHeroBannerOrderController);
 router.patch('/hero-banners/:id/status', toggleHeroBannerStatusController);
+router.patch('/hero-banners/:id/link-restaurants', linkRestaurantsToHeroBannerController);
 
 // Admin under 250 banners
 router.get('/hero-banners/under-250', listUnder250BannersController);

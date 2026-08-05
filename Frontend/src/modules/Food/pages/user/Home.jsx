@@ -463,6 +463,7 @@ export default function Home({ homeMode = null, isTabActive = true }) {
   }, []);
 
   const [currentBannerIndex, setCurrentBannerIndex] = useState(0);
+  const [isTransitionEnabled, setIsTransitionEnabled] = useState(true);
   const [publicOffers, setPublicOffers] = useState([]);
 
   useEffect(() => {
@@ -1096,10 +1097,35 @@ export default function Home({ homeMode = null, isTabActive = true }) {
 
     autoSlideIntervalRef.current = setInterval(() => {
       if (!isSwiping.current) {
-        setCurrentBannerIndex((prev) => (prev + 1) % heroBannerImages.length);
+        setIsTransitionEnabled(true);
+        setCurrentBannerIndex((prev) => {
+          if (prev >= heroBannerImages.length) return prev;
+          return prev + 1;
+        });
       }
     }, HERO_BANNER_AUTO_SLIDE_MS);
   }, [heroBannerImages.length, HERO_BANNER_AUTO_SLIDE_MS]);
+
+  // Handle snap-back when reaching the cloned slide at the end
+  useEffect(() => {
+    if (currentBannerIndex === heroBannerImages.length && heroBannerImages.length > 1) {
+      const timer = setTimeout(() => {
+        setIsTransitionEnabled(false);
+        setCurrentBannerIndex(0);
+      }, 500); // match transition duration
+      return () => clearTimeout(timer);
+    }
+  }, [currentBannerIndex, heroBannerImages.length]);
+
+  // Re-enable transition after snap-back
+  useEffect(() => {
+    if (!isTransitionEnabled && currentBannerIndex === 0) {
+      const timer = setTimeout(() => {
+        setIsTransitionEnabled(true);
+      }, 50);
+      return () => clearTimeout(timer);
+    }
+  }, [isTransitionEnabled, currentBannerIndex]);
 
   // Auto-cycle hero banner images
   useEffect(() => {
@@ -1140,13 +1166,24 @@ export default function Home({ homeMode = null, isTabActive = true }) {
     if (Math.abs(deltaX) > minSwipeDistance && Math.abs(deltaX) > deltaY) {
       if (deltaX > 0) {
         // Swipe right - go to previous image
-        setCurrentBannerIndex(
-          (prev) =>
-            (prev - 1 + heroBannerImages.length) % heroBannerImages.length,
-        );
+        if (currentBannerIndex === 0) {
+          setIsTransitionEnabled(false);
+          setCurrentBannerIndex(heroBannerImages.length);
+          setTimeout(() => {
+            setIsTransitionEnabled(true);
+            setCurrentBannerIndex(heroBannerImages.length - 1);
+          }, 50);
+        } else {
+          setIsTransitionEnabled(true);
+          setCurrentBannerIndex((prev) => prev - 1);
+        }
       } else {
         // Swipe left - go to next image
-        setCurrentBannerIndex((prev) => (prev + 1) % heroBannerImages.length);
+        setIsTransitionEnabled(true);
+        setCurrentBannerIndex((prev) => {
+          if (prev >= heroBannerImages.length) return prev;
+          return prev + 1;
+        });
       }
       // Reset auto-slide timer after manual swipe
       resetAutoSlide();
@@ -1186,12 +1223,23 @@ export default function Home({ homeMode = null, isTabActive = true }) {
 
     if (Math.abs(deltaX) > minSwipeDistance && Math.abs(deltaX) > deltaY) {
       if (deltaX > 0) {
-        setCurrentBannerIndex(
-          (prev) =>
-            (prev - 1 + heroBannerImages.length) % heroBannerImages.length,
-        );
+        if (currentBannerIndex === 0) {
+          setIsTransitionEnabled(false);
+          setCurrentBannerIndex(heroBannerImages.length);
+          setTimeout(() => {
+            setIsTransitionEnabled(true);
+            setCurrentBannerIndex(heroBannerImages.length - 1);
+          }, 50);
+        } else {
+          setIsTransitionEnabled(true);
+          setCurrentBannerIndex((prev) => prev - 1);
+        }
       } else {
-        setCurrentBannerIndex((prev) => (prev + 1) % heroBannerImages.length);
+        setIsTransitionEnabled(true);
+        setCurrentBannerIndex((prev) => {
+          if (prev >= heroBannerImages.length) return prev;
+          return prev + 1;
+        });
       }
       // Reset auto-slide timer after manual swipe
       resetAutoSlide();
@@ -2452,6 +2500,19 @@ export default function Home({ homeMode = null, isTabActive = true }) {
 
     if (heroBannerImages.length === 0) return null;
 
+    // Create the slides array with the first banner duplicated at the end
+    const slides = heroBannerImages.length > 1
+      ? [...heroBannerImages, heroBannerImages[0]]
+      : heroBannerImages;
+
+    const transitionStyle = isTransitionEnabled
+      ? "transform 500ms cubic-bezier(0.25, 1, 0.5, 1)"
+      : "none";
+
+    const activeDotIndex = currentBannerIndex === heroBannerImages.length
+      ? 0
+      : currentBannerIndex;
+
     return (
       <div className="px-4 py-2">
         <div
@@ -2466,48 +2527,52 @@ export default function Home({ homeMode = null, isTabActive = true }) {
           onMouseUp={handleMouseUp}
           onMouseLeave={handleMouseUp}
         >
-          <div className="absolute inset-0 z-0">
-            {/* Shining Glint Effect */}
-            <div className="absolute inset-0 z-10 pointer-events-none overflow-hidden">
-              <motion.div
-                animate={{
-                  x: ['-200%', '200%'],
-                }}
-                transition={{
-                  duration: 2.5,
-                  repeat: Infinity,
-                  repeatDelay: 5,
-                  ease: "easeInOut"
-                }}
-                className="absolute inset-0 bg-gradient-to-r from-transparent via-white/30 to-transparent skew-x-[-20deg] w-[150%] h-full"
-              />
-            </div>
-            {heroBannerImages.map((image, index) => (
+          {/* Sliding Track for Banners */}
+          <div
+            className="flex w-full h-full"
+            style={{
+              transform: `translateX(-${currentBannerIndex * 100}%)`,
+              transition: transitionStyle
+            }}
+          >
+            {slides.map((image, index) => (
               <div
                 key={`${index}-${image}`}
-                className="absolute inset-0 transition-opacity duration-700 ease-in-out"
-                style={{
-                  opacity: currentBannerIndex === index ? 1 : 0,
-                  zIndex: currentBannerIndex === index ? 2 : 1,
-                  pointerEvents: "none",
-                }}>
+                className="w-full h-full flex-shrink-0 relative"
+              >
                 <img
                   src={image}
                   alt={`Hero Banner ${index + 1}`}
-                  className="h-full w-full object-cover"
-                  loading={index === currentBannerIndex ? "eager" : "lazy"}
-                  fetchPriority={index === currentBannerIndex ? "high" : "low"}
+                  className="h-full w-full object-cover select-none"
                   draggable={false}
                 />
               </div>
             ))}
           </div>
 
+          {/* Shining Glint Effect */}
+          <div className="absolute inset-0 z-10 pointer-events-none overflow-hidden">
+            <motion.div
+              animate={{
+                x: ['-200%', '200%'],
+              }}
+              transition={{
+                duration: 2.5,
+                repeat: Infinity,
+                repeatDelay: 5,
+                ease: "easeInOut"
+              }}
+              className="absolute inset-0 bg-gradient-to-r from-transparent via-white/30 to-transparent skew-x-[-20deg] w-[150%] h-full"
+            />
+          </div>
+
+          {/* Clickable Overlay to Navigate */}
           <button
             type="button"
             className="absolute inset-0 z-20 h-full w-full border-0 p-0 bg-transparent text-left"
             onClick={() => {
-              const bannerData = heroBannersData[currentBannerIndex];
+              const actualIndex = currentBannerIndex === heroBannerImages.length ? 0 : currentBannerIndex;
+              const bannerData = heroBannersData[actualIndex];
               const linkedRestaurants = bannerData?.linkedRestaurants || [];
               if (linkedRestaurants.length > 0) {
                 const firstRestaurant = linkedRestaurants[0];
@@ -2523,11 +2588,33 @@ export default function Home({ homeMode = null, isTabActive = true }) {
             aria-label={`Open hero banner ${currentBannerIndex + 1}`}
           />
 
-          {/* Indicators removed as requested */}
+          {/* Bottom Right Carousel Pagination Dots */}
+          {heroBannerImages.length > 1 && (
+            <div className="absolute bottom-3 right-3 z-30 flex items-center gap-1.5 pointer-events-auto">
+              {heroBannerImages.map((_, dotIndex) => (
+                <button
+                  key={dotIndex}
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setIsTransitionEnabled(true);
+                    setCurrentBannerIndex(dotIndex);
+                    resetAutoSlide();
+                  }}
+                  className={`transition-all duration-300 rounded-full ${
+                    activeDotIndex === dotIndex
+                      ? "w-4 h-1.5 bg-white shadow-sm"
+                      : "w-1.5 h-1.5 bg-white/50 hover:bg-white/80"
+                  }`}
+                  aria-label={`Go to banner ${dotIndex + 1}`}
+                />
+              ))}
+            </div>
+          )}
         </div>
       </div>
     );
-  }, [heroBannerImages, currentBannerIndex, showBannerSkeleton, heroBannersData, navigate]);
+  }, [heroBannerImages, currentBannerIndex, isTransitionEnabled, showBannerSkeleton, heroBannersData, navigate, resetAutoSlide]);
 
   // Memoized Category Rail Component
   const CategoryRailSection = useMemo(() => {
@@ -3180,7 +3267,7 @@ export default function Home({ homeMode = null, isTabActive = true }) {
               Recommended For You
             </h2>
 
-            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3 px-4">
+            <div className="flex overflow-x-auto gap-3.5 pb-4 scrollbar-hide px-4 mask-edge-fade">
               {recommendedForYouRestaurants.map((restaurant, index) => {
                 const restaurantRouteId = getRestaurantRouteId(restaurant);
                 const rawSlug = restaurant.slug || restaurant.name;
@@ -3194,7 +3281,8 @@ export default function Home({ homeMode = null, isTabActive = true }) {
                     initial={{ opacity: 0, y: 12 }}
                     whileInView={{ opacity: 1, y: 0 }}
                     viewport={{ once: true }}
-                    transition={{ duration: 0.35, delay: index * 0.05 }}>
+                    transition={{ duration: 0.35, delay: index * 0.05 }}
+                    className="flex-shrink-0 w-[150px] sm:w-[170px] md:w-[190px]">
                     <Link
                       to={toFoodUserPath(`/user/restaurants/${linkId}`)}
                       state={{ from: homeBrowsePath, restaurantData: restaurant }}

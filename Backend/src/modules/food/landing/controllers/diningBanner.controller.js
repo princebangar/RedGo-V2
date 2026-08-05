@@ -31,7 +31,9 @@ export const uploadDiningBannersController = async (req, res, next) => {
         };
 
         const results = await createDiningBannersFromFiles(req.files, meta);
-        return sendResponse(res, 201, 'Dining banners uploaded', { banners: results });
+        const banners = results.filter((r) => r.success).map((r) => r.banner);
+        const errors = results.filter((r) => !r.success).map((r) => r.error);
+        return sendResponse(res, 201, 'Dining banners uploaded', { banners, errors, results });
     } catch (error) {
         next(error);
     }
