@@ -580,3 +580,65 @@ export const notifyOwnersSafely = async (targets = [], payload = {}) => {
         return [];
     }
 };
+
+export const broadcastPushToTargetsSafely = async (targets = [], payload = {}) => {
+    try {
+        logger.info(`[FCM Broadcast] Starting bulk push to ${targets.length} targets`);
+        const uniqueTargets = Array.isArray(targets)
+            ? [...new Map(targets.filter(t => t?.ownerType && t?.ownerId).map(t => [`${t.ownerType}:${t.ownerId}`, t])).values()]
+            : [];
+
+        const byType = { USER: [], RESTAURANT: [], DELIVERY_PARTNER: [], ADMIN: [] };
+        uniqueTargets.forEach(t => {
+            const type = t.ownerType?.toUpperCase();
+            if (byType[type]) byType[type].push(t.ownerId);
+        });
+
+        let allTokens = [];
+
+        // 1. Bulk fetch all tokens to avoid N+1 DB queries
+        for (const [type, ids] of Object.entries(byType)) {
+            if (!ids.length) continue;
+            const model = getOwnerModel(type);
+            if (!model) continue;
+
+            // Process DB fetches in chunks to avoid massive $in array limits
+            const DB_CHUNK = 1000;
+            for (let i = 0; i < ids.length; i += DB_CHUNK) {
+                const chunkIds = ids.slice(i, i + DB_CHUNK);
+                const docs = await model.find({ _id: { $in: chunkIds } }).select('fcmTokens fcmTokenMobile').lean();
+                for (const doc of docs) {
+                    const tokens = readTokensFromDoc(doc);
+                    if (tokens.length > 0) allTokens.push(...tokens);
+                }
+            }
+        }
+
+        allTokens = [...new Set(allTokens.filter(Boolean))];
+        logger.info(`[FCM Broadcast] Resolved ${allTokens.length} unique tokens. Dispatching to Firebase...`);
+
+        // 2. Dispatch to FCM in controlled chunks
+        // Firebase HTTP v1 limits: we do 50 concurrent fetch requests to avoid socket hang ups.
+        const CHUNK_SIZE = 50;
+        let successCount = 0;
+        let failureCount = 0;
+
+        for (let i = 0; i < allTokens.length; i += CHUNK_SIZE) {
+            const chunk = allTokens.slice(i, i + CHUNK_SIZE);
+            const res = await sendPushNotification(chunk, payload);
+            successCount += res.successCount || 0;
+            failureCount += res.failureCount || 0;
+            
+            // Artificial delay to prevent overwhelming network interfaces on huge broadcasts
+            if (i + CHUNK_SIZE < allTokens.length) {
+                await new Promise(resolve => setTimeout(resolve, 50));
+            }
+        }
+
+        logger.info(`[FCM Broadcast] Completed. Success=${successCount}, Failure=${failureCount}`);
+        return { successCount, failureCount };
+    } catch (error) {
+        logger.error(`[FCM Broadcast] Critical failure during bulk push: ${error.message}`);
+        return { successCount: 0, failureCount: 0, error: error.message };
+    }
+};

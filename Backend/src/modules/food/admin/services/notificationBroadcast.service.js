@@ -6,7 +6,7 @@ import { FoodDeliveryPartner } from '../../delivery/models/deliveryPartner.model
 import { BroadcastNotification } from '../../../../core/notifications/models/notificationBroadcast.model.js';
 import { FoodNotification } from '../../../../core/notifications/models/notification.model.js';
 import { createInboxNotifications } from '../../../../core/notifications/notification.service.js';
-import { notifyOwnersSafely } from '../../../../core/notifications/firebase.service.js';
+import { notifyOwnersSafely, broadcastPushToTargetsSafely } from '../../../../core/notifications/firebase.service.js';
 import { getIO, rooms } from '../../../../config/socket.js';
 
 const TARGET_TYPE_MAP = {
@@ -283,7 +283,7 @@ export const createBroadcastNotification = async ({ body = {}, adminId } = {}) =
     };
 
     setTimeout(() => {
-        notifyOwnersSafely(pushTargets, pushPayload).catch((error) => {
+        broadcastPushToTargetsSafely(pushTargets, pushPayload).catch((error) => {
             console.error('[broadcast] background FCM failed:', error?.message || error);
         });
     }, 0);
