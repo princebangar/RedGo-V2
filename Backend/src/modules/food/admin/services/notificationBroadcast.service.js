@@ -250,24 +250,11 @@ export const createBroadcastNotification = async ({ body = {}, adminId } = {}) =
         targetCount: resolvedTargets.length
     });
 
-    await createInboxNotifications({
-        notifications: resolvedTargets.map((target) =>
-            buildNotificationPayload({
-                title,
-                message,
-                link,
-                broadcastId: broadcast._id,
-                target
-            })
-        )
-    });
-
-    emitRealtimeNotifications(resolvedTargets, broadcast);
-
     const pushTargets = resolvedTargets.map((target) => ({
         ownerType: target.ownerType,
         ownerId: target.ownerId
     }));
+    
     const pushPayload = {
         title,
         body: message,
@@ -282,10 +269,35 @@ export const createBroadcastNotification = async ({ body = {}, adminId } = {}) =
         }
     };
 
-    setTimeout(() => {
-        broadcastPushToTargetsSafely(pushTargets, pushPayload).catch((error) => {
+    // Run heavy operations in the background so the frontend doesn't hang
+    setTimeout(async () => {
+        try {
+            await createInboxNotifications({
+                notifications: resolvedTargets.map((target) =>
+                    buildNotificationPayload({
+                        title,
+                        message,
+                        link,
+                        broadcastId: broadcast._id,
+                        target
+                    })
+                )
+            });
+        } catch (error) {
+            console.error('[broadcast] background inbox create failed:', error?.message || error);
+        }
+
+        try {
+            emitRealtimeNotifications(resolvedTargets, broadcast);
+        } catch (error) {
+            console.error('[broadcast] background realtime emit failed:', error?.message || error);
+        }
+
+        try {
+            await broadcastPushToTargetsSafely(pushTargets, pushPayload);
+        } catch (error) {
             console.error('[broadcast] background FCM failed:', error?.message || error);
-        });
+        }
     }, 0);
 
     return {

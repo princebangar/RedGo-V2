@@ -96,13 +96,13 @@ export const createInboxNotifications = async ({ notifications = [] } = {}) => {
 
     await FoodNotification.bulkWrite(operations, { ordered: false });
 
-    const ids = rows
-        .map((item) => item.broadcastId)
-        .filter((value) => value && mongoose.Types.ObjectId.isValid(String(value)))
-        .map((value) => new mongoose.Types.ObjectId(String(value)));
+    const uniqueIds = [...new Set(
+        rows.map((item) => String(item.broadcastId))
+            .filter((value) => value && value !== 'undefined' && mongoose.Types.ObjectId.isValid(value))
+    )].map(value => new mongoose.Types.ObjectId(value));
 
-    if (ids.length > 0) {
-        return FoodNotification.find({ broadcastId: { $in: ids } }).sort({ createdAt: -1 }).lean();
+    if (uniqueIds.length > 0) {
+        return FoodNotification.find({ broadcastId: { $in: uniqueIds } }).sort({ createdAt: -1 }).lean();
     }
 
     return [];
