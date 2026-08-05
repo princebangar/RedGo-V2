@@ -2376,7 +2376,7 @@ export default function Home({ homeMode = null, isTabActive = true }) {
     const idsInOrder = (recommendedRestaurantIds || []).map((id) => String(id));
     const hasIds = idsInOrder.length > 0;
     const fromSettings = Array.isArray(recommendedRestaurantsFromSettings)
-      ? recommendedRestaurantsFromSettings
+      ? recommendedRestaurantsFromSettings.filter(r => !r.zoneId || !zoneId || String(r.zoneId) === String(zoneId))
       : [];
 
     // Primary source: restaurants returned by landing settings API (already admin-selected).
@@ -2573,7 +2573,8 @@ export default function Home({ homeMode = null, isTabActive = true }) {
             onClick={() => {
               const actualIndex = currentBannerIndex === heroBannerImages.length ? 0 : currentBannerIndex;
               const bannerData = heroBannersData[actualIndex];
-              const linkedRestaurants = bannerData?.linkedRestaurants || [];
+              const allLinked = bannerData?.linkedRestaurants || [];
+              const linkedRestaurants = zoneId ? allLinked.filter(r => !r.zoneId || String(r.zoneId) === String(zoneId)) : allLinked;
               if (linkedRestaurants.length > 0) {
                 const firstRestaurant = linkedRestaurants[0];
                 const restaurantId =

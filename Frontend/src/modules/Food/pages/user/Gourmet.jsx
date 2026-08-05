@@ -11,6 +11,7 @@ import OptimizedImage from "@food/components/OptimizedImage"
 import { RestaurantGridSkeleton } from "@food/components/ui/loading-skeletons"
 import { useDelayedLoading } from "@food/hooks/useDelayedLoading"
 import { useLocation } from "@food/hooks/useLocation"
+import { useZone } from "@food/hooks/useZone"
 import { useProfile } from "@food/context/ProfileContext"
 import { filterRestaurantsForVegMode } from "@food/utils/vegMode"
 
@@ -29,13 +30,17 @@ export default function Gourmet() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
   const { location } = useLocation()
+  const { zoneId } = useZone(location)
   const { vegMode, vegModeOption } = useProfile()
   const showGourmetSkeleton = useDelayedLoading(loading)
 
-  const visibleGourmetRestaurants = useMemo(
-    () => filterRestaurantsForVegMode(gourmetRestaurants, { vegMode, vegModeOption }),
-    [gourmetRestaurants, vegMode, vegModeOption],
-  )
+  const visibleGourmetRestaurants = useMemo(() => {
+    let list = gourmetRestaurants;
+    if (zoneId) {
+      list = list.filter(r => !r.zoneId || String(r.zoneId) === String(zoneId));
+    }
+    return filterRestaurantsForVegMode(list, { vegMode, vegModeOption });
+  }, [gourmetRestaurants, vegMode, vegModeOption, zoneId])
 
   const backendOrigin = (API_BASE_URL || "").replace(/\/api\/v1\/?$/, "")
 
