@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useMemo } from "react"
-import { Upload, Trash2, Image as ImageIcon, Loader2, AlertCircle, CheckCircle2, ArrowUp, ArrowDown, Layout, Tag, UtensilsCrossed, ChefHat, Megaphone, Search } from "lucide-react"
+import { Upload, Trash2, Image as ImageIcon, Loader2, AlertCircle, CheckCircle2, ArrowUp, ArrowDown, Layout, Tag, UtensilsCrossed, ChefHat, Megaphone, Search, Star, Store } from "lucide-react"
 import api from "@food/api"
 import { adminAPI } from "@food/api"
 import { getModuleToken } from "@food/utils/auth"
@@ -137,18 +137,16 @@ export default function LandingPageManagement() {
     }
   }
 
-  // Fetch data on mount (authentication is handled by ProtectedRoute)
+  // Lazy fetch data based on active tab to optimize page load speed
   useEffect(() => {
-    fetchBanners()
-    fetchUnder250Banners()
-    fetchDiningBanners()
-    fetchAllRestaurants()
-    fetchSettings()
-  }, [])
-
-  // Fetch Top 10 and Gourmet when Explore More tab is active; refetch restaurants so dropdown is populated
-  useEffect(() => {
-    if (activeTab === 'explore-more') {
+    if (activeTab === 'banners') {
+      fetchBanners()
+    } else if (activeTab === 'under-250') {
+      fetchUnder250Banners()
+    } else if (activeTab === 'dining') {
+      fetchDiningBanners()
+    } else if (activeTab === 'explore-more') {
+      fetchSettings()
       if (allRestaurants.length === 0) {
         fetchAllRestaurants()
       }
@@ -237,15 +235,16 @@ export default function LandingPageManagement() {
       const response = await api.post('/food/hero-banners/multiple', formData, config)
 
       if (response.data.success) {
-        const uploadedBanners = response.data.data?.banners || []
-        const errors = response.data.data?.errors || []
+        const dataObj = response.data.data || {}
+        const uploadedBanners = dataObj.banners || (Array.isArray(dataObj.results) ? dataObj.results.filter(r => r.success).map(r => r.banner) : [])
+        const errors = dataObj.errors || (Array.isArray(dataObj.results) ? dataObj.results.filter(r => !r.success).map(r => r.error) : [])
         const successCount = uploadedBanners.length
         const failCount = errors.length
 
         await fetchBanners()
         if (bannersFileInputRef.current) bannersFileInputRef.current.value = ''
 
-        if (failCount === 0) {
+        if (failCount === 0 && successCount > 0) {
           setSuccess(`${successCount} hero banner${successCount > 1 ? 's' : ''} uploaded successfully!`)
           setTimeout(() => setSuccess(null), 5000)
         } else if (successCount > 0) {
@@ -253,7 +252,7 @@ export default function LandingPageManagement() {
           setErrorSafely(errors.join(', '))
           setTimeout(() => { setSuccess(null); setError(null) }, 5000)
         } else {
-          setErrorSafely(`Failed to upload banners. ${errors.join(', ')}`)
+          setErrorSafely(`Failed to upload banners. ${errors.length > 0 ? errors.join(', ') : 'Please try again.'}`)
         }
       } else {
         setErrorSafely(response.data.message || 'Failed to upload banners')
@@ -302,7 +301,7 @@ export default function LandingPageManagement() {
     try {
       setError(null)
       setSuccess(null)
-      const response = await api.patch(`/food/hero-banners/${id}/status`, {}, getAuthConfig())
+      const response = await api.patch(`/food/hero-banners/${id}/status`, { isActive: !currentStatus }, getAuthConfig())
       if (response.data.success) {
         setSuccess(`Banner ${currentStatus ? 'deactivated' : 'activated'} successfully!`)
         await fetchBanners()
@@ -365,9 +364,9 @@ export default function LandingPageManagement() {
   const toggleRestaurantSelection = (restaurantId) => {
     setSelectedRestaurantIds(prev => {
       if (prev.includes(restaurantId)) {
-        return prev.filter(id => id !== restaurantId)
+        return []
       } else {
-        return [...prev, restaurantId]
+        return [restaurantId]
       }
     })
   }
@@ -391,19 +390,24 @@ export default function LandingPageManagement() {
   }, [allRestaurants, recommendedSearchQuery])
 
   const recommendedRestaurantsSelected = useMemo(() => {
-    const selectedIds = new Set(settings.recommendedRestaurantIds || [])
-    return allRestaurants.filter((restaurant) => selectedIds.has(restaurant._id))
+    const selectedIds = new Set(
+      (settings.recommendedRestaurantIds || []).map((id) => (typeof id === 'object' && id !== null ? String(id._id || id) : String(id)))
+    )
+    return allRestaurants.filter((restaurant) => selectedIds.has(String(restaurant._id)))
   }, [allRestaurants, settings.recommendedRestaurantIds])
 
   const toggleRecommendedRestaurant = (restaurantId) => {
     setSettings((prev) => {
-      const previousIds = Array.isArray(prev.recommendedRestaurantIds) ? prev.recommendedRestaurantIds : []
-      const alreadySelected = previousIds.includes(restaurantId)
+      const previousIds = Array.isArray(prev.recommendedRestaurantIds)
+        ? prev.recommendedRestaurantIds.map((id) => (typeof id === 'object' && id !== null ? String(id._id || id) : String(id)))
+        : []
+      const targetId = String(restaurantId)
+      const alreadySelected = previousIds.includes(targetId)
       return {
         ...prev,
         recommendedRestaurantIds: alreadySelected
-          ? previousIds.filter((id) => id !== restaurantId)
-          : [...previousIds, restaurantId],
+          ? previousIds.filter((id) => id !== targetId)
+          : [...previousIds, targetId],
       }
     })
   }
@@ -1032,10 +1036,14 @@ export default function LandingPageManagement() {
       setError(null)
       const response = await api.get('/food/hero-banners/landing/settings', getAuthConfig())
       if (response.data.success) {
-        const nextSettings = response.data.data.settings || {}
+        const nextSettings = response.data.data?.settings || response.data.data || {}
+        const rawRecommended = nextSettings.recommendedRestaurantIds
+        const recommendedIds = Array.isArray(rawRecommended)
+          ? rawRecommended.map((id) => (typeof id === 'object' && id !== null ? String(id._id || id) : String(id)))
+          : []
         setSettings({
           exploreMoreHeading: nextSettings.exploreMoreHeading || "Explore More",
-          recommendedRestaurantIds: Array.isArray(nextSettings.recommendedRestaurantIds) ? nextSettings.recommendedRestaurantIds : [],
+          recommendedRestaurantIds: recommendedIds,
           under250PriceLimit: Number(nextSettings.under250PriceLimit) || 250,
           festBannerVideoUrl: typeof nextSettings.festBannerVideoUrl === "string" ? nextSettings.festBannerVideoUrl : ""
         })
@@ -1067,13 +1075,15 @@ export default function LandingPageManagement() {
         festBannerVideoUrl: settings.festBannerVideoUrl || ""
       }, getAuthConfig())
       if (response.data.success) {
-        const savedSettings = response.data.data?.settings || {}
+        const savedSettings = response.data.data?.settings || response.data.data || {}
+        const rawRecommended = savedSettings.recommendedRestaurantIds
+        const recommendedIds = Array.isArray(rawRecommended)
+          ? rawRecommended.map((id) => (typeof id === 'object' && id !== null ? String(id._id || id) : String(id)))
+          : settings.recommendedRestaurantIds
         setSettings((prev) => ({
           ...prev,
           exploreMoreHeading: savedSettings.exploreMoreHeading || prev.exploreMoreHeading,
-          recommendedRestaurantIds: Array.isArray(savedSettings.recommendedRestaurantIds)
-            ? savedSettings.recommendedRestaurantIds
-            : prev.recommendedRestaurantIds,
+          recommendedRestaurantIds: recommendedIds,
           under250PriceLimit: Number(savedSettings.under250PriceLimit) || prev.under250PriceLimit,
           festBannerVideoUrl: typeof savedSettings.festBannerVideoUrl === "string"
             ? savedSettings.festBannerVideoUrl
@@ -1383,7 +1393,14 @@ export default function LandingPageManagement() {
 
             {/* Banners List */}
             <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-6">
-              <h2 className="text-lg font-bold text-slate-900 mb-4">Banner List ({banners.length})</h2>
+              <h2 className="text-lg font-bold text-slate-900 mb-4 flex items-center gap-2">
+                <span>Banner List</span>
+                {bannersLoading ? (
+                  <span className="w-8 h-5 bg-slate-200 animate-pulse rounded inline-block" />
+                ) : (
+                  <span>({banners.length})</span>
+                )}
+              </h2>
               {bannersLoading ? (
                 <div className="flex items-center justify-center py-12">
                   <Loader2 className="w-8 h-8 text-blue-600 animate-spin" />
@@ -1423,6 +1440,9 @@ export default function LandingPageManagement() {
                               onClick={() => {
                                 setSelectedBannerId(banner._id)
                                 setSelectedRestaurantIds(banner.linkedRestaurants?.map(r => r._id || r) || [])
+                                if (allRestaurants.length === 0) {
+                                  fetchAllRestaurants()
+                                }
                                 setShowRestaurantModal(true)
                               }}
                               className="px-3 py-1.5 rounded text-sm font-medium bg-blue-100 text-blue-800 hover:bg-blue-200 flex items-center gap-1"
@@ -1439,19 +1459,13 @@ export default function LandingPageManagement() {
                           </div>
                         </div>
                         {banner.linkedRestaurants && banner.linkedRestaurants.length > 0 && (
-                          <div className="mt-2 pt-2 border-t border-slate-200">
-                            <p className="text-xs text-slate-600 mb-1">Linked Restaurants ({banner.linkedRestaurants.length}):</p>
-                            <div className="flex flex-wrap gap-1">
-                              {banner.linkedRestaurants.slice(0, 3).map((restaurant) => (
-                                <span key={restaurant._id || restaurant} className="px-2 py-0.5 bg-blue-50 text-blue-700 rounded text-xs">
-                                  {restaurant.name || 'Restaurant'}
-                                </span>
-                              ))}
-                              {banner.linkedRestaurants.length > 3 && (
-                                <span className="px-2 py-0.5 bg-slate-100 text-slate-600 rounded text-xs">
-                                  +{banner.linkedRestaurants.length - 3} more
-                                </span>
-                              )}
+                          <div className="mt-3 pt-3 border-t border-slate-100 flex items-center gap-2 flex-wrap">
+                            <span className="text-xs font-semibold text-slate-500">Linked Restaurant:</span>
+                            <div className="flex items-center gap-1.5 bg-yellow-100/70 hover:bg-yellow-100 border border-yellow-200 rounded-lg px-3 py-1.5 transition-all shadow-sm">
+                              <Store className="w-3.5 h-3.5 text-yellow-700" />
+                              <span className="text-xs font-bold text-slate-800">
+                                {banner.linkedRestaurants[0].restaurantName || banner.linkedRestaurants[0].name || 'Restaurant'}
+                              </span>
                             </div>
                           </div>
                         )}
@@ -1529,7 +1543,14 @@ export default function LandingPageManagement() {
 
             {/* Banners List */}
             <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-6">
-              <h2 className="text-lg font-bold text-slate-900 mb-4">Banner List ({under250Banners.length})</h2>
+              <h2 className="text-lg font-bold text-slate-900 mb-4 flex items-center gap-2">
+                <span>Banner List</span>
+                {under250BannersLoading ? (
+                  <span className="w-8 h-5 bg-slate-200 animate-pulse rounded inline-block" />
+                ) : (
+                  <span>({under250Banners.length})</span>
+                )}
+              </h2>
               {under250BannersLoading ? (
                 <div className="flex items-center justify-center py-12">
                   <Loader2 className="w-8 h-8 text-blue-600 animate-spin" />
@@ -1645,7 +1666,14 @@ export default function LandingPageManagement() {
 
             {/* Banners List */}
             <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-6">
-              <h2 className="text-lg font-bold text-slate-900 mb-4">Banner List ({diningBanners.length})</h2>
+              <h2 className="text-lg font-bold text-slate-900 mb-4 flex items-center gap-2">
+                <span>Banner List</span>
+                {diningBannersLoading ? (
+                  <span className="w-8 h-5 bg-slate-200 animate-pulse rounded inline-block" />
+                ) : (
+                  <span>({diningBanners.length})</span>
+                )}
+              </h2>
               {diningBannersLoading ? (
                 <div className="flex items-center justify-center py-12">
                   <Loader2 className="w-8 h-8 text-blue-600 animate-spin" />
@@ -1825,7 +1853,7 @@ export default function LandingPageManagement() {
                         <div className="p-4 text-sm text-slate-500 text-center">No restaurants found</div>
                       ) : (
                         filteredRestaurantsForRecommended.map((restaurant) => {
-                          const isChecked = (settings.recommendedRestaurantIds || []).includes(restaurant._id)
+                          const isChecked = (settings.recommendedRestaurantIds || []).some(id => String(id) === String(restaurant._id))
                           return (
                             <label
                               key={restaurant._id}
@@ -1887,16 +1915,21 @@ export default function LandingPageManagement() {
                     { id: 'under-250', label: 'Under 250', link: '/food/user/under-250' }
                   ].map((item) => {
                     // Find matching item from DB
-                    const dbItem = exploreMore.find(i => i.label?.toLowerCase() === item.label.toLowerCase())
+                    const dbItem = exploreMore.find(i => {
+                      const dbLabel = i.label?.toLowerCase().trim() || ""
+                      const itemLabel = item.label.toLowerCase().trim()
+                      return dbLabel === itemLabel || dbLabel.replace(/s$/, '') === itemLabel.replace(/s$/, '')
+                    })
+                    const iconSrc = dbItem?.imageUrl || dbItem?.iconUrl || null
 
                     return (
                       <div key={item.id} className="border border-slate-200 rounded-lg p-4 flex flex-col items-center relative">
                         <span className="text-sm font-semibold text-slate-700 mb-3">{item.label}</span>
 
                         <div className="w-24 h-24 mb-4 rounded-lg bg-slate-50 border border-slate-100 flex items-center justify-center overflow-hidden relative group">
-                          {dbItem?.imageUrl ? (
+                          {iconSrc ? (
                             <img
-                              src={dbItem.imageUrl}
+                              src={iconSrc}
                               alt={item.label}
                               className="w-full h-full object-contain p-2"
                             />
@@ -1975,7 +2008,14 @@ export default function LandingPageManagement() {
                 </div>
 
                 <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-6">
-                  <h2 className="text-lg font-bold text-slate-900 mb-4">Gourmet Restaurants ({gourmetRestaurants.length})</h2>
+                  <h2 className="text-lg font-bold text-slate-900 mb-4 flex items-center gap-2">
+                    <span>Gourmet Restaurants</span>
+                    {gourmetLoading ? (
+                      <span className="w-8 h-5 bg-slate-200 animate-pulse rounded inline-block" />
+                    ) : (
+                      <span>({gourmetRestaurants.length})</span>
+                    )}
+                  </h2>
                   {gourmetLoading ? (
                     <div className="flex items-center justify-center py-12">
                       <Loader2 className="w-8 h-8 text-blue-600 animate-spin" />
@@ -2017,7 +2057,10 @@ export default function LandingPageManagement() {
                               </div>
                               <div className="p-2">
                                 <h3 className="font-semibold text-slate-900 mb-0.5 text-sm line-clamp-1">{item.restaurant?.name || 'N/A'}</h3>
-                                <p className="text-[10px] text-slate-500 mb-2">Rating: {item.restaurant?.rating || 0}?</p>
+                                <div className="flex items-center gap-1 text-[10px] text-slate-500 mb-2">
+                                  <Star className="w-3 h-3 fill-amber-400 text-amber-400 inline" />
+                                  <span className="font-semibold text-slate-700">{item.restaurant?.rating || 0}</span>
+                                </div>
                                 <div className="flex items-center justify-between gap-1">
                                   <div className="flex items-center gap-0.5">
                                     <button onClick={() => handleGourmetOrderChange(item._id, 'up')} disabled={index === 0} className="p-1 rounded hover:bg-slate-100 disabled:opacity-50">
@@ -2050,9 +2093,9 @@ export default function LandingPageManagement() {
         <Dialog open={showRestaurantModal} onOpenChange={setShowRestaurantModal}>
           <DialogContent className="max-w-4xl max-h-[85vh] overflow-hidden flex flex-col p-0">
             <DialogHeader className="px-6 pt-6 pb-4 border-b border-slate-200">
-              <DialogTitle className="text-2xl font-bold text-slate-900">Select Restaurants to Link with Banner</DialogTitle>
+              <DialogTitle className="text-2xl font-bold text-slate-900">Select Restaurant to Link with Banner</DialogTitle>
               <DialogDescription className="text-slate-600 mt-2">
-                Select restaurants that will be linked to this banner. When users click on this banner, they will be redirected to the selected restaurants.
+                Select a restaurant that will be linked to this banner. When users click on this banner, they will be redirected to the selected restaurant.
               </DialogDescription>
             </DialogHeader>
 
@@ -2072,7 +2115,7 @@ export default function LandingPageManagement() {
                 {selectedRestaurantIds.length > 0 && (
                   <div className="flex items-center gap-2">
                     <div className="px-3 py-1.5 bg-blue-100 text-blue-700 rounded-lg text-sm font-medium">
-                      {selectedRestaurantIds.length} restaurant{selectedRestaurantIds.length > 1 ? 's' : ''} selected
+                      Restaurant selected
                     </div>
                     <Button
                       variant="ghost"
@@ -2156,10 +2199,10 @@ export default function LandingPageManagement() {
                               <p className="text-sm text-slate-500 truncate">
                                 ID: {restaurant.restaurantId || restaurant._id}
                               </p>
-                              {restaurant.rating && (
+                              {restaurant.rating !== undefined && restaurant.rating !== null && (
                                 <div className="flex items-center gap-1 mt-1">
-                                  <span className="text-xs text-slate-400">?</span>
-                                  <span className="text-xs text-slate-600">{restaurant.rating}</span>
+                                  <Star className="w-3.5 h-3.5 fill-amber-400 text-amber-400 inline" />
+                                  <span className="text-xs font-semibold text-slate-700">{restaurant.rating}</span>
                                 </div>
                               )}
                             </div>
@@ -2211,7 +2254,7 @@ export default function LandingPageManagement() {
                     ) : (
                       <>
                         <Megaphone className="w-4 h-4 mr-2" />
-                        Link {selectedRestaurantIds.length > 0 ? `(${selectedRestaurantIds.length})` : ''} Restaurant{selectedRestaurantIds.length !== 1 ? 's' : ''}
+                        Link Restaurant
                       </>
                     )}
                   </Button>

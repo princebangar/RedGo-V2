@@ -102,6 +102,7 @@ export default function Under250({ isTabActive = true }) {
   const [bannerImages, setBannerImages] = useState([])
   const [loadingBanner, setLoadingBanner] = useState(true)
   const [currentBannerIndex, setCurrentBannerIndex] = useState(0)
+  const [isTransitionEnabled, setIsTransitionEnabled] = useState(true)
   const [under250Restaurants, setUnder250Restaurants] = useState([])
   const [loadingRestaurants, setLoadingRestaurants] = useState(true)
   const [hasScrolledPastBanner, setHasScrolledPastBanner] = useState(false)
@@ -411,10 +412,35 @@ export default function Under250({ isTabActive = true }) {
 
     autoSlideIntervalRef.current = setInterval(() => {
       if (!isBannerSwipingRef.current) {
-        setCurrentBannerIndex((prev) => (prev + 1) % bannerImages.length)
+        setIsTransitionEnabled(true)
+        setCurrentBannerIndex((prev) => {
+          if (prev >= bannerImages.length) return prev
+          return prev + 1
+        })
       }
     }, 3500)
   }, [bannerImages.length])
+
+  // Handle snap-back when reaching the cloned slide at the end
+  useEffect(() => {
+    if (currentBannerIndex === bannerImages.length && bannerImages.length > 1) {
+      const timer = setTimeout(() => {
+        setIsTransitionEnabled(false)
+        setCurrentBannerIndex(0)
+      }, 500) // match transition duration
+      return () => clearTimeout(timer)
+    }
+  }, [currentBannerIndex, bannerImages.length])
+
+  // Re-enable transition after snap-back
+  useEffect(() => {
+    if (!isTransitionEnabled && currentBannerIndex === 0) {
+      const timer = setTimeout(() => {
+        setIsTransitionEnabled(true)
+      }, 50)
+      return () => clearTimeout(timer)
+    }
+  }, [isTransitionEnabled, currentBannerIndex])
 
   const resetBannerAutoSlide = useCallback(() => {
     startBannerAutoSlide()
@@ -456,17 +482,30 @@ export default function Under250({ isTabActive = true }) {
     const minSwipeDistance = 40
 
     if (Math.abs(deltaX) > minSwipeDistance && Math.abs(deltaX) > deltaY) {
-      setCurrentBannerIndex((prev) => {
-        if (deltaX > 0) {
-          return (prev - 1 + bannerImages.length) % bannerImages.length
+      if (deltaX > 0) {
+        if (currentBannerIndex === 0) {
+          setIsTransitionEnabled(false)
+          setCurrentBannerIndex(bannerImages.length)
+          setTimeout(() => {
+            setIsTransitionEnabled(true)
+            setCurrentBannerIndex(bannerImages.length - 1)
+          }, 50)
+        } else {
+          setIsTransitionEnabled(true)
+          setCurrentBannerIndex((prev) => prev - 1)
         }
-        return (prev + 1) % bannerImages.length
-      })
+      } else {
+        setIsTransitionEnabled(true)
+        setCurrentBannerIndex((prev) => {
+          if (prev >= bannerImages.length) return prev
+          return prev + 1
+        })
+      }
       resetBannerAutoSlide()
     }
 
     isBannerSwipingRef.current = false
-  }, [bannerImages.length, resetBannerAutoSlide])
+  }, [bannerImages.length, currentBannerIndex, resetBannerAutoSlide])
 
   // Fetch restaurants with dishes under ₹250 from backend
   useEffect(() => {
@@ -1036,21 +1075,59 @@ export default function Under250({ isTabActive = true }) {
       <div
         ref={bannerShellRef}
         data-banner-shell="true"
-        className="relative w-full overflow-hidden h-[clamp(210px,34vw,430px)]"
+        className="relative w-full overflow-hidden h-[clamp(210px,34vw,430px)] animate-fade-in"
       >
-        {/* Banner Image */}
-        <div className="absolute inset-0 z-0">
-          <OptimizedImage
-            src={bannerImages.length > 0 ? bannerImages[currentBannerIndex] : under250Banner}
-            alt="Under 250 Banner"
-            priority={true}
-            className="w-full h-full"
-            objectFit="cover"
-            style={{ objectPosition: "center 90%" }}
-          />
-          {/* Subtle gradient overlay to ensure navbar readability if needed */}
-          <div className="absolute inset-0 bg-gradient-to-b from-black/5 to-transparent pointer-events-none" />
+        {/* Sliding Banner Container */}
+        <div
+          className="flex w-full h-full"
+          style={{
+            transform: `translateX(-${currentBannerIndex * 100}%)`,
+            transition: isTransitionEnabled ? "transform 500ms cubic-bezier(0.25, 1, 0.5, 1)" : "none"
+          }}
+        >
+          {(bannerImages.length > 1 ? [...bannerImages, bannerImages[0]] : (bannerImages.length > 0 ? bannerImages : [under250Banner])).map((imgSrc, index) => (
+            <div key={`${index}-${imgSrc}`} className="w-full h-full flex-shrink-0 relative">
+              <OptimizedImage
+                src={imgSrc}
+                alt={`Under 250 Banner ${index + 1}`}
+                priority={index === 0}
+                className="w-full h-full"
+                objectFit="cover"
+                style={{ objectPosition: "center 90%" }}
+              />
+            </div>
+          ))}
         </div>
+
+        {/* Subtle gradient overlay to ensure navbar readability if needed */}
+        <div className="absolute inset-0 bg-gradient-to-b from-black/10 to-transparent pointer-events-none z-10" />
+
+        {/* Bottom Right Carousel Pagination Dots */}
+        {bannerImages.length > 1 && (
+          <div className="absolute bottom-3 right-3 z-20 flex items-center gap-1.5 pointer-events-auto">
+            {bannerImages.map((_, dotIndex) => {
+              const activeDotIndex = currentBannerIndex === bannerImages.length ? 0 : currentBannerIndex;
+              return (
+                <button
+                  key={dotIndex}
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setIsTransitionEnabled(true);
+                    setCurrentBannerIndex(dotIndex);
+                    resetBannerAutoSlide();
+                  }}
+                  className={`transition-all duration-300 rounded-full ${
+                    activeDotIndex === dotIndex
+                      ? "w-4 h-1.5 bg-white shadow-sm"
+                      : "w-1.5 h-1.5 bg-white/50 hover:bg-white/80"
+                  }`}
+                  aria-label={`Go to banner ${dotIndex + 1}`}
+                />
+              );
+            })}
+          </div>
+        )}
       </div>
 
       {/* Content Section — large bottom padding on mobile so the last dishes are

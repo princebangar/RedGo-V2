@@ -95,6 +95,37 @@ const RestaurantImageCarousel = React.memo(
       return items;
     }, [restaurant.recommendedDishes, restaurant.images, restaurant.image, withCacheBuster, vegMode, categoryFallbackImage]);
 
+    const carouselRef = useRef(null);
+    const [isCentered, setIsCentered] = useState(false);
+
+    useEffect(() => {
+      if (typeof window === "undefined" || !("IntersectionObserver" in window)) {
+        setIsCentered(true);
+        return undefined;
+      }
+
+      const observer = new IntersectionObserver(
+        ([entry]) => {
+          setIsCentered(entry.isIntersecting);
+        },
+        {
+          rootMargin: "-20% 0px -20% 0px",
+          threshold: 0,
+        }
+      );
+
+      const currentRef = carouselRef.current;
+      if (currentRef) {
+        observer.observe(currentRef);
+      }
+
+      return () => {
+        if (currentRef) {
+          observer.unobserve(currentRef);
+        }
+      };
+    }, []);
+
     const [currentIndex, setCurrentIndex] = useState(0);
     const [isImageUnavailable, setIsImageUnavailable] = useState(false);
     const [loadedIndices, setLoadedIndices] = useState(new Set([0]));
@@ -124,12 +155,12 @@ const RestaurantImageCarousel = React.memo(
     }, [slideItems.length, infiniteSlides.length]);
 
     useEffect(() => {
-      if (slideItems.length <= 1) return undefined;
+      if (slideItems.length <= 1 || !isCentered) return undefined;
       const timer = setInterval(() => {
         handleNext();
       }, 3000);
       return () => clearInterval(timer);
-    }, [slideItems.length, handleNext]);
+    }, [slideItems.length, handleNext, isCentered]);
 
     useEffect(() => {
       if (currentIndex === infiniteSlides.length - 1 && slideItems.length > 1) {
@@ -243,6 +274,7 @@ const RestaurantImageCarousel = React.memo(
 
     return (
       <div
+        ref={carouselRef}
         className={`relative ${className} w-full overflow-hidden ${roundedClass} flex-shrink-0 group`}
         onTouchStart={handleTouchStart}
         onTouchMove={handleTouchMove}
@@ -317,7 +349,7 @@ const RestaurantImageCarousel = React.memo(
         )}
 
         {showMultipleImages && (
-          <div className="absolute bottom-2 left-1/2 transform -translate-x-1/2 flex items-center z-[2] max-w-[80%] overflow-hidden gap-[4px] justify-center drop-shadow-lg">
+          <div className="absolute bottom-3 right-3 z-[2] flex items-center gap-1.5 pointer-events-auto">
             {slideItems.map((_, index) => (
               <button
                 key={index}
@@ -326,14 +358,14 @@ const RestaurantImageCarousel = React.memo(
                   e.stopPropagation();
                   setCurrentIndex(index);
                 }}
-                className="focus:outline-none flex items-center py-1 group/btn"
+                className="focus:outline-none flex items-center py-0.5 group/btn"
                 aria-label={`Go to slide ${index + 1}`}
               >
                 <div
                   className={`h-1.5 rounded-full transition-all duration-300 shadow-sm ${
                     index === displayIndex
                       ? "w-4 bg-white opacity-100"
-                      : "w-1.5 bg-white opacity-60 group-hover/btn:opacity-90 group-hover/btn:bg-white"
+                      : "w-1.5 bg-white/50 group-hover/btn:opacity-90 group-hover/btn:bg-white"
                   }`}
                 />
               </button>
