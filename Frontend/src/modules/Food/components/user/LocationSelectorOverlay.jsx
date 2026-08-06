@@ -1683,9 +1683,16 @@ export default function LocationSelectorOverlay({ isOpen, onClose }) {
             area = pointOfInterest || premise || street || ""
           }
 
-          if (formattedAddress && formattedAddress.endsWith(", India")) {
-            formattedAddress = formattedAddress.replace(", India", "").trim()
+          if (formattedAddress) {
+            formattedAddress = formattedAddress.replace(/^[a-z0-9]{2,8}\+[a-z0-9]{0,3}[,\s]*/i, "").trim()
+            if (formattedAddress.endsWith(", India")) {
+              formattedAddress = formattedAddress.replace(", India", "").trim()
+            }
           }
+          if (street) street = street.replace(/^[a-z0-9]{2,8}\+[a-z0-9]{0,3}[,\s]*/i, "").trim()
+          if (area) area = area.replace(/^[a-z0-9]{2,8}\+[a-z0-9]{0,3}[,\s]*/i, "").trim()
+          if (pointOfInterest) pointOfInterest = pointOfInterest.replace(/^[a-z0-9]{2,8}\+[a-z0-9]{0,3}[,\s]*/i, "").trim()
+          if (premise) premise = premise.replace(/^[a-z0-9]{2,8}\+[a-z0-9]{0,3}[,\s]*/i, "").trim()
 
           setCurrentAddress(formattedAddress || coordLabel)
 
@@ -2561,7 +2568,7 @@ export default function LocationSelectorOverlay({ isOpen, onClose }) {
                 <div className="text-left">
                   <p className="font-semibold text-green-700 dark:text-green-400">Use current location</p>
                   <p className="text-sm text-gray-500 dark:text-gray-400">
-                    {loading ? "Getting location..." : currentLocationText}
+                    {loading ? "Getting location..." : (currentLocationText ? currentLocationText.replace(/^[a-z0-9]{2,8}\+[a-z0-9]{0,3}[,\s]*/i, '') : "")}
                   </p>
                 </div>
               </div>
@@ -2632,7 +2639,7 @@ export default function LocationSelectorOverlay({ isOpen, onClose }) {
                                   address.city,
                                   address.state,
                                   address.zipCode
-                                ].filter(Boolean).join(", ")}
+                                ].filter(Boolean).join(", ").replace(/^[a-z0-9]{2,8}\+[a-z0-9]{0,3}[,\s]*/i, '')}
                               </p>
                               <p className="text-sm text-gray-500 dark:text-gray-400">
                                 Phone number: {address.phone || userProfile?.phone || "Not provided"}

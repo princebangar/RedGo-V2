@@ -59,7 +59,8 @@ export default function Gourmet() {
       try {
         setLoading(true)
         setError(null)
-        const response = await api.get('/food/hero-banners/gourmet/public')
+        const reqConfig = zoneId ? { params: { zoneId } } : {}
+        const response = await api.get('/food/hero-banners/gourmet/public', reqConfig)
         const data = response?.data?.data
         const list = data?.restaurants ?? (Array.isArray(data) ? data : [])
         setGourmetRestaurants(list)
@@ -75,7 +76,7 @@ export default function Gourmet() {
     }
 
     fetchGourmetRestaurants()
-  }, [])
+  }, [zoneId])
 
   const toggleFavorite = (id) => {
     setFavorites(prev => {

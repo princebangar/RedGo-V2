@@ -10,7 +10,8 @@ import { ValidationError } from '../../../../core/auth/errors.js';
 
 export const listDiningBannersController = async (req, res, next) => {
     try {
-        const data = await listDiningBanners();
+        const { zoneId } = req.query;
+        const data = await listDiningBanners(zoneId);
         return sendResponse(res, 200, 'Dining banners fetched successfully', { banners: data });
     } catch (error) {
         next(error);
@@ -28,6 +29,7 @@ export const uploadDiningBannersController = async (req, res, next) => {
             ctaText: req.body.ctaText,
             ctaLink: req.body.ctaLink,
             diningType: req.body.diningType,
+            zoneId: req.body.zoneId,
         };
 
         const results = await createDiningBannersFromFiles(req.files, meta);

@@ -1378,6 +1378,7 @@ export const listApprovedRestaurants = async (query = {}) => {
 
     const filter = { status: 'approved' };
 
+
     if (query.city && String(query.city).trim()) {
         const city = String(query.city).trim().slice(0, 80);
         const rx = { $regex: escapeRegex(city), $options: 'i' };

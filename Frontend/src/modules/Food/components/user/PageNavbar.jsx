@@ -967,11 +967,25 @@ export default function PageNavbar({
     if (/^-?\d+(\.\d+)?$/.test(name.trim())) {
       return "Current Location"
     }
+    const isPlusCode = /^[a-z0-9]{2,8}\+[a-z0-9]{0,3}/i.test(name.trim());
+    if (isPlusCode) {
+      return cityName || "Select Location"
+    }
     return name
-  }, [areaName])
+  }, [areaName, cityName])
 
   const displayAddress = useMemo(() => {
     if (savedAddressLabel) return `Delivering to ${savedAddressLabel}`
+    
+    const city = location?.city || "";
+    const state = location?.state || "";
+    const pincode = location?.pincode || "";
+
+    const parts = [];
+    if (city) parts.push(city);
+    if (state) parts.push(state);
+    if (pincode) parts.push(pincode);
+    if (parts.length > 0) return parts.join(', ');
     
     let addr = fullAddress || ""
     if (cityName) {
@@ -984,8 +998,8 @@ export default function PageNavbar({
       return "Pinpoint location"
     }
     return addr
-  }, [fullAddress, cityName, areaName, savedAddressLabel])
-  const displayCity = cityName
+  }, [fullAddress, cityName, areaName, savedAddressLabel, location])
+  const displayCity = ""
 
   const handleLocationClick = () => {
     // Open location selector overlay

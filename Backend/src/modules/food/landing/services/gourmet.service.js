@@ -1,13 +1,19 @@
 import { FoodGourmetRestaurant } from '../models/gourmetRestaurant.model.js';
 import { FoodRestaurant } from '../../restaurant/models/restaurant.model.js';
 
-export const getPublicGourmetRestaurants = async () => {
+export const getPublicGourmetRestaurants = async (zoneId) => {
     const docs = await FoodGourmetRestaurant.find({ isActive: true })
         .sort({ priority: 1, createdAt: -1 })
         .lean();
 
     const restaurantIds = docs.map((d) => d.restaurantId);
-    const restaurants = await FoodRestaurant.find({ _id: { $in: restaurantIds } })
+    
+    const restaurantFilter = { _id: { $in: restaurantIds } };
+    if (zoneId && String(zoneId).trim()) {
+        restaurantFilter.zoneId = String(zoneId).trim();
+    }
+
+    const restaurants = await FoodRestaurant.find(restaurantFilter)
         .select('restaurantName area city profileImage rating cuisines slug pureVegRestaurant location estimatedDeliveryTime zoneId')
         .lean();
 
@@ -15,6 +21,7 @@ export const getPublicGourmetRestaurants = async () => {
 
     return docs.map((item) => {
         const r = restaurantMap.get(item.restaurantId.toString());
+        if (!r && zoneId && String(zoneId).trim()) return null;
         return {
             ...item,
             restaurant: r ? {
@@ -33,6 +40,6 @@ export const getPublicGourmetRestaurants = async () => {
                 zoneId: r.zoneId
             } : null
         };
-    });
+    }).filter(Boolean);
 };
 

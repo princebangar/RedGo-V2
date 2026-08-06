@@ -349,7 +349,8 @@ export default function Under250({ isTabActive = true }) {
   useEffect(() => {
     let cancelled = false
     setLoadingBanner(true)
-    api.get('/food/hero-banners/under-250/public')
+    const reqConfig = zoneId ? { params: { zoneId } } : {}
+    api.get('/food/hero-banners/under-250/public', reqConfig)
       .then((res) => {
         if (cancelled) return
         const data = res?.data?.data
@@ -366,12 +367,13 @@ export default function Under250({ isTabActive = true }) {
         if (!cancelled) setLoadingBanner(false)
       })
     return () => { cancelled = true }
-  }, [])
+  }, [zoneId])
 
   // Fetch landing settings to get dynamic price limit
   useEffect(() => {
     let cancelled = false
-    api.get('/food/landing/settings/public')
+    const reqConfig = zoneId ? { params: { zoneId } } : {}
+    api.get('/food/landing/settings/public', reqConfig)
       .then((res) => {
         if (cancelled) return
         const settings = res?.data?.data
@@ -384,7 +386,7 @@ export default function Under250({ isTabActive = true }) {
         setUnder250PriceLimit(250)
       })
     return () => { cancelled = true }
-  }, [])
+  }, [zoneId])
 
   useEffect(() => {
     setCurrentBannerIndex((prev) => {

@@ -1,8 +1,9 @@
 import { FoodDiningBanner } from '../models/diningBanner.model.js';
 import { v2 as cloudinary } from 'cloudinary';
 
-export const listDiningBanners = async () => {
-    return FoodDiningBanner.find().sort({ sortOrder: 1, createdAt: -1 }).lean();
+export const listDiningBanners = async (zoneId = null) => {
+    let query = zoneId ? { zoneId } : { zoneId: null };
+    return FoodDiningBanner.find(query).sort({ sortOrder: 1, createdAt: -1 }).lean();
 };
 
 export const createDiningBannersFromFiles = async (files, meta = {}) => {
@@ -32,6 +33,7 @@ export const createDiningBannersFromFiles = async (files, meta = {}) => {
                 ctaText: meta.ctaText,
                 ctaLink: meta.ctaLink,
                 diningType: meta.diningType,
+                zoneId: meta.zoneId,
                 sortOrder: meta.sortOrder ?? 0,
                 isActive: true,
             });

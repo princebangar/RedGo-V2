@@ -500,7 +500,12 @@ export default function Home({ homeMode = null, isTabActive = true }) {
   const [exploreMoreHeading, setExploreMoreHeading] = useState(
     () => CACHED_EXPLORE_BOOT?.heading || "Explore More",
   );
-  const [festBannerVideoUrl, setFestBannerVideoUrl] = useState("");
+  const [festBannerVideoUrl, setFestBannerVideoUrl] = useState(null);
+  const [videoLoaded, setVideoLoaded] = useState(false);
+
+  useEffect(() => {
+    setVideoLoaded(false);
+  }, [festBannerVideoUrl]);
   const [recommendedRestaurantIds, setRecommendedRestaurantIds] = useState([]);
   const [under250PriceLimit, setUnder250PriceLimit] = useState(250);
   const [
@@ -542,6 +547,7 @@ export default function Home({ homeMode = null, isTabActive = true }) {
   );
   const festVideoActive =
     typeof festBannerVideoUrl === "string" && festBannerVideoUrl.trim().length > 0;
+  const isSettingsLoading = festBannerVideoUrl === null;
 
   // Stable list of restaurant ids for menu-category union so we don't refetch menus
   // when `restaurantsData` changes for reasons like distance recalculation or outletTimings enrichment.
@@ -978,98 +984,6 @@ export default function Home({ homeMode = null, isTabActive = true }) {
     };
   }, [showVegModePopup]);
 
-  // Fetch hero banners from public API (no auth required)
-  useEffect(() => {
-    let cancelled = false;
-    setLoadingBanners(true);
-    publicGetOnce("/food/hero-banners/public")
-      .then((response) => {
-        if (cancelled) return;
-        const data = response?.data?.data;
-        const list = Array.isArray(data?.banners)
-          ? data.banners
-          : Array.isArray(data)
-            ? data
-            : [];
-        const images = list
-          .map((b) => (b && typeof b.imageUrl === "string" ? b.imageUrl : ""))
-          .filter(Boolean);
-        setHeroBannerImages(images);
-        setHeroBannersData(list);
-        setCurrentBannerIndex(0);
-      })
-      .catch((err) => {
-        if (cancelled) return;
-        debugError("Failed to fetch hero banners", err);
-        setHeroBannerImages([]);
-        setHeroBannersData([]);
-      })
-      .finally(() => {
-        if (!cancelled) setLoadingBanners(false);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, []);
-
-  // Old backend endpoint removed: keep UI stable with empty categories.
-  useEffect(() => {
-    setLoadingRealCategories(true);
-    setRealCategories([]);
-    setLoadingRealCategories(false);
-  }, []);
-
-  // Fetch explore icons and landing settings from public APIs
-  useEffect(() => {
-    let cancelled = false;
-    Promise.all([
-      publicGetOnce("/food/explore-icons/public")
-        .catch(() => ({ data: { data: {} } })),
-      publicGetOnce("/food/landing/settings/public")
-        .catch(() => ({ data: { data: {} } })),
-    ])
-      .then(([exploreRes, settingsRes]) => {
-        if (cancelled) return;
-        const exploreData = exploreRes?.data?.data;
-        const items = Array.isArray(exploreData?.items)
-          ? exploreData.items
-          : Array.isArray(exploreData)
-            ? exploreData
-            : [];
-        const mappedItems = items.map((it) => ({
-          ...it,
-          imageUrl: it.imageUrl || it.iconUrl,
-          label: it.label || it.name,
-        }));
-        setLandingExploreMore(mappedItems);
-        const settings = settingsRes?.data?.data || {};
-        const heading = settings.exploreMoreHeading || "Explore More";
-        setExploreMoreHeading(heading);
-        setRecommendedRestaurantIds(settings.recommendedRestaurantIds || []);
-        setUnder250PriceLimit(Number(settings.under250PriceLimit) || 250);
-        setRecommendedRestaurantsFromSettings(
-          settings.recommendedRestaurants || [],
-        );
-        setFestBannerVideoUrl(typeof settings.festBannerVideoUrl === "string" ? settings.festBannerVideoUrl : "");
-        setCachedExploreIcons({ items: mappedItems, heading });
-        preloadImageUrls(
-          mappedItems
-            .map((it) => toExploreIconThumbUrl(it.imageUrl || it.image))
-            .filter(Boolean),
-        );
-      })
-      .catch(() => {
-        if (!cancelled) {
-          setLandingExploreMore([]);
-          setExploreMoreHeading("Explore More");
-          setRecommendedRestaurantsFromSettings([]);
-          setFestBannerVideoUrl("");
-        }
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, []);
 
   // Keep index within current banner bounds after admin updates/reloads.
   useEffect(() => {
@@ -1307,7 +1221,101 @@ export default function Home({ homeMode = null, isTabActive = true }) {
   const [showManageCollections, setShowManageCollections] = useState(false);
   const [selectedRestaurantSlug, setSelectedRestaurantSlug] = useState(null);
 
+  // Fetch hero banners from public API (no auth required)
+  useEffect(() => {
+    if (zoneLoading) return;
+    let cancelled = false;
+    setLoadingBanners(true);
+    publicGetOnce("/food/hero-banners/public", zoneId ? { params: { zoneId } } : {})
+      .then((response) => {
+        if (cancelled) return;
+        const data = response?.data?.data;
+        const list = Array.isArray(data?.banners)
+          ? data.banners
+          : Array.isArray(data)
+            ? data
+            : [];
+        const images = list
+          .map((b) => (b && typeof b.imageUrl === "string" ? b.imageUrl : ""))
+          .filter(Boolean);
+        setHeroBannerImages(images);
+        setHeroBannersData(list);
+        setCurrentBannerIndex(0);
+      })
+      .catch((err) => {
+        if (cancelled) return;
+        debugError("Failed to fetch hero banners", err);
+        setHeroBannerImages([]);
+        setHeroBannersData([]);
+      })
+      .finally(() => {
+        if (!cancelled) setLoadingBanners(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [zoneId, zoneLoading]);
 
+  // Old backend endpoint removed: keep UI stable with empty categories.
+  useEffect(() => {
+    setLoadingRealCategories(true);
+    setRealCategories([]);
+    setLoadingRealCategories(false);
+  }, []);
+
+  // Fetch explore icons and landing settings from public APIs
+  useEffect(() => {
+    if (zoneLoading) return;
+    let cancelled = false;
+    const reqConfig = zoneId ? { params: { zoneId } } : {};
+    Promise.all([
+      publicGetOnce("/food/explore-icons/public", reqConfig)
+        .catch(() => ({ data: { data: {} } })),
+      publicGetOnce("/food/landing/settings/public", reqConfig)
+        .catch(() => ({ data: { data: {} } })),
+    ])
+      .then(([exploreRes, settingsRes]) => {
+        if (cancelled) return;
+        const exploreData = exploreRes?.data?.data;
+        const items = Array.isArray(exploreData?.items)
+          ? exploreData.items
+          : Array.isArray(exploreData)
+            ? exploreData
+            : [];
+        const mappedItems = items.map((it) => ({
+          ...it,
+          imageUrl: it.imageUrl || it.iconUrl,
+          label: it.label || it.name,
+        }));
+        setLandingExploreMore(mappedItems);
+        const settings = settingsRes?.data?.data || {};
+        const heading = settings.exploreMoreHeading || "Explore More";
+        setExploreMoreHeading(heading);
+        setRecommendedRestaurantIds(settings.recommendedRestaurantIds || []);
+        setUnder250PriceLimit(Number(settings.under250PriceLimit) || 250);
+        setRecommendedRestaurantsFromSettings(
+          settings.recommendedRestaurants || [],
+        );
+        setFestBannerVideoUrl(typeof settings.festBannerVideoUrl === "string" ? settings.festBannerVideoUrl : "");
+        setCachedExploreIcons({ items: mappedItems, heading });
+        preloadImageUrls(
+          mappedItems
+            .map((it) => toExploreIconThumbUrl(it.imageUrl || it.image))
+            .filter(Boolean),
+        );
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setLandingExploreMore([]);
+          setExploreMoreHeading("Explore More");
+          setRecommendedRestaurantsFromSettings([]);
+          setFestBannerVideoUrl("");
+        }
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [zoneId, zoneLoading]);
 
   // Memoize cartCount to prevent recalculation on every render - use cart directly
   const cartCount = useMemo(
@@ -2807,7 +2815,7 @@ export default function Home({ homeMode = null, isTabActive = true }) {
           {/* Brand Top Section (Red Theme) */}
           <div className="relative overflow-hidden rounded-b-[2rem] shadow-lg mb-2 home-red-banner-bg">
             {festVideoActive && (
-              <div className="absolute inset-0 z-0">
+              <div className={`absolute inset-0 z-0 transition-opacity duration-300 ${videoLoaded ? 'opacity-100' : 'opacity-0'}`}>
                 <video
                   src={festBannerVideoUrl}
                   className="w-full h-full object-cover"
@@ -2815,8 +2823,12 @@ export default function Home({ homeMode = null, isTabActive = true }) {
                   muted
                   loop
                   playsInline
+                  webkit-playsinline="true"
+                  x5-playsinline="true"
+                  disablePictureInPicture
+                  onLoadedData={() => setVideoLoaded(true)}
                 />
-                <div className="absolute inset-0 bg-black/40" />
+                {videoLoaded && <div className="absolute inset-0 bg-black/40" />}
               </div>
             )}
             <div className="relative z-10">
@@ -2833,8 +2845,8 @@ export default function Home({ homeMode = null, isTabActive = true }) {
                   vegModeToggleRef={vegModeToggleRef}
                   // Pass Banner Props to Unified Component
                   showBanner={activeTab === "food" && effectiveOrderType !== "takeaway" && !isTakeawayPage}
-                  videoUrl={festVideoActive ? "" : festBannerVideoUrl}
-                  hideFoodImages={festVideoActive}
+                  videoUrl={festVideoActive ? "" : (festBannerVideoUrl || "")}
+                  hideFoodImages={festVideoActive && videoLoaded}
                 />
               ) : (
                 <div className="bg-white/0 dark:bg-black/0 px-4 pt-2 pb-4 border-b-0 dark:border-gray-800 backdrop-blur-sm">

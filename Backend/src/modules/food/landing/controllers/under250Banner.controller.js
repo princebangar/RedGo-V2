@@ -10,7 +10,8 @@ import { ValidationError } from '../../../../core/auth/errors.js';
 
 export const listUnder250BannersController = async (req, res, next) => {
     try {
-        const data = await listUnder250Banners();
+        const { zoneId } = req.query;
+        const data = await listUnder250Banners(zoneId);
         return sendResponse(res, 200, 'Under 250 banners fetched successfully', { banners: data });
     } catch (error) {
         next(error);
