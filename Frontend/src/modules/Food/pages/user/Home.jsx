@@ -377,6 +377,7 @@ export default function Home({ homeMode = null, isTabActive = true }) {
   const navigate = useNavigate();
   const routerLocation = useRouterLocation();
   const hasRestoredBrowseScrollRef = useRef(false);
+  const videoRef = useRef(null);
   const HERO_BANNER_AUTO_SLIDE_MS = 3500;
   const BACKEND_ORIGIN = API_BASE_URL.replace(/\/api\/?$/, "");
   const [searchParams] = useSearchParams();
@@ -428,6 +429,15 @@ export default function Home({ homeMode = null, isTabActive = true }) {
       setHeroSearch("");
     }
   }, [isTakeawayPage]);
+
+  // Force autoplay for iOS
+  useEffect(() => {
+    if (videoRef.current) {
+      videoRef.current.defaultMuted = true;
+      videoRef.current.muted = true;
+      videoRef.current.play().catch(e => console.log("iOS Autoplay prevented:", e));
+    }
+  }, [festVideoActive, festBannerVideoUrl]);
 
   const [prevVegMode, setPrevVegMode] = useState(vegMode);
   const [showVegModePopup, setShowVegModePopup] = useState(false);
@@ -2817,10 +2827,12 @@ export default function Home({ homeMode = null, isTabActive = true }) {
             {festVideoActive && (
               <div className={`absolute inset-0 z-0 transition-opacity duration-300 ${videoLoaded ? 'opacity-100' : 'opacity-0'}`}>
                 <video
+                  ref={videoRef}
                   src={festBannerVideoUrl}
                   className="w-full h-full object-cover"
                   autoPlay
                   muted
+                  defaultMuted
                   loop
                   playsInline
                   webkit-playsinline="true"
