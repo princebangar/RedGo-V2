@@ -57,6 +57,8 @@ app.use(helmet({
 const allowedOrigins = [
     'https://redgo.in',
     'https://www.redgo.in',
+    'https://redgoindia.cloud',
+    'https://www.redgoindia.cloud',
     'http://localhost:5173',
     'http://localhost:3000'
 ];
