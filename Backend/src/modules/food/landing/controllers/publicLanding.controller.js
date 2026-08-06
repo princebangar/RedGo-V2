@@ -10,7 +10,12 @@ import { sendResponse } from '../../../../utils/response.js';
 /** Public hero banners for user home: active only, sorted, with linkedRestaurants populated for click-through */
 export const getPublicHeroBannersController = async (req, res, next) => {
     try {
-        const docs = await FoodHeroBanner.find({ isActive: true })
+        const { zoneId } = req.query;
+        let query = { isActive: true };
+        if (zoneId) query.zoneId = zoneId;
+        else query.zoneId = null;
+
+        let docs = await FoodHeroBanner.find(query)
             .sort({ sortOrder: 1, createdAt: -1 })
             .populate({
                 path: 'linkedRestaurantIds',
@@ -18,6 +23,18 @@ export const getPublicHeroBannersController = async (req, res, next) => {
                 model: 'FoodRestaurant'
             })
             .lean();
+        
+        if (zoneId && docs.length === 0) {
+            query.zoneId = null;
+            docs = await FoodHeroBanner.find(query)
+                .sort({ sortOrder: 1, createdAt: -1 })
+                .populate({
+                    path: 'linkedRestaurantIds',
+                    select: '_id restaurantName slug area city rating cuisines profileImage pureVegRestaurant zoneId',
+                    model: 'FoodRestaurant'
+                })
+                .lean();
+        }
         const banners = (docs || []).map((b) => {
             const { linkedRestaurantIds, ...rest } = b;
             return {
@@ -34,7 +51,16 @@ export const getPublicHeroBannersController = async (req, res, next) => {
 
 export const getPublicUnder250BannersController = async (req, res, next) => {
     try {
-        const docs = await FoodUnder250Banner.find({ isActive: true }).sort({ sortOrder: 1, createdAt: -1 }).lean();
+        const { zoneId } = req.query;
+        let query = { isActive: true };
+        if (zoneId) query.zoneId = zoneId;
+        else query.zoneId = null;
+
+        let docs = await FoodUnder250Banner.find(query).sort({ sortOrder: 1, createdAt: -1 }).lean();
+        if (zoneId && docs.length === 0) {
+            query.zoneId = null;
+            docs = await FoodUnder250Banner.find(query).sort({ sortOrder: 1, createdAt: -1 }).lean();
+        }
         return sendResponse(res, 200, 'Under 250 banners fetched', { banners: docs });
     } catch (error) {
         next(error);
@@ -43,7 +69,16 @@ export const getPublicUnder250BannersController = async (req, res, next) => {
 
 export const getPublicDiningBannersController = async (req, res, next) => {
     try {
-        const docs = await FoodDiningBanner.find({ isActive: true }).sort({ sortOrder: 1, createdAt: -1 }).lean();
+        const { zoneId } = req.query;
+        let query = { isActive: true };
+        if (zoneId) query.zoneId = zoneId;
+        else query.zoneId = null;
+
+        let docs = await FoodDiningBanner.find(query).sort({ sortOrder: 1, createdAt: -1 }).lean();
+        if (zoneId && docs.length === 0) {
+            query.zoneId = null;
+            docs = await FoodDiningBanner.find(query).sort({ sortOrder: 1, createdAt: -1 }).lean();
+        }
         return sendResponse(res, 200, 'Dining banners fetched', { banners: docs });
     } catch (error) {
         next(error);
@@ -52,7 +87,39 @@ export const getPublicDiningBannersController = async (req, res, next) => {
 
 export const getPublicExploreIconsController = async (req, res, next) => {
     try {
-        const docs = await FoodExploreIcon.find({ isActive: true }).sort({ sortOrder: 1, createdAt: -1 }).lean();
+        const { zoneId } = req.query;
+        let globalDocs = await FoodExploreIcon.find({ zoneId: null, isActive: true }).sort({ sortOrder: 1, createdAt: -1 }).lean();
+        let zoneDocs = zoneId ? await FoodExploreIcon.find({ zoneId, isActive: true }).sort({ sortOrder: 1, createdAt: -1 }).lean() : [];
+        
+        let docs = [];
+        if (!zoneId || zoneDocs.length === 0) {
+            docs = globalDocs;
+        } else {
+            const zoneMap = new Map();
+            zoneDocs.forEach(doc => {
+                const key = doc.linkType && doc.linkType !== 'custom' ? doc.linkType : doc.label.toLowerCase();
+                zoneMap.set(key, doc);
+            });
+            
+            const usedZoneKeys = new Set();
+            for (const gDoc of globalDocs) {
+                const key = gDoc.linkType && gDoc.linkType !== 'custom' ? gDoc.linkType : gDoc.label.toLowerCase();
+                if (zoneMap.has(key)) {
+                    docs.push(zoneMap.get(key));
+                    usedZoneKeys.add(key);
+                } else {
+                    docs.push(gDoc);
+                }
+            }
+            
+            for (const [key, doc] of zoneMap.entries()) {
+                if (!usedZoneKeys.has(key)) {
+                    docs.push(doc);
+                }
+            }
+            
+            docs.sort((a, b) => (a.sortOrder ?? 999) - (b.sortOrder ?? 999));
+        }
         const items = docs.map(({ targetPath, sortOrder, ...rest }) => ({ ...rest, link: targetPath, order: sortOrder }));
         return sendResponse(res, 200, 'Explore icons fetched', { items });
     } catch (error) {
@@ -63,7 +130,8 @@ export const getPublicExploreIconsController = async (req, res, next) => {
 
 export const getPublicGourmetController = async (req, res, next) => {
     try {
-        const docs = await getPublicGourmetRestaurants();
+        const { zoneId } = req.query;
+        const docs = await getPublicGourmetRestaurants(zoneId);
         const restaurants = (docs || []).map((d) => ({
             ...(d.restaurant || {}),
             _id: d.restaurant?._id || d.restaurantId,
@@ -77,7 +145,22 @@ export const getPublicGourmetController = async (req, res, next) => {
 
 export const getPublicLandingSettingsController = async (req, res, next) => {
     try {
-        const settings = await getLandingSettings();
+        const { zoneId } = req.query;
+        let settings = await getLandingSettings(zoneId);
+        let globalSettings = null;
+        
+        if (zoneId) {
+            globalSettings = await getLandingSettings(null);
+            // Merge global settings into zone settings for any missing fields
+            settings = {
+                ...globalSettings,
+                ...settings,
+                exploreMoreHeading: settings.exploreMoreHeading && settings.exploreMoreHeading !== 'Explore more' ? settings.exploreMoreHeading : globalSettings.exploreMoreHeading,
+                recommendedRestaurantIds: settings.recommendedRestaurantIds && settings.recommendedRestaurantIds.length > 0 ? settings.recommendedRestaurantIds : globalSettings.recommendedRestaurantIds,
+                festBannerVideoUrl: settings.festBannerVideoUrl ? settings.festBannerVideoUrl : globalSettings.festBannerVideoUrl,
+            };
+        }
+
         const ids = settings?.recommendedRestaurantIds || [];
         let recommendedRestaurants = [];
         if (Array.isArray(ids) && ids.length > 0) {

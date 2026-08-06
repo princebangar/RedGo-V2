@@ -1,8 +1,9 @@
 import { FoodHeroBanner } from '../models/heroBanner.model.js';
 import { v2 as cloudinary } from 'cloudinary';
 
-export const listHeroBanners = async () => {
-    const banners = await FoodHeroBanner.find()
+export const listHeroBanners = async (zoneId = null) => {
+    let query = zoneId ? { zoneId } : { zoneId: null };
+    const banners = await FoodHeroBanner.find(query)
         .populate({
             path: 'linkedRestaurantIds',
             select: 'restaurantName name restaurantId profileImage rating'
@@ -58,6 +59,7 @@ export const createHeroBannersFromFiles = async (files, meta = {}) => {
                 ctaLink: meta.ctaLink,
                 linkedRestaurantIds: meta.linkedRestaurantIds || [],
                 sortOrder: meta.sortOrder ?? 0,
+                zoneId: meta.zoneId || null,
                 isActive: true
             });
 

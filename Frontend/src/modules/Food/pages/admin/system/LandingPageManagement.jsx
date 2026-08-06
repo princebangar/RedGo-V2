@@ -8,6 +8,7 @@ import { Label } from "@food/components/ui/label"
 import { Button } from "@food/components/ui/button"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@food/components/ui/dialog"
 import { Checkbox } from "@food/components/ui/checkbox"
+
 const debugLog = (...args) => {}
 const debugWarn = (...args) => {}
 const debugError = (...args) => {}
@@ -16,6 +17,33 @@ const debugError = (...args) => {}
 export default function LandingPageManagement() {
   const [activeTab, setActiveTab] = useState('banners')
   const [exploreMoreSubTab, setExploreMoreSubTab] = useState('icons')
+
+  const [zones, setZones] = useState([])
+  const [zonesLoading, setZonesLoading] = useState(false)
+  const [selectedZoneId, setSelectedZoneId] = useState("")
+
+  const fetchZones = async () => {
+    setZonesLoading(true)
+    try {
+      const res = await adminAPI.getZones({ limit: 1000 })
+      const zoneData = res?.data?.data
+      const list = Array.isArray(zoneData?.zones)
+        ? zoneData.zones
+        : Array.isArray(zoneData)
+          ? zoneData
+          : []
+      setZones(list)
+    } catch (err) {
+      setZones([])
+    } finally {
+      setZonesLoading(false)
+    }
+  }
+
+  useEffect(() => {
+    fetchZones()
+  }, [])
+
 
   // Hero Banners
   const [banners, setBanners] = useState([])
@@ -61,6 +89,7 @@ export default function LandingPageManagement() {
 
   // Settings
   const [settings, setSettings] = useState({ exploreMoreHeading: "Explore More", recommendedRestaurantIds: [], under250PriceLimit: 250, festBannerVideoUrl: "" })
+  const [originalSettings, setOriginalSettings] = useState({ exploreMoreHeading: "Explore More", recommendedRestaurantIds: [], under250PriceLimit: 250, festBannerVideoUrl: "" })
   const [settingsLoading, setSettingsLoading] = useState(true)
   const [settingsSaving, setSettingsSaving] = useState(false)
   const [recommendedSearchQuery, setRecommendedSearchQuery] = useState("")
@@ -78,6 +107,7 @@ export default function LandingPageManagement() {
 
   // Common
   const [error, setError] = useState(null)
+  const [deleteDialog, setDeleteDialog] = useState({ isOpen: false, id: null, type: null })
   const [success, setSuccess] = useState(null)
 
   // Restaurant Selection Modal for Banner Advertising
@@ -137,6 +167,20 @@ export default function LandingPageManagement() {
     }
   }
 
+
+  const getZoneConfig = (additionalConfig = {}) => {
+    const config = getAuthConfig(additionalConfig)
+    if (selectedZoneId) {
+      config.params = { ...config.params, zoneId: selectedZoneId }
+    }
+    return config
+  }
+
+
+  useEffect(() => {
+    setAllRestaurants([])
+  }, [selectedZoneId])
+
   // Lazy fetch data based on active tab to optimize page load speed
   useEffect(() => {
     if (activeTab === 'banners') {
@@ -147,23 +191,21 @@ export default function LandingPageManagement() {
       fetchDiningBanners()
     } else if (activeTab === 'explore-more') {
       fetchSettings()
-      if (allRestaurants.length === 0) {
-        fetchAllRestaurants()
-      }
+      fetchAllRestaurants()
       if (exploreMoreSubTab === 'gourmet') {
         fetchGourmetRestaurants()
       } else if (exploreMoreSubTab === 'icons') {
         fetchExploreMore()
       }
     }
-  }, [activeTab, exploreMoreSubTab])
+  }, [activeTab, exploreMoreSubTab, selectedZoneId])
 
   // ==================== HERO BANNERS ====================
-  const fetchBanners = async () => {
+  const fetchBanners = async (showLoading = true) => {
     try {
-      setBannersLoading(true)
+      if (showLoading) setBannersLoading(true)
       setError(null)
-      const response = await api.get('/food/hero-banners', getAuthConfig())
+      const response = await api.get('/food/hero-banners', getZoneConfig())
       if (response.data.success) {
         setBanners(response.data.data.banners || [])
       }
@@ -217,6 +259,7 @@ export default function LandingPageManagement() {
       files.forEach((file) => {
         // Backend expects field name "files" (upload.array('files'))
         formData.append('files', file)
+        if(selectedZoneId) formData.append('zoneId', selectedZoneId)
       })
 
       // Use getAuthConfig to ensure proper Authorization header
@@ -287,7 +330,7 @@ export default function LandingPageManagement() {
       const response = await api.delete(`/food/hero-banners/${id}`, getAuthConfig())
       if (response.data.success) {
         setSuccess('Hero banner deleted successfully!')
-        await fetchBanners()
+        await fetchBanners(false)
         setTimeout(() => setSuccess(null), 3000)
       }
     } catch (err) {
@@ -304,7 +347,7 @@ export default function LandingPageManagement() {
       const response = await api.patch(`/food/hero-banners/${id}/status`, { isActive: !currentStatus }, getAuthConfig())
       if (response.data.success) {
         setSuccess(`Banner ${currentStatus ? 'deactivated' : 'activated'} successfully!`)
-        await fetchBanners()
+        await fetchBanners(false)
         setTimeout(() => setSuccess(null), 3000)
       }
     } catch (err) {
@@ -417,7 +460,7 @@ export default function LandingPageManagement() {
     try {
       setCategoriesLoading(true)
       setError(null)
-      const response = await api.get('/food/hero-banners/landing/categories', getAuthConfig())
+      const response = await api.get('/food/hero-banners/landing/categories', getZoneConfig())
       if (response.data.success) {
         setCategories(response.data.data.categories || [])
       }
@@ -513,6 +556,7 @@ export default function LandingPageManagement() {
 
         const formData = new FormData()
         formData.append('image', item.file)
+        if(selectedZoneId) formData.append('zoneId', selectedZoneId)
         formData.append('label', item.label.trim())
 
         try {
@@ -575,7 +619,7 @@ export default function LandingPageManagement() {
       const response = await api.delete(`/food/hero-banners/landing/categories/${id}`, getAuthConfig())
       if (response.data.success) {
         setSuccess('Category deleted successfully!')
-        await fetchCategories()
+        await fetchCategories(false)
         setTimeout(() => setSuccess(null), 3000)
       }
     } catch (err) {
@@ -592,7 +636,7 @@ export default function LandingPageManagement() {
       const response = await api.patch(`/food/hero-banners/landing/categories/${id}/status`, {}, getAuthConfig())
       if (response.data.success) {
         setSuccess(`Category ${currentStatus ? 'deactivated' : 'activated'} successfully!`)
-        await fetchCategories()
+        await fetchCategories(false)
         setTimeout(() => setSuccess(null), 3000)
       }
     } catch (err) {
@@ -619,11 +663,11 @@ export default function LandingPageManagement() {
   }
 
   // ==================== EXPLORE MORE ====================
-  const fetchExploreMore = async () => {
+  const fetchExploreMore = async (showLoading = true) => {
     try {
-      setExploreMoreLoading(true)
+      if (showLoading) setExploreMoreLoading(true)
       setError(null)
-      const response = await api.get('/food/hero-banners/landing/explore-more', getAuthConfig())
+      const response = await api.get('/food/hero-banners/landing/explore-more', getZoneConfig())
       if (response.data.success) {
         setExploreMore(response.data.data.items || [])
       }
@@ -664,6 +708,7 @@ export default function LandingPageManagement() {
       setSuccess(null)
       const formData = new FormData()
       formData.append('image', file)
+      if(selectedZoneId) formData.append('zoneId', selectedZoneId)
       formData.append('label', exploreMoreLabel.trim())
       formData.append('link', exploreMoreLink.trim())
       const response = await api.post('/food/hero-banners/landing/explore-more', formData, getAuthConfig({
@@ -693,7 +738,7 @@ export default function LandingPageManagement() {
       const response = await api.delete(`/food/hero-banners/landing/explore-more/${id}`, getAuthConfig())
       if (response.data.success) {
         setSuccess('Explore more item deleted successfully!')
-        await fetchExploreMore()
+        await fetchExploreMore(false)
         setTimeout(() => setSuccess(null), 3000)
       }
     } catch (err) {
@@ -710,7 +755,7 @@ export default function LandingPageManagement() {
       const response = await api.patch(`/food/hero-banners/landing/explore-more/${id}/status`, {}, getAuthConfig())
       if (response.data.success) {
         setSuccess(`Explore more item ${currentStatus ? 'deactivated' : 'activated'} successfully!`)
-        await fetchExploreMore()
+        await fetchExploreMore(false)
         setTimeout(() => setSuccess(null), 3000)
       }
     } catch (err) {
@@ -729,6 +774,7 @@ export default function LandingPageManagement() {
     // Create FormData
     const formData = new FormData()
     formData.append('image', file)
+      if(selectedZoneId) formData.append('zoneId', selectedZoneId)
 
     try {
       setExploreIconsUploading(prev => ({ ...prev, [itemId]: true }))
@@ -780,11 +826,11 @@ export default function LandingPageManagement() {
   }
 
   // ==================== UNDER 250 BANNERS ====================
-  const fetchUnder250Banners = async () => {
+  const fetchUnder250Banners = async (showLoading = true) => {
     try {
-      setUnder250BannersLoading(true)
+      if (showLoading) setUnder250BannersLoading(true)
       setError(null)
-      const response = await api.get('/food/hero-banners/under-250', getAuthConfig())
+      const response = await api.get('/food/hero-banners/under-250', getZoneConfig())
       if (response.data.success) {
         setUnder250Banners(response.data.data.banners || [])
       }
@@ -833,6 +879,7 @@ export default function LandingPageManagement() {
       files.forEach((file) => {
         // Backend expects field name "files" (upload.array('files'))
         formData.append('files', file)
+        if(selectedZoneId) formData.append('zoneId', selectedZoneId)
       })
 
       const response = await api.post('/food/hero-banners/under-250/multiple', formData, getAuthConfig({
@@ -863,7 +910,7 @@ export default function LandingPageManagement() {
       const response = await api.delete(`/food/hero-banners/under-250/${id}`, getAuthConfig())
       if (response.data.success) {
         setSuccess('Under 250 banner deleted successfully!')
-        await fetchUnder250Banners()
+        await fetchUnder250Banners(false)
         setTimeout(() => setSuccess(null), 3000)
       }
     } catch (err) {
@@ -880,7 +927,7 @@ export default function LandingPageManagement() {
       const response = await api.patch(`/food/hero-banners/under-250/${id}/status`, {}, getAuthConfig())
       if (response.data.success) {
         setSuccess(`Banner ${currentStatus ? 'deactivated' : 'activated'} successfully!`)
-        await fetchUnder250Banners()
+        await fetchUnder250Banners(false)
         setTimeout(() => setSuccess(null), 3000)
       }
     } catch (err) {
@@ -907,11 +954,11 @@ export default function LandingPageManagement() {
   }
 
   // ==================== DINING BANNERS ====================
-  const fetchDiningBanners = async () => {
+  const fetchDiningBanners = async (showLoading = true) => {
     try {
-      setDiningBannersLoading(true)
+      if (showLoading) setDiningBannersLoading(true)
       setError(null)
-      const response = await api.get('/food/hero-banners/dining', getAuthConfig())
+      const response = await api.get('/food/hero-banners/dining', getZoneConfig())
       if (response.data.success) {
         setDiningBanners(response.data.data.banners || [])
       }
@@ -957,6 +1004,7 @@ export default function LandingPageManagement() {
       const formData = new FormData()
       files.forEach((file) => {
         formData.append('files', file)
+        if(selectedZoneId) formData.append('zoneId', selectedZoneId)
       })
 
       const response = await api.post('/food/hero-banners/dining/multiple', formData, getAuthConfig({
@@ -986,7 +1034,7 @@ export default function LandingPageManagement() {
       const response = await api.delete(`/food/hero-banners/dining/${id}`, getAuthConfig())
       if (response.data.success) {
         setSuccess('Dining banner deleted successfully!')
-        await fetchDiningBanners()
+        await fetchDiningBanners(false)
         setTimeout(() => setSuccess(null), 3000)
       }
     } catch (err) {
@@ -1003,7 +1051,7 @@ export default function LandingPageManagement() {
       const response = await api.patch(`/food/hero-banners/dining/${id}/status`, {}, getAuthConfig())
       if (response.data.success) {
         setSuccess(`Banner ${currentStatus ? 'deactivated' : 'activated'} successfully!`)
-        await fetchDiningBanners()
+        await fetchDiningBanners(false)
         setTimeout(() => setSuccess(null), 3000)
       }
     } catch (err) {
@@ -1030,28 +1078,32 @@ export default function LandingPageManagement() {
   }
 
   // ==================== SETTINGS ====================
-  const fetchSettings = async () => {
+  const fetchSettings = async (showLoading = true) => {
     try {
-      setSettingsLoading(true)
+      if (showLoading) setSettingsLoading(true)
       setError(null)
-      const response = await api.get('/food/hero-banners/landing/settings', getAuthConfig())
+      const response = await api.get('/food/hero-banners/landing/settings', getZoneConfig())
       if (response.data.success) {
         const nextSettings = response.data.data?.settings || response.data.data || {}
         const rawRecommended = nextSettings.recommendedRestaurantIds
         const recommendedIds = Array.isArray(rawRecommended)
           ? rawRecommended.map((id) => (typeof id === 'object' && id !== null ? String(id._id || id) : String(id)))
           : []
-        setSettings({
+        const newSettings = {
           exploreMoreHeading: nextSettings.exploreMoreHeading || "Explore More",
           recommendedRestaurantIds: recommendedIds,
           under250PriceLimit: Number(nextSettings.under250PriceLimit) || 250,
           festBannerVideoUrl: typeof nextSettings.festBannerVideoUrl === "string" ? nextSettings.festBannerVideoUrl : ""
-        })
+        }
+        setSettings(newSettings)
+        setOriginalSettings(newSettings)
       }
     } catch (err) {
       // Silently handle 401/404 errors - endpoints may not exist yet, use default settings
       if (err.response?.status === 401 || err.response?.status === 404) {
-        setSettings({ exploreMoreHeading: "Explore More", recommendedRestaurantIds: [], under250PriceLimit: 250, festBannerVideoUrl: "" }) // Use default settings
+        const defaultSettings = { exploreMoreHeading: "Explore More", recommendedRestaurantIds: [], under250PriceLimit: 250, festBannerVideoUrl: "" }
+        setSettings(defaultSettings) // Use default settings
+        setOriginalSettings(defaultSettings)
         setError(null) // Clear any previous error
       } else {
         // Filter out token-related errors
@@ -1068,7 +1120,7 @@ export default function LandingPageManagement() {
       setSettingsSaving(true)
       setError(null)
       setSuccess(null)
-      const response = await api.patch('/food/hero-banners/landing/settings', {
+      const response = await api.patch('/food/hero-banners/landing/settings', { zoneId: selectedZoneId || null,
         exploreMoreHeading: settings.exploreMoreHeading,
         recommendedRestaurantIds: Array.isArray(settings.recommendedRestaurantIds) ? settings.recommendedRestaurantIds : [],
         under250PriceLimit: Number(settings.under250PriceLimit) || 250,
@@ -1080,15 +1132,16 @@ export default function LandingPageManagement() {
         const recommendedIds = Array.isArray(rawRecommended)
           ? rawRecommended.map((id) => (typeof id === 'object' && id !== null ? String(id._id || id) : String(id)))
           : settings.recommendedRestaurantIds
-        setSettings((prev) => ({
-          ...prev,
-          exploreMoreHeading: savedSettings.exploreMoreHeading || prev.exploreMoreHeading,
+        const updatedSettings = {
+          exploreMoreHeading: savedSettings.exploreMoreHeading || settings.exploreMoreHeading,
           recommendedRestaurantIds: recommendedIds,
-          under250PriceLimit: Number(savedSettings.under250PriceLimit) || prev.under250PriceLimit,
+          under250PriceLimit: Number(savedSettings.under250PriceLimit) || settings.under250PriceLimit,
           festBannerVideoUrl: typeof savedSettings.festBannerVideoUrl === "string"
             ? savedSettings.festBannerVideoUrl
-            : prev.festBannerVideoUrl
-        }))
+            : settings.festBannerVideoUrl
+        }
+        setSettings(updatedSettings)
+        setOriginalSettings(updatedSettings)
         setSuccess('Settings saved successfully!')
         setTimeout(() => setSuccess(null), 3000)
       }
@@ -1120,6 +1173,7 @@ export default function LandingPageManagement() {
       const formData = new FormData()
       formData.append('file', file)
       formData.append('folder', 'food/landing/fest-banner')
+      if(selectedZoneId) formData.append('zoneId', selectedZoneId)
 
       const response = await api.post('/uploads/video', formData, getAuthConfig())
       const url = response?.data?.data?.url || ''
@@ -1144,7 +1198,7 @@ export default function LandingPageManagement() {
     try {
       setRestaurantsLoading(true)
       setError(null)
-      const response = await adminAPI.getRestaurants({ limit: 1000 })
+      const response = await adminAPI.getRestaurants({ limit: 1000, ...(selectedZoneId && { zoneId: selectedZoneId }) })
       const data = response?.data?.data
       if (response?.data?.success && data) {
         const raw = Array.isArray(data) ? data : (data.restaurants || [])
@@ -1167,11 +1221,11 @@ export default function LandingPageManagement() {
     }
   }
 
-  const fetchGourmetRestaurants = async () => {
+  const fetchGourmetRestaurants = async (showLoading = true) => {
     try {
-      setGourmetLoading(true)
+      if (showLoading) setGourmetLoading(true)
       setError(null)
-      const response = await api.get('/food/hero-banners/gourmet', getAuthConfig())
+      const response = await api.get('/food/hero-banners/gourmet', getZoneConfig())
       if (response.data.success) {
         setGourmetRestaurants(response.data.data.restaurants || [])
       }
@@ -1197,7 +1251,7 @@ export default function LandingPageManagement() {
     try {
       setError(null)
       setSuccess(null)
-      const response = await api.post('/food/hero-banners/gourmet', {
+      const response = await api.post('/food/hero-banners/gourmet', { zoneId: selectedZoneId || null,
         restaurantId: selectedRestaurantGourmet
       }, getAuthConfig())
       if (response.data.success) {
@@ -1219,7 +1273,7 @@ export default function LandingPageManagement() {
       const response = await api.delete(`/food/hero-banners/gourmet/${id}`, getAuthConfig())
       if (response.data.success) {
         setSuccess('Restaurant removed from Gourmet successfully!')
-        await fetchGourmetRestaurants()
+        await fetchGourmetRestaurants(false)
         setTimeout(() => setSuccess(null), 3000)
       }
     } catch (err) {
@@ -1254,7 +1308,7 @@ export default function LandingPageManagement() {
       const response = await api.patch(`/food/hero-banners/gourmet/${id}/status`, {}, getAuthConfig())
       if (response.data.success) {
         setSuccess(`Restaurant ${currentStatus ? 'deactivated' : 'activated'} successfully!`)
-        await fetchGourmetRestaurants()
+        await fetchGourmetRestaurants(false)
         setTimeout(() => setSuccess(null), 3000)
       }
     } catch (err) {
@@ -1272,8 +1326,14 @@ export default function LandingPageManagement() {
 
   const exploreMoreTabs = [
     { id: 'icons', label: 'Icons', icon: ImageIcon },
-    { id: 'gourmet', label: 'Gourmet', icon: ChefHat },
+    ...(selectedZoneId ? [{ id: 'gourmet', label: 'Gourmet', icon: ChefHat }] : []),
   ]
+
+  useEffect(() => {
+    if (!selectedZoneId && exploreMoreSubTab === 'gourmet') {
+      setExploreMoreSubTab('icons');
+    }
+  }, [selectedZoneId, exploreMoreSubTab]);
 
   return (
     <div className="p-4 lg:p-6 bg-slate-50 min-h-screen">
@@ -1287,8 +1347,28 @@ export default function LandingPageManagement() {
             <div>
               <h1 className="text-2xl font-bold text-slate-900">Landing Page Management</h1>
               <p className="text-sm text-slate-600 mt-1">Manage hero banners</p>
+
+            </div>
+            
+            <div className="flex items-center gap-2 mt-4 sm:mt-0 ml-auto">
+              <Label htmlFor="zone-select" className="text-sm font-medium text-slate-700 whitespace-nowrap">Filter by Zone:</Label>
+              <select
+                id="zone-select"
+                value={selectedZoneId}
+                onChange={(e) => setSelectedZoneId(e.target.value)}
+                className="px-3 py-2 bg-white border border-slate-300 rounded-lg shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm w-48"
+                disabled={zonesLoading}
+              >
+                <option value="">Global / All Zones</option>
+                {zones.map((zone) => (
+                  <option key={zone._id || zone.id} value={zone._id || zone.id}>
+                    {zone.name || zone.zoneName || 'Unnamed Zone'}
+                  </option>
+                ))}
+              </select>
             </div>
           </div>
+
         </div>
 
         {/* Tabs */}
@@ -1732,7 +1812,12 @@ export default function LandingPageManagement() {
                 <h2 className="text-lg font-bold text-slate-900">Landing Settings</h2>
                 <Button
                   onClick={handleSaveSettings}
-                  disabled={settingsSaving || settingsLoading}
+                  disabled={
+                    settingsSaving || 
+                    settingsLoading || 
+                    (JSON.stringify({...settings, recommendedRestaurantIds: [...(settings.recommendedRestaurantIds || [])].sort()}) === 
+                     JSON.stringify({...originalSettings, recommendedRestaurantIds: [...(originalSettings.recommendedRestaurantIds || [])].sort()}))
+                  }
                   className="bg-blue-500 hover:bg-blue-600 text-white"
                 >
                   {settingsSaving ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : null}
@@ -1815,6 +1900,7 @@ export default function LandingPageManagement() {
                     </div>
                   </div>
 
+                  {selectedZoneId !== "" && selectedZoneId != null && (
                   <div>
                     <Label htmlFor="recommended-search">Recommended For You Restaurants</Label>
                     <p className="text-xs text-slate-500 mt-1 mb-2">
@@ -1861,7 +1947,6 @@ export default function LandingPageManagement() {
                             >
                               <div className="min-w-0">
                                 <p className="text-sm font-medium text-slate-800 truncate">{restaurant.name}</p>
-                                 <p className="text-xs text-slate-500 truncate">{restaurant._id || "No ID"}</p>
                               </div>
                               <Checkbox
                                 checked={isChecked}
@@ -1873,6 +1958,7 @@ export default function LandingPageManagement() {
                       )}
                     </div>
                   </div>
+                  )}
                 </div>
               )}
             </div>
@@ -1987,14 +2073,21 @@ export default function LandingPageManagement() {
                         className="mt-1 w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
                         disabled={restaurantsLoading}
                       >
-                        <option value="">Select a restaurant...</option>
-                        {allRestaurants
-                          .filter(r => !gourmetRestaurants.some(gr => gr.restaurant?._id === r._id))
-                          .map((restaurant) => (
-                            <option key={restaurant._id} value={restaurant._id}>
-                              {restaurant.name}
-                            </option>
-                          ))}
+                        {allRestaurants.length === 0 ? (
+                          <option value="" disabled>No restaurant found</option>
+                        ) : (
+                          <>
+                            <option value="">Select a restaurant...</option>
+                            {allRestaurants.map((restaurant) => {
+                              const isAdded = gourmetRestaurants.some(gr => gr.restaurant?._id === restaurant._id)
+                              return (
+                                <option key={restaurant._id} value={restaurant._id} disabled={isAdded}>
+                                  {restaurant.name} {isAdded ? '✅ (Already Selected)' : ''}
+                                </option>
+                              )
+                            })}
+                          </>
+                        )}
                       </select>
                     </div>
                     <Button
@@ -2118,11 +2211,12 @@ export default function LandingPageManagement() {
                       Restaurant selected
                     </div>
                     <Button
-                      variant="ghost"
+                      variant="outline"
                       size="sm"
                       onClick={() => setSelectedRestaurantIds([])}
-                      className="text-xs text-slate-600 hover:text-slate-900"
+                      className="text-xs text-red-600 hover:text-red-700 hover:bg-red-50 border-red-200 ml-2"
                     >
+                      <Trash2 className="w-3 h-3 mr-1" />
                       Clear selection
                     </Button>
                   </div>
@@ -2243,13 +2337,17 @@ export default function LandingPageManagement() {
                   </Button>
                   <Button
                     onClick={handleLinkRestaurants}
-                    disabled={linkingRestaurants || selectedRestaurantIds.length === 0}
+                    disabled={linkingRestaurants}
                     className="bg-blue-600 hover:bg-blue-700 text-white px-6 min-w-[140px]"
                   >
                     {linkingRestaurants ? (
                       <>
                         <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                        Linking...
+                        Saving...
+                      </>
+                    ) : selectedRestaurantIds.length === 0 ? (
+                      <>
+                        Save Selection
                       </>
                     ) : (
                       <>
@@ -2264,9 +2362,42 @@ export default function LandingPageManagement() {
           </DialogContent>
         </Dialog>
 
+        {/* Delete Confirmation Dialog */}
+        <Dialog open={deleteDialog.isOpen} onOpenChange={(isOpen) => !isOpen && setDeleteDialog({ isOpen: false, id: null, type: null })}>
+          <DialogContent className="sm:max-w-[400px]">
+            <DialogHeader>
+              <DialogTitle className="flex items-center gap-2 text-red-600">
+                <AlertCircle className="w-5 h-5" />
+                Confirm Deletion
+              </DialogTitle>
+              <DialogDescription className="py-4 text-slate-600 text-base">
+                Are you sure you want to delete this item? This action cannot be undone.
+              </DialogDescription>
+            </DialogHeader>
+            <div className="flex justify-end gap-3 mt-4">
+              <Button variant="outline" onClick={() => setDeleteDialog({ isOpen: false, id: null, type: null })}>
+                Cancel
+              </Button>
+              <Button 
+                variant="destructive" 
+                className="bg-red-600 hover:bg-red-700 text-white"
+                onClick={() => {
+                  const { id, type } = deleteDialog;
+                  setDeleteDialog({ isOpen: false, id: null, type: null });
+                  if (type === 'hero') executeDeleteBanner(id);
+                  if (type === 'under250') executeDeleteUnder250Banner(id);
+                  if (type === 'dining') executeDeleteDiningBanner(id);
+                  if (type === 'exploreIcon') executeDeleteExploreIcon(id);
+                  if (type === 'gourmet') executeDeleteGourmetRestaurant(id);
+                }}
+              >
+                Delete
+              </Button>
+            </div>
+          </DialogContent>
+        </Dialog>
+
       </div >
     </div >
   )
 }
-
-

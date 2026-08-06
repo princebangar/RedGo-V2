@@ -44,6 +44,12 @@ const foodLandingSettingsSchema = new mongoose.Schema(
         festBannerVideoUrl: {
             type: String,
             default: ''
+        },
+        zoneId: {
+            type: mongoose.Schema.Types.ObjectId,
+            ref: 'FoodZone',
+            default: null,
+            index: true
         }
     },
     {

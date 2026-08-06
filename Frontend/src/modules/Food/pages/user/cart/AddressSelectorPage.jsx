@@ -257,7 +257,8 @@ export default function AddressSelectorPage() {
     const applyLoc = (loc) => {
       if (!loc) return
       const formatted = loc.formattedAddress || loc.address || ""
-      if (formatted) setCurrentAddress(formatted)
+      const cleanFormatted = formatted.replace(/^[a-z0-9]{2,8}\+[a-z0-9]{0,3}[,\s]*/i, '').replace(/,\s*India$/, '')
+      if (cleanFormatted) setCurrentAddress(cleanFormatted)
       if (Number.isFinite(Number(loc.latitude)) && Number.isFinite(Number(loc.longitude))) {
         const coords = [Number(loc.latitude), Number(loc.longitude)]
         setMapPosition(coords)
@@ -277,7 +278,8 @@ export default function AddressSelectorPage() {
 
   useEffect(() => {
     const formatted = location?.formattedAddress || location?.address
-    if (formatted) setCurrentAddress(formatted)
+    const cleanFormatted = formatted ? formatted.replace(/^[a-z0-9]{2,8}\+[a-z0-9]{0,3}[,\s]*/i, '').replace(/,\s*India$/, '') : ""
+    if (cleanFormatted) setCurrentAddress(cleanFormatted)
   }, [location?.formattedAddress, location?.address, location?.latitude, location?.longitude])
 
   // Google Places autocomplete search
@@ -323,14 +325,23 @@ export default function AddressSelectorPage() {
 
   const applyGeocodedAddressToForm = useCallback((parsed, formattedOverride) => {
     const formatted = formattedOverride || parsed?.formattedAddress || parsed?.address || ""
-    setCurrentAddress(formatted)
-    setAddressFormData((prev) => ({
-      ...prev,
-      street: parsed?.area || parsed?.address || formatted.split(",")[0] || prev.street,
-      city: parsed?.city || prev.city,
-      state: parsed?.state || prev.state,
-      zipCode: parsed?.pincode || prev.zipCode,
-    }))
+    const cleanFormatted = formatted.replace(/^[a-z0-9]{2,8}\+[a-z0-9]{0,3}[,\s]*/i, '').replace(/,\s*India$/, '')
+    setCurrentAddress(cleanFormatted)
+    
+    setAddressFormData((prev) => {
+      let streetVal = parsed?.area || parsed?.address || formatted.split(",")[0] || prev.street
+      if (streetVal) {
+        streetVal = streetVal.replace(/^[a-z0-9]{2,8}\+[a-z0-9]{0,3}[,\s]*/i, '').replace(/,\s*India$/, '').trim()
+        if (streetVal.endsWith(',')) streetVal = streetVal.slice(0, -1).trim()
+      }
+      return {
+        ...prev,
+        street: streetVal || prev.street,
+        city: parsed?.city || prev.city,
+        state: parsed?.state || prev.state,
+        zipCode: parsed?.pincode || prev.zipCode,
+      }
+    })
   }, [])
 
   const handleMapMoveEnd = useCallback(async (lat, lng) => {
@@ -1165,7 +1176,9 @@ export default function AddressSelectorPage() {
             </div>
             <div className="flex-1 min-w-0">
               <p className="font-bold text-[#DC2626] text-[15px]">Use current location</p>
-              <p className="text-xs text-zinc-400 dark:text-zinc-500 truncate mt-0.5">{currentAddress || "Enable GPS for accuracy"}</p>
+              <p className="text-xs text-zinc-400 dark:text-zinc-500 truncate mt-0.5">
+                {currentAddress ? currentAddress.replace(/^[a-z0-9]{2,8}\+[a-z0-9]{0,3}[,\s]*/i, '').replace(/,\s*India$/, '') : "Enable GPS for accuracy"}
+              </p>
             </div>
             <ChevronRight className="h-5 w-5 text-zinc-300 dark:text-zinc-600 flex-shrink-0" />
           </button>
@@ -1209,7 +1222,7 @@ export default function AddressSelectorPage() {
             ) : (
               addresses.map((addr, idx) => {
                 const Icon = getAddressIcon(addr)
-                const addressLine = [addr.additionalDetails, addr.street, addr.city, addr.state].filter(Boolean).join(", ")
+                const addressLine = [addr.additionalDetails, addr.street, addr.city, addr.state].filter(Boolean).join(", ").replace(/^[a-z0-9]{2,8}\+[a-z0-9]{0,3}[,\s]*/i, '')
                 return (
                   <div
                     key={getAddressId(addr) || idx}

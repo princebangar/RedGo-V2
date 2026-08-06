@@ -18,7 +18,8 @@ const toItem = (doc) => {
 
 export const listExploreMoreController = async (req, res, next) => {
     try {
-        const data = await listExploreIcons();
+        const { zoneId } = req.query;
+        const data = await listExploreIcons(zoneId);
         const items = data.map(toItem);
         return sendResponse(res, 200, 'Explore more items fetched successfully', { items });
     } catch (error) {
@@ -39,7 +40,8 @@ export const createExploreMoreController = async (req, res, next) => {
             throw new ValidationError('Label is required');
         }
 
-        const created = await createExploreIcon(file, { label, link });
+        const zoneId = req.body?.zoneId || null;
+        const created = await createExploreIcon(file, { label, link, zoneId });
         return sendResponse(res, 201, 'Explore more item created successfully', toItem(created));
     } catch (error) {
         next(error);

@@ -144,8 +144,9 @@ export default function HomeHeader({
                     const area = location?.area || location?.subLocality || location?.mainTitle || location?.neighborhood;
                     const city = (location?.city || "").toLowerCase();
                     const state = (location?.state || "").toLowerCase();
+                    const isPlusCode = (str) => /^[a-z0-9]{2,8}\+[a-z0-9]{0,3}/i.test(str.trim());
 
-                    if (area && !/^-?\d+(\.\d+)?$/.test(area.trim())) {
+                    if (area && !/^-?\d+(\.\d+)?$/.test(area.trim()) && !isPlusCode(area)) {
                       const areaLower = area.toLowerCase();
                       if (areaLower !== city && areaLower !== state) {
                         return area;
@@ -160,13 +161,14 @@ export default function HomeHeader({
                           partLower !== city &&
                           partLower !== state &&
                           !/^-?\d/.test(part) &&
+                          !isPlusCode(part) &&
                           part.length > 2) {
                           return part;
                         }
                       }
                     }
 
-                    return location?.area || location?.city || "Select Location";
+                    return location?.city || location?.area || "Select Location";
                   })()}
                 </span>
                 <ChevronDown className="h-3 w-3 text-white/70" />
@@ -174,12 +176,16 @@ export default function HomeHeader({
 
               <span className="text-[10px] font-medium text-white/80 truncate leading-tight mt-0.5">
                 {(() => {
+                  const city = location?.city || "";
                   const state = location?.state || "";
                   const pincode = location?.pincode || "";
 
-                  if (state && pincode) return `${state}, ${pincode}`;
-                  if (state) return state;
-                  if (pincode) return pincode;
+                  const parts = [];
+                  if (city) parts.push(city);
+                  if (state) parts.push(state);
+                  if (pincode) parts.push(pincode);
+
+                  if (parts.length > 0) return parts.join(', ');
 
                   const addr = location?.address || "";
                   if (addr && addr.length > 10) {
@@ -324,59 +330,59 @@ export default function HomeHeader({
 
         {/* Integrated FestBanner Content */}
         {showBanner && (
-          <div className="relative flex flex-col items-center text-center space-y-3.5 pt-2">
-            <motion.div
-              key={vegMode ? 'veg-title' : 'nonveg-title'}
-              className="mt-3.5"
-              initial={{ scale: 0.8, opacity: 0 }}
-              animate={{ scale: 1, opacity: 1 }}
-              transition={{ type: "spring", damping: 10, stiffness: 100 }}
-            >
-              <h2
-                className="text-4xl sm:text-5xl font-black text-[#fff200] italic uppercase leading-none drop-shadow-md"
-                style={{ WebkitTextStroke: '1px #5a0000' }}
+          hideFoodImages ? (
+            <div className="w-full h-64 sm:h-72" />
+          ) : (
+            <div className="relative flex flex-col items-center justify-center text-center space-y-3.5 pt-2 h-64 sm:h-72">
+              <motion.div
+                key={vegMode ? 'veg-title' : 'nonveg-title'}
+                className="mt-3.5"
+                initial={{ scale: 0.8, opacity: 0 }}
+                animate={{ scale: 1, opacity: 1 }}
+                transition={{ type: "spring", damping: 10, stiffness: 100 }}
               >
-                {vegMode ? 'VEGGIE DELIGHT' : 'FLAVOUR FEST'}
-              </h2>
-            </motion.div>
+                <h2
+                  className="text-4xl sm:text-5xl font-black text-[#fff200] italic uppercase leading-none drop-shadow-md"
+                  style={{ WebkitTextStroke: '1px #5a0000' }}
+                >
+                  {vegMode ? 'VEGGIE DELIGHT' : 'FLAVOUR FEST'}
+                </h2>
+              </motion.div>
 
-            <div
-              className="relative flex items-center gap-3 px-6 py-1.5 bg-white/10 backdrop-blur-md rounded-full border border-white/20 shadow-xl group"
-            >
-              <div className="relative">
-                <div className="absolute -top-3 left-1/2 -translate-x-1/2 flex gap-0.5">
-                  <div className="w-0.5 h-2 bg-[#fff200] rotate-[-20deg] rounded-full" />
-                  <div className="w-0.5 h-2.5 bg-[#fff200] rounded-full" />
-                  <div className="w-0.5 h-2 bg-[#fff200] rotate-[20deg] rounded-full" />
+              <div
+                className="relative flex items-center gap-3 px-6 py-1.5 bg-white/10 backdrop-blur-md rounded-full border border-white/20 shadow-xl group"
+              >
+                <div className="relative">
+                  <div className="absolute -top-3 left-1/2 -translate-x-1/2 flex gap-0.5">
+                    <div className="w-0.5 h-2 bg-[#fff200] rotate-[-20deg] rounded-full" />
+                    <div className="w-0.5 h-2.5 bg-[#fff200] rounded-full" />
+                    <div className="w-0.5 h-2 bg-[#fff200] rotate-[20deg] rounded-full" />
+                  </div>
+                  <Utensils className="h-6 w-6 text-[#fff200]" />
                 </div>
-                <Utensils className="h-6 w-6 text-[#fff200]" />
-              </div>
 
-              <div className="relative px-2">
-                <svg className="absolute -top-1.5 left-0 w-full h-1.5" viewBox="0 0 100 10" preserveAspectRatio="none">
-                  <path d="M0 5 Q 25 0, 50 5 T 100 5" fill="none" stroke="#fff200" strokeWidth="2" opacity="0.6" />
-                </svg>
-                <span className="text-base sm:text-lg font-bold italic text-white leading-none whitespace-nowrap drop-shadow-md">
-                  {vegMode ? 'Pure Veg Magic!' : 'Good Food, Great Mood!'}
-                </span>
-                <svg className="absolute -bottom-1.5 left-0 w-full h-1.5" viewBox="0 0 100 10" preserveAspectRatio="none">
-                  <path d="M0 5 Q 25 10, 50 5 T 100 5" fill="none" stroke="#fff200" strokeWidth="2" opacity="0.6" />
-                </svg>
-              </div>
-
-              <div className="relative">
-                <div className="absolute -top-3 left-1/2 -translate-x-1/2 flex gap-0.5">
-                  <div className="w-0.5 h-2 bg-[#fff200] rotate-[-20deg] rounded-full" />
-                  <div className="w-0.5 h-2.5 bg-[#fff200] rounded-full" />
-                  <div className="w-0.5 h-2 bg-white rotate-[20deg] rounded-full" />
+                <div className="relative px-2">
+                  <svg className="absolute -top-1.5 left-0 w-full h-1.5" viewBox="0 0 100 10" preserveAspectRatio="none">
+                    <path d="M0 5 Q 25 0, 50 5 T 100 5" fill="none" stroke="#fff200" strokeWidth="2" opacity="0.6" />
+                  </svg>
+                  <span className="text-base sm:text-lg font-bold italic text-white leading-none whitespace-nowrap drop-shadow-md">
+                    {vegMode ? 'Pure Veg Magic!' : 'Good Food, Great Mood!'}
+                  </span>
+                  <svg className="absolute -bottom-1.5 left-0 w-full h-1.5" viewBox="0 0 100 10" preserveAspectRatio="none">
+                    <path d="M0 5 Q 25 10, 50 5 T 100 5" fill="none" stroke="#fff200" strokeWidth="2" opacity="0.6" />
+                  </svg>
                 </div>
-                <Soup className="h-7 w-7 text-[#fff200]" />
-              </div>
-            </div>
 
-            {hideFoodImages ? (
-              <div className="h-28 sm:h-36" />
-            ) : (
+                <div className="relative">
+                  <div className="absolute -top-3 left-1/2 -translate-x-1/2 flex gap-0.5">
+                    <div className="w-0.5 h-2 bg-[#fff200] rotate-[-20deg] rounded-full" />
+                    <div className="w-0.5 h-2.5 bg-[#fff200] rounded-full" />
+                    <div className="w-0.5 h-2 bg-white rotate-[20deg] rounded-full" />
+                  </div>
+                  <Soup className="h-7 w-7 text-[#fff200]" />
+                </div>
+              </div>
+
               <div className="flex items-end justify-center gap-5 sm:gap-8 pt-4 relative w-full mb-1">
                 {/* Keep entire pool mounted once so rotate never re-downloads */}
                 <div
@@ -472,8 +478,8 @@ export default function HomeHeader({
                   </motion.div>
                 </AnimatePresence>
               </div>
-            )}
-          </div>
+            </div>
+          )
         )}
       </div>
 

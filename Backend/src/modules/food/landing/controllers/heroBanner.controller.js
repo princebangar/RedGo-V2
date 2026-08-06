@@ -11,7 +11,8 @@ import { ValidationError } from '../../../../core/auth/errors.js';
 
 export const listHeroBannersController = async (req, res, next) => {
     try {
-        const data = await listHeroBanners();
+        const { zoneId } = req.query;
+        const data = await listHeroBanners(zoneId);
         // Wrap in { banners } to match LandingPageManagement.jsx expectations
         return sendResponse(res, 200, 'Hero banners fetched successfully', { banners: data });
     } catch (error) {
@@ -28,7 +29,8 @@ export const uploadHeroBannersController = async (req, res, next) => {
         const meta = {
             title: req.body.title,
             ctaText: req.body.ctaText,
-            ctaLink: req.body.ctaLink
+            ctaLink: req.body.ctaLink,
+            zoneId: req.body.zoneId
         };
 
         const results = await createHeroBannersFromFiles(req.files, meta);

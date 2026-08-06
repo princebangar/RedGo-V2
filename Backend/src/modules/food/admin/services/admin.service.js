@@ -376,6 +376,9 @@ export async function getRestaurants(query) {
     const skip = (page - 1) * limit;
     const status = query.status;
     const filter = {};
+    if (query.zoneId && String(query.zoneId).trim()) {
+        filter.zoneId = new mongoose.Types.ObjectId(String(query.zoneId).trim());
+    }
     if (status && ['pending', 'approved', 'rejected', 'banned'].includes(status)) {
         filter.status = status;
     }

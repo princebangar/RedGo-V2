@@ -6,8 +6,9 @@ const CLOUDINARY_FOLDER = 'food/explore-icons';
 /**
  * List all explore icons (admin). Sorted by sortOrder.
  */
-export const listExploreIcons = async () => {
-    return FoodExploreIcon.find()
+export const listExploreIcons = async (zoneId = null) => {
+    let query = zoneId ? { zoneId } : { zoneId: null };
+    return FoodExploreIcon.find(query)
         .sort({ sortOrder: 1, createdAt: -1 })
         .lean();
 };
@@ -68,6 +69,7 @@ export const createExploreIcon = async (file, meta) => {
         linkType,
         targetPath: (meta?.link || '').trim() || undefined,
         sortOrder,
+        zoneId: meta?.zoneId || null,
         isActive: true
     });
 
