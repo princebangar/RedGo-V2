@@ -2,7 +2,7 @@ import { FoodLandingSettings } from '../models/landingSettings.model.js';
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
-import config from '../../../../config/env.js';
+import { config } from '../../../../config/env.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
