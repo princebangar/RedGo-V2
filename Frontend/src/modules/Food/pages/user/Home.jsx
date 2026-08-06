@@ -430,14 +430,7 @@ export default function Home({ homeMode = null, isTabActive = true }) {
     }
   }, [isTakeawayPage]);
 
-  // Force autoplay for iOS
-  useEffect(() => {
-    if (videoRef.current) {
-      videoRef.current.defaultMuted = true;
-      videoRef.current.muted = true;
-      videoRef.current.play().catch(e => console.log("iOS Autoplay prevented:", e));
-    }
-  }, [festVideoActive, festBannerVideoUrl]);
+
 
   const [prevVegMode, setPrevVegMode] = useState(vegMode);
   const [showVegModePopup, setShowVegModePopup] = useState(false);
@@ -558,6 +551,15 @@ export default function Home({ homeMode = null, isTabActive = true }) {
   const festVideoActive =
     typeof festBannerVideoUrl === "string" && festBannerVideoUrl.trim().length > 0;
   const isSettingsLoading = festBannerVideoUrl === null;
+
+  // Force autoplay for iOS
+  useEffect(() => {
+    if (videoRef.current) {
+      videoRef.current.defaultMuted = true;
+      videoRef.current.muted = true;
+      videoRef.current.play().catch(e => console.log("iOS Autoplay prevented:", e));
+    }
+  }, [festVideoActive, festBannerVideoUrl]);
 
   // Stable list of restaurant ids for menu-category union so we don't refetch menus
   // when `restaurantsData` changes for reasons like distance recalculation or outletTimings enrichment.
