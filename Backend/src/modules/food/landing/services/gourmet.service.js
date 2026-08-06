@@ -7,7 +7,6 @@ export const getPublicGourmetRestaurants = async (zoneId) => {
         .lean();
 
     const restaurantIds = docs.map((d) => d.restaurantId);
-    
     const restaurantFilter = { _id: { $in: restaurantIds } };
     if (zoneId && String(zoneId).trim()) {
         restaurantFilter.zoneId = String(zoneId).trim();
