@@ -22,11 +22,24 @@ router.post('/image', upload.single('file'), async (req, res, next) => {
             });
         }
 
-        const folder = typeof req.body?.folder === 'string' && req.body.folder.trim()
-            ? req.body.folder.trim()
-            : 'uploads';
+        // Always save directly to UPLOADS_ROOT without subfolders
+        const uploadDir = UPLOADS_ROOT;
+        await fs.promises.mkdir(uploadDir, { recursive: true });
 
-        const url = await uploadImageBuffer(req.file.buffer, folder);
+        const ext = path.extname(req.file.originalname || '') || '.jpg';
+        const filename = `image_${Date.now()}_${Math.random().toString(36).substring(7)}${ext}`;
+        const filePath = path.join(uploadDir, filename);
+
+        await fs.promises.writeFile(filePath, req.file.buffer);
+
+        let baseUrl = `${req.protocol}://${req.get('host')}`;
+        if (process.env.API_BASE_URL) {
+            baseUrl = process.env.API_BASE_URL;
+        }
+
+        // The URL needs to match the express.static mapping.
+        // It goes directly in UPLOADS_ROOT, so URL is /uploads/filename
+        const url = `${baseUrl}/uploads/${filename}`;
 
         return res.status(200).json({
             success: true,
