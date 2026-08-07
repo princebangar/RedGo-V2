@@ -28,9 +28,26 @@ router.post('/image', upload.single('file'), async (req, res, next) => {
         await fs.promises.mkdir(uploadDir, { recursive: true });
 
         // Convert any format to WebP for faster loading
-        const webpBuffer = await sharp(req.file.buffer)
-            .webp({ quality: 85 })
-            .toBuffer();
+        const sharpInstance = sharp(req.file.buffer);
+        const webpBuffer = await sharpInstance.clone().webp({ quality: 85 }).toBuffer();
+
+        // Extract dominant color from top 10px strip for theme-color
+        let dominantColor = '#D91F3A'; // fallback
+        try {
+            const { data, info } = await sharp(req.file.buffer)
+                .resize({ width: 100, height: 10, fit: 'cover', position: 'top' })
+                .raw()
+                .toBuffer({ resolveWithObject: true });
+            let r = 0, g = 0, b = 0;
+            const pixels = info.width * info.height;
+            for (let i = 0; i < data.length; i += info.channels) {
+                r += data[i]; g += data[i + 1]; b += data[i + 2];
+            }
+            r = Math.round(r / pixels);
+            g = Math.round(g / pixels);
+            b = Math.round(b / pixels);
+            dominantColor = '#' + [r, g, b].map(v => v.toString(16).padStart(2, '0')).join('');
+        } catch (colorErr) { /* use fallback */ }
 
         const filename = `image_${Date.now()}_${Math.random().toString(36).substring(7)}.webp`;
         const filePath = path.join(uploadDir, filename);
@@ -51,6 +68,7 @@ router.post('/image', upload.single('file'), async (req, res, next) => {
             message: 'Image uploaded successfully',
             data: {
                 url,
+                dominantColor,
                 publicId: null
             }
         });
