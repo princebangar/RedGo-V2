@@ -2845,9 +2845,20 @@ export default function Home({ homeMode = null, isTabActive = true }) {
 
         <div className="md:hidden relative overflow-x-clip bg-white dark:bg-[#0a0a0a]">
           {/* Brand Top Section (Red Theme) */}
-          <div className="relative overflow-hidden rounded-b-[2rem] shadow-lg mb-2 home-red-banner-bg">
-            {festBannerImageUrl && effectiveOrderType !== "takeaway" && !isTakeawayPage && (
-              <div className="absolute inset-0 z-0">
+          <div 
+            className={`relative overflow-hidden rounded-b-[2rem] shadow-lg mb-2 ${!(festBannerImageUrl && effectiveOrderType !== "takeaway" && !isTakeawayPage && festBannerTopColor) ? 'home-red-banner-bg' : ''}`}
+            style={{
+              backgroundColor: (festBannerImageUrl && effectiveOrderType !== "takeaway" && !isTakeawayPage && festBannerTopColor) ? festBannerTopColor : undefined
+            }}
+          >
+            {festBannerImageUrl && (
+              <div 
+                className="absolute inset-0 z-0 transition-opacity duration-200"
+                style={{
+                  opacity: (effectiveOrderType !== "takeaway" && !isTakeawayPage) ? 1 : 0,
+                  pointerEvents: (effectiveOrderType !== "takeaway" && !isTakeawayPage) ? 'auto' : 'none'
+                }}
+              >
                 <img
                   src={festBannerImageUrl}
                   alt="Fest Banner"
