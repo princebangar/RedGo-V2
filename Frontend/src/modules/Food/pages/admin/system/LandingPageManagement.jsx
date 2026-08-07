@@ -90,6 +90,7 @@ export default function LandingPageManagement() {
   // Settings
   const [settings, setSettings] = useState({ exploreMoreHeading: "Explore More", recommendedRestaurantIds: [], under250PriceLimit: 250, festBannerImageUrl: "", festBannerTopColor: "" })
   const [originalSettings, setOriginalSettings] = useState({ exploreMoreHeading: "Explore More", recommendedRestaurantIds: [], under250PriceLimit: 250, festBannerImageUrl: "", festBannerTopColor: "" })
+  const [selectedFestBannerFile, setSelectedFestBannerFile] = useState(null)
   const [settingsLoading, setSettingsLoading] = useState(true)
   const [settingsSaving, setSettingsSaving] = useState(false)
   const [recommendedSearchQuery, setRecommendedSearchQuery] = useState("")
@@ -1121,12 +1122,35 @@ export default function LandingPageManagement() {
       setSettingsSaving(true)
       setError(null)
       setSuccess(null)
+
+      let finalUrl = settings.festBannerImageUrl || ""
+      let finalTopColor = settings.festBannerTopColor || ""
+
+      if (selectedFestBannerFile) {
+        setFestBannerUploading(true)
+        const formData = new FormData()
+        formData.append('file', selectedFestBannerFile)
+        formData.append('folder', 'food/landing/fest-banner')
+        if (selectedZoneId) formData.append('zoneId', selectedZoneId)
+
+        const uploadRes = await api.post('/uploads/image', formData, getAuthConfig())
+        finalUrl = uploadRes?.data?.data?.url || ''
+        finalTopColor = uploadRes?.data?.data?.dominantColor || ''
+        if (!finalUrl) {
+          setErrorSafely('Failed to upload banner image')
+          setFestBannerUploading(false)
+          return
+        }
+        setFestBannerUploading(false)
+        setSelectedFestBannerFile(null)
+      }
+
       const response = await api.patch('/food/hero-banners/landing/settings', { zoneId: selectedZoneId || null,
         exploreMoreHeading: settings.exploreMoreHeading,
         recommendedRestaurantIds: Array.isArray(settings.recommendedRestaurantIds) ? settings.recommendedRestaurantIds : [],
         under250PriceLimit: Number(settings.under250PriceLimit) || 250,
-        festBannerImageUrl: settings.festBannerImageUrl || "",
-        festBannerTopColor: settings.festBannerTopColor || ""
+        festBannerImageUrl: finalUrl,
+        festBannerTopColor: finalTopColor
       }, getAuthConfig())
       if (response.data.success) {
         const savedSettings = response.data.data?.settings || response.data.data || {}
@@ -1154,10 +1178,11 @@ export default function LandingPageManagement() {
       setErrorSafely(err.response?.data?.message || 'Failed to save settings.')
     } finally {
       setSettingsSaving(false)
+      setFestBannerUploading(false)
     }
   }
 
-  const handleFestBannerImageSelect = async (e) => {
+  const handleFestBannerImageSelect = (e) => {
     const file = e.target?.files?.[0] || null
     if (!file) return
 
@@ -1171,31 +1196,14 @@ export default function LandingPageManagement() {
     }
 
     try {
-      setFestBannerUploading(true)
-      setError(null)
-      setSuccess(null)
-
-      const formData = new FormData()
-      formData.append('file', file)
-      formData.append('folder', 'food/landing/fest-banner')
-      if(selectedZoneId) formData.append('zoneId', selectedZoneId)
-
-      const response = await api.post('/uploads/image', formData, getAuthConfig())
-      const url = response?.data?.data?.url || ''
-      const dominantColor = response?.data?.data?.dominantColor || ''
-      if (!url) {
-        setErrorSafely('Failed to upload banner')
-        return
-      }
-
-      setSettings((prev) => ({ ...prev, festBannerImageUrl: url, festBannerTopColor: dominantColor || prev.festBannerTopColor || '' }))
-      setSuccess('Banner uploaded. Click Save Settings to publish.')
+      const localUrl = URL.createObjectURL(file)
+      setSelectedFestBannerFile(file)
+      setSettings((prev) => ({ ...prev, festBannerImageUrl: localUrl }))
+      setSuccess('Banner selected. Click Save Settings to upload and publish.')
       if (festBannerFileInputRef.current) festBannerFileInputRef.current.value = ''
       setTimeout(() => setSuccess(null), 3000)
     } catch (err) {
-      setErrorSafely(err.response?.data?.message || 'Failed to upload banner')
-    } finally {
-      setFestBannerUploading(false)
+      setErrorSafely('Failed to read selected image')
     }
   }
 
@@ -1890,7 +1898,10 @@ export default function LandingPageManagement() {
                         <Button
                           type="button"
                           variant="outline"
-                          onClick={() => setSettings((prev) => ({ ...prev, festBannerImageUrl: "" }))}
+                          onClick={() => {
+                            setSettings((prev) => ({ ...prev, festBannerImageUrl: "", festBannerTopColor: "" }))
+                            setSelectedFestBannerFile(null)
+                          }}
                           disabled={festBannerUploading || !settings.festBannerImageUrl}
                         >
                           Remove Banner
