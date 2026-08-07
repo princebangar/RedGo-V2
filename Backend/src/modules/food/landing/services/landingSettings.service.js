@@ -26,21 +26,21 @@ export const updateLandingSettings = async (payload, zoneId = null) => {
         upsert: true
     }).lean();
 
-    // Check if video URL was removed or changed
-    if (oldDoc && oldDoc.festBannerVideoUrl && oldDoc.festBannerVideoUrl !== doc.festBannerVideoUrl) {
+    // Check if image URL was removed or changed
+    if (oldDoc && oldDoc.festBannerImageUrl && oldDoc.festBannerImageUrl !== doc.festBannerImageUrl) {
         try {
-            const oldUrl = oldDoc.festBannerVideoUrl;
+            const oldUrl = oldDoc.festBannerImageUrl;
             const filename = oldUrl.split('/').pop();
-            if (filename && filename.startsWith('video_')) {
+            if (filename) {
                 const filePath = path.join(UPLOADS_ROOT, filename);
                 fs.unlink(filePath, (err) => {
                     if (err && err.code !== 'ENOENT') {
-                        console.error("Failed to delete old video:", err);
+                        console.error("Failed to delete old image:", err);
                     }
                 });
             }
         } catch (e) {
-            console.error("Error trying to delete old video file:", e);
+            console.error("Error trying to delete old image file:", e);
         }
     }
 

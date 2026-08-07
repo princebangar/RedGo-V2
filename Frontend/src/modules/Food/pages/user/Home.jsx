@@ -377,7 +377,6 @@ export default function Home({ homeMode = null, isTabActive = true }) {
   const navigate = useNavigate();
   const routerLocation = useRouterLocation();
   const hasRestoredBrowseScrollRef = useRef(false);
-  const videoContainerRef = useRef(null);
   const HERO_BANNER_AUTO_SLIDE_MS = 3500;
   const BACKEND_ORIGIN = API_BASE_URL.replace(/\/api\/?$/, "");
   const [searchParams] = useSearchParams();
@@ -503,12 +502,15 @@ export default function Home({ homeMode = null, isTabActive = true }) {
   const [exploreMoreHeading, setExploreMoreHeading] = useState(
     () => CACHED_EXPLORE_BOOT?.heading || "Explore More",
   );
-  const [festBannerVideoUrl, setFestBannerVideoUrl] = useState(null);
-  const [videoLoaded, setVideoLoaded] = useState(false);
+  const CACHED_FEST_BANNER = (() => {
+    if (typeof window !== "undefined") {
+      try { return localStorage.getItem("CACHED_FEST_BANNER") || null; }
+      catch (e) { return null; }
+    }
+    return null;
+  })();
+  const [festBannerImageUrl, setFestBannerImageUrl] = useState(CACHED_FEST_BANNER);
 
-  useEffect(() => {
-    setVideoLoaded(false);
-  }, [festBannerVideoUrl]);
   const [recommendedRestaurantIds, setRecommendedRestaurantIds] = useState([]);
   const [under250PriceLimit, setUnder250PriceLimit] = useState(250);
   const [
@@ -548,34 +550,7 @@ export default function Home({ homeMode = null, isTabActive = true }) {
         .replace(/(^-|-$)/g, ""),
     [],
   );
-  const festVideoActive =
-    typeof festBannerVideoUrl === "string" && festBannerVideoUrl.trim().length > 0;
-  const isSettingsLoading = festBannerVideoUrl === null;
-
-  // Force autoplay for iOS using wrapper ref
-  useEffect(() => {
-    if (festVideoActive && festBannerVideoUrl && videoContainerRef.current) {
-      const videoEl = videoContainerRef.current.querySelector('video');
-      if (videoEl) {
-        videoEl.muted = true;
-        videoEl.defaultMuted = true;
-        videoEl.setAttribute('playsinline', '');
-        videoEl.setAttribute('webkit-playsinline', '');
-        
-        const handleLoad = () => setVideoLoaded(true);
-        videoEl.addEventListener('loadeddata', handleLoad);
-        
-        // Sometimes it's already loaded before JS attaches
-        if (videoEl.readyState >= 2) {
-          setVideoLoaded(true);
-        }
-        
-        videoEl.play().catch(e => console.log("iOS Autoplay prevented:", e));
-        
-        return () => videoEl.removeEventListener('loadeddata', handleLoad);
-      }
-    }
-  }, [festVideoActive, festBannerVideoUrl]);
+  const isSettingsLoading = festBannerImageUrl === null;
 
   // Stable list of restaurant ids for menu-category union so we don't refetch menus
   // when `restaurantsData` changes for reasons like distance recalculation or outletTimings enrichment.
@@ -615,7 +590,7 @@ export default function Home({ homeMode = null, isTabActive = true }) {
           const parsed = new URL(normalizedInput, window.location.origin);
 
           // In mobile production, localhost/127.0.0.1 inside image URLs is unreachable.
-          // Use BACKEND_ORIGIN (API server) for image host, not frontend host�uploads are served by the backend.
+          // Use BACKEND_ORIGIN (API server) for image host, not frontend hostuploads are served by the backend.
           if (
             appHost &&
             appHost !== "localhost" &&
@@ -1324,7 +1299,11 @@ export default function Home({ homeMode = null, isTabActive = true }) {
         setRecommendedRestaurantsFromSettings(
           settings.recommendedRestaurants || [],
         );
-        setFestBannerVideoUrl(typeof settings.festBannerVideoUrl === "string" ? settings.festBannerVideoUrl : "");
+        const newBannerUrl = typeof settings.festBannerImageUrl === "string" ? settings.festBannerImageUrl : "";
+        setFestBannerImageUrl(newBannerUrl);
+        if (typeof window !== "undefined") {
+          try { localStorage.setItem("CACHED_FEST_BANNER", newBannerUrl); } catch (e) {}
+        }
         setCachedExploreIcons({ items: mappedItems, heading });
         preloadImageUrls(
           mappedItems
@@ -1337,7 +1316,10 @@ export default function Home({ homeMode = null, isTabActive = true }) {
           setLandingExploreMore([]);
           setExploreMoreHeading("Explore More");
           setRecommendedRestaurantsFromSettings([]);
-          setFestBannerVideoUrl("");
+          setFestBannerImageUrl("");
+          if (typeof window !== "undefined") {
+            try { localStorage.setItem("CACHED_FEST_BANNER", ""); } catch (e) {}
+          }
         }
       });
     return () => {
@@ -2842,28 +2824,13 @@ export default function Home({ homeMode = null, isTabActive = true }) {
         <div className="md:hidden relative overflow-x-clip bg-white dark:bg-[#0a0a0a]">
           {/* Brand Top Section (Red Theme) */}
           <div className="relative overflow-hidden rounded-b-[2rem] shadow-lg mb-2 home-red-banner-bg">
-            {festVideoActive && (
-              <div className={`absolute inset-0 z-0 transition-opacity duration-300 ${videoLoaded ? 'opacity-100' : 'opacity-0'}`}>
-                <div
-                  ref={videoContainerRef}
-                  className="w-full h-full"
-                  dangerouslySetInnerHTML={{
-                    __html: `
-                      <video
-                        src="${festBannerVideoUrl}"
-                        class="w-full h-full object-cover"
-                        autoplay
-                        muted
-                        loop
-                        playsinline
-                        webkit-playsinline="true"
-                        x5-playsinline="true"
-                        disablePictureInPicture
-                      ></video>
-                    `
-                  }}
+            {festBannerImageUrl && effectiveOrderType !== "takeaway" && !isTakeawayPage && (
+              <div className="absolute inset-0 z-0">
+                <img
+                  src={festBannerImageUrl}
+                  alt="Fest Banner"
+                  className="w-full h-full object-cover"
                 />
-                {videoLoaded && <div className="absolute inset-0 bg-black/40" />}
               </div>
             )}
             <div className="relative z-10">
@@ -2880,8 +2847,8 @@ export default function Home({ homeMode = null, isTabActive = true }) {
                   vegModeToggleRef={vegModeToggleRef}
                   // Pass Banner Props to Unified Component
                   showBanner={activeTab === "food" && effectiveOrderType !== "takeaway" && !isTakeawayPage}
-                  videoUrl={festVideoActive ? "" : (festBannerVideoUrl || "")}
-                  hideFoodImages={festVideoActive && videoLoaded}
+                  videoUrl={""}
+                  hideFoodImages={!!festBannerImageUrl}
                 />
               ) : (
                 <div className="bg-white/0 dark:bg-black/0 px-4 pt-2 pb-4 border-b-0 dark:border-gray-800 backdrop-blur-sm">
