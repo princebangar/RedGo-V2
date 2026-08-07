@@ -2823,7 +2823,7 @@ export default function Home({ homeMode = null, isTabActive = true }) {
 
         <div className="md:hidden relative overflow-x-clip bg-white dark:bg-[#0a0a0a]">
           {/* Brand Top Section (Red Theme) */}
-          <div className={`relative overflow-hidden rounded-b-[2rem] shadow-lg mb-2 ${festBannerImageUrl && effectiveOrderType !== "takeaway" && !isTakeawayPage ? 'bg-transparent' : 'home-red-banner-bg'}`}>
+          <div className="relative overflow-hidden rounded-b-[2rem] shadow-lg mb-2 home-red-banner-bg">
             {festBannerImageUrl && effectiveOrderType !== "takeaway" && !isTakeawayPage && (
               <div className="absolute inset-0 z-0">
                 <img
