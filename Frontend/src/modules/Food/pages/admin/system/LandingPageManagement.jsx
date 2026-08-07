@@ -1177,12 +1177,13 @@ export default function LandingPageManagement() {
 
       const response = await api.post('/uploads/image', formData, getAuthConfig())
       const url = response?.data?.data?.url || ''
+      const dominantColor = response?.data?.data?.dominantColor || ''
       if (!url) {
         setErrorSafely('Failed to upload banner')
         return
       }
 
-      setSettings((prev) => ({ ...prev, festBannerImageUrl: url }))
+      setSettings((prev) => ({ ...prev, festBannerImageUrl: url, festBannerTopColor: dominantColor || prev.festBannerTopColor || '' }))
       setSuccess('Banner uploaded. Click Save Settings to publish.')
       if (festBannerFileInputRef.current) festBannerFileInputRef.current.value = ''
       setTimeout(() => setSuccess(null), 3000)

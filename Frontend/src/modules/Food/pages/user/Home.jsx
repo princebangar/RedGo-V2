@@ -510,6 +510,12 @@ export default function Home({ homeMode = null, isTabActive = true }) {
     return null;
   })();
   const [festBannerImageUrl, setFestBannerImageUrl] = useState(CACHED_FEST_BANNER);
+  const [festBannerTopColor, setFestBannerTopColor] = useState(() => {
+    if (typeof window !== "undefined") {
+      try { return localStorage.getItem("CACHED_FEST_BANNER_COLOR") || ''; } catch (e) { return ''; }
+    }
+    return '';
+  });
 
   const [recommendedRestaurantIds, setRecommendedRestaurantIds] = useState([]);
   const [under250PriceLimit, setUnder250PriceLimit] = useState(250);
@@ -1300,9 +1306,25 @@ export default function Home({ homeMode = null, isTabActive = true }) {
           settings.recommendedRestaurants || [],
         );
         const newBannerUrl = typeof settings.festBannerImageUrl === "string" ? settings.festBannerImageUrl : "";
+        const newTopColor = typeof settings.festBannerTopColor === "string" && settings.festBannerTopColor ? settings.festBannerTopColor : '';
         setFestBannerImageUrl(newBannerUrl);
+        setFestBannerTopColor(newTopColor);
         if (typeof window !== "undefined") {
           try { localStorage.setItem("CACHED_FEST_BANNER", newBannerUrl); } catch (e) {}
+          try { localStorage.setItem("CACHED_FEST_BANNER_COLOR", newTopColor); } catch (e) {}
+        }
+        // Update status bar color immediately from saved color
+        if (newBannerUrl && newTopColor) {
+          try {
+            let meta = document.querySelector('meta[name="theme-color"]');
+            if (!meta) { meta = document.createElement('meta'); meta.name = 'theme-color'; document.head.appendChild(meta); }
+            meta.setAttribute('content', newTopColor);
+          } catch (e) {}
+        } else {
+          try {
+            const meta = document.querySelector('meta[name="theme-color"]');
+            if (meta) meta.setAttribute('content', '#D91F3A');
+          } catch (e) {}
         }
         setCachedExploreIcons({ items: mappedItems, heading });
         preloadImageUrls(
@@ -2832,9 +2854,15 @@ export default function Home({ homeMode = null, isTabActive = true }) {
                   className="w-full h-full object-cover"
                   onError={() => {
                     setFestBannerImageUrl("");
+                    setFestBannerTopColor("");
                     if (typeof window !== "undefined") {
                       try { localStorage.setItem("CACHED_FEST_BANNER", ""); } catch(e) {}
+                      try { localStorage.setItem("CACHED_FEST_BANNER_COLOR", ""); } catch(e) {}
                     }
+                    try {
+                      const meta = document.querySelector('meta[name="theme-color"]');
+                      if (meta) meta.setAttribute('content', '#D91F3A');
+                    } catch(e) {}
                   }}
                 />
               </div>

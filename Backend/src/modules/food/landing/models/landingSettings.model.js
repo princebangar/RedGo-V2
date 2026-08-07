@@ -45,6 +45,10 @@ const foodLandingSettingsSchema = new mongoose.Schema(
             type: String,
             default: ''
         },
+        festBannerTopColor: {
+            type: String,
+            default: ''
+        },
         zoneId: {
             type: mongoose.Schema.Types.ObjectId,
             ref: 'FoodZone',
