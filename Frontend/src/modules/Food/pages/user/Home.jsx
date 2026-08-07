@@ -377,7 +377,7 @@ export default function Home({ homeMode = null, isTabActive = true }) {
   const navigate = useNavigate();
   const routerLocation = useRouterLocation();
   const hasRestoredBrowseScrollRef = useRef(false);
-  const videoRef = useRef(null);
+  const videoContainerRef = useRef(null);
   const HERO_BANNER_AUTO_SLIDE_MS = 3500;
   const BACKEND_ORIGIN = API_BASE_URL.replace(/\/api\/?$/, "");
   const [searchParams] = useSearchParams();
@@ -552,12 +552,28 @@ export default function Home({ homeMode = null, isTabActive = true }) {
     typeof festBannerVideoUrl === "string" && festBannerVideoUrl.trim().length > 0;
   const isSettingsLoading = festBannerVideoUrl === null;
 
-  // Force autoplay for iOS
+  // Force autoplay for iOS using wrapper ref
   useEffect(() => {
-    if (videoRef.current) {
-      videoRef.current.defaultMuted = true;
-      videoRef.current.muted = true;
-      videoRef.current.play().catch(e => console.log("iOS Autoplay prevented:", e));
+    if (festVideoActive && festBannerVideoUrl && videoContainerRef.current) {
+      const videoEl = videoContainerRef.current.querySelector('video');
+      if (videoEl) {
+        videoEl.muted = true;
+        videoEl.defaultMuted = true;
+        videoEl.setAttribute('playsinline', '');
+        videoEl.setAttribute('webkit-playsinline', '');
+        
+        const handleLoad = () => setVideoLoaded(true);
+        videoEl.addEventListener('loadeddata', handleLoad);
+        
+        // Sometimes it's already loaded before JS attaches
+        if (videoEl.readyState >= 2) {
+          setVideoLoaded(true);
+        }
+        
+        videoEl.play().catch(e => console.log("iOS Autoplay prevented:", e));
+        
+        return () => videoEl.removeEventListener('loadeddata', handleLoad);
+      }
     }
   }, [festVideoActive, festBannerVideoUrl]);
 
@@ -2828,19 +2844,24 @@ export default function Home({ homeMode = null, isTabActive = true }) {
           <div className="relative overflow-hidden rounded-b-[2rem] shadow-lg mb-2 home-red-banner-bg">
             {festVideoActive && (
               <div className={`absolute inset-0 z-0 transition-opacity duration-300 ${videoLoaded ? 'opacity-100' : 'opacity-0'}`}>
-                <video
-                  ref={videoRef}
-                  src={festBannerVideoUrl}
-                  className="w-full h-full object-cover"
-                  autoPlay
-                  muted
-                  defaultMuted
-                  loop
-                  playsInline
-                  webkit-playsinline="true"
-                  x5-playsinline="true"
-                  disablePictureInPicture
-                  onLoadedData={() => setVideoLoaded(true)}
+                <div
+                  ref={videoContainerRef}
+                  className="w-full h-full"
+                  dangerouslySetInnerHTML={{
+                    __html: `
+                      <video
+                        src="${festBannerVideoUrl}"
+                        class="w-full h-full object-cover"
+                        autoplay
+                        muted
+                        loop
+                        playsinline
+                        webkit-playsinline="true"
+                        x5-playsinline="true"
+                        disablePictureInPicture
+                      ></video>
+                    `
+                  }}
                 />
                 {videoLoaded && <div className="absolute inset-0 bg-black/40" />}
               </div>
