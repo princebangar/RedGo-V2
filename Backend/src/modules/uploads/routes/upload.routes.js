@@ -5,6 +5,7 @@ import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import { config } from '../../../config/env.js';
+import sharp from 'sharp';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -26,11 +27,15 @@ router.post('/image', upload.single('file'), async (req, res, next) => {
         const uploadDir = UPLOADS_ROOT;
         await fs.promises.mkdir(uploadDir, { recursive: true });
 
-        const ext = path.extname(req.file.originalname || '') || '.jpg';
-        const filename = `image_${Date.now()}_${Math.random().toString(36).substring(7)}${ext}`;
+        // Convert any format to WebP for faster loading
+        const webpBuffer = await sharp(req.file.buffer)
+            .webp({ quality: 85 })
+            .toBuffer();
+
+        const filename = `image_${Date.now()}_${Math.random().toString(36).substring(7)}.webp`;
         const filePath = path.join(uploadDir, filename);
 
-        await fs.promises.writeFile(filePath, req.file.buffer);
+        await fs.promises.writeFile(filePath, webpBuffer);
 
         let baseUrl = `${req.protocol}://${req.get('host')}`;
         if (process.env.API_BASE_URL) {
