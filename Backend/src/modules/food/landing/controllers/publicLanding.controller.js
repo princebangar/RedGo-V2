@@ -158,6 +158,7 @@ export const getPublicLandingSettingsController = async (req, res, next) => {
                 exploreMoreHeading: settings.exploreMoreHeading && settings.exploreMoreHeading !== 'Explore more' ? settings.exploreMoreHeading : globalSettings.exploreMoreHeading,
                 recommendedRestaurantIds: settings.recommendedRestaurantIds && settings.recommendedRestaurantIds.length > 0 ? settings.recommendedRestaurantIds : globalSettings.recommendedRestaurantIds,
                 festBannerImageUrl: settings.festBannerImageUrl ? settings.festBannerImageUrl : globalSettings.festBannerImageUrl,
+                festBannerTopColor: settings.festBannerTopColor ? settings.festBannerTopColor : globalSettings.festBannerTopColor,
             };
         }
 

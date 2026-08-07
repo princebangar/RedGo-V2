@@ -88,8 +88,8 @@ export default function LandingPageManagement() {
   const diningBannersFileInputRef = useRef(null)
 
   // Settings
-  const [settings, setSettings] = useState({ exploreMoreHeading: "Explore More", recommendedRestaurantIds: [], under250PriceLimit: 250, festBannerImageUrl: "" })
-  const [originalSettings, setOriginalSettings] = useState({ exploreMoreHeading: "Explore More", recommendedRestaurantIds: [], under250PriceLimit: 250, festBannerImageUrl: "" })
+  const [settings, setSettings] = useState({ exploreMoreHeading: "Explore More", recommendedRestaurantIds: [], under250PriceLimit: 250, festBannerImageUrl: "", festBannerTopColor: "" })
+  const [originalSettings, setOriginalSettings] = useState({ exploreMoreHeading: "Explore More", recommendedRestaurantIds: [], under250PriceLimit: 250, festBannerImageUrl: "", festBannerTopColor: "" })
   const [settingsLoading, setSettingsLoading] = useState(true)
   const [settingsSaving, setSettingsSaving] = useState(false)
   const [recommendedSearchQuery, setRecommendedSearchQuery] = useState("")
@@ -1093,7 +1093,8 @@ export default function LandingPageManagement() {
           exploreMoreHeading: nextSettings.exploreMoreHeading || "Explore More",
           recommendedRestaurantIds: recommendedIds,
           under250PriceLimit: Number(nextSettings.under250PriceLimit) || 250,
-          festBannerImageUrl: typeof nextSettings.festBannerImageUrl === "string" ? nextSettings.festBannerImageUrl : ""
+          festBannerImageUrl: typeof nextSettings.festBannerImageUrl === "string" ? nextSettings.festBannerImageUrl : "",
+          festBannerTopColor: typeof nextSettings.festBannerTopColor === "string" ? nextSettings.festBannerTopColor : ""
         }
         setSettings(newSettings)
         setOriginalSettings(newSettings)
@@ -1101,7 +1102,7 @@ export default function LandingPageManagement() {
     } catch (err) {
       // Silently handle 401/404 errors - endpoints may not exist yet, use default settings
       if (err.response?.status === 401 || err.response?.status === 404) {
-        const defaultSettings = { exploreMoreHeading: "Explore More", recommendedRestaurantIds: [], under250PriceLimit: 250, festBannerImageUrl: "" }
+        const defaultSettings = { exploreMoreHeading: "Explore More", recommendedRestaurantIds: [], under250PriceLimit: 250, festBannerImageUrl: "", festBannerTopColor: "" }
         setSettings(defaultSettings) // Use default settings
         setOriginalSettings(defaultSettings)
         setError(null) // Clear any previous error
@@ -1124,7 +1125,8 @@ export default function LandingPageManagement() {
         exploreMoreHeading: settings.exploreMoreHeading,
         recommendedRestaurantIds: Array.isArray(settings.recommendedRestaurantIds) ? settings.recommendedRestaurantIds : [],
         under250PriceLimit: Number(settings.under250PriceLimit) || 250,
-        festBannerImageUrl: settings.festBannerImageUrl || ""
+        festBannerImageUrl: settings.festBannerImageUrl || "",
+        festBannerTopColor: settings.festBannerTopColor || ""
       }, getAuthConfig())
       if (response.data.success) {
         const savedSettings = response.data.data?.settings || response.data.data || {}
@@ -1138,7 +1140,10 @@ export default function LandingPageManagement() {
           under250PriceLimit: Number(savedSettings.under250PriceLimit) || settings.under250PriceLimit,
           festBannerImageUrl: typeof savedSettings.festBannerImageUrl === "string"
             ? savedSettings.festBannerImageUrl
-            : settings.festBannerImageUrl
+            : settings.festBannerImageUrl,
+          festBannerTopColor: typeof savedSettings.festBannerTopColor === "string"
+            ? savedSettings.festBannerTopColor
+            : settings.festBannerTopColor || ""
         }
         setSettings(updatedSettings)
         setOriginalSettings(updatedSettings)
