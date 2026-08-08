@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react"
+import { useState, useEffect, useMemo } from "react"
 import { Save, Loader2, DollarSign, Plus, Trash2, Edit, Check, X } from "lucide-react"
 import { Button } from "@food/components/ui/button"
 import { adminAPI } from "@food/api"
@@ -7,17 +7,39 @@ const debugLog = (...args) => {}
 const debugWarn = (...args) => {}
 const debugError = (...args) => {}
 
+const emptyFeeSettings = () => ({
+  deliveryFee: "",
+  deliveryFeeRanges: [],
+  freeDeliveryUpTo: "",
+  platformFee: "",
+  packagingFee: "",
+  gstRate: "",
+})
+
+const normalizeFeeSettings = (settings) => ({
+  deliveryFee: settings?.deliveryFee === "" || settings?.deliveryFee == null ? "" : Number(settings.deliveryFee),
+  freeDeliveryUpTo: settings?.freeDeliveryUpTo === "" || settings?.freeDeliveryUpTo == null ? "" : Number(settings.freeDeliveryUpTo),
+  platformFee: settings?.platformFee === "" || settings?.platformFee == null ? "" : Number(settings.platformFee),
+  packagingFee: settings?.packagingFee === "" || settings?.packagingFee == null ? "" : Number(settings.packagingFee),
+  gstRate: settings?.gstRate === "" || settings?.gstRate == null ? "" : Number(settings.gstRate),
+  deliveryFeeRanges: Array.isArray(settings?.deliveryFeeRanges)
+    ? settings.deliveryFeeRanges
+        .map((r) => ({
+          min: Number(r.min),
+          max: Number(r.max),
+          fee: Number(r.fee),
+        }))
+        .sort((a, b) => a.min - b.min)
+    : [],
+})
+
+const feeSettingsEqual = (a, b) =>
+  JSON.stringify(normalizeFeeSettings(a)) === JSON.stringify(normalizeFeeSettings(b))
 
 // Fee Settings Component - Range-based delivery fee configuration
 export default function FeeSettings() {
-  const [feeSettings, setFeeSettings] = useState({
-    deliveryFee: "",
-    deliveryFeeRanges: [],
-    freeDeliveryUpTo: "",
-    platformFee: "",
-    packagingFee: "",
-    gstRate: "",
-  })
+  const [feeSettings, setFeeSettings] = useState(emptyFeeSettings)
+  const [savedFeeSettings, setSavedFeeSettings] = useState(emptyFeeSettings)
   const [zones, setZones] = useState([])
   const [selectedZoneId, setSelectedZoneId] = useState("")
   const [zonesLoading, setZonesLoading] = useState(true)
@@ -26,41 +48,38 @@ export default function FeeSettings() {
   const [editingRangeIndex, setEditingRangeIndex] = useState(null)
   const [newRange, setNewRange] = useState({ min: '', max: '', fee: '' })
 
+  const isDirty = useMemo(
+    () => !feeSettingsEqual(feeSettings, savedFeeSettings),
+    [feeSettings, savedFeeSettings]
+  )
+
   // Fetch fee settings for selected zone
   const fetchFeeSettings = async (zoneId) => {
     if (!zoneId) {
-      setFeeSettings({
-        deliveryFee: "",
-        deliveryFeeRanges: [],
-        freeDeliveryUpTo: "",
-        platformFee: "",
-        packagingFee: "",
-        gstRate: "",
-      })
+      const empty = emptyFeeSettings()
+      setFeeSettings(empty)
+      setSavedFeeSettings(empty)
       return
     }
     try {
       setLoadingFeeSettings(true)
       const response = await adminAPI.getFeeSettings({ zoneId })
       if (response.data.success && response.data.data.feeSettings) {
-        setFeeSettings({
+        const next = {
           deliveryFee: response.data.data.feeSettings.deliveryFee ?? "",
           deliveryFeeRanges: response.data.data.feeSettings.deliveryFeeRanges || [],
           freeDeliveryUpTo: response.data.data.feeSettings.freeDeliveryUpTo ?? "",
           platformFee: response.data.data.feeSettings.platformFee ?? "",
           packagingFee: response.data.data.feeSettings.packagingFee ?? "",
           gstRate: response.data.data.feeSettings.gstRate ?? "",
-        })
+        }
+        setFeeSettings(next)
+        setSavedFeeSettings(next)
       } else if (response.data.success && response.data.data.feeSettings === null) {
         // Not configured yet - keep empty fields (no defaults).
-        setFeeSettings({
-          deliveryFee: "",
-          deliveryFeeRanges: [],
-          freeDeliveryUpTo: "",
-          platformFee: "",
-          packagingFee: "",
-          gstRate: "",
-        })
+        const empty = emptyFeeSettings()
+        setFeeSettings(empty)
+        setSavedFeeSettings(empty)
       }
     } catch (error) {
       debugError('Error fetching fee settings:', error)
@@ -109,6 +128,7 @@ export default function FeeSettings() {
       toast.error('Please select a zone first')
       return
     }
+    if (!isDirty) return
     try {
       setSavingFeeSettings(true)
       const response = await adminAPI.createOrUpdateFeeSettings({
@@ -127,14 +147,18 @@ export default function FeeSettings() {
         // Avoid an extra API call; update local state from response
         const saved = response?.data?.data?.feeSettings
         if (saved) {
-          setFeeSettings({
+          const next = {
             deliveryFee: saved.deliveryFee ?? "",
             deliveryFeeRanges: saved.deliveryFeeRanges ?? [],
             freeDeliveryUpTo: saved.freeDeliveryUpTo ?? "",
             platformFee: saved.platformFee ?? "",
             packagingFee: saved.packagingFee ?? "",
             gstRate: saved.gstRate ?? "",
-          })
+          }
+          setFeeSettings(next)
+          setSavedFeeSettings(next)
+        } else {
+          setSavedFeeSettings(feeSettings)
         }
       } else {
         toast.error(response.data.message || 'Failed to save fee settings')
@@ -305,8 +329,8 @@ export default function FeeSettings() {
             </div>
             <Button
               onClick={handleSaveFeeSettings}
-              disabled={savingFeeSettings || loadingFeeSettings || !selectedZoneId}
-              className="bg-green-600 hover:bg-green-700 text-white flex items-center gap-2"
+              disabled={savingFeeSettings || loadingFeeSettings || !selectedZoneId || !isDirty}
+              className="bg-green-600 hover:bg-green-700 text-white flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
             >
               {savingFeeSettings ? (
                 <>

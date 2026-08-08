@@ -123,6 +123,62 @@ export async function fetchDrivingDistanceKm(origin, destination) {
   return null;
 }
 
+/**
+ * Batch road/driving distances (km) for restaurant listings.
+ * Direction matches cart bill: each restaurant (origin) → user/delivery point (destination).
+ * `userPoint` is the delivery/user location; `restaurantPoints` are restaurant lat/lngs.
+ * Returns an array aligned with `restaurantPoints`; null entries mean lookup failed.
+ *
+ * @param {{ lat: number, lng: number }} userPoint
+ * @param {Array<{ lat: number, lng: number }|null|undefined>} restaurantPoints
+ * @returns {Promise<Array<number|null>>}
+ */
+export async function fetchDrivingDistancesKmBatch(userPoint, restaurantPoints) {
+  const results = Array.isArray(restaurantPoints)
+    ? restaurantPoints.map(() => null)
+    : [];
+  if (!userPoint || !results.length) return results;
+
+  const uLat = Number(userPoint.lat);
+  const uLng = Number(userPoint.lng);
+  if (![uLat, uLng].every(Number.isFinite)) return results;
+
+  const CONCURRENCY = 8;
+  let nextIndex = 0;
+
+  async function worker() {
+    while (nextIndex < restaurantPoints.length) {
+      const i = nextIndex;
+      nextIndex += 1;
+      const rest = restaurantPoints[i];
+      const rLat = Number(rest?.lat);
+      const rLng = Number(rest?.lng);
+      if (![rLat, rLng].every(Number.isFinite)) continue;
+      try {
+        // Cart order-pricing uses restaurant → delivery address.
+        const km = await fetchDrivingDistanceKm(
+          { lat: rLat, lng: rLng },
+          { lat: uLat, lng: uLng },
+        );
+        if (Number.isFinite(km) && km > 0) {
+          results[i] = km;
+        }
+      } catch (err) {
+        logger.warn(
+          `Driving distance failed for restaurant[${i}]: ${err?.message || err}`,
+        );
+      }
+    }
+  }
+
+  const workers = Array.from(
+    { length: Math.min(CONCURRENCY, restaurantPoints.length) },
+    () => worker(),
+  );
+  await Promise.all(workers);
+  return results;
+}
+
 /** Normalize any common lat/lng shape to { lat, lng } or null */
 export function normalizeLatLng(raw) {
   if (!raw || typeof raw !== 'object') return null;

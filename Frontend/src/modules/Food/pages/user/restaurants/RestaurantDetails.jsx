@@ -128,7 +128,7 @@ function RestaurantDetailsContent() {
   const showOnlyUnder250 = searchParams.get('under250') === 'true'
   const targetDishId = useMemo(() => String(searchParams.get('dish') || '').trim(), [searchParams])
   const { addToCart, updateQuantity, removeFromCart, getCartItem, cart, itemCount } = useCart()
-  const { vegMode, addDishFavorite, removeDishFavorite, isDishFavorite, getDishFavorites, getFavorites, addFavorite, removeFavorite, isFavorite, orderType } = useProfile()
+  const { vegMode, addDishFavorite, removeDishFavorite, isDishFavorite, getDishFavorites, getFavorites, addFavorite, removeFavorite, isFavorite, orderType, getDefaultAddress } = useProfile()
   const seededRestaurant = routerLocation.state?.restaurantData || null
   const seededMongoId = useMemo(() => {
     const candidates = [
@@ -152,6 +152,33 @@ function RestaurantDetailsContent() {
     )
   }, [vegMode])
   const { location: userLocation } = useLocation() // Get user's current location
+  // MUST match cart: prefer saved delivery address coordinates for distance.
+  const distanceOrigin = useMemo(() => {
+    const saved = getDefaultAddress?.() || null
+    const coords = saved?.location?.coordinates
+    if (Array.isArray(coords) && coords.length >= 2) {
+      const lng = Number(coords[0])
+      const lat = Number(coords[1])
+      if (Number.isFinite(lat) && Number.isFinite(lng)) {
+        return { latitude: lat, longitude: lng }
+      }
+    }
+    const lat = Number(saved?.latitude ?? saved?.lat)
+    const lng = Number(saved?.longitude ?? saved?.lng)
+    if (Number.isFinite(lat) && Number.isFinite(lng)) {
+      return { latitude: lat, longitude: lng }
+    }
+    if (
+      Number.isFinite(Number(userLocation?.latitude)) &&
+      Number.isFinite(Number(userLocation?.longitude))
+    ) {
+      return {
+        latitude: Number(userLocation.latitude),
+        longitude: Number(userLocation.longitude),
+      }
+    }
+    return null
+  }, [getDefaultAddress, userLocation?.latitude, userLocation?.longitude])
   const { zoneId, zone, loading: loadingZone, isOutOfService } = useZone(userLocation) // Get user's zone for zone-based filtering
   const [currentImageIndex, setCurrentImageIndex] = useState(0)
   const [highlightIndex, setHighlightIndex] = useState(0)
@@ -487,7 +514,11 @@ function RestaurantDetailsContent() {
         rating: seededRestaurant.rating || 0,
         reviews: seededRestaurant.reviews || seededRestaurant.totalRatings || 0,
         deliveryTime: seededRestaurant.deliveryTime || "25-30 mins",
-        distance: seededRestaurant.distance || "",
+        // Don't seed distance from home card — wait for cart-matched driving API.
+        distance: "",
+        distanceInKm: null,
+        distanceMode: null,
+        distanceOriginKey: null,
         location: seededRestaurant.location || "",
         image: seededRestaurant.image || seededRestaurant.profileImage || null,
         coverImages: seededRestaurant.coverImages || [],
@@ -516,9 +547,32 @@ function RestaurantDetailsContent() {
     const fetchRestaurant = async () => {
       if (!slug) return
 
-      // Prevent re-fetching for the same slug. Mobile location/zone updates can
-      // trigger transient refetch failures that clear already-rendered content.
-      if (fetchedRestaurantRef.current && fetchedSlugRef.current === slug && restaurant) {
+      // Prevent re-fetching for the same slug+origin once driving distance is resolved.
+      // If delivery-address origin changes, refetch so distance matches cart.
+      const originKey =
+        Number.isFinite(Number(distanceOrigin?.latitude)) &&
+        Number.isFinite(Number(distanceOrigin?.longitude))
+          ? `${Number(distanceOrigin.latitude)},${Number(distanceOrigin.longitude)}`
+          : ""
+      const hasDrivingDistance =
+        restaurant?.distanceMode === "driving" ||
+        (Number.isFinite(Number(restaurant?.distanceInKm)) && Number(restaurant.distanceInKm) > 0)
+      const sameOrigin = Boolean(originKey) && restaurant?.distanceOriginKey === originKey
+      if (
+        fetchedRestaurantRef.current &&
+        fetchedSlugRef.current === slug &&
+        restaurant &&
+        sameOrigin &&
+        hasDrivingDistance
+      ) {
+        return
+      }
+      if (
+        fetchedRestaurantRef.current &&
+        fetchedSlugRef.current === slug &&
+        restaurant &&
+        !originKey
+      ) {
         return
       }
 
@@ -561,7 +615,17 @@ function RestaurantDetailsContent() {
 
             for (const key of lookupKeys) {
               try {
-                response = await restaurantAPI.getRestaurantById(key)
+                const locationParams = {}
+                if (
+                  Number.isFinite(Number(distanceOrigin?.latitude)) &&
+                  Number.isFinite(Number(distanceOrigin?.longitude))
+                ) {
+                  locationParams.lat = Number(distanceOrigin.latitude)
+                  locationParams.lng = Number(distanceOrigin.longitude)
+                }
+                response = await restaurantAPI.getRestaurantById(key, {
+                  params: locationParams,
+                })
                 if (response?.data?.success && response?.data?.data) {
                   apiRestaurant = response.data.data
                   debugLog('? Found restaurant in restaurant API by key:', key)
@@ -603,7 +667,18 @@ function RestaurantDetailsContent() {
                   })
 
                   if (matchingRestaurant) {
-                    const fullResponse = await restaurantAPI.getRestaurantById(matchingRestaurant._id || matchingRestaurant.restaurantId)
+                    const locationParams = {}
+                    if (
+                      Number.isFinite(Number(distanceOrigin?.latitude)) &&
+                      Number.isFinite(Number(distanceOrigin?.longitude))
+                    ) {
+                      locationParams.lat = Number(distanceOrigin.latitude)
+                      locationParams.lng = Number(distanceOrigin.longitude)
+                    }
+                    const fullResponse = await restaurantAPI.getRestaurantById(
+                      matchingRestaurant._id || matchingRestaurant.restaurantId,
+                      { params: locationParams },
+                    )
                     if (fullResponse.data && fullResponse.data.success && fullResponse.data.data) {
                       apiRestaurant = fullResponse.data.data
                       debugLog('? Found restaurant in restaurant API by name search:', apiRestaurant)
@@ -732,54 +807,45 @@ function RestaurantDetailsContent() {
           const formattedAddress = formatRestaurantAddress(locationObj)
           debugLog('? Final Formatted Address:', formattedAddress)
 
-          // Calculate distance from user to restaurant
-          const calculateDistance = (lat1, lng1, lat2, lng2) => {
-            const R = 6371 // Earth's radius in kilometers
-            const dLat = (lat2 - lat1) * Math.PI / 180
-            const dLng = (lng2 - lng1) * Math.PI / 180
-            const a =
-              Math.sin(dLat / 2) * Math.sin(dLat / 2) +
-              Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
-              Math.sin(dLng / 2) * Math.sin(dLng / 2)
-            const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a))
-            return R * c // Distance in kilometers
-          }
-
-          // Get restaurant coordinates
-          // Priority: latitude/longitude fields > coordinates array (GeoJSON format: [lng, lat])
+          // Calculate distance from user to restaurant using SAME backend
+          // driving-distance API as cart / home list (not air/haversine).
           const restaurantLat = locationObj?.latitude || (locationObj?.coordinates && Array.isArray(locationObj.coordinates) ? locationObj.coordinates[1] : null)
           const restaurantLng = locationObj?.longitude || (locationObj?.coordinates && Array.isArray(locationObj.coordinates) ? locationObj.coordinates[0] : null)
 
           debugLog('? Restaurant coordinates:', { restaurantLat, restaurantLng, locationObj })
 
-          // Get user coordinates
-          const userLat = userLocation?.latitude
-          const userLng = userLocation?.longitude
+          const userLat = distanceOrigin?.latitude
+          const userLng = distanceOrigin?.longitude
 
-          debugLog('? User location:', { userLat, userLng, userLocation })
+          debugLog('? User location (cart-matched):', { userLat, userLng, distanceOrigin })
 
-          // Calculate distance if both coordinates are available
-          let calculatedDistance = null
-          if (userLat && userLng && restaurantLat && restaurantLng &&
-            !isNaN(userLat) && !isNaN(userLng) && !isNaN(restaurantLat) && !isNaN(restaurantLng)) {
-            const distanceInKm = calculateDistance(userLat, userLng, restaurantLat, restaurantLng)
-            // Format distance: show 1 decimal place if >= 1km, otherwise show in meters
-            if (distanceInKm >= 1) {
-              calculatedDistance = `${distanceInKm.toFixed(1)} km`
-            } else {
-              const distanceInMeters = Math.round(distanceInKm * 1000)
-              calculatedDistance = `${distanceInMeters} m`
-            }
-            debugLog('? Calculated distance from user to restaurant:', calculatedDistance, 'km:', distanceInKm)
-          } else {
-            debugWarn('? Cannot calculate distance - missing coordinates:', {
+          const apiDistance =
+            actualRestaurant?.distance ||
+            apiRestaurant?.distance ||
+            actualRestaurant?.distanceFromUser ||
+            apiRestaurant?.distanceFromUser ||
+            null
+          const apiDistanceInKm = Number(
+            actualRestaurant?.distanceInKm ?? apiRestaurant?.distanceInKm,
+          )
+          const calculatedDistance =
+            (actualRestaurant?.distanceMode === 'driving' || apiRestaurant?.distanceMode === 'driving') &&
+            apiDistance
+              ? apiDistance
+              : Number.isFinite(apiDistanceInKm) && apiDistanceInKm > 0
+                ? (apiDistanceInKm >= 1
+                    ? `${apiDistanceInKm.toFixed(1)} km`
+                    : `${Math.round(apiDistanceInKm * 1000)} m`)
+                : apiDistance || null
+
+          if (!calculatedDistance) {
+            debugWarn('? Driving distance missing from API — pass lat/lng on restaurant fetch', {
               hasUserLocation: !!(userLat && userLng),
               hasRestaurantLocation: !!(restaurantLat && restaurantLng),
-              userLat,
-              userLng,
-              restaurantLat,
-              restaurantLng
+              distanceMode: actualRestaurant?.distanceMode || apiRestaurant?.distanceMode,
             })
+          } else {
+            debugLog('? Using backend driving distance:', calculatedDistance)
           }
 
           // Resolve display category/cuisine with broad API compatibility
@@ -844,6 +910,13 @@ function RestaurantDetailsContent() {
             reviews: actualRestaurant?.totalRatings || apiRestaurant?.totalRatings || actualRestaurant?.reviewCount || apiRestaurant?.reviewCount || actualRestaurant?.reviews?.length || apiRestaurant?.reviews?.length || 0,
             deliveryTime: actualRestaurant?.estimatedDeliveryTime || apiRestaurant?.estimatedDeliveryTime || actualRestaurant?.deliveryTime || apiRestaurant?.deliveryTime || actualRestaurant?.avgDeliveryTime || apiRestaurant?.avgDeliveryTime || "25-30 mins",
             distance: calculatedDistance || actualRestaurant?.distance || apiRestaurant?.distance || actualRestaurant?.distanceFromUser || apiRestaurant?.distanceFromUser || "1.2 km",
+            distanceInKm: Number.isFinite(apiDistanceInKm) ? apiDistanceInKm : (actualRestaurant?.distanceInKm ?? apiRestaurant?.distanceInKm ?? null),
+            distanceMode: actualRestaurant?.distanceMode || apiRestaurant?.distanceMode || null,
+            distanceOriginKey:
+              Number.isFinite(Number(distanceOrigin?.latitude)) &&
+              Number.isFinite(Number(distanceOrigin?.longitude))
+                ? `${Number(distanceOrigin.latitude)},${Number(distanceOrigin.longitude)}`
+                : null,
             location: formattedAddress,
             locationObject: locationObj, // Store full location object for reference
             image: normalizedCoverImages?.[0]?.url
@@ -1222,7 +1295,7 @@ function RestaurantDetailsContent() {
     }
 
     fetchRestaurant()
-  }, [slug, zoneId, seededMongoId])
+  }, [slug, zoneId, seededMongoId, distanceOrigin?.latitude, distanceOrigin?.longitude])
 
   // Track previous values to prevent unnecessary recalculations
   const prevCoordsRef = useRef({ userLat: null, userLng: null, restaurantLat: null, restaurantLng: null })

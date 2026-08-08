@@ -1437,6 +1437,25 @@ export default function Home({ homeMode = null, isTabActive = true }) {
   }, [defaultSavedAddress]);
 
   const effectiveLocation = location;
+  // Prefer selected/saved delivery address for distance so home cards match cart bill.
+  const distanceOrigin = useMemo(() => {
+    if (
+      Number.isFinite(defaultSavedAddressLocation?.latitude) &&
+      Number.isFinite(defaultSavedAddressLocation?.longitude)
+    ) {
+      return defaultSavedAddressLocation;
+    }
+    if (
+      Number.isFinite(effectiveLocation?.latitude) &&
+      Number.isFinite(effectiveLocation?.longitude)
+    ) {
+      return {
+        latitude: Number(effectiveLocation.latitude),
+        longitude: Number(effectiveLocation.longitude),
+      };
+    }
+    return null;
+  }, [defaultSavedAddressLocation, effectiveLocation]);
   // Single zone hook — duplicate useZone(location) caused double detect + loading flicker.
   const effectiveZoneId = zoneId;
   const effectiveZoneLoading = zoneLoading;
@@ -1612,14 +1631,13 @@ export default function Home({ homeMode = null, isTabActive = true }) {
         // Build query parameters from filters
         const params = {};
 
-        // Always send user coordinates when available so backend can compute distance/sort.
-        // Round to 4 decimal places (~11m precision) to stabilize cache keys.
+        // Use saved/selected delivery address coords (same origin as cart bill).
         if (
-          Number.isFinite(effectiveLocation?.latitude) &&
-          Number.isFinite(effectiveLocation?.longitude)
+          Number.isFinite(distanceOrigin?.latitude) &&
+          Number.isFinite(distanceOrigin?.longitude)
         ) {
-          params.lat = parseFloat(effectiveLocation.latitude.toFixed(4));
-          params.lng = parseFloat(effectiveLocation.longitude.toFixed(4));
+          params.lat = Number(distanceOrigin.latitude);
+          params.lng = Number(distanceOrigin.longitude);
         }
 
         // Limit results for performance
@@ -1885,6 +1903,8 @@ export default function Home({ homeMode = null, isTabActive = true }) {
     [
       extractImages,
       buildRestaurantImageCandidates,
+      distanceOrigin?.latitude,
+      distanceOrigin?.longitude,
       effectiveLocation?.latitude,
       effectiveLocation?.longitude,
       effectiveZoneId,
