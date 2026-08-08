@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import mongoose from 'mongoose';
 import { ValidationError } from '../../../../core/auth/errors.js';
 
 const rangeSchema = z.object({
@@ -8,6 +9,7 @@ const rangeSchema = z.object({
 });
 
 const feeSettingsUpsertSchema = z.object({
+    zoneId: z.string().min(1, 'zoneId is required'),
     deliveryFee: z.number().min(0).nullable().optional(),
     deliveryFeeRanges: z.array(rangeSchema).optional(),
     freeDeliveryUpTo: z.number().min(0).nullable().optional(),
@@ -19,6 +21,7 @@ const feeSettingsUpsertSchema = z.object({
 
 export const validateFeeSettingsUpsertDto = (body) => {
     const normalized = {
+        zoneId: body?.zoneId != null ? String(body.zoneId).trim() : '',
         deliveryFee:
             body?.deliveryFee === null
                 ? null
@@ -51,6 +54,9 @@ export const validateFeeSettingsUpsertDto = (body) => {
     if (!result.success) {
         throw new ValidationError(result.error.errors[0].message);
     }
+    if (!mongoose.Types.ObjectId.isValid(result.data.zoneId)) {
+        throw new ValidationError('Invalid zoneId');
+    }
 
     // Validate ranges: min < max, non-overlapping after sorting
     const ranges = Array.isArray(result.data.deliveryFeeRanges) ? result.data.deliveryFeeRanges : undefined;
@@ -73,4 +79,3 @@ export const validateFeeSettingsUpsertDto = (body) => {
 
     return result.data;
 };
-

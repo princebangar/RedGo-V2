@@ -6,7 +6,6 @@ import { FoodUser } from '../../../../core/users/user.model.js';
 import { FoodRestaurant } from '../../restaurant/models/restaurant.model.js';
 import { FoodDeliveryPartner } from '../../delivery/models/deliveryPartner.model.js';
 import { FoodZone } from '../../admin/models/zone.model.js';
-import { FoodFeeSettings } from '../../admin/models/feeSettings.model.js';
 import { ValidationError, ForbiddenError, NotFoundError } from '../../../../core/auth/errors.js';
 import { buildPaginationOptions, buildPaginatedResult } from '../../../../utils/helpers.js';
 import { FoodOffer } from '../../admin/models/offer.model.js';
@@ -380,6 +379,7 @@ export async function createOrder(userId, dto) {
         restaurant,
         deliveryAddress: { ...deliveryAddress },
         orderType,
+        zoneId: restaurant?.zoneId || dto.zoneId || null,
       })
         .then(async (earningResolved) => {
           try {
@@ -441,6 +441,7 @@ export async function createOrder(userId, dto) {
         restaurant,
         deliveryAddress,
         orderType,
+        zoneId: restaurant?.zoneId || dto.zoneId || null,
       });
       distanceKm = earningResolved.distanceKm;
       riderEarning = earningResolved.riderEarning;
