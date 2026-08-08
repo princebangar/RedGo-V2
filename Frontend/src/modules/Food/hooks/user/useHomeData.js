@@ -58,7 +58,9 @@ export const useHomeData = (location, zoneId) => {
           const rLat = rLoc?.latitude || (rLoc?.coordinates?.[1]);
           const rLng = rLoc?.longitude || (rLoc?.coordinates?.[0]);
           
-          let distInKm = calculateDistance(userLat, userLng, rLat, rLng);
+          let distInKm = Number.isFinite(Number(r.distanceInKm))
+            ? Number(r.distanceInKm)
+            : calculateDistance(userLat, userLng, rLat, rLng);
           const coverImgs = extractImages(r.coverImages);
           const menuImgs = extractImages(r.menuImages);
           const profileImgs = extractImages(r.profileImage || r.image);
@@ -69,6 +71,7 @@ export const useHomeData = (location, zoneId) => {
             id: r.restaurantId || r._id,
             mongoId: r._id,
             distanceInKm: distInKm,
+            distance: r.distance || (Number.isFinite(distInKm) ? `${distInKm.toFixed(1)} km` : undefined),
             image: allImgs[0] || "",
             images: allImgs,
             rating: r.rating || 4.5,

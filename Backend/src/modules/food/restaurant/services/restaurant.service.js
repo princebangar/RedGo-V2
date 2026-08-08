@@ -12,6 +12,7 @@ import { FoodOrder } from '../../orders/models/order.model.js';
 import { FoodRestaurantOutletTimings } from '../models/outletTimings.model.js';
 import { seedOutletTimingsForRestaurant } from './outletTimings.service.js';
 import { logger } from '../../../../utils/logger.js';
+import { fetchDrivingDistancesKmBatch, fetchDrivingDistanceKm } from '../../orders/utils/googleMaps.js';
 
 const normalizeName = (value) =>
     String(value || '')
@@ -256,6 +257,27 @@ const toFiniteNumber = (value) => {
     const n = typeof value === 'number' ? value : parseFloat(String(value));
     return Number.isFinite(n) ? n : null;
 };
+
+function formatRestaurantDistanceLabel(distanceInKm) {
+    const km = Number(distanceInKm);
+    if (!Number.isFinite(km) || km < 0) return null;
+    if (km >= 1) return `${km.toFixed(1)} km`;
+    return `${Math.round(km * 1000)} m`;
+}
+
+function extractRestaurantLatLng(restaurant) {
+    const loc = restaurant?.location;
+    if (!loc) return null;
+    if (Array.isArray(loc.coordinates) && loc.coordinates.length >= 2) {
+        const lng = Number(loc.coordinates[0]);
+        const lat = Number(loc.coordinates[1]);
+        if (Number.isFinite(lat) && Number.isFinite(lng)) return { lat, lng };
+    }
+    const lat = Number(loc.latitude);
+    const lng = Number(loc.longitude);
+    if (Number.isFinite(lat) && Number.isFinite(lng)) return { lat, lng };
+    return null;
+}
 
 const escapeRegex = (value) => String(value).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
@@ -1646,10 +1668,33 @@ export const listApprovedRestaurants = async (query = {}) => {
             : (r.profileImage ? [r.profileImage] : [])
     }));
 
+    // Replace geoNear air distance with Google driving/road distance (same as cart bill).
+    // Keep air distance as fallback if Matrix API fails for a restaurant.
+    if (lat !== null && lng !== null && restaurants.length > 0) {
+        try {
+            const destinations = restaurants.map((r) => extractRestaurantLatLng(r));
+            const drivingKms = await fetchDrivingDistancesKmBatch(
+                { lat, lng },
+                destinations,
+            );
+            restaurants.forEach((r, i) => {
+                const km = drivingKms[i];
+                if (!Number.isFinite(km) || km <= 0) return;
+                r.distanceInKm = km;
+                r.distance = formatRestaurantDistanceLabel(km);
+                r.distanceMode = 'driving';
+            });
+        } catch (err) {
+            logger.warn(
+                `Driving distance enrich skipped for restaurant list: ${err?.message || err}`,
+            );
+        }
+    }
+
     return { restaurants, total, page, limit };
 };
 
-export const getApprovedRestaurantByIdOrSlug = async (idOrSlug, userId = null) => {
+export const getApprovedRestaurantByIdOrSlug = async (idOrSlug, userId = null, coords = {}) => {
     const value = String(idOrSlug || '').trim();
     if (!value) return null;
 
@@ -1709,7 +1754,7 @@ export const getApprovedRestaurantByIdOrSlug = async (idOrSlug, userId = null) =
 
     const timingsDoc = await FoodRestaurantOutletTimings.findOne({ restaurantId: doc._id }).lean();
 
-    return {
+    const result = {
         ...doc,
         rating: normalizeRatingValue(doc.rating),
         totalRatings: normalizeTotalRatingsValue(doc.totalRatings),
@@ -1720,6 +1765,31 @@ export const getApprovedRestaurantByIdOrSlug = async (idOrSlug, userId = null) =
             ? doc.coverImages
             : (doc.profileImage ? [doc.profileImage] : [])
     };
+
+    // Same driving-distance helper AND direction as cart bill:
+    // restaurant (origin) → delivery address (destination).
+    const userLat = toFiniteNumber(coords?.lat);
+    const userLng = toFiniteNumber(coords?.lng);
+    const restaurantPoint = extractRestaurantLatLng(doc);
+    if (userLat !== null && userLng !== null && restaurantPoint) {
+        try {
+            const drivingKm = await fetchDrivingDistanceKm(
+                restaurantPoint,
+                { lat: userLat, lng: userLng },
+            );
+            if (Number.isFinite(drivingKm) && drivingKm > 0) {
+                result.distanceInKm = drivingKm;
+                result.distance = formatRestaurantDistanceLabel(drivingKm);
+                result.distanceMode = 'driving';
+            }
+        } catch (err) {
+            logger.warn(
+                `Driving distance for restaurant ${doc._id} failed: ${err?.message || err}`,
+            );
+        }
+    }
+
+    return result;
 };
 
 export const listPublicOffers = async () => {

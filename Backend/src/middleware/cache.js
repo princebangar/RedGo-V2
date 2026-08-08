@@ -13,6 +13,20 @@ export const cacheResponse = (ttlInSeconds = 300, prefix = 'api_cache') => {
         // Skip caching if Redis is disabled or not a GET request
         if (!config.redisEnabled || req.method !== 'GET') return next();
 
+        // Never cache location-sensitive restaurant payloads — driving distance
+        // must stay in sync with cart (computeRoutes) for the user's lat/lng.
+        const hasUserCoords =
+            req.query?.lat != null &&
+            req.query?.lat !== '' &&
+            req.query?.lng != null &&
+            req.query?.lng !== '';
+        if (
+            hasUserCoords &&
+            (prefix === 'restaurants' || prefix === 'restaurant_detail')
+        ) {
+            return next();
+        }
+
         const redis = getRedisClient();
         if (!redis || !redis.isReady) return next();
 

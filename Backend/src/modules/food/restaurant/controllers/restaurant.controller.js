@@ -44,7 +44,9 @@ export const listApprovedRestaurantsController = async (req, res, next) => {
 export const getApprovedRestaurantController = async (req, res, next) => {
     try {
         const userId = req.user?.userId;
-        const restaurant = await getApprovedRestaurantByIdOrSlug(req.params.id, userId);
+        const lat = req.query?.lat;
+        const lng = req.query?.lng;
+        const restaurant = await getApprovedRestaurantByIdOrSlug(req.params.id, userId, { lat, lng });
         if (!restaurant) {
             return res.status(404).json({ success: false, message: 'Restaurant not found' });
         }
