@@ -18,16 +18,30 @@ export default function FeeSettings() {
     packagingFee: "",
     gstRate: "",
   })
+  const [zones, setZones] = useState([])
+  const [selectedZoneId, setSelectedZoneId] = useState("")
+  const [zonesLoading, setZonesLoading] = useState(true)
   const [loadingFeeSettings, setLoadingFeeSettings] = useState(false)
   const [savingFeeSettings, setSavingFeeSettings] = useState(false)
   const [editingRangeIndex, setEditingRangeIndex] = useState(null)
   const [newRange, setNewRange] = useState({ min: '', max: '', fee: '' })
 
-  // Fetch fee settings
-  const fetchFeeSettings = async () => {
+  // Fetch fee settings for selected zone
+  const fetchFeeSettings = async (zoneId) => {
+    if (!zoneId) {
+      setFeeSettings({
+        deliveryFee: "",
+        deliveryFeeRanges: [],
+        freeDeliveryUpTo: "",
+        platformFee: "",
+        packagingFee: "",
+        gstRate: "",
+      })
+      return
+    }
     try {
       setLoadingFeeSettings(true)
-      const response = await adminAPI.getFeeSettings()
+      const response = await adminAPI.getFeeSettings({ zoneId })
       if (response.data.success && response.data.data.feeSettings) {
         setFeeSettings({
           deliveryFee: response.data.data.feeSettings.deliveryFee ?? "",
@@ -56,16 +70,49 @@ export default function FeeSettings() {
     }
   }
 
-  // Fetch fee settings on mount
   useEffect(() => {
-    fetchFeeSettings()
+    const fetchZones = async () => {
+      try {
+        setZonesLoading(true)
+        const res = await adminAPI.getZones({ limit: 1000 })
+        const zoneData = res?.data?.data
+        const list = Array.isArray(zoneData?.zones)
+          ? zoneData.zones
+          : Array.isArray(zoneData)
+            ? zoneData
+            : []
+        setZones(list)
+        if (list.length > 0) {
+          setSelectedZoneId(String(list[0]._id || list[0].id))
+        }
+      } catch (error) {
+        debugError("Error fetching zones:", error)
+        toast.error("Failed to load zones")
+        setZones([])
+      } finally {
+        setZonesLoading(false)
+      }
+    }
+    fetchZones()
   }, [])
+
+  useEffect(() => {
+    if (!selectedZoneId) return
+    fetchFeeSettings(selectedZoneId)
+    setEditingRangeIndex(null)
+    setNewRange({ min: '', max: '', fee: '' })
+  }, [selectedZoneId])
 
   // Save fee settings
   const handleSaveFeeSettings = async () => {
+    if (!selectedZoneId) {
+      toast.error('Please select a zone first')
+      return
+    }
     try {
       setSavingFeeSettings(true)
       const response = await adminAPI.createOrUpdateFeeSettings({
+        zoneId: selectedZoneId,
         deliveryFee: feeSettings.deliveryFee === "" ? undefined : Number(feeSettings.deliveryFee),
         deliveryFeeRanges: feeSettings.deliveryFeeRanges,
         freeDeliveryUpTo: feeSettings.freeDeliveryUpTo === "" ? undefined : Number(feeSettings.freeDeliveryUpTo),
@@ -211,14 +258,38 @@ export default function FeeSettings() {
     <div className="p-4 lg:p-6 bg-slate-50 min-h-screen">
       {/* Header Section */}
       <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-6 mb-6">
-        <div className="flex items-center gap-3 mb-4">
-          <div className="w-10 h-10 rounded-lg bg-gradient-to-br from-green-400 to-green-600 flex items-center justify-center">
-            <DollarSign className="w-6 h-6 text-white" />
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-4">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-lg bg-gradient-to-br from-green-400 to-green-600 flex items-center justify-center">
+              <DollarSign className="w-6 h-6 text-white" />
+            </div>
+            <h1 className="text-2xl font-bold text-slate-900">Delivery & Platform Fee</h1>
           </div>
-          <h1 className="text-2xl font-bold text-slate-900">Delivery & Platform Fee</h1>
+          <div className="flex items-center gap-2">
+            <label htmlFor="fee-zone-select" className="text-sm font-medium text-slate-700 whitespace-nowrap">
+              Zone:
+            </label>
+            <select
+              id="fee-zone-select"
+              value={selectedZoneId}
+              onChange={(e) => setSelectedZoneId(e.target.value)}
+              className="px-3 py-2 bg-white border border-slate-300 rounded-lg shadow-sm focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-green-500 text-sm min-w-[10rem]"
+              disabled={zonesLoading || zones.length === 0}
+            >
+              {zones.length === 0 ? (
+                <option value="">No zones</option>
+              ) : (
+                zones.map((zone) => (
+                  <option key={zone._id || zone.id} value={zone._id || zone.id}>
+                    {zone.name || zone.zoneName || "Unnamed Zone"}
+                  </option>
+                ))
+              )}
+            </select>
+          </div>
         </div>
         <p className="text-sm text-slate-600">
-          Configure delivery fee, platform fee, and GST settings for orders
+          Configure delivery fee, platform fee, and GST settings for the selected zone
         </p>
       </div>
 
@@ -229,12 +300,12 @@ export default function FeeSettings() {
             <div>
               <h2 className="text-xl font-bold text-slate-900">Fee Configuration</h2>
               <p className="text-sm text-slate-500 mt-1">
-                Set the fees and charges that will be applied to all orders
+                Set the fees and charges that will be applied to orders in this zone
               </p>
             </div>
             <Button
               onClick={handleSaveFeeSettings}
-              disabled={savingFeeSettings || loadingFeeSettings}
+              disabled={savingFeeSettings || loadingFeeSettings || !selectedZoneId}
               className="bg-green-600 hover:bg-green-700 text-white flex items-center gap-2"
             >
               {savingFeeSettings ? (

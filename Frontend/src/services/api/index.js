@@ -877,8 +877,9 @@ export const adminAPI = {
     }),
 
   /** Delivery Boy Payout Rules (admin) */
-  getCommissionRules: () =>
+  getCommissionRules: (params) =>
     apiClient.get("/food/admin/delivery/commission-rules", {
+      params: params ?? {},
       contextModule: "admin",
     }),
   createCommissionRule: (body) =>
@@ -903,8 +904,11 @@ export const adminAPI = {
     ),
 
   /** Fee Settings (admin) */
-  getFeeSettings: () =>
-    apiClient.get("/food/admin/fee-settings", { contextModule: "admin" }),
+  getFeeSettings: (params) =>
+    apiClient.get("/food/admin/fee-settings", {
+      params: params ?? {},
+      contextModule: "admin",
+    }),
   createOrUpdateFeeSettings: (body) =>
     apiClient.put("/food/admin/fee-settings", body ?? {}, {
       contextModule: "admin",

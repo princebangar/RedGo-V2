@@ -12,6 +12,9 @@ const debugError = (...args) => {}
 export default function DeliveryBoyCommission() {
   const [searchQuery, setSearchQuery] = useState("")
   const [commissions, setCommissions] = useState([])
+  const [zones, setZones] = useState([])
+  const [selectedZoneId, setSelectedZoneId] = useState("")
+  const [zonesLoading, setZonesLoading] = useState(true)
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [deleting, setDeleting] = useState(false)
@@ -81,15 +84,47 @@ export default function DeliveryBoyCommission() {
     return calculateTotalCommission(commission, midDistance)
   }
 
-  // Fetch commission rules on component mount
   useEffect(() => {
-    fetchCommissionRules()
+    const fetchZones = async () => {
+      try {
+        setZonesLoading(true)
+        const res = await adminAPI.getZones({ limit: 1000 })
+        const zoneData = res?.data?.data
+        const list = Array.isArray(zoneData?.zones)
+          ? zoneData.zones
+          : Array.isArray(zoneData)
+            ? zoneData
+            : []
+        setZones(list)
+        if (list.length > 0) {
+          setSelectedZoneId(String(list[0]._id || list[0].id))
+        }
+      } catch (error) {
+        debugError("Error fetching zones:", error)
+        toast.error("Failed to load zones")
+        setZones([])
+      } finally {
+        setZonesLoading(false)
+      }
+    }
+    fetchZones()
   }, [])
 
+  // Fetch commission rules when zone changes
+  useEffect(() => {
+    if (!selectedZoneId) {
+      setCommissions([])
+      setLoading(false)
+      return
+    }
+    fetchCommissionRules()
+  }, [selectedZoneId])
+
   const fetchCommissionRules = async () => {
+    if (!selectedZoneId) return
     try {
       setLoading(true)
-      const response = await adminAPI.getCommissionRules()
+      const response = await adminAPI.getCommissionRules({ zoneId: selectedZoneId })
       
       // Handle different response structures
       let commissionsData = null
@@ -159,6 +194,10 @@ export default function DeliveryBoyCommission() {
   }
 
   const handleAdd = () => {
+    if (!selectedZoneId) {
+      toast.error('Please select a zone first')
+      return
+    }
     setSelectedCommission(null)
     setFormData({ name: "", minDistance: "0", maxDistance: "", maxDistanceUnlimited: false, commissionPerKm: "", basePayout: "" })
     setFormErrors({})
@@ -230,6 +269,7 @@ export default function DeliveryBoyCommission() {
       const minDistance = parseFloat(formData.minDistance)
       const maxDistance = formData.maxDistanceUnlimited || formData.maxDistance === "" ? null : parseFloat(formData.maxDistance)
       const commissionData = {
+        zoneId: selectedZoneId,
         name: formData.name.trim() || `Base (0-${minDistance} km)`,
         minDistance,
         maxDistance,
@@ -383,26 +423,6 @@ export default function DeliveryBoyCommission() {
     actions: "Actions",
   }
 
-  // Info-card formula must use the active base slab (minDistance = 0), not the add/edit form.
-  const baseSlab = useMemo(() => {
-    const active = (commissions || []).filter((c) => c && c.status !== false)
-    return (
-      [...active]
-        .sort((a, b) => (Number(a.minDistance) || 0) - (Number(b.minDistance) || 0))
-        .find((c) => Number(c.minDistance || 0) === 0) || null
-    )
-  }, [commissions])
-
-  const baseSlabMax = baseSlab?.maxDistance == null || baseSlab?.maxDistance === ""
-    ? null
-    : Number(baseSlab.maxDistance)
-  const baseCoverageLabel =
-    baseSlabMax != null && Number.isFinite(baseSlabMax) ? `0-${baseSlabMax}` : "0"
-  const baseEndsAtKm =
-    baseSlabMax != null && Number.isFinite(baseSlabMax) ? baseSlabMax : 0
-  const exampleExtraKm = Math.max(0, 6 - baseEndsAtKm)
-  const exampleTotal = 25 + exampleExtraKm * 5
-
   // Dialog labels follow the rule currently being edited.
   const formMinDistance = Number(
     formData.minDistance !== "" ? formData.minDistance : selectedCommission?.minDistance
@@ -439,8 +459,31 @@ export default function DeliveryBoyCommission() {
             </div>
 
           <div className="flex items-center gap-2">
+              <div className="flex items-center gap-2">
+                <label htmlFor="payout-zone-select" className="text-sm font-medium text-slate-700 whitespace-nowrap">
+                  Zone:
+                </label>
+                <select
+                  id="payout-zone-select"
+                  value={selectedZoneId}
+                  onChange={(e) => setSelectedZoneId(e.target.value)}
+                  className="px-3 py-2.5 bg-white border border-slate-300 rounded-lg shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm min-w-[10rem]"
+                  disabled={zonesLoading || zones.length === 0}
+                >
+                  {zones.length === 0 ? (
+                    <option value="">No zones</option>
+                  ) : (
+                    zones.map((zone) => (
+                      <option key={zone._id || zone.id} value={zone._id || zone.id}>
+                        {zone.name || zone.zoneName || "Unnamed Zone"}
+                      </option>
+                    ))
+                  )}
+                </select>
+              </div>
               <button
                 onClick={handleAdd}
+                disabled={!selectedZoneId}
                 className="px-4 py-2.5 rounded-lg bg-blue-600 hover:bg-blue-700 text-white text-sm font-semibold transition-all shadow-sm disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 Add Rule
@@ -463,11 +506,11 @@ export default function DeliveryBoyCommission() {
                 <p className="text-slate-600">
                   Payout is calculated as:{" "}
                   <strong>
-                    Base payout ({baseCoverageLabel} km slab) + (km in each slab × that slab&apos;s amount per km)
+                    Base payout (0-2 km slab) + (km in each slab × that slab&apos;s amount per km)
                   </strong>
                   .
-                  Example: base ₹25 for {baseCoverageLabel} km, then ₹5/km after {baseEndsAtKm} km → 6 km
-                  earns ₹25 + ({exampleExtraKm} × ₹5) = ₹{exampleTotal}.
+                  Example: base ₹25 for 0-2 km, then ₹5/km after 2 km → 6 km
+                  earns ₹25 + (4 × ₹5) = ₹45.
                 </p>
                 <p className="text-slate-600 mt-1">
                   Only the slab with <strong>min distance = 0</strong> can have a base payout. All other slabs should keep base payout set to 0 and use only amount per km.

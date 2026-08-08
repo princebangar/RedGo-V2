@@ -932,7 +932,8 @@ export async function toggleRestaurantCommissionStatus(req, res, next) {
 // ----- Delivery commission rules (admin) -----
 export async function getDeliveryCommissionRules(req, res, next) {
     try {
-        const data = await adminService.getDeliveryCommissionRules();
+        const zoneId = req.query?.zoneId || req.body?.zoneId;
+        const data = await adminService.getDeliveryCommissionRules(zoneId);
         res.status(200).json({ success: true, message: 'Commission rules fetched successfully', data });
     } catch (error) {
         next(error);
@@ -941,7 +942,7 @@ export async function getDeliveryCommissionRules(req, res, next) {
 
 export async function createDeliveryCommissionRule(req, res, next) {
     try {
-        const body = validateDeliveryCommissionRuleDto(req.body || {});
+        const body = validateDeliveryCommissionRuleDto(req.body || {}, { requireZoneId: true });
         const created = await adminService.createDeliveryCommissionRule(body);
         res.status(201).json({ success: true, message: 'Commission rule created successfully', data: { commission: created } });
     } catch (error) {
@@ -1005,7 +1006,8 @@ export async function toggleDeliveryCommissionRuleStatus(req, res, next) {
 // ----- Fee Settings (admin) -----
 export async function getFeeSettings(req, res, next) {
     try {
-        const data = await adminService.getFeeSettings();
+        const zoneId = req.query?.zoneId || req.body?.zoneId;
+        const data = await adminService.getFeeSettings(zoneId);
         res.status(200).json({ success: true, message: 'Fee settings fetched successfully', data });
     } catch (error) {
         next(error);

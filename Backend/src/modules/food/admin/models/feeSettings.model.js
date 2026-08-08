@@ -11,6 +11,11 @@ const deliveryFeeRangeSchema = new mongoose.Schema(
 
 const feeSettingsSchema = new mongoose.Schema(
     {
+        zoneId: {
+            type: mongoose.Schema.Types.ObjectId,
+            ref: 'FoodZone',
+            index: true
+        },
         // No defaults here; admin must explicitly configure values.
         deliveryFee: { type: Number, min: 0 },
         deliveryFeeRanges: { type: [deliveryFeeRangeSchema], default: [] },
@@ -23,7 +28,7 @@ const feeSettingsSchema = new mongoose.Schema(
     { collection: 'food_fee_settings', timestamps: true }
 );
 
+feeSettingsSchema.index({ zoneId: 1 }, { unique: true, sparse: true });
 feeSettingsSchema.index({ isActive: 1, createdAt: -1 });
 
 export const FoodFeeSettings = mongoose.model('FoodFeeSettings', feeSettingsSchema);
-

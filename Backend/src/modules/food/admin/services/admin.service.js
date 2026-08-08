@@ -15,6 +15,7 @@ import { FoodEarningAddonHistory } from '../models/earningAddonHistory.model.js'
 import { FoodRestaurantCommission } from '../models/restaurantCommission.model.js';
 import { FoodDeliveryCommissionRule } from '../models/deliveryCommissionRule.model.js';
 import { FoodFeeSettings } from '../models/feeSettings.model.js';
+import { invalidateCommissionRulesCache } from '../../orders/services/riderEarning.service.js';
 import { FeedbackExperience } from '../models/feedbackExperience.model.js';
 import { FoodUser } from '../../../../core/users/user.model.js';
 import { FoodRefreshToken } from '../../../../core/refreshTokens/refreshToken.model.js';
@@ -2155,11 +2156,23 @@ export async function toggleRestaurantCommissionStatus(id) {
 }
 
 // ----- Delivery Boy Commission Rule (admin) -----
-export async function getDeliveryCommissionRules() {
-    const list = await FoodDeliveryCommissionRule.find({}).sort({ createdAt: -1 }).lean();
+function requireValidZoneId(zoneId) {
+    const raw = zoneId != null ? String(zoneId).trim() : '';
+    if (!raw || !mongoose.Types.ObjectId.isValid(raw)) {
+        throw new ValidationError('zoneId is required');
+    }
+    return raw;
+}
+
+export async function getDeliveryCommissionRules(zoneId) {
+    const zid = requireValidZoneId(zoneId);
+    const list = await FoodDeliveryCommissionRule.find({ zoneId: zid })
+        .sort({ createdAt: -1 })
+        .lean();
     const commissions = list.map((r, index) => ({
         _id: r._id,
         sl: index + 1,
+        zoneId: r.zoneId,
         name: r.name || '',
         minDistance: r.minDistance,
         maxDistance: r.maxDistance ?? null,
@@ -2203,7 +2216,11 @@ function validateCommissionRuleSet(rules) {
 }
 
 export async function createDeliveryCommissionRule(body) {
-    const existing = await FoodDeliveryCommissionRule.find({}).lean();
+    const zid = requireValidZoneId(body.zoneId);
+    const zoneExists = await FoodZone.exists({ _id: zid });
+    if (!zoneExists) throw new ValidationError('Invalid zoneId');
+
+    const existing = await FoodDeliveryCommissionRule.find({ zoneId: zid }).lean();
     const candidate = [
         ...existing,
         {
@@ -2216,6 +2233,7 @@ export async function createDeliveryCommissionRule(body) {
     ];
     validateCommissionRuleSet(candidate);
     const created = await FoodDeliveryCommissionRule.create({
+        zoneId: zid,
         name: body.name || '',
         minDistance: body.minDistance,
         maxDistance: body.maxDistance ?? null,
@@ -2223,12 +2241,17 @@ export async function createDeliveryCommissionRule(body) {
         basePayout: body.basePayout,
         status: body.status ?? true
     });
+    invalidateCommissionRulesCache(zid);
     return created.toObject();
 }
 
 export async function updateDeliveryCommissionRule(id, body) {
     if (!id || !mongoose.Types.ObjectId.isValid(id)) return null;
-    const existing = await FoodDeliveryCommissionRule.find({}).lean();
+    const current = await FoodDeliveryCommissionRule.findById(id).lean();
+    if (!current) return null;
+
+    const zid = String(current.zoneId);
+    const existing = await FoodDeliveryCommissionRule.find({ zoneId: zid }).lean();
     const candidate = existing.map((r) =>
         String(r._id) === String(id)
             ? {
@@ -2255,37 +2278,67 @@ export async function updateDeliveryCommissionRule(id, body) {
         },
         { new: true }
     ).lean();
+    invalidateCommissionRulesCache(zid);
     return updated;
 }
 
 export async function deleteDeliveryCommissionRule(id) {
     if (!id || !mongoose.Types.ObjectId.isValid(id)) return null;
     const deleted = await FoodDeliveryCommissionRule.findByIdAndDelete(id).lean();
+    if (deleted?.zoneId) invalidateCommissionRulesCache(deleted.zoneId);
     return deleted ? { id } : null;
 }
 
 export async function toggleDeliveryCommissionRuleStatus(id, status) {
     if (!id || !mongoose.Types.ObjectId.isValid(id)) return null;
+    const current = await FoodDeliveryCommissionRule.findById(id).lean();
+    if (!current) return null;
+
+    const zid = String(current.zoneId);
+    const existing = await FoodDeliveryCommissionRule.find({ zoneId: zid }).lean();
+    const candidate = existing.map((r) =>
+        String(r._id) === String(id)
+            ? { ...r, status: Boolean(status) }
+            : r
+    );
+    // Allow turning off non-base slabs; still enforce one active base slab when enabling/disabling
+    if (Boolean(status) === false) {
+        const remainingActive = candidate.filter((r) => r.status !== false);
+        if (!remainingActive.some((r) => Number(r.minDistance || 0) === 0)) {
+            throw new ValidationError('Cannot disable the only active base slab (minDistance = 0)');
+        }
+    } else {
+        validateCommissionRuleSet(candidate);
+    }
+
     const updated = await FoodDeliveryCommissionRule.findByIdAndUpdate(
         id,
         { $set: { status: Boolean(status) } },
         { new: true }
     ).lean();
+    invalidateCommissionRulesCache(zid);
     return updated;
 }
 
 // ----- Fee Settings (admin) -----
-export async function getFeeSettings() {
-    const doc = await FoodFeeSettings.findOne({ isActive: true }).sort({ createdAt: -1 }).lean();
+export async function getFeeSettings(zoneId) {
+    const zid = requireValidZoneId(zoneId);
+    const doc = await FoodFeeSettings.findOne({ zoneId: zid, isActive: true })
+        .sort({ createdAt: -1 })
+        .lean();
     // If not configured yet, return null so UI does not show defaults automatically.
     return { feeSettings: doc || null };
 }
 
 export async function upsertFeeSettings(body) {
-    // Single active doc pattern: keep only one active record.
-    const existing = await FoodFeeSettings.findOne({ isActive: true }).sort({ createdAt: -1 });
+    const zid = requireValidZoneId(body.zoneId);
+    const zoneExists = await FoodZone.exists({ _id: zid });
+    if (!zoneExists) throw new ValidationError('Invalid zoneId');
+
+    // One active fee settings doc per zone.
+    const existing = await FoodFeeSettings.findOne({ zoneId: zid }).sort({ createdAt: -1 });
     if (existing) {
-        const $set = {};
+        const $set = { zoneId: zid };
         const $unset = {};
 
         if (body.deliveryFee === null) $unset.deliveryFee = 1;
@@ -2306,6 +2359,7 @@ export async function upsertFeeSettings(body) {
         else if (body.gstRate !== undefined) $set.gstRate = body.gstRate;
 
         if (body.isActive !== undefined) $set.isActive = body.isActive;
+        else $set.isActive = true;
 
         const update = {};
         if (Object.keys($set).length) update.$set = $set;
@@ -2317,6 +2371,7 @@ export async function upsertFeeSettings(body) {
     }
 
     const payload = {
+        zoneId: zid,
         deliveryFeeRanges: body.deliveryFeeRanges ?? [],
         isActive: body.isActive !== false
     };

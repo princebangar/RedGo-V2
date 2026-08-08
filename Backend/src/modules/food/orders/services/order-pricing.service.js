@@ -1,12 +1,12 @@
 import mongoose from 'mongoose';
 import { FoodOrder } from '../models/order.model.js';
 import { FoodRestaurant } from '../../restaurant/models/restaurant.model.js';
-import { FoodFeeSettings } from '../../admin/models/feeSettings.model.js';
 import { FoodOffer } from '../../admin/models/offer.model.js';
 import { FoodOfferUsage } from '../../admin/models/offerUsage.model.js';
 import { ValidationError } from '../../../../core/auth/errors.js';
 import { haversineKm, assertRestaurantDeliversToZone } from './order.helpers.js';
 import { fetchDrivingDistanceKm } from '../utils/googleMaps.js';
+import { resolveFeeSettingsForZone } from '../../admin/services/zoneScopedSettings.service.js';
 
 export async function calculateOrderPricing(userId, dto) {
   const restaurant = await FoodRestaurant.findById(dto.restaurantId)
@@ -28,9 +28,8 @@ export async function calculateOrderPricing(userId, dto) {
     0,
   );
 
-  const feeDoc = await FoodFeeSettings.findOne({ isActive: true })
-    .sort({ createdAt: -1 })
-    .lean();
+  const pricingZoneId = dto.zoneId || restaurant.zoneId || null;
+  const feeDoc = await resolveFeeSettingsForZone(pricingZoneId);
   const feeSettings = feeDoc || {
     deliveryFee: 25,
     deliveryFeeRanges: [],

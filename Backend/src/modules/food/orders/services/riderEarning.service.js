@@ -1,34 +1,42 @@
-import { FoodDeliveryCommissionRule } from '../../admin/models/deliveryCommissionRule.model.js';
 import { FoodRestaurant } from '../../restaurant/models/restaurant.model.js';
 import { logger } from '../../../../utils/logger.js';
 import {
   resolveOrderDistanceKm,
   toGeoJsonPoint,
 } from '../utils/googleMaps.js';
+import { resolveCommissionRulesForZone } from '../../admin/services/zoneScopedSettings.service.js';
 
 const COMMISSION_CACHE_MS = 10 * 1000;
-let commissionRulesCache = null;
-let commissionRulesLoadedAt = 0;
+/** @type {Map<string, { rules: any[], loadedAt: number }>} */
+const commissionRulesCacheByZone = new Map();
 
-async function getActiveCommissionRules() {
+function cacheKeyForZone(zoneId) {
+  return zoneId ? String(zoneId) : '__fallback__';
+}
+
+async function getActiveCommissionRules(zoneId) {
+  const key = cacheKeyForZone(zoneId);
   const now = Date.now();
-  if (
-    commissionRulesCache &&
-    now - commissionRulesLoadedAt < COMMISSION_CACHE_MS
-  ) {
-    return commissionRulesCache;
+  const cached = commissionRulesCacheByZone.get(key);
+  if (cached && now - cached.loadedAt < COMMISSION_CACHE_MS) {
+    return cached.rules;
   }
-  const list = await FoodDeliveryCommissionRule.find({
-    status: { $ne: false },
-  }).lean();
-  commissionRulesCache = list || [];
-  commissionRulesLoadedAt = now;
-  return commissionRulesCache;
+  const list = await resolveCommissionRulesForZone(zoneId);
+  commissionRulesCacheByZone.set(key, { rules: list || [], loadedAt: now });
+  return list || [];
+}
+
+export function invalidateCommissionRulesCache(zoneId) {
+  if (zoneId) {
+    commissionRulesCacheByZone.delete(cacheKeyForZone(zoneId));
+  } else {
+    commissionRulesCacheByZone.clear();
+  }
 }
 
 /** Base payout when distance cannot be resolved (minDistance === 0 slab). */
-export async function getBaseRiderPayoutFallback() {
-  const rules = await getActiveCommissionRules();
+export async function getBaseRiderPayoutFallback(zoneId) {
+  const rules = await getActiveCommissionRules(zoneId);
   if (!rules.length) return 0;
   const baseRule =
     [...rules]
@@ -38,10 +46,10 @@ export async function getBaseRiderPayoutFallback() {
   return Number.isFinite(payout) && payout > 0 ? Math.round(payout) : 0;
 }
 
-export async function getRiderEarning(distanceKm) {
+export async function getRiderEarning(distanceKm, zoneId) {
   const d = Number(distanceKm);
   if (!Number.isFinite(d) || d <= 0) return 0;
-  const rules = await getActiveCommissionRules();
+  const rules = await getActiveCommissionRules(zoneId);
   if (!rules.length) return 0;
 
   const sorted = [...rules].sort(
@@ -77,6 +85,7 @@ export async function resolveRiderEarningForDelivery({
   restaurant,
   deliveryAddress,
   orderType = 'delivery',
+  zoneId = null,
 }) {
   if (orderType === 'takeaway') {
     return {
@@ -89,18 +98,24 @@ export async function resolveRiderEarningForDelivery({
     };
   }
 
+  const resolvedZoneId =
+    zoneId ||
+    restaurant?.zoneId?._id ||
+    restaurant?.zoneId ||
+    null;
+
   const resolved = await resolveOrderDistanceKm(restaurant, deliveryAddress);
-  let riderEarning = await getRiderEarning(resolved.distanceKm);
+  let riderEarning = await getRiderEarning(resolved.distanceKm, resolvedZoneId);
 
   if (!riderEarning) {
-    riderEarning = await getBaseRiderPayoutFallback();
+    riderEarning = await getBaseRiderPayoutFallback(resolvedZoneId);
     if (riderEarning > 0) {
       logger.warn(
-        `Rider earning fell back to base payout ₹${riderEarning} (distanceKm=${resolved.distanceKm ?? 'n/a'}, geocoded restaurant=${resolved.restaurantGeocoded}, delivery=${resolved.deliveryGeocoded})`,
+        `Rider earning fell back to base payout ₹${riderEarning} (zone=${resolvedZoneId || 'n/a'}, distanceKm=${resolved.distanceKm ?? 'n/a'}, geocoded restaurant=${resolved.restaurantGeocoded}, delivery=${resolved.deliveryGeocoded})`,
       );
     } else {
       logger.error(
-        `CRITICAL: riderEarning still 0 — check Delivery Boy Commission (need active minDistance=0 base slab) and Geocoding API. distanceKm=${resolved.distanceKm ?? 'n/a'}`,
+        `CRITICAL: riderEarning still 0 — check Delivery Boy Commission for zone ${resolvedZoneId || 'n/a'} (need active minDistance=0 base slab) and Geocoding API. distanceKm=${resolved.distanceKm ?? 'n/a'}`,
       );
     }
   }
@@ -134,7 +149,7 @@ export async function ensureRiderEarningOnOrder(order) {
     if (restaurantId) {
       restaurant = await FoodRestaurant.findById(restaurantId)
         .select(
-          'restaurantName location addressLine1 addressLine2 area city state pincode',
+          'restaurantName location zoneId addressLine1 addressLine2 area city state pincode',
         )
         .lean();
     }
@@ -145,6 +160,7 @@ export async function ensureRiderEarningOnOrder(order) {
     restaurant,
     deliveryAddress,
     orderType: order.orderType || 'delivery',
+    zoneId: order.zoneId || restaurant?.zoneId || null,
   });
 
   if (!earningResolved.riderEarning) return order;
