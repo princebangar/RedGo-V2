@@ -16,9 +16,18 @@ import OptimizedImage from "@food/components/OptimizedImage"
 import { HeroBannerSkeleton } from "@food/components/ui/loading-skeletons"
 import { isModuleAuthenticated } from "@food/utils/auth"
 import { filterCategoriesForVegMode } from "@food/utils/vegMode"
+import {
+  buildFoodCacheKey,
+  getFoodPageCache,
+  setFoodPageCache,
+} from "@food/utils/foodPageCache"
 const debugLog = (...args) => {}
 const debugWarn = (...args) => {}
 const debugError = (...args) => {}
+const DINING_CACHE_TTL_MS = 15 * 60 * 1000
+
+const isDiningCacheFresh = (cached) =>
+  Boolean(cached?.ts && Date.now() - Number(cached.ts) < DINING_CACHE_TTL_MS)
 
 const slugifyValue = (value) =>
   String(value || "")
@@ -162,6 +171,7 @@ export default function Dining({ isTabActive = true }) {
   const [categories, setCategories] = useState([])
   const [restaurantList, setRestaurantList] = useState([])
   const [loading, setLoading] = useState(true)
+  const diningCacheKeyRef = useRef(null)
   const [diningHeroBanners, setDiningHeroBanners] = useState([])
   const [currentBannerIndex, setCurrentBannerIndex] = useState(0)
   const autoSlideIntervalRef = useRef(null)
@@ -191,10 +201,10 @@ export default function Dining({ isTabActive = true }) {
   }, [location])
 
   useEffect(() => {
+    if (!isTabActive) return undefined
+
     const fetchDiningData = async () => {
       try {
-        setLoading(true)
-
         const activeLocation = resolveLocationForDining()
         const lat = Number(activeLocation?.latitude)
         const lng = Number(activeLocation?.longitude)
@@ -223,6 +233,30 @@ export default function Dining({ isTabActive = true }) {
           return
         }
 
+        const cacheKey = buildFoodCacheKey("dining", {
+          zoneId,
+          city: city || "",
+        })
+        diningCacheKeyRef.current = cacheKey
+        const cached = getFoodPageCache(cacheKey)
+
+        if (isDiningCacheFresh(cached) && cached.restaurants) {
+          setDiningHeroBanners(cached.banners || [])
+          setCategories(cached.categories || [])
+          setRestaurantList(cached.restaurants || [])
+          setLoading(false)
+          return
+        }
+
+        if (cached?.restaurants?.length) {
+          setDiningHeroBanners(cached.banners || [])
+          setCategories(cached.categories || [])
+          setRestaurantList(cached.restaurants || [])
+          setLoading(false)
+        } else {
+          setLoading(true)
+        }
+
         const [bannerResponse, cats, rests] = await Promise.all([
           diningAPI.getHeroBanners().catch(() => ({ data: { success: false, data: { banners: [] } } })),
           diningAPI.getCategories(),
@@ -245,20 +279,32 @@ export default function Dining({ isTabActive = true }) {
               .filter(Boolean)
           : []
 
+        const nextCategories = cats?.data?.success ? (cats.data.data || []) : []
+        const nextRestaurants = rests?.data?.success ? (rests.data.data || []) : []
+
         setDiningHeroBanners(heroBanners)
-        setCategories(cats?.data?.success ? (cats.data.data || []) : [])
-        setRestaurantList(rests?.data?.success ? (rests.data.data || []) : [])
+        setCategories(nextCategories)
+        setRestaurantList(nextRestaurants)
+        setFoodPageCache(cacheKey, {
+          banners: heroBanners,
+          categories: nextCategories,
+          restaurants: nextRestaurants,
+          ts: Date.now(),
+        })
       } catch (error) {
         debugError("Failed to fetch dining data", error)
-        setDiningHeroBanners([])
-        setCategories([])
-        setRestaurantList([])
+        if (!getFoodPageCache(diningCacheKeyRef.current)?.restaurants?.length) {
+          setDiningHeroBanners([])
+          setCategories([])
+          setRestaurantList([])
+        }
       } finally {
         setLoading(false)
       }
     }
     fetchDiningData()
-  }, [resolveLocationForDining, zoneId])
+    return undefined
+  }, [resolveLocationForDining, zoneId, isTabActive])
 
   const safeCategories = useMemo(() => {
     return (Array.isArray(categories) ? categories : [])

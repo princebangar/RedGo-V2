@@ -36,3 +36,6 @@ uploads/
 # OS files
 .DS_Store
 Thumbs.db
+
+# Extra
+download_cloudinary.js

@@ -1624,7 +1624,10 @@ export default function Home({ homeMode = null, isTabActive = true }) {
 
         const requestSeq = ++restaurantsRequestSeqRef.current;
       try {
-        setLoadingRestaurants(true);
+        // Soft refresh: keep cached list visible — don't flash full-page skeleton
+        if (!(Array.isArray(HOME_RESTAURANTS_CACHE) && HOME_RESTAURANTS_CACHE.length > 0)) {
+          setLoadingRestaurants(true);
+        }
 
         // Backend disconnected - new backend in progress. Skip health check.
 

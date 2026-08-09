@@ -20,6 +20,11 @@ const getNormalizedUserPath = (pathname) => {
   return pathname || "/"
 }
 
+const pathsMatch = (a, b) => {
+  const norm = (p) => String(p || "").replace(/\/+$/, "") || "/"
+  return norm(a) === norm(b)
+}
+
 const resolveBackPath = ({ pathname, search, state, orderType }) => {
   const normalizedPath = getNormalizedUserPath(pathname)
   const explicitBackPath = toFoodPath(state?.backTo) || toFoodPath(state?.from) || toFoodPath(state?.returnTo)
@@ -114,7 +119,7 @@ const resolveBackPath = ({ pathname, search, state, orderType }) => {
   }
 
   if (/^\/user\/category\/[^/]+$/.test(normalizedPath)) {
-    return "/food/user/categories"
+    return defaultHomePath
   }
 
   if (
@@ -133,13 +138,19 @@ const resolveBackPath = ({ pathname, search, state, orderType }) => {
     return explicitBackPath || "/food/user/orders"
   }
 
-  if (explicitBackPath && explicitBackPath !== pathname) {
+  if (explicitBackPath && !pathsMatch(explicitBackPath, pathname)) {
     return explicitBackPath
   }
 
   return defaultHomePath
 }
 
+/**
+ * One-tap back to the known parent route.
+ * Avoids navigate(-1) — phone history often has query/sheet intermediates,
+ * so -1 needs 2–4 taps and feels stuck. Keep-alive still works because we
+ * navigate to category/home paths that remount under preserved shells.
+ */
 export default function useAppBackNavigation() {
   const navigate = useNavigate()
   const location = useLocation()
@@ -147,50 +158,32 @@ export default function useAppBackNavigation() {
   const orderType = profile ? profile.orderType : null
 
   return useCallback(() => {
-    const explicitBackPath =
-      toFoodPath(location.state?.backTo) ||
-      toFoodPath(location.state?.from) ||
-      toFoodPath(location.state?.returnTo)
-
-    const normalizedPath = getNormalizedUserPath(location.pathname)
-    const isOrderPage = normalizedPath.startsWith("/user/orders")
-    const isFromCartOrPlaced =
-      location.state?.fromOrderPlaced ||
-      location.state?.from === "cart" ||
-      location.state?.from === "checkout"
-    const hasHistory =
-      typeof window !== "undefined" &&
-      window.history.state &&
-      typeof window.history.state.idx === "number" &&
-      window.history.state.idx > 0
-
-    // Restaurant → category/home: prefer history back so keep-alive stays mounted (instant).
-    // Fall back to explicit from path when history is unavailable.
-    if (/^\/user\/restaurants\/[^/]+$/.test(normalizedPath)) {
-      if (!isFromCartOrPlaced && hasHistory) {
-        navigate(-1)
-        return
-      }
-      if (explicitBackPath && explicitBackPath !== location.pathname) {
-        navigate(explicitBackPath)
-        return
-      }
-      navigate(resolveBackPath({ ...location, orderType }))
+    // Restaurant "more info" sheet lives in ?info= — close it first without history pop.
+    const searchParams = new URLSearchParams(location.search || "")
+    if (searchParams.get("info") === "true") {
+      searchParams.delete("info")
+      const next = searchParams.toString()
+      navigate(
+        { pathname: location.pathname, search: next ? `?${next}` : "" },
+        { replace: true, state: location.state },
+      )
       return
     }
 
-    // Prefer real history back so the previous page (category/home) remounts
-    // with the same history entry — scroll memory can restore position.
-    if (!isOrderPage && !isFromCartOrPlaced && hasHistory) {
-      navigate(-1)
+    const target = resolveBackPath({ ...location, orderType })
+
+    if (target && !pathsMatch(target, location.pathname)) {
+      navigate(target, { replace: true })
       return
     }
 
-    if (explicitBackPath && explicitBackPath !== location.pathname) {
-      navigate(explicitBackPath, { replace: true })
+    if (location.search) {
+      navigate(location.pathname, { replace: true, state: location.state })
       return
     }
 
-    navigate(resolveBackPath({ ...location, orderType }), { replace: true })
+    navigate(orderType === "takeaway" ? "/food/user/takeaway" : "/food/user", {
+      replace: true,
+    })
   }, [location, navigate, orderType])
 }

@@ -3,14 +3,11 @@ import { useState, useMemo, useCallback, useEffect, useRef } from "react"
 import { Star, Clock, MapPin, ArrowDownUp, Timer, ArrowRight, ChevronDown, Bookmark, Share2, Plus, Minus, X, Check, Utensils, UtensilsCrossed, Wallet } from "lucide-react"
 import { motion, AnimatePresence } from "framer-motion"
 import { toast } from "sonner"
-import AnimatedPage from "@food/components/user/AnimatedPage"
 import { Card, CardContent } from "@food/components/ui/card"
 import { Button } from "@food/components/ui/button"
-import { useLocationSelector } from "@food/components/user/UserLayout"
 import { useLocation } from "@food/hooks/useLocation"
 import { useZone } from "@food/hooks/useZone"
 import { useCart } from "@food/context/CartContext"
-import PageNavbar from "@food/components/user/PageNavbar"
 import { useProfile } from "@food/context/ProfileContext"
 import { Avatar, AvatarFallback, AvatarImage } from "@food/components/ui/avatar"
 import { getRestaurantAvailabilityStatus } from "@food/utils/restaurantAvailability"
@@ -25,6 +22,13 @@ import { flattenMenuItems, getMenuFromResponse } from "@food/utils/menuItems"
 import { calculateDistance, formatDistance } from "@food/utils/common"
 import { hasFoodVariants, getDefaultFoodVariant, buildCartLineId } from "@food/utils/foodVariants"
 import { isVegMenuItem, isNonVegCategoryScope } from "@food/utils/vegMode"
+import {
+  buildFoodCacheKey,
+  getCachedUnder250PriceLimit,
+  getFoodPageCache,
+  getLandingSettingsPublic,
+  setFoodPageCache,
+} from "@food/utils/foodPageCache"
 const getLineItemIdForDish = (item, variant = null) =>
   buildCartLineId(item?.id || item?._id || "", variant?.id || variant?._id || "")
 
@@ -33,6 +37,95 @@ const debugWarn = (...args) => {}
 const debugError = (...args) => {}
 const RUPEE_SYMBOL = "\u20B9"
 const UNDER_250_FILTERS_STORAGE_KEY = "food-under-250-filters"
+const UNDER250_LIST_MAX_VISIBLE = 12
+const UNDER250_ITEMS_PER_RESTAURANT = 10
+const UNDER250_PAGE_SIZE = 6
+const UNDER250_CACHE_TTL_MS = 15 * 60 * 1000
+
+const isUnder250CacheFresh = (cached) =>
+  Boolean(
+    cached?.restaurants?.length > 0 &&
+      cached?.ts &&
+      Date.now() - Number(cached.ts) < UNDER250_CACHE_TTL_MS,
+  )
+
+const mapUnder250Restaurants = (restaurantsRaw, location) => {
+  const userLat = Number(location?.latitude)
+  const userLng = Number(location?.longitude)
+
+  return (Array.isArray(restaurantsRaw) ? restaurantsRaw : []).map((restaurant) => {
+    const restaurantId = restaurant?.restaurantId || restaurant?.id || restaurant?._id
+
+    const restaurantLocation = restaurant?.location
+    const restaurantLat = Number(
+      restaurantLocation?.latitude ??
+        (Array.isArray(restaurantLocation?.coordinates)
+          ? restaurantLocation.coordinates[1]
+          : null),
+    )
+    const restaurantLng = Number(
+      restaurantLocation?.longitude ??
+        (Array.isArray(restaurantLocation?.coordinates)
+          ? restaurantLocation.coordinates[0]
+          : null),
+    )
+    const distanceInKm =
+      Number.isFinite(userLat) &&
+      Number.isFinite(userLng) &&
+      Number.isFinite(restaurantLat) &&
+      Number.isFinite(restaurantLng)
+        ? calculateDistance(userLat, userLng, restaurantLat, restaurantLng)
+        : null
+
+    const fallbackDistance =
+      typeof restaurant?.distance === "number"
+        ? formatDistance(restaurant.distance)
+        : restaurant?.distance || ""
+
+    const mappedItems = (restaurant.menuItems || [])
+      .slice(0, UNDER250_ITEMS_PER_RESTAURANT)
+      .map((item) => ({
+        ...item,
+        id: String(item.id || item._id),
+        price: Number(item.price || 0),
+        foodType: item.foodType || (item.isVeg ? "Veg" : "Non-Veg"),
+        isVeg: isVegMenuItem(item),
+        image: item?.image || "",
+      }))
+    const hasNonVegInPayload = mappedItems.some((item) => !item.isVeg)
+    const hasNonVegMenu =
+      restaurant?.hasNonVegMenu === true || hasNonVegInPayload
+        ? true
+        : restaurant?.hasNonVegMenu === false
+          ? false
+          : undefined
+
+    return {
+      ...restaurant,
+      id: String(restaurantId),
+      restaurantId: String(restaurantId),
+      name: restaurant?.restaurantName || restaurant?.name || "Restaurant",
+      rating: Number(restaurant?.rating || 0),
+      totalRatings: Number(restaurant?.totalRatings || restaurant?.ratingCount || 0),
+      deliveryTime:
+        restaurant?.estimatedDeliveryTime ||
+        (restaurant?.estimatedDeliveryTimeMinutes
+          ? `${restaurant.estimatedDeliveryTimeMinutes} mins`
+          : "30 mins"),
+      distance: distanceInKm !== null ? formatDistance(distanceInKm) : fallbackDistance,
+      distanceInKm,
+      hasNonVegMenu,
+      isPureVeg:
+        hasNonVegMenu === true
+          ? false
+          : restaurant?.isPureVeg === true ||
+            (hasNonVegMenu === false &&
+              (restaurant?.pureVegRestaurant === true ||
+                mappedItems.some((item) => item.isVeg))),
+      menuItems: mappedItems,
+    }
+  })
+}
 
 const readUnder250Filters = () => {
   if (typeof window === "undefined") {
@@ -73,7 +166,6 @@ export default function Under250({ isTabActive = true }) {
   const initialFiltersRef = useRef(readUnder250Filters())
   const { location } = useLocation()
   const { zoneId, zoneStatus, isInService, isOutOfService } = useZone(location)
-  const { showGlobalLoader } = useLocationSelector()
   const { userProfile, vegMode, vegModeOption } = useProfile()
 
   const navigate = useNavigate()
@@ -103,10 +195,22 @@ export default function Under250({ isTabActive = true }) {
   const [loadingBanner, setLoadingBanner] = useState(true)
   const [currentBannerIndex, setCurrentBannerIndex] = useState(0)
   const [isTransitionEnabled, setIsTransitionEnabled] = useState(true)
-  const [under250Restaurants, setUnder250Restaurants] = useState([])
-  const [loadingRestaurants, setLoadingRestaurants] = useState(true)
+  const [under250PriceLimit, setUnder250PriceLimit] = useState(() =>
+    getCachedUnder250PriceLimit(250),
+  )
+  const cacheKey = buildFoodCacheKey("under250", {
+    zoneId: zoneId || "none",
+    limit: under250PriceLimit,
+  })
+  const cachedListRef = useRef(getFoodPageCache(cacheKey))
+  const [under250Restaurants, setUnder250Restaurants] = useState(
+    () => cachedListRef.current?.restaurants || [],
+  )
+  const [loadingRestaurants, setLoadingRestaurants] = useState(
+    () => !(cachedListRef.current?.restaurants?.length > 0),
+  )
+  const [visibleRestaurantCount, setVisibleRestaurantCount] = useState(UNDER250_LIST_MAX_VISIBLE)
   const [hasScrolledPastBanner, setHasScrolledPastBanner] = useState(false)
-  const [under250PriceLimit, setUnder250PriceLimit] = useState(250)
   const bannerShellRef = useRef(null)
   const stickyHeaderRef = useRef(null)
   const autoSlideIntervalRef = useRef(null)
@@ -115,6 +219,7 @@ export default function Under250({ isTabActive = true }) {
   const touchEndXRef = useRef(0)
   const touchEndYRef = useRef(0)
   const isBannerSwipingRef = useRef(false)
+  const fetchInflightRef = useRef(null)
 
   const sortOptions = [
     { id: null, label: 'Relevance' },
@@ -369,23 +474,24 @@ export default function Under250({ isTabActive = true }) {
     return () => { cancelled = true }
   }, [zoneId])
 
-  // Fetch landing settings to get dynamic price limit
+  // Fetch landing settings to get dynamic price limit (shared cache)
   useEffect(() => {
     let cancelled = false
-    const reqConfig = zoneId ? { params: { zoneId } } : {}
-    api.get('/food/landing/settings/public', reqConfig)
-      .then((res) => {
+    getLandingSettingsPublic(() =>
+      api.get("/food/landing/settings/public", zoneId ? { params: { zoneId } } : {}),
+    )
+      .then((settings) => {
         if (cancelled) return
-        const settings = res?.data?.data
-        if (settings && typeof settings.under250PriceLimit === 'number') {
+        if (settings && typeof settings.under250PriceLimit === "number") {
           setUnder250PriceLimit(settings.under250PriceLimit)
         }
       })
       .catch(() => {
-        // Default to 250 if fetch fails
-        setUnder250PriceLimit(250)
+        if (!cancelled) setUnder250PriceLimit(250)
       })
-    return () => { cancelled = true }
+    return () => {
+      cancelled = true
+    }
   }, [zoneId])
 
   useEffect(() => {
@@ -509,107 +615,170 @@ export default function Under250({ isTabActive = true }) {
     isBannerSwipingRef.current = false
   }, [bannerImages.length, currentBannerIndex, resetBannerAutoSlide])
 
-  // Fetch restaurants with dishes under ₹250 from backend
+  // Recompute distances when GPS moves — do NOT refetch the heavy list
   useEffect(() => {
-    let cancelled = false;
+    const lat = Number(location?.latitude)
+    const lng = Number(location?.longitude)
+    if (!Number.isFinite(lat) || !Number.isFinite(lng)) return
 
-    const fetchRestaurantsUnder250 = async () => {
+    setUnder250Restaurants((prev) => {
+      if (!prev.length) return prev
+      let changed = false
+      const next = prev.map((restaurant) => {
+        const restaurantLocation = restaurant?.location
+        const restaurantLat = Number(
+          restaurantLocation?.latitude ??
+            (Array.isArray(restaurantLocation?.coordinates)
+              ? restaurantLocation.coordinates[1]
+              : null),
+        )
+        const restaurantLng = Number(
+          restaurantLocation?.longitude ??
+            (Array.isArray(restaurantLocation?.coordinates)
+              ? restaurantLocation.coordinates[0]
+              : null),
+        )
+        if (!Number.isFinite(restaurantLat) || !Number.isFinite(restaurantLng)) {
+          return restaurant
+        }
+        const distanceInKm = calculateDistance(lat, lng, restaurantLat, restaurantLng)
+        const distance = formatDistance(distanceInKm)
+        if (restaurant.distanceInKm === distanceInKm && restaurant.distance === distance) {
+          return restaurant
+        }
+        changed = true
+        return { ...restaurant, distanceInKm, distance }
+      })
+      return changed ? next : prev
+    })
+  }, [location?.latitude, location?.longitude])
+
+  // Progressive fetch: first 6 restaurants paint fast, rest append in background.
+  // Fresh cache → show instantly, no full refresh on tab return.
+  useEffect(() => {
+    if (!isTabActive) return undefined
+    if (!zoneId) {
+      setLoadingRestaurants(false)
+      return undefined
+    }
+
+    let cancelled = false
+    const key = buildFoodCacheKey("under250", {
+      zoneId,
+      limit: under250PriceLimit,
+    })
+    const cached = getFoodPageCache(key)
+
+    if (isUnder250CacheFresh(cached)) {
+      setUnder250Restaurants(mapUnder250Restaurants(cached.restaurants, location))
+      setVisibleRestaurantCount(
+        Math.max(UNDER250_LIST_MAX_VISIBLE, cached.restaurants.length),
+      )
+      setLoadingRestaurants(false)
+      return undefined
+    }
+
+    if (cached?.restaurants?.length) {
+      setUnder250Restaurants(mapUnder250Restaurants(cached.restaurants, location))
+      setLoadingRestaurants(false)
+    } else if (under250Restaurants.length === 0) {
+      setLoadingRestaurants(true)
+    }
+
+    const mergeUnique = (prev, incoming) => {
+      const seen = new Set(prev.map((r) => String(r.id)))
+      const next = [...prev]
+      incoming.forEach((r) => {
+        const id = String(r.id)
+        if (seen.has(id)) return
+        seen.add(id)
+        next.push(r)
+      })
+      return next
+    }
+
+    const loadProgressive = async () => {
       try {
-        setLoadingRestaurants((prev) => under250Restaurants.length === 0 ? true : false)
-        // Use the new dedicated backend endpoint for high performance
-        const response = await restaurantAPI.getRestaurantsUnder250(zoneId ? { zoneId } : {})
-        
-        if (cancelled) return;
+        if (fetchInflightRef.current === key) return
+        fetchInflightRef.current = key
 
-        const data = response?.data?.data;
-        const restaurantsRaw = Array.isArray(data?.restaurants) ? data.restaurants : [];
-        
-        const userLat = Number(location?.latitude)
-        const userLng = Number(location?.longitude)
-        
-        // Final transformation of backend data for UI
-        const restaurants = restaurantsRaw.map(restaurant => {
-          const restaurantId = restaurant?.restaurantId || restaurant?.id || restaurant?._id;
-          
-          // Distance calculation if needed
-          const restaurantLocation = restaurant?.location;
-          const restaurantLat = Number(
-            restaurantLocation?.latitude ??
-            (Array.isArray(restaurantLocation?.coordinates) ? restaurantLocation.coordinates[1] : null)
-          );
-          const restaurantLng = Number(
-            restaurantLocation?.longitude ??
-            (Array.isArray(restaurantLocation?.coordinates) ? restaurantLocation.coordinates[0] : null)
-          );
-          const distanceInKm = (
-            Number.isFinite(userLat) &&
-            Number.isFinite(userLng) &&
-            Number.isFinite(restaurantLat) &&
-            Number.isFinite(restaurantLng)
+        let offset = 0
+        let scanSkip = 0
+        let hasMore = true
+        let accumulatedRaw = cached?.restaurants?.length ? [...cached.restaurants] : []
+        let page = 0
+
+        while (hasMore && !cancelled && page < 25) {
+          const response = await restaurantAPI.getRestaurantsUnder250({
+            zoneId,
+            priceLimit: under250PriceLimit,
+            limit: UNDER250_PAGE_SIZE,
+            offset,
+            scanSkip: page === 0 ? 0 : scanSkip,
+          })
+          if (cancelled) return
+
+          const data = response?.data?.data
+          const batchRaw = Array.isArray(data?.restaurants) ? data.restaurants : []
+          hasMore = data?.hasMore === true && batchRaw.length > 0
+          scanSkip = Number(data?.scanSkip) || scanSkip
+          offset = Number(data?.nextOffset) || offset + batchRaw.length
+
+          if (batchRaw.length === 0) break
+
+          accumulatedRaw = (() => {
+            const seen = new Set(accumulatedRaw.map((r) => String(r._id || r.id || r.restaurantId)))
+            const next = [...accumulatedRaw]
+            batchRaw.forEach((r) => {
+              const id = String(r._id || r.id || r.restaurantId)
+              if (seen.has(id)) return
+              seen.add(id)
+              next.push(r)
+            })
+            return next
+          })()
+
+          const mappedBatch = mapUnder250Restaurants(batchRaw, location)
+          setUnder250Restaurants((prev) =>
+            page === 0 && !(cached?.restaurants?.length)
+              ? mappedBatch
+              : mergeUnique(prev, mappedBatch),
           )
-            ? calculateDistance(userLat, userLng, restaurantLat, restaurantLng)
-            : null;
+          setVisibleRestaurantCount((n) =>
+            Math.max(n, UNDER250_LIST_MAX_VISIBLE, (page + 1) * UNDER250_PAGE_SIZE),
+          )
+          setLoadingRestaurants(false)
+          setFoodPageCache(key, { restaurants: accumulatedRaw, ts: Date.now() })
 
-          const fallbackDistance =
-            typeof restaurant?.distance === "number"
-              ? formatDistance(restaurant.distance)
-              : (restaurant?.distance || "");
+          page += 1
+          if (!hasMore) break
+          // Yield so UI stays responsive between pages
+          await new Promise((r) => setTimeout(r, 50))
+        }
 
-          const mappedItems = (restaurant.menuItems || []).map(item => ({
-            ...item,
-            id: String(item.id || item._id),
-            price: Number(item.price || 0),
-            foodType: item.foodType || (item.isVeg ? "Veg" : "Non-Veg"),
-            isVeg: isVegMenuItem(item),
-            image: item?.image || ""
-          }))
-          const hasNonVegInPayload = mappedItems.some((item) => !item.isVeg)
-          const hasNonVegMenu =
-            restaurant?.hasNonVegMenu === true || hasNonVegInPayload
-              ? true
-              : restaurant?.hasNonVegMenu === false
-                ? false
-                : undefined
-
-          return {
-            ...restaurant,
-            id: String(restaurantId),
-            restaurantId: String(restaurantId),
-            name: restaurant?.restaurantName || restaurant?.name || "Restaurant",
-            rating: Number(restaurant?.rating || 0),
-            totalRatings: Number(restaurant?.totalRatings || restaurant?.ratingCount || 0),
-            deliveryTime:
-              restaurant?.estimatedDeliveryTime ||
-              (restaurant?.estimatedDeliveryTimeMinutes ? `${restaurant.estimatedDeliveryTimeMinutes} mins` : "30 mins"),
-            distance: distanceInKm !== null ? formatDistance(distanceInKm) : fallbackDistance,
-            distanceInKm,
-            hasNonVegMenu,
-            isPureVeg:
-              hasNonVegMenu === true
-                ? false
-                : restaurant?.isPureVeg === true ||
-                  (hasNonVegMenu === false &&
-                    (restaurant?.pureVegRestaurant === true ||
-                      mappedItems.some((item) => item.isVeg))),
-            // Backend already filtered and attached menuItems
-            menuItems: mappedItems
-          };
-        });
-
-        setUnder250Restaurants(restaurants);
-        setLoadingRestaurants(false);
-      } catch (error) {
         if (!cancelled) {
-          debugError('Error fetching restaurants under 250:', error)
-          setUnder250Restaurants([])
+          setFoodPageCache(key, { restaurants: accumulatedRaw, ts: Date.now() })
           setLoadingRestaurants(false)
         }
+      } catch (error) {
+        if (!cancelled) {
+          debugError("Error fetching restaurants under 250:", error)
+          if (!(cached?.restaurants?.length > 0) && under250Restaurants.length === 0) {
+            setUnder250Restaurants([])
+          }
+          setLoadingRestaurants(false)
+        }
+      } finally {
+        if (fetchInflightRef.current === key) fetchInflightRef.current = null
       }
     }
 
-    fetchRestaurantsUnder250()
-    return () => { cancelled = true; };
-  }, [zoneId, isOutOfService, location?.latitude, location?.longitude, under250PriceLimit])
+    loadProgressive()
+    return () => {
+      cancelled = true
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- location only used for mapping; GPS remapped separately
+  }, [zoneId, under250PriceLimit, isTabActive])
 
   // Fetch categories from backend (no static fallback list)
   useEffect(() => {
@@ -712,6 +881,23 @@ export default function Under250({ isTabActive = true }) {
       window.scrollTo(0, scrollLockYRef.current)
     }
   }, [showSortPopup, showItemDetail, showShareOptions])
+
+  // Keep-alive: leaving Under250 must unlock body + close sheets or Delivery taps feel dead
+  useEffect(() => {
+    if (isTabActive) return undefined
+    setShowSortPopup(false)
+    setShowItemDetail(false)
+    setShowShareOptions(false)
+    setSelectedItem(null)
+    if (typeof document !== "undefined") {
+      const bodyStyle = document.body.style
+      bodyStyle.overflow = ""
+      bodyStyle.position = ""
+      bodyStyle.top = ""
+      bodyStyle.width = ""
+    }
+    return undefined
+  }, [isTabActive])
 
   useEffect(() => {
     if (typeof window === "undefined") return
@@ -1233,7 +1419,7 @@ export default function Under250({ isTabActive = true }) {
 
 
         {/* Restaurant Menu Sections */}
-        {(loadingRestaurants || showGlobalLoader) ? (
+        {loadingRestaurants && under250Restaurants.length === 0 ? (
           <div className="space-y-8 pt-4 sm:pt-6 md:pt-8 lg:pt-10">
             {[1, 2, 3].map((i) => (
               <div key={i} className="space-y-4">
@@ -1270,7 +1456,8 @@ export default function Under250({ isTabActive = true }) {
             </div>
           </div>
         ) : (
-          sortedAndFilteredRestaurants.map((restaurant) => {
+          <>
+          {sortedAndFilteredRestaurants.slice(0, visibleRestaurantCount).map((restaurant) => {
             const restaurantSlug = restaurant.slug || restaurant.name.toLowerCase().replace(/\s+/g, "-")
             const availabilityStatus = getRestaurantAvailabilityStatus(restaurant)
             const isRestaurantOffline = !availabilityStatus.isOpen
@@ -1463,7 +1650,25 @@ export default function Under250({ isTabActive = true }) {
                 )}
               </section>
             )
-          }))}
+          })}
+          {visibleRestaurantCount < sortedAndFilteredRestaurants.length ? (
+            <div className="flex justify-center py-6 pb-28">
+              <Button
+                type="button"
+                variant="outline"
+                className="rounded-full px-6 touch-manipulation"
+                onClick={() =>
+                  setVisibleRestaurantCount((n) => n + UNDER250_LIST_MAX_VISIBLE)
+                }
+              >
+                Show more restaurants
+              </Button>
+            </div>
+          ) : (
+            <div className="h-24" />
+          )}
+          </>
+        )}
       </div>
 
       {/* Sort Popup - Bottom Sheet */}

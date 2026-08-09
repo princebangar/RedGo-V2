@@ -4,6 +4,7 @@ import ProtectedRoute from "@food/components/ProtectedRoute";
 import { AppShellSkeleton } from "@food/components/ui/loading-skeletons";
 import { registerFoodPageCacheLifecycle } from "@food/utils/foodPageCache";
 import { normalizeBrowsePath } from "@food/utils/browseScrollMemory";
+import { requestBottomNavShow } from "@food/utils/bottomNavEvents";
 
 const Dining = lazy(() => import("@food/pages/user/Dining"));
 const Under250 = lazy(() => import("@food/pages/user/Under250"));
@@ -109,6 +110,7 @@ export default function MainTabKeepAlive({ activeTab, isVisible = true }) {
           try {
             sessionStorage.removeItem("food_browse_scroll_v1");
           } catch {}
+          requestBottomNavShow(900);
           prevTabRef.current = activeTab;
           return;
         }
@@ -128,6 +130,9 @@ export default function MainTabKeepAlive({ activeTab, isVisible = true }) {
       left: 0,
       behavior: "instant",
     });
+
+    // Scroll restore can hide bottom nav mid-tap — keep it visible briefly.
+    requestBottomNavShow(900);
 
     prevTabRef.current = activeTab;
   }, [activeTab, isVisible]);
