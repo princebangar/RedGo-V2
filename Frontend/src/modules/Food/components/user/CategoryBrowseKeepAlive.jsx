@@ -34,7 +34,7 @@ export default function CategoryBrowseKeepAlive({
 
     if (!categoryBrowseNeedsRestore()) return undefined;
 
-    return runCategoryScrollLock({ durationMs: 180 });
+    return runCategoryScrollLock({ durationMs: 100 });
   }, [isVisible, categorySlug]);
 
   if (!mountedSlug) return null;

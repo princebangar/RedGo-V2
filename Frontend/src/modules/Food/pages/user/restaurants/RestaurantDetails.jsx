@@ -263,18 +263,14 @@ function RestaurantDetailsContent() {
         const next = new URLSearchParams(prev)
         next.set('info', 'true')
         return next
-      })
+      }, { replace: true })
     } else {
-      const hasHistory = window.history.state && window.history.state.idx > 0
-      if (hasHistory) {
-        navigate(-1)
-      } else {
-        setSearchParams((prev) => {
-          const next = new URLSearchParams(prev)
-          next.delete('info')
-          return next
-        }, { replace: true })
-      }
+      // Never navigate(-1) here — that pops restaurant→category and feels like stuck back.
+      setSearchParams((prev) => {
+        const next = new URLSearchParams(prev)
+        next.delete('info')
+        return next
+      }, { replace: true })
     }
   }
   const [showShareModal, setShowShareModal] = useState(false)
@@ -2512,9 +2508,10 @@ function RestaurantDetailsContent() {
         <div className="max-w-7xl mx-auto flex items-center justify-between">
           {/* Back Button */}
           <Button
+            type="button"
             variant="outline"
             size="icon"
-            className="rounded-full h-10 w-10 border-gray-200 dark:border-gray-800 shadow-sm bg-white dark:bg-[#1a1a1a]"
+            className="rounded-full h-10 w-10 border-gray-200 dark:border-gray-800 shadow-sm bg-white dark:bg-[#1a1a1a] relative z-50 touch-manipulation"
             onClick={goBack}
           >
             <ArrowLeft className="h-5 w-5 text-gray-900 dark:text-white" />

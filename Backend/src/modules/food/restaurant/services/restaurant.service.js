@@ -1856,8 +1856,8 @@ export const getRestaurantComplaints = async (restaurantId, query = {}) => {
 };
 
 /**
- * List restaurants that have at least one approved, available dish under a price limit (e.g. ₹250).
- * This collapses 50+ frontend requests into ONE optimized backend call.
+ * List restaurants that have at least one approved, available dish under a price limit.
+ * Supports progressive pages via ?limit=&offset= so the first screen can paint fast.
  */
 export const listRestaurantsUnderPriceLimit = async (query = {}, priceLimit = 250) => {
     const zoneIdRaw = String(query.zoneId || '').trim();
@@ -1865,111 +1865,204 @@ export const listRestaurantsUnderPriceLimit = async (query = {}, priceLimit = 25
         throw new ValidationError('Valid zoneId is required for Under 250 fetching');
     }
 
-    // 1. Find all approved restaurants in the specified zone first (Zone Filter first)
-    const restaurantsInZone = await FoodRestaurant.find({
-        zoneId: new mongoose.Types.ObjectId(zoneIdRaw),
-        status: 'approved'
-    })
-    .select('restaurantName slug area city rating totalRatings estimatedDeliveryTime estimatedDeliveryTimeMinutes profileImage coverImages menuImages location pureVegRestaurant isActive isAcceptingOrders openingTime closingTime openDays')
-    .lean();
+    const effectivePrice =
+        Number(query.priceLimit) > 0 ? Number(query.priceLimit) : Number(priceLimit) || 250;
+    const hasLimit = query.limit != null && String(query.limit).trim() !== '';
+    const pageLimit = hasLimit
+        ? Math.min(Math.max(parseInt(String(query.limit), 10) || 6, 1), 40)
+        : null;
+    const pageOffset = Math.max(parseInt(String(query.offset ?? query.skip ?? 0), 10) || 0, 0);
 
-    if (restaurantsInZone.length === 0) {
-        return { restaurants: [], total: 0 };
-    }
+    const restaurantSelect =
+        'restaurantName slug area city rating totalRatings estimatedDeliveryTime estimatedDeliveryTimeMinutes profileImage coverImages menuImages location pureVegRestaurant isActive isAcceptingOrders openingTime closingTime openDays';
 
-    const restaurantIds = restaurantsInZone.map(r => r._id);
+    const mapItem = (item) => {
+        const ft = String(item.foodType || '').trim().toLowerCase();
+        let isVeg = false;
+        if (ft === 'veg') isVeg = true;
+        else if (ft === 'non-veg' || ft === 'non veg' || ft === 'nonveg' || ft.includes('non')) {
+            isVeg = false;
+        } else if (item.isVeg === true) isVeg = true;
+        else if (item.isVeg === false) isVeg = false;
 
-    // 2. Fetch only the eligible food items for these specific restaurants (lightweight projection for fast listing)
-    const eligibleItems = await FoodItem.find({
-        restaurantId: { $in: restaurantIds },
-        $or: [
-            { price: { $lte: priceLimit } },
-            { "variants.price": { $lte: priceLimit } }
-        ],
-        isAvailable: true,
-        approvalStatus: 'approved'
-    }).select('restaurantId name price image foodType description isVeg isRecommended categoryName categoryId category variants').lean();
-
-    if (eligibleItems.length === 0) {
-        return { restaurants: [], total: 0 };
-    }
-
-    // Map items to their restaurants
-    const restaurantItemsMap = {};
-    eligibleItems.forEach(item => {
-        const rid = String(item.restaurantId);
-        if (!restaurantItemsMap[rid]) restaurantItemsMap[rid] = [];
-        restaurantItemsMap[rid].push({
+        return {
             ...item,
             id: String(item._id),
-            isVeg: (() => {
-                const ft = String(item.foodType || '').trim().toLowerCase();
-                if (ft === 'veg') return true;
-                if (ft === 'non-veg' || ft === 'non veg' || ft === 'nonveg' || ft.includes('non')) {
-                    return false;
-                }
-                if (item.isVeg === true) return true;
-                if (item.isVeg === false) return false;
-                return false;
-            })(),
+            isVeg,
+        };
+    };
+
+    const MAX_ITEMS_PER_RESTAURANT = 12;
+
+    const attachItemsForRestaurants = async (restaurantsBatch) => {
+        if (!restaurantsBatch.length) return [];
+        const ids = restaurantsBatch.map((r) => r._id);
+        const eligibleItems = await FoodItem.find({
+            restaurantId: { $in: ids },
+            $or: [
+                { price: { $lte: effectivePrice } },
+                { 'variants.price': { $lte: effectivePrice } },
+            ],
+            isAvailable: true,
+            approvalStatus: 'approved',
+        })
+            .select(
+                'restaurantId name price image foodType description isVeg isRecommended categoryName categoryId category variants',
+            )
+            .lean();
+
+        const restaurantItemsMap = {};
+        eligibleItems.forEach((item) => {
+            const rid = String(item.restaurantId);
+            if (!restaurantItemsMap[rid]) restaurantItemsMap[rid] = [];
+            restaurantItemsMap[rid].push(mapItem(item));
         });
-    });
 
-    // 3. Filter restaurants that actually have eligible items
-    const eligibleRestaurants = restaurantsInZone.filter(r => {
-        const rid = String(r._id);
-        return restaurantItemsMap[rid] && restaurantItemsMap[rid].length > 0;
-    });
+        Object.keys(restaurantItemsMap).forEach((rid) => {
+            const items = restaurantItemsMap[rid];
+            items.sort((a, b) => {
+                const aRec = a.isRecommended ? 1 : 0;
+                const bRec = b.isRecommended ? 1 : 0;
+                if (bRec !== aRec) return bRec - aRec;
+                return Number(a.price || 0) - Number(b.price || 0);
+            });
+            restaurantItemsMap[rid] = items.slice(0, MAX_ITEMS_PER_RESTAURANT);
+        });
 
-    if (eligibleRestaurants.length === 0) {
-        return { restaurants: [], total: 0 };
+        return restaurantsBatch
+            .filter((r) => (restaurantItemsMap[String(r._id)] || []).length > 0)
+            .map((r) => {
+                const rid = String(r._id);
+                const items = restaurantItemsMap[rid] || [];
+                const hasNonVegInItems = items.some((item) => !item.isVeg);
+                const hasNonVegMenu =
+                    hasNonVegInItems || r.pureVegRestaurant === false
+                        ? true
+                        : r.pureVegRestaurant === true
+                          ? false
+                          : hasNonVegInItems;
+                return {
+                    ...r,
+                    id: rid,
+                    restaurantId: rid,
+                    name: r.restaurantName,
+                    menuItems: items,
+                    hasNonVegMenu,
+                    isPureVeg: !hasNonVegMenu,
+                    outletTimings: { timings: [] },
+                    image:
+                        r.coverImages?.[0] ||
+                        r.profileImage ||
+                        (r.menuImages?.length > 0 ? r.menuImages[0] : null) ||
+                        null,
+                    images:
+                        Array.isArray(r.coverImages) && r.coverImages.length > 0
+                            ? r.coverImages
+                            : r.profileImage
+                              ? [r.profileImage]
+                              : [],
+                };
+            });
+    };
+
+    const enrichOutletTimings = async (restaurants) => {
+        if (!restaurants.length) return restaurants;
+        const ids = restaurants.map((r) => r._id || r.restaurantId).filter(Boolean);
+        const outletTimingsRaw = await FoodRestaurantOutletTimings.find({
+            restaurantId: { $in: ids },
+        }).lean();
+        const timingsMap = {};
+        outletTimingsRaw.forEach((t) => {
+            timingsMap[String(t.restaurantId)] = t.timings || [];
+        });
+        return restaurants.map((r) => {
+            const rid = String(r._id || r.restaurantId);
+            return {
+                ...r,
+                outletTimings: { timings: timingsMap[rid] || [] },
+            };
+        });
+    };
+
+    // Progressive page: scan top-rated restaurants in small batches until page filled.
+    if (pageLimit != null) {
+        const scanStart = Math.max(parseInt(String(query.scanSkip ?? 0), 10) || 0, 0);
+        // When scanSkip is set, caller already skipped earlier eligible restaurants — only fill this page.
+        const resumeMode = scanStart > 0 && pageOffset > 0;
+        const need = resumeMode ? pageLimit : pageOffset + pageLimit;
+        const collected = [];
+        let scanned = resumeMode ? scanStart : 0;
+        const SCAN_BATCH = 20;
+        let exhausted = false;
+
+        while (collected.length < need) {
+            const batch = await FoodRestaurant.find({
+                zoneId: new mongoose.Types.ObjectId(zoneIdRaw),
+                status: 'approved',
+            })
+                .select(restaurantSelect)
+                .sort({ rating: -1, totalRatings: -1, _id: 1 })
+                .skip(scanned)
+                .limit(SCAN_BATCH)
+                .lean();
+
+            if (batch.length === 0) {
+                exhausted = true;
+                break;
+            }
+
+            scanned += batch.length;
+            const eligible = await attachItemsForRestaurants(batch);
+            collected.push(...eligible);
+
+            if (batch.length < SCAN_BATCH) {
+                exhausted = true;
+                break;
+            }
+            if (scanned >= 400) break;
+        }
+
+        const page = resumeMode
+            ? collected.slice(0, pageLimit)
+            : collected.slice(pageOffset, pageOffset + pageLimit);
+        const withTimings = await enrichOutletTimings(page);
+        const hasMore =
+            resumeMode
+                ? collected.length > page.length || (!exhausted && page.length >= pageLimit)
+                : collected.length > pageOffset + page.length || (!exhausted && page.length >= pageLimit);
+
+        return {
+            restaurants: withTimings,
+            total: hasMore ? pageOffset + withTimings.length + 1 : pageOffset + withTimings.length,
+            offset: pageOffset,
+            limit: pageLimit,
+            hasMore,
+            nextOffset: pageOffset + withTimings.length,
+            scanSkip: scanned,
+        };
     }
 
-    // 4. Parallelize full-menu non-veg check and outlet timings fetch
-    const eligibleRestaurantIds = eligibleRestaurants.map((r) => r._id);
-    const [nonVegRestaurantIds, outletTimingsRaw] = await Promise.all([
-        FoodItem.distinct('restaurantId', {
-            restaurantId: { $in: eligibleRestaurantIds },
-            approvalStatus: 'approved',
-            foodType: 'Non-Veg',
-        }),
-        FoodRestaurantOutletTimings.find({
-            restaurantId: { $in: eligibleRestaurantIds }
-        }).lean()
-    ]);
-    const nonVegRestaurantIdSet = new Set(nonVegRestaurantIds.map((id) => String(id)));
+    // Full list (legacy / rare): one pass for entire zone
+    const restaurantsInZone = await FoodRestaurant.find({
+        zoneId: new mongoose.Types.ObjectId(zoneIdRaw),
+        status: 'approved',
+    })
+        .select(restaurantSelect)
+        .sort({ rating: -1, totalRatings: -1 })
+        .lean();
 
-    const timingsMap = {};
-    outletTimingsRaw.forEach(t => {
-        timingsMap[String(t.restaurantId)] = t.timings || [];
-    });
+    if (restaurantsInZone.length === 0) {
+        return { restaurants: [], total: 0, offset: 0, hasMore: false };
+    }
 
-    // 5. Assemble final list
-    const restaurants = eligibleRestaurants.map(r => {
-        const rid = String(r._id);
-        const items = restaurantItemsMap[rid] || [];
-        const timings = timingsMap[rid] || [];
-        const hasNonVegMenu = nonVegRestaurantIdSet.has(rid);
-        
-        return {
-            ...r,
-            id: rid,
-            restaurantId: rid,
-            name: r.restaurantName,
-            menuItems: items,
-            hasNonVegMenu,
-            isPureVeg: !hasNonVegMenu,
-            outletTimings: { timings },
-            image: r.coverImages?.[0] || r.profileImage || (r.menuImages?.length > 0 ? r.menuImages[0] : null) || null,
-            images: Array.isArray(r.coverImages) && r.coverImages.length > 0
-                ? r.coverImages
-                : (r.profileImage ? [r.profileImage] : [])
-        };
-    });
+    let restaurants = await attachItemsForRestaurants(restaurantsInZone);
+    restaurants = await enrichOutletTimings(restaurants);
 
     return {
         restaurants,
-        total: restaurants.length
+        total: restaurants.length,
+        offset: 0,
+        hasMore: false,
     };
 };
 

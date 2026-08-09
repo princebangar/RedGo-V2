@@ -1999,8 +1999,9 @@ export default function CategoryPage({
           {!hideHeader && (
             <div className="flex items-center gap-2 px-3 md:px-6 py-3 border-b border-gray-100 dark:border-gray-800">
               <button
-                onClick={() => navigate(toFoodUserPath("/user"))}
-                className="w-9 h-9 flex items-center justify-center hover:bg-gray-100 dark:hover:bg-gray-800 rounded-full transition-colors flex-shrink-0"
+                type="button"
+                onClick={() => navigate(toFoodUserPath("/user"), { replace: true })}
+                className="w-9 h-9 flex items-center justify-center hover:bg-gray-100 dark:hover:bg-gray-800 rounded-full transition-colors flex-shrink-0 touch-manipulation relative z-50"
               >
                 <ArrowLeft className="h-5 w-5 text-gray-700 dark:text-gray-300" />
               </button>

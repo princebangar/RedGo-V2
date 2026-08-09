@@ -314,6 +314,16 @@ function UserLayoutContent() {
   // Debounced loading state to prevent flickering and ensure smooth navigation transitions
   const { showGlobalLoader, setShowGlobalLoader } = useLocationSelector()
 
+  // Safety: never leave a full-screen blocker that eats every tap until app kill
+  useEffect(() => {
+    if (!showGlobalLoader) return undefined
+    const timer = window.setTimeout(() => {
+      setShowGlobalLoader(false)
+      sessionStorage.removeItem("manual_location_update")
+    }, 8000)
+    return () => window.clearTimeout(timer)
+  }, [showGlobalLoader, setShowGlobalLoader])
+
   // isInitialChecking: only block render if we have ZERO cached location AND zone data.
   // On refresh, cached data exists -> render immediately, fetch in background.
   const [isInitialChecking, setIsInitialChecking] = useState(() => {
