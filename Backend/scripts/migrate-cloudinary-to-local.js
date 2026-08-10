@@ -11,6 +11,8 @@
  *   --clean-empty       also delete the 0-byte placeholder files from disk
  *   --keep-broken       keep references to 0-byte assets instead of clearing them
  *   --uploads-dir <p>   override UPLOAD_PATH
+ *   --metadata <p>      path to cloudinary_metadata.json when it is kept
+ *                       outside the uploads directory (recommended on a server)
  *   --uri <s>           override MONGODB_URI
  *   --out <dir>         where rollback/report files go (default scripts/migration-out)
  *
@@ -47,6 +49,7 @@ const CLEAN_EMPTY = hasFlag('--clean-empty');
 const KEEP_BROKEN = hasFlag('--keep-broken');
 const ROLLBACK_DIR = hasFlag('--rollback') ? flagValue('--rollback', null) : null;
 const UPLOADS_DIR = flagValue('--uploads-dir', config.uploadsRoot);
+const METADATA_PATH = flagValue('--metadata', process.env.CLOUDINARY_METADATA_PATH || null);
 const URI = flagValue('--uri', config.mongodbUri);
 const OUT_DIR = path.resolve(flagValue('--out', path.join(process.cwd(), 'scripts', 'migration-out')));
 const ASSET_BASE = config.assetBaseUrl;
@@ -126,9 +129,15 @@ const bulkWriteChunked = async (collection, ops) => {
 // ---------------------------------------------------------------- mapping
 
 const buildMapping = () => {
-    const metaPath = path.join(UPLOADS_DIR, 'cloudinary_metadata.json');
+    // The metadata file is an inventory of every asset (including KYC documents)
+    // and must not live in the public uploads directory on a server. Allow it to
+    // be kept outside the web root via --metadata.
+    const metaPath = METADATA_PATH || path.join(UPLOADS_DIR, 'cloudinary_metadata.json');
     if (!fs.existsSync(metaPath)) {
-        throw new Error(`cloudinary_metadata.json not found in ${UPLOADS_DIR}`);
+        throw new Error(
+            `cloudinary_metadata.json not found at ${metaPath}\n` +
+            'Pass --metadata /path/to/cloudinary_metadata.json if you keep it outside the uploads directory.'
+        );
     }
 
     const onDisk = new Map(); // filename -> size
