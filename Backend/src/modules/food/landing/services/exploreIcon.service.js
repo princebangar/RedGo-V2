@@ -1,7 +1,10 @@
 import { FoodExploreIcon } from '../models/exploreIcon.model.js';
-import { v2 as cloudinary } from 'cloudinary';
+import { storeImageBuffer, deleteStoredAsset } from '../../../../services/storage.service.js';
 
-const CLOUDINARY_FOLDER = 'food/explore-icons';
+const ICON_FOLDER = 'food/explore-icons';
+// These render at ~64px. Cloudinary used to shrink them on delivery (w_200);
+// with nginx serving raw files we downscale once, at upload time, instead.
+const ICON_MAX_WIDTH = 400;
 
 /**
  * List all explore icons (admin). Sorted by sortOrder.
@@ -22,19 +25,13 @@ const getNextSortOrder = async () => {
 };
 
 /**
- * Upload buffer to Cloudinary and return { secure_url, public_id }.
+ * Store an icon on disk and return { secure_url, public_id }.
  */
-const uploadImageToCloudinary = (buffer) => {
-    return new Promise((resolve, reject) => {
-        const stream = cloudinary.uploader.upload_stream(
-            { folder: CLOUDINARY_FOLDER, resource_type: 'image' },
-            (err, result) => {
-                if (err) return reject(err);
-                resolve({ secure_url: result.secure_url, public_id: result.public_id });
-            }
-        );
-        stream.end(buffer);
+const uploadIcon = async (buffer) => {
+    const { secure_url, public_id } = await storeImageBuffer(buffer, ICON_FOLDER, {
+        maxWidth: ICON_MAX_WIDTH
     });
+    return { secure_url, public_id };
 };
 
 /**
@@ -51,7 +48,7 @@ export const createExploreIcon = async (file, meta) => {
         throw new Error('Label is required');
     }
 
-    const { secure_url, public_id } = await uploadImageToCloudinary(file.buffer);
+    const { secure_url, public_id } = await uploadIcon(file.buffer);
     const sortOrder = await getNextSortOrder();
 
     // Infer linkType from label for known types
@@ -91,10 +88,8 @@ export const updateExploreIcon = async (id, payload) => {
 
     if (payload?.file?.buffer) {
         try {
-            if (doc.publicId) {
-                await cloudinary.uploader.destroy(doc.publicId).catch(() => {});
-            }
-            const { secure_url, public_id } = await uploadImageToCloudinary(payload.file.buffer);
+            await deleteStoredAsset(doc.iconUrl || doc.publicId);
+            const { secure_url, public_id } = await uploadIcon(payload.file.buffer);
             updates.iconUrl = secure_url;
             updates.publicId = public_id;
         } catch (e) {
@@ -127,20 +122,14 @@ export const updateExploreIcon = async (id, payload) => {
 };
 
 /**
- * Delete explore icon and Cloudinary asset.
+ * Delete explore icon and its stored file.
  */
 export const deleteExploreIcon = async (id) => {
     const doc = await FoodExploreIcon.findById(id);
     if (!doc) {
         return { deleted: false };
     }
-    if (doc.publicId) {
-        try {
-            await cloudinary.uploader.destroy(doc.publicId);
-        } catch {
-            // ignore
-        }
-    }
+    await deleteStoredAsset(doc.iconUrl || doc.publicId);
     await doc.deleteOne();
     return { deleted: true };
 };

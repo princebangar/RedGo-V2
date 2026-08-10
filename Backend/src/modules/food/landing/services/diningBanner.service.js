@@ -1,5 +1,5 @@
 import { FoodDiningBanner } from '../models/diningBanner.model.js';
-import { v2 as cloudinary } from 'cloudinary';
+import { storeImageBuffer, deleteStoredAsset } from '../../../../services/storage.service.js';
 
 export const listDiningBanners = async (zoneId = null) => {
     let query = zoneId ? { zoneId } : { zoneId: null };
@@ -15,16 +15,7 @@ export const createDiningBannersFromFiles = async (files, meta = {}) => {
 
     for (const file of files) {
         try {
-            const uploadResult = await new Promise((resolve, reject) => {
-                const stream = cloudinary.uploader.upload_stream(
-                    { folder: 'food/dining-banners', resource_type: 'image' },
-                    (error, result) => {
-                        if (error) return reject(error);
-                        return resolve(result);
-                    }
-                );
-                stream.end(file.buffer);
-            });
+            const uploadResult = await storeImageBuffer(file.buffer, 'food/dining-banners');
 
             const banner = await FoodDiningBanner.create({
                 imageUrl: uploadResult.secure_url,
@@ -53,13 +44,8 @@ export const deleteDiningBanner = async (id) => {
         return { deleted: false };
     }
 
-    if (doc.publicId) {
-        try {
-            await cloudinary.uploader.destroy(doc.publicId);
-        } catch {
-            // ignore cloudinary deletion errors
-        }
-    }
+    // Never let a failed file cleanup block the record deletion.
+    await deleteStoredAsset(doc.imageUrl || doc.publicId);
 
     await doc.deleteOne();
     return { deleted: true };
