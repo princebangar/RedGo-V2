@@ -1,12 +1,5 @@
 import { FoodLandingSettings } from '../models/landingSettings.model.js';
-import fs from 'fs';
-import path from 'path';
-import { fileURLToPath } from 'url';
-import { config } from '../../../../config/env.js';
-
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
-const UPLOADS_ROOT = path.resolve(__dirname, '..', '..', '..', '..', '..', config.uploadPath);
+import { deleteStoredAsset } from '../../../../services/storage.service.js';
 
 export const getLandingSettings = async (zoneId = null) => {
     let query = zoneId ? { zoneId } : { zoneId: null };
@@ -26,22 +19,9 @@ export const updateLandingSettings = async (payload, zoneId = null) => {
         upsert: true
     }).lean();
 
-    // Check if image URL was removed or changed
+    // Drop the previous banner file when the URL was cleared or replaced.
     if (oldDoc && oldDoc.festBannerImageUrl && oldDoc.festBannerImageUrl !== doc.festBannerImageUrl) {
-        try {
-            const oldUrl = oldDoc.festBannerImageUrl;
-            const filename = oldUrl.split('/').pop();
-            if (filename) {
-                const filePath = path.join(UPLOADS_ROOT, filename);
-                fs.unlink(filePath, (err) => {
-                    if (err && err.code !== 'ENOENT') {
-                        console.error("Failed to delete old image:", err);
-                    }
-                });
-            }
-        } catch (e) {
-            console.error("Error trying to delete old image file:", e);
-        }
+        await deleteStoredAsset(oldDoc.festBannerImageUrl);
     }
 
     return doc;

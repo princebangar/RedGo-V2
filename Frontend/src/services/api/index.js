@@ -2533,7 +2533,7 @@ export const geocodeAPI = {
 };
 export const uploadAPI = {
   /**
-   * Upload a single image file to the backend (Cloudinary-backed).
+   * Upload a single image file to the backend (stored on the VPS, served by nginx).
    * @param {File|Blob} file
    * @param {{ folder?: string }} options
    */

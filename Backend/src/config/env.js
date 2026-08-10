@@ -1,6 +1,14 @@
 import dotenv from 'dotenv';
+import path from 'path';
+import { fileURLToPath } from 'url';
 
 dotenv.config();
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+// Backend/ — the base a relative UPLOAD_PATH is resolved against.
+const backendRoot = path.resolve(__dirname, '..', '..');
+
+const uploadPath = process.env.UPLOAD_PATH || 'uploads/';
 
 export const config = {
     // Basic server config
@@ -67,7 +75,23 @@ export const config = {
     bcryptSaltRounds: Number(process.env.BCRYPT_SALT_ROUNDS || 10),
 
     // Uploads
-    uploadPath: process.env.UPLOAD_PATH || 'uploads/',
+    uploadPath,
+    // Single resolved absolute path for every read/write of the uploads dir.
+    // Callers must use this — resolving uploadPath themselves is how the three
+    // previous call sites ended up with three different base directories.
+    uploadsRoot: path.isAbsolute(uploadPath)
+        ? path.normalize(uploadPath)
+        : path.resolve(backendRoot, uploadPath),
+    // Origin that stored assets are served from (nginx). No trailing slash.
+    assetBaseUrl: String(
+        process.env.ASSET_BASE_URL ||
+        process.env.API_BASE_URL ||
+        `http://localhost:${process.env.PORT || 5000}`
+    ).replace(/\/+$/, ''),
+    // Keep serving /uploads from Express. Off in production once nginx owns it.
+    serveUploadsFromNode: process.env.SERVE_UPLOADS_FROM_NODE
+        ? process.env.SERVE_UPLOADS_FROM_NODE !== 'false'
+        : process.env.NODE_ENV !== 'production',
 
     // Redis
     redisEnabled: process.env.REDIS_ENABLED === 'true',

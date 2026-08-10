@@ -2,6 +2,8 @@ branch_structure.json
 temp_auto_push.bat
 temp_interactive_push.bat
 uploads/
+uploads.zip
+Backend/scripts/migration-out/
 
 # dependencies
 node_modules/
@@ -22,3 +24,8 @@ build/
 .DS_Store
 Thumbs.db
 .idea/
+
+# migration transfer artifacts
+uploads-migration.tar.gz
+uploads-manifest.txt
+*.tar.gz
