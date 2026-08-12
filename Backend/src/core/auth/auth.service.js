@@ -22,8 +22,8 @@ import { FoodOrder } from "../../modules/food/orders/models/order.model.js";
 import { FoodTransaction } from "../../modules/food/orders/models/foodTransaction.model.js";
 import { FoodSupportTicket } from "../../modules/food/user/models/supportTicket.model.js";
 import { FoodRestaurantMenu } from "../../modules/food/restaurant/models/restaurantMenu.model.js";
-import { FoodRestaurantWallet } from "../../modules/food/restaurant/models/restaurantWallet.model.js";
 import { FoodRestaurantWithdrawal } from "../../modules/food/restaurant/models/foodRestaurantWithdrawal.model.js";
+import { getRestaurantFinance } from "../../modules/food/restaurant/services/restaurantFinance.service.js";
 import { FoodAddon } from "../../modules/food/restaurant/models/foodAddon.model.js";
 import { FoodRestaurantOutletTimings } from "../../modules/food/restaurant/models/outletTimings.model.js";
 import { FoodRestaurantSupportTicket } from "../../modules/food/restaurant/models/supportTicket.model.js";
@@ -922,9 +922,10 @@ export const checkAccountBalance = async (userId, role) => {
       break;
     }
     case ROLES.RESTAURANT: {
-      const wallet = await FoodRestaurantWallet.findOne({ restaurantId: userId }).select("balance").lean();
-      balance = Number(wallet?.balance || 0);
-      type = "Restaurant Wallet Balance";
+      // Live payout lives in food_transactions, not food_restaurant_wallets.
+      const finance = await getRestaurantFinance(userId);
+      balance = Number(finance?.currentCycle?.estimatedPayout || 0);
+      type = "Restaurant Available Balance";
       break;
     }
     case ROLES.DELIVERY_PARTNER: {

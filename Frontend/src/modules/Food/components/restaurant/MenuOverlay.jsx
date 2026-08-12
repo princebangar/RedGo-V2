@@ -35,8 +35,31 @@ export default function MenuOverlay({ showMenu, setShowMenu }) {
   const [isDeleting, setIsDeleting] = useState(false)
   const [deleteAccountOpen, setDeleteAccountOpen] = useState(false)
   const [showBalanceWarning, setShowBalanceWarning] = useState(false)
-  const [balanceData, setBalanceData] = useState({ balance: 0, type: "Wallet" })
+  const [balanceData, setBalanceData] = useState({ balance: 0, type: "Restaurant Available Balance" })
   const [isCheckingBalance, setIsCheckingBalance] = useState(false)
+
+  const handleDeleteAccountClick = async () => {
+    if (isCheckingBalance) return
+    setShowMenu(false)
+    setIsCheckingBalance(true)
+    try {
+      const response = await authAPI.checkBalance("restaurant")
+      const payload = response?.data?.data ?? response?.data ?? {}
+      const balance = Number(payload.balance || 0)
+      const type = payload.type || "Restaurant Available Balance"
+      setDeleteCaptcha("")
+      if (balance > 0) {
+        setBalanceData({ balance, type })
+        setShowBalanceWarning(true)
+        return
+      }
+      setDeleteAccountOpen(true)
+    } catch (error) {
+      toast.error(error?.response?.data?.message || "Could not verify your available balance")
+    } finally {
+      setIsCheckingBalance(false)
+    }
+  }
 
   // Lock scroll when any popup is open
   useEffect(() => {
@@ -171,11 +194,11 @@ export default function MenuOverlay({ showMenu, setShowMenu }) {
                       whileHover={{ scale: 1.03, y: -2 }}
                       whileTap={{ scale: 0.97 }}
                       onClick={() => {
-                        setShowMenu(false)
                         if (option.isDelete) {
-                          setDeleteCaptcha(""); 
-                          setDeleteAccountOpen(true);
-                        } else if (option.isLogout) {
+                          handleDeleteAccountClick()
+                        } else {
+                          setShowMenu(false)
+                          if (option.isLogout) {
                           // Handle logout
                           if (window.confirm("Are you sure you want to logout?")) {
                             // Clear authentication state
@@ -189,6 +212,7 @@ export default function MenuOverlay({ showMenu, setShowMenu }) {
                           }
                         } else {
                           navigate(option.route)
+                        }
                         }
                       }}
                       className={`flex flex-col items-center justify-center gap-2 p-3 md:p-4 rounded-xl transition-all shadow-md hover:shadow-lg ${
@@ -272,7 +296,7 @@ export default function MenuOverlay({ showMenu, setShowMenu }) {
               </div>
 
               <p className="text-sm text-gray-500 mb-6 leading-relaxed">
-                You still have money in your restaurant wallet. Do you want to continue deleting your account or go back and withdraw?
+                You still have unsettled payout available to withdraw. Continue deleting your account or go to Payout to withdraw first.
               </p>
 
               <div className="flex flex-col gap-3">
@@ -287,10 +311,13 @@ export default function MenuOverlay({ showMenu, setShowMenu }) {
                   Continue Anyway
                 </button>
                 <button
-                  onClick={() => setShowBalanceWarning(false)}
+                  onClick={() => {
+                    setShowBalanceWarning(false);
+                    navigate("/food/restaurant/hub-finance");
+                  }}
                   className="w-full h-12 rounded-xl bg-gradient-to-br from-[#B80B3D] to-[#66001D] text-white font-bold hover:bg-gradient-to-br from-[#B80B3D] to-[#66001D] transition-colors"
                 >
-                  Cancel & Withdraw
+                  Go to Payout
                 </button>
               </div>
             </div>

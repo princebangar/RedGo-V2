@@ -369,8 +369,30 @@ export default function ExploreMore() {
   const [deleteCaptcha, setDeleteCaptcha] = useState("")
   const [isDeleting, setIsDeleting] = useState(false)
   const [showBalanceWarning, setShowBalanceWarning] = useState(false)
-  const [balanceData, setBalanceData] = useState({ balance: 0, type: "Wallet" })
+  const [balanceData, setBalanceData] = useState({ balance: 0, type: "Restaurant Available Balance" })
   const [isCheckingBalance, setIsCheckingBalance] = useState(false)
+
+  const handleDeleteAccountClick = async () => {
+    if (isCheckingBalance) return
+    setIsCheckingBalance(true)
+    try {
+      const response = await authAPI.checkBalance("restaurant")
+      const payload = response?.data?.data ?? response?.data ?? {}
+      const balance = Number(payload.balance || 0)
+      const type = payload.type || "Restaurant Available Balance"
+      setDeleteCaptcha("")
+      if (balance > 0) {
+        setBalanceData({ balance, type })
+        setShowBalanceWarning(true)
+        return
+      }
+      setDeleteConfirmOpen(true)
+    } catch (error) {
+      toast.error(error?.response?.data?.message || "Could not verify your available balance")
+    } finally {
+      setIsCheckingBalance(false)
+    }
+  }
   
   const [isLoggingOut, setIsLoggingOut] = useState(false)
   const [logoutConfirmOpen, setLogoutConfirmOpen] = useState(false)
@@ -1018,10 +1040,8 @@ export default function ExploreMore() {
           initial={{ opacity: 0, y: 8 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.55, duration: 0.25 }}
-          onClick={() => { 
-            setDeleteCaptcha(""); 
-            setDeleteConfirmOpen(true);
-          }}
+          onClick={handleDeleteAccountClick}
+          disabled={isCheckingBalance}
           className="w-full flex items-center justify-between gap-3 rounded-2xl border border-gray-100 bg-white px-4 py-5 text-left shadow-sm hover:shadow-md transition-all active:scale-[0.99]"
         >
           <div className="flex items-center gap-3 min-w-0">
@@ -1869,7 +1889,7 @@ export default function ExploreMore() {
                 </div>
 
                 <p className="text-sm text-gray-500 mb-6 leading-relaxed">
-                  You still have money in your restaurant wallet. Do you want to continue deleting your account or go back and withdraw?
+                  You still have unsettled payout available to withdraw. Continue deleting your account or go to Payout to withdraw first.
                 </p>
 
                 <div className="flex flex-col gap-3">
@@ -1884,10 +1904,13 @@ export default function ExploreMore() {
                     Continue Anyway
                   </button>
                   <button
-                    onClick={() => setShowBalanceWarning(false)}
+                    onClick={() => {
+                      setShowBalanceWarning(false);
+                      navigate("/food/restaurant/hub-finance");
+                    }}
                     className="w-full h-12 rounded-xl bg-gradient-to-br from-[#B80B3D] to-[#66001D] text-white font-bold hover:bg-gradient-to-br from-[#B80B3D] to-[#66001D] transition-colors"
                   >
-                    Cancel & Withdraw
+                    Go to Payout
                   </button>
                 </div>
               </div>
