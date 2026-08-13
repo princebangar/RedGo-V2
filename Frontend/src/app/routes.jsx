@@ -1,6 +1,7 @@
 import React, { Suspense, lazy, useEffect } from 'react'
 import { Routes, Route, Navigate, useLocation, useNavigate } from 'react-router-dom'
 import { Loader2 } from 'lucide-react'
+import MaintenanceGate from '../modules/Food/components/MaintenanceGate'
 
 const NATIVE_LAST_ROUTE_KEY = 'native_last_route'
 
@@ -103,34 +104,36 @@ const AppRoutes = () => {
 
   return (
     <Suspense fallback={<AppShellSkeleton />}>
-      <Routes>
-        {/* Auth Module */}
-        <Route path="/user/auth/*" element={
-          <Suspense fallback={<AppShellSkeleton />}>
-            <AuthApp />
-          </Suspense>
-        } />
+      <MaintenanceGate>
+        <Routes>
+          {/* Auth Module */}
+          <Route path="/user/auth/*" element={
+            <Suspense fallback={<AppShellSkeleton />}>
+              <AuthApp />
+            </Suspense>
+          } />
 
-        {/* Food Module - Handle both /food and root / for the user app */}
-        <Route path="/food/*" element={<FoodAppWrapper />} />
+          {/* Food Module - Handle both /food and root / for the user app */}
+          <Route path="/food/*" element={<FoodAppWrapper />} />
 
-        {/* Global Admin Portal - AdminRouter handles its own protection for sub-routes */}
-        <Route path="/admin/*" element={
-          <Suspense fallback={<AppShellSkeleton />}>
-            <AdminRouter />
-          </Suspense>
-        } />
+          {/* Global Admin Portal - AdminRouter handles its own protection for sub-routes */}
+          <Route path="/admin/*" element={
+            <Suspense fallback={<AppShellSkeleton />}>
+              <AdminRouter />
+            </Suspense>
+          } />
 
-        {/* Landing Page ONLY on / */}
-        <Route path="/" element={
-          <Suspense fallback={<AppShellSkeleton />}>
-            <MasterLandingPage />
-          </Suspense>
-        } />
+          {/* Landing Page ONLY on / */}
+          <Route path="/" element={
+            <Suspense fallback={<AppShellSkeleton />}>
+              <MasterLandingPage />
+            </Suspense>
+          } />
 
-        {/* Handle root and other paths via FoodAppWrapper */}
-        <Route path="/*" element={<FoodAppWrapper />} />
-      </Routes>
+          {/* Handle root and other paths via FoodAppWrapper */}
+          <Route path="/*" element={<FoodAppWrapper />} />
+        </Routes>
+      </MaintenanceGate>
     </Suspense>
   )
 }

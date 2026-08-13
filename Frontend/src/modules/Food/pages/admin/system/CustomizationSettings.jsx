@@ -63,6 +63,13 @@ const CUSTOMIZATION_TOGGLES = [
       "Global toggle to enable/disable the automatic COD blocking feature (blocks COD for users with 4 consecutive COD cancellations).",
     defaultValue: true,
   },
+  {
+    key: "maintenance_mode_enabled",
+    label: "Under Maintenance",
+    description:
+      "When ON, user / restaurant / delivery apps show the Under Maintenance screen. Admin panel stays available. Default is OFF.",
+    defaultValue: false,
+  },
 ];
 
 const getAdminToastOffsetPx = () => {
@@ -165,6 +172,23 @@ export default function CustomizationSettings() {
 
     try {
       await adminAPI.updateCustomizationSettings({ [key]: checked });
+      if (key === "maintenance_mode_enabled") {
+        try {
+          const raw = localStorage.getItem("redgo_customization_settings");
+          const parsed = raw ? JSON.parse(raw) : {};
+          localStorage.setItem(
+            "redgo_customization_settings",
+            JSON.stringify({ ...parsed, maintenance_mode_enabled: checked === true })
+          );
+        } catch {
+          /* ignore */
+        }
+        window.dispatchEvent(
+          new CustomEvent("maintenanceModeChanged", {
+            detail: { enabled: checked === true },
+          })
+        );
+      }
     } catch (_error) {
       setSettings((prev) => ({ ...prev, [key]: prevValue }));
       toast.error("Failed to update setting", {
@@ -222,7 +246,7 @@ export default function CustomizationSettings() {
                     <Loader2 className="w-5 h-5 animate-spin text-neutral-400" />
                   ) : (
                     <Switch
-                      checked={settings[t.key] !== false}
+                      checked={settings[t.key] === true}
                       onCheckedChange={(checked) => handleToggle(t.key, checked)}
                       disabled={savingByKey[t.key] === true}
                       className="scale-90 data-[state=checked]:bg-[#16a34a] data-[state=unchecked]:bg-zinc-400 shadow-sm"

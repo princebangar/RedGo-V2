@@ -21,12 +21,21 @@ import { getPublicEnvController } from '../modules/food/landing/controllers/publ
 import webhookRoutes from '../core/payments/routes/webhook.routes.js'; // ✅ NEW
 import searchRoutes from '../modules/food/search/routes/search.routes.js';
 import diningBookingRoutes from '../modules/food/dining/routes/diningBooking.routes.js';
+import { maintenanceModeMiddleware } from '../modules/food/admin/middleware/maintenanceMode.middleware.js';
 
 const router = express.Router();
 
 router.get('/v1/health', (req, res) => {
     res.status(200).json({ status: 'UP', message: 'Server is healthy' });
 });
+
+// Public settings first so clients can detect / exit maintenance without auth
+router.get('/v1/food/public/customization-settings', systemConfigController.getCustomizationSettings);
+router.get('/v1/food/public/restaurant-settings', systemConfigController.getRestaurantSettings);
+router.get('/v1/food/admin/business-settings/public', businessSettingsController.getBusinessSettings);
+
+// Block user / restaurant / delivery APIs when maintenance is on (admin stays open)
+router.use(maintenanceModeMiddleware);
 
 // Food-prefixed auth routes (preferred)
 router.use('/v1/food/auth', authRoutes);
@@ -42,11 +51,6 @@ router.get('/v1/food/dining/categories/public', getPublicDiningCategories);
 router.get('/v1/food/dining/restaurants/public', getPublicDiningRestaurants);
 router.use('/v1/food/dining/bookings', diningBookingRoutes);
 router.use('/v1/uploads', uploadRoutes);
-
-// Mark business-settings/public as truly public (must be before protected admin block)
-router.get('/v1/food/admin/business-settings/public', businessSettingsController.getBusinessSettings);
-router.get('/v1/food/public/customization-settings', systemConfigController.getCustomizationSettings);
-router.get('/v1/food/public/restaurant-settings', systemConfigController.getRestaurantSettings);
 
 router.use('/v1/food/admin', authMiddleware, requireRoles('ADMIN', 'SUB_ADMIN'), restaurantAdminRoutes);
 router.use('/v1/food/user', authMiddleware, requireRoles('USER'), userRoutes);

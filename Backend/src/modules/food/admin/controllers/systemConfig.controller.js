@@ -1,5 +1,6 @@
 import { FoodSystemConfig } from '../models/systemConfig.model.js';
 import { ValidationError, NotFoundError } from '../../../../core/auth/errors.js';
+import { invalidateMaintenanceModeCache } from '../services/maintenanceMode.service.js';
 
 // Customization toggles live in FoodSystemConfig as individual keys.
 const CUSTOMIZATION_TOGGLES = [
@@ -42,6 +43,11 @@ const CUSTOMIZATION_TOGGLES = [
         key: 'cod_blocking_feature_enabled',
         defaultValue: true,
         description: 'Global toggle to enable/disable the automatic COD blocking feature (blocks COD for users with 4 consecutive COD cancellations)'
+    },
+    {
+        key: 'maintenance_mode_enabled',
+        defaultValue: false,
+        description: 'When enabled, user / restaurant / delivery apps show Under Maintenance (admin stays available)'
     }
 ];
 
@@ -105,6 +111,11 @@ export async function updateCustomizationSettings(req, res) {
             )
         )
     );
+
+    const maintenanceUpdate = updates.find((u) => u.key === 'maintenance_mode_enabled');
+    if (maintenanceUpdate) {
+        invalidateMaintenanceModeCache(maintenanceUpdate.value === true);
+    }
 
     const keys = getCustomizationAllowlist();
     const docs = await FoodSystemConfig.find({ key: { $in: keys } }).lean();
