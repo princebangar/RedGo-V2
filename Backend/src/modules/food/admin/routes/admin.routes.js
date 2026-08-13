@@ -13,6 +13,7 @@ import { getAdminPageController, upsertAdminPageController } from '../controller
 import * as systemConfigController from '../controllers/systemConfig.controller.js';
 import { upload } from '../../../../middleware/upload.js';
 import { enforceSubAdminPermissions } from '../middleware/subAdminPermission.middleware.js';
+import * as otherPriceController from '../controllers/otherPrice.controller.js';
 
 const router = express.Router();
 
@@ -120,6 +121,17 @@ router.get('/foods', adminController.getFoods);
 router.post('/foods', adminController.createFood);
 router.patch('/foods/:id', adminController.updateFood);
 router.delete('/foods/:id', adminController.deleteFood);
+
+// ----- Pricing Management (Other Price markup rules) -----
+router.get('/pricing/summary', otherPriceController.getPricingSummary);
+router.get('/pricing/rules', otherPriceController.listPricingRules);
+router.post('/pricing/rules/bulk-restaurant', otherPriceController.bulkUpsertRestaurantPricingRules);
+router.post('/pricing/rules/bulk-menu-item', otherPriceController.bulkUpsertMenuItemPricingRules);
+router.post('/pricing/rules', otherPriceController.upsertPricingRule);
+router.delete('/pricing/rules/:id', otherPriceController.deletePricingRule);
+router.post('/pricing/preview', otherPriceController.previewPricing);
+router.get('/pricing/audits', otherPriceController.listPricingAudits);
+
 // Food approval queue (pending items created by restaurants)
 router.get('/foods/pending-approvals', foodApprovalController.getPendingFoodApprovals);
 router.patch('/foods/:id/approve', foodApprovalController.approveFoodItemController);

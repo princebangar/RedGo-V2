@@ -409,12 +409,10 @@ export default function Cart() {
     } else if (razorpay_payment_id && razorpay_order_id && razorpay_signature) {
         const processRedirectPayment = async () => {
             const savedPayloadRaw = window.localStorage.getItem('pendingOrderPayload');
-            const savedSavingsRaw = window.localStorage.getItem('pendingOrderSavings');
             if (savedPayloadRaw) {
                 try {
                     setIsPlacingOrder(true);
                     const orderPayload = JSON.parse(savedPayloadRaw);
-                    const platformPricingSavings = savedSavingsRaw ? JSON.parse(savedSavingsRaw) : { totalSavings: 0, items: [], savingsPercentage: 0 };
                     
                     const createOrderPayload = {
                       ...orderPayload,
@@ -428,15 +426,7 @@ export default function Cart() {
                       const { order } = createResponse.data.data;
                       setPlacedOrderId(order._id || order.orderId);
                       setPlacedOrderObj(order);
-                      setOrderSuccessSavingsAmount(platformPricingSavings.totalSavings > 0 ? platformPricingSavings.totalSavings : 0);
-                      if (platformPricingSavings.totalSavings > 0) {
-                        setCongratssSavingsAmount(platformPricingSavings.totalSavings);
-                        setCongratssSavingsPercentage(platformPricingSavings.savingsPercentage);
-                        setCongratssSavingsItems(platformPricingSavings.items);
-                        setShowSavingsCongrats(true);
-                      } else {
-                        setShowOrderSuccess(true);
-                      }
+                      setShowOrderSuccess(true);
                       window.dispatchEvent(new CustomEvent('order-placed', { detail: { order } }));
                       clearCart();
                       setRestaurantNote("");
@@ -1188,7 +1178,8 @@ export default function Cart() {
         const resolvedCouponCode = appliedCoupon?.code || couponCode || undefined
 
         const requestBody = {
-          items,
+          useCart: true,
+          items: [],
           restaurantId: resolvedRestaurantId,
           deliveryAddress: orderType === "takeaway" ? undefined : (defaultAddress || undefined),
           couponCode: resolvedCouponCode,
@@ -1375,61 +1366,20 @@ export default function Cart() {
   const total = pricing?.total || (totalBeforeDiscount - discount)
   const savings = pricing?.savings ?? Math.max(0, totalBeforeDiscount - total)
   
-  // Calculate platform pricing comparison savings
+  // Platform compare-at savings removed — admin markup is charged via price/markupAmount.
   const platformPricingSavings = useMemo(() => {
-    let totalPlatformPrice = 0
-    let totalPlatformGst = 0
-    let totalFoodelloPrice = 0
-    let comparison = []
-    let hasAnyPlatformPrice = false
-
-    cart.forEach(item => {
-      debugLog('Cart item:', item.name, 'priceOnOtherPlatforms:', item.priceOnOtherPlatforms, 'price:', item.price)
-      if (item.priceOnOtherPlatforms && item.priceOnOtherPlatforms > 0) {
-        hasAnyPlatformPrice = true
-        const itemQuantity = item.quantity || 1
-        const platformPrice = (item.priceOnOtherPlatforms || 0) * itemQuantity
-        const platformGstRate = Number(item.otherPlatformGst || 0)
-        const platformGst = platformGstRate > 0
-          ? Math.round(platformPrice * (platformGstRate / 100))
-          : 0
-        const foodelloPrice = (item.price || 0) * itemQuantity
-        const itemSavings = Math.max(0, platformPrice + platformGst - foodelloPrice)
-
-        totalPlatformPrice += platformPrice
-        totalPlatformGst += platformGst
-        totalFoodelloPrice += foodelloPrice
-
-        comparison.push({
-          name: item.name,
-          foodelloPrice: (item.price || 0),
-          platformPrice: item.priceOnOtherPlatforms,
-          platformGstRate,
-          platformGst,
-          savings: itemSavings,
-          quantity: itemQuantity
-        })
-      }
-    })
-
-    const totalPlatformPriceWithGst = totalPlatformPrice + totalPlatformGst
-    const totalSavings = Math.max(0, totalPlatformPriceWithGst - total)
-    const savingsPercentage = totalPlatformPriceWithGst > 0
-      ? ((totalSavings / totalPlatformPriceWithGst) * 100).toFixed(1)
-      : 0
-
-    debugLog('Platform pricing savings:', { hasPlatformPricing: hasAnyPlatformPrice, totalSavings, savingsPercentage })
-
     return {
-      hasPlatformPricing: hasAnyPlatformPrice,
-      totalPlatformPrice,
-      totalPlatformGst,
-      totalPlatformPriceWithGst,
-      totalSavings,
-      savingsPercentage,
-      items: comparison
+      hasPlatformPricing: false,
+      totalPlatformPrice: 0,
+      totalPlatformGst: 0,
+      totalPlatformPriceWithGst: 0,
+      totalFoodelloPrice: 0,
+      totalSavings: 0,
+      savingsPercentage: 0,
+      comparison: [],
+      items: [],
     }
-  }, [cart, total])
+  }, [])
   const selectedPaymentLabel =
     selectedPaymentMethod === "wallet"
       ? "Wallet"
@@ -1736,7 +1686,8 @@ export default function Cart() {
         }))
 
         const response = await orderAPI.calculateOrder({
-          items,
+          useCart: true,
+          items: [],
           restaurantId: restaurantData?.restaurantId || restaurantData?._id || restaurantId || null,
           deliveryAddress: orderType === "takeaway" ? undefined : defaultAddress,
           couponCode: coupon.code,
@@ -1833,7 +1784,8 @@ export default function Cart() {
       }))
 
       const response = await orderAPI.calculateOrder({
-        items,
+        useCart: true,
+        items: [],
         restaurantId: restaurantData?.restaurantId || restaurantData?._id || restaurantId || null,
         deliveryAddress: orderType === "takeaway" ? undefined : defaultAddress,
         couponCode: inputCode,
@@ -1894,7 +1846,8 @@ export default function Cart() {
         }))
 
         const response = await orderAPI.calculateOrder({
-          items,
+          useCart: true,
+          items: [],
           restaurantId: restaurantData?.restaurantId || restaurantData?._id || restaurantId || null,
           deliveryAddress: orderType === "takeaway" ? undefined : defaultAddress,
           couponCode: undefined,
@@ -2155,7 +2108,9 @@ export default function Cart() {
       }
 
       const orderPayload = {
-        items: orderItems,
+        useCart: true,
+        // Server loads items from DB food cart; do not trust client cart lines/prices.
+        items: [],
         address: {
           ...defaultAddress,
           phone: recipientPhone || defaultAddress?.phone || "",
@@ -2166,7 +2121,7 @@ export default function Cart() {
         customerPhone: recipientPhone || defaultAddress?.phone || "",
         restaurantId: finalRestaurantId,
         restaurantName: finalRestaurantName || undefined,
-        pricing: orderPricing,
+        couponCode: appliedCoupon?.code || couponCode || undefined,
         note: "",
         restaurantNote: restaurantNote || "",
         sendCutlery: sendCutlery !== false,
@@ -2201,15 +2156,7 @@ export default function Cart() {
         toast.success("Order placed with Cash on Delivery")
         setPlacedOrderId(order?._id || order?.orderId || order?.id || null)
         setPlacedOrderObj(order)
-        setOrderSuccessSavingsAmount(platformPricingSavings.totalSavings > 0 ? platformPricingSavings.totalSavings : 0)
-        if (platformPricingSavings.totalSavings > 0) {
-          setCongratssSavingsAmount(platformPricingSavings.totalSavings)
-          setCongratssSavingsPercentage(platformPricingSavings.savingsPercentage)
-          setCongratssSavingsItems(platformPricingSavings.items)
-          setShowSavingsCongrats(true)
-        } else {
-          setShowOrderSuccess(true)
-        }
+        setShowOrderSuccess(true)
         window.dispatchEvent(new CustomEvent('order-placed', { detail: { order } }))
         clearCart()
         setRestaurantNote("")
@@ -2232,15 +2179,7 @@ export default function Cart() {
         toast.success("Order placed with Wallet payment")
         setPlacedOrderId(order?._id || order?.orderId || order?.id || null)
         setPlacedOrderObj(order)
-        setOrderSuccessSavingsAmount(platformPricingSavings.totalSavings > 0 ? platformPricingSavings.totalSavings : 0)
-        if (platformPricingSavings.totalSavings > 0) {
-          setCongratssSavingsAmount(platformPricingSavings.totalSavings)
-          setCongratssSavingsPercentage(platformPricingSavings.savingsPercentage)
-          setCongratssSavingsItems(platformPricingSavings.items)
-          setShowSavingsCongrats(true)
-        } else {
-          setShowOrderSuccess(true)
-        }
+        setShowOrderSuccess(true)
         window.dispatchEvent(new CustomEvent('order-placed', { detail: { order } }))
         clearCart()
         setRestaurantNote("")
@@ -2299,7 +2238,7 @@ export default function Cart() {
       // Store payload in localStorage for redirect-based checkout (PhonePe intent fix)
       try {
         window.localStorage.setItem('pendingOrderPayload', JSON.stringify(orderPayload))
-        window.localStorage.setItem('pendingOrderSavings', JSON.stringify(platformPricingSavings))
+        window.localStorage.removeItem('pendingOrderSavings')
       } catch (err) {
         debugError("Failed to save pending order payload to localStorage", err)
       }
@@ -2350,15 +2289,7 @@ export default function Cart() {
               const { order } = createResponse.data.data
               setPlacedOrderId(order._id || order.orderId)
               setPlacedOrderObj(order)
-              setOrderSuccessSavingsAmount(platformPricingSavings.totalSavings > 0 ? platformPricingSavings.totalSavings : 0)
-              if (platformPricingSavings.totalSavings > 0) {
-                setCongratssSavingsAmount(platformPricingSavings.totalSavings)
-                setCongratssSavingsPercentage(platformPricingSavings.savingsPercentage)
-                setCongratssSavingsItems(platformPricingSavings.items)
-                setShowSavingsCongrats(true)
-              } else {
-                setShowOrderSuccess(true)
-              }
+              setShowOrderSuccess(true)
               window.dispatchEvent(new CustomEvent('order-placed', { detail: { order } }))
               clearCart()
               setRestaurantNote("")
@@ -3303,45 +3234,6 @@ export default function Cart() {
                        </div>
                     )}
 
-                    {/* Platform Pricing Comparison - Bottom */}
-                    {platformPricingSavings.hasPlatformPricing && (
-                      <div className="rounded-lg bg-gradient-to-r from-[#DC2626]/5 via-[#DC2626]/12 to-[#DC2626]/5 dark:from-[#DC2626]/10 dark:via-[#DC2626]/15 dark:to-[#DC2626]/10 border border-[#DC2626]/20 p-3 space-y-2 mt-2 shadow-sm animate-pulse">
-                        <div className="flex items-center justify-between text-sm">
-                          <div className="flex items-center gap-2">
-                            <Sparkles className="h-4 w-4 text-[#DC2626]" />
-                            <span className="font-semibold text-[#DC2626]">Other platform total</span>
-                          </div>
-                          <span className="text-gray-700 dark:text-gray-300 font-medium">{RUPEE_SYMBOL}{platformPricingSavings.totalPlatformPrice.toFixed(2)}</span>
-                        </div>
-                        <div className="flex items-center justify-between text-xs text-gray-600 dark:text-gray-400">
-                          <span>GST on other platforms</span>
-                          <span className="font-medium">{RUPEE_SYMBOL}{platformPricingSavings.totalPlatformGst.toFixed(2)}</span>
-                        </div>
-                        <div className="flex items-center justify-between text-sm font-semibold text-gray-800 dark:text-gray-200">
-                          <span>Other platform total (incl. GST)</span>
-                          <span>{RUPEE_SYMBOL}{platformPricingSavings.totalPlatformPriceWithGst.toFixed(2)}</span>
-                        </div>
-                        {platformPricingSavings.items.length > 0 && (
-                          <div className="text-xs text-gray-600 dark:text-gray-400 space-y-1 border-t border-[#DC2626]/15 pt-2">
-                            {platformPricingSavings.items.slice(0, 2).map((item, idx) => (
-                              <div key={idx} className="flex justify-between">
-                                <span>{item.name}{item.variantName ? ` (${item.variantName})` : ''} x{item.quantity}</span>
-                                <span className="font-medium text-[#DC2626]">-{RUPEE_SYMBOL}{item.savings.toFixed(0)}</span>
-                              </div>
-                            ))}
-                            {platformPricingSavings.items.length > 2 && (
-                              <div className="text-center font-semibold text-[#DC2626]">
-                                +{platformPricingSavings.items.length - 2} more items
-                              </div>
-                            )}
-                          </div>
-                        )}
-                        <div className="flex items-center justify-between text-xs font-bold text-white bg-[#DC2626] rounded px-2 py-1.5 -mx-3 -mb-3">
-                          <span>You save approx</span>
-                          <span>{RUPEE_SYMBOL}{platformPricingSavings.totalSavings.toFixed(0)} ({platformPricingSavings.savingsPercentage}%)</span>
-                        </div>
-                      </div>
-                    )}
                   </div>
                 )}
               </div>
@@ -3525,74 +3417,7 @@ export default function Cart() {
             </div>
           )}
 
-          {/* Savings Congratulations Page */}
-          {showSavingsCongrats && (
-            <div
-              className="fixed inset-0 z-[70] bg-gradient-to-br from-green-50 to-emerald-50 dark:from-[#0a1a0a] dark:to-[#0a2a0a] flex flex-col items-center justify-center h-screen w-screen overflow-hidden"
-              style={{ animation: 'fadeIn 0.3s ease-out' }}
-            >
-              {/* Confetti Animation */}
-              <div className="absolute inset-0 overflow-hidden pointer-events-none">
-                {[...Array(40)].map((_, i) => (
-                  <div
-                    key={i}
-                    className="absolute w-2 h-2 rounded-full"
-                    style={{
-                      left: `${Math.random() * 100}%`,
-                      top: `-10%`,
-                      backgroundColor: ['#22c55e', '#10b981', '#34d399', '#6ee7b7'][Math.floor(Math.random() * 4)],
-                      animation: `confettiFall ${2.5 + Math.random() * 1.5}s linear ${Math.random() * 1}s infinite`,
-                      transform: `rotate(${Math.random() * 360}deg)`,
-                    }}
-                  />
-                ))}
-              </div>
-
-              {/* Content */}
-              <div className="relative z-10 flex flex-col items-center px-6 py-12">
-                {/* Trophy/Congrats Icon */}
-                <div
-                  className="mb-8"
-                  style={{ animation: 'bounce 0.8s ease-in-out infinite' }}
-                >
-                  <div className="w-24 h-24 bg-gradient-to-br from-yellow-400 to-yellow-500 rounded-full flex items-center justify-center shadow-2xl shadow-yellow-300/60 dark:shadow-yellow-900/40">
-                    <span className="text-5xl">🎉</span>
-                  </div>
-                </div>
-
-                {/* Congratulations Text */}
-                <h1 className="text-4xl md:text-5xl font-bold text-gray-900 dark:text-white mb-4 text-center">
-                  Congratulations!
-                </h1>
-
-                {/* Savings Amount */}
-                <div className="text-center">
-                  <p className="text-gray-600 dark:text-gray-300 text-lg mb-2">You saved approx</p>
-                  <div className="text-5xl md:text-6xl font-bold text-green-600 dark:text-green-400 mb-4">
-                    {RUPEE_SYMBOL}{congratsSavingsAmount.toFixed(0)}
-                  </div>
-                  <p className="text-gray-600 dark:text-gray-400 text-base">
-                    {congratsSavingsPercentage}% cheaper than other platforms
-                  </p>
-                </div>
-
-                {/* Items breakdown */}
-                {congratsSavingsItems.length > 0 && (
-                  <div className="mt-8 max-w-sm bg-white dark:bg-[#1a1a1a] rounded-lg p-4 border border-green-200 dark:border-green-900/50">
-                    <p className="text-sm font-semibold text-gray-700 dark:text-gray-300 mb-3 text-center">Savings on your items:</p>
-                    <div className="space-y-2">
-                      {congratsSavingsItems.slice(0, 3).map((item, idx) => (
-                        <div key={idx} className="flex justify-between text-sm">
-                          <span className="text-gray-600 dark:text-gray-400">{item.name}{item.variantName ? ` (${item.variantName})` : ''}</span>
-                          <span className="font-semibold text-green-600 dark:text-green-400">-{RUPEE_SYMBOL}{item.savings.toFixed(0)}</span>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                )}
-              </div>
-            </div>
-          )}
+          {/* Savings Congratulations Page removed (other-platform compare-at discontinued) */}
 
           {/* Order Success Celebration Page */}
           {showOrderSuccess && (
@@ -3707,38 +3532,7 @@ export default function Cart() {
                       ? "Your delicious food is being prepared for pickup"
                       : "Your delicious food is on its way"}
                   </p>
-                  {orderSuccessSavingsAmount > 0 && (
-                    <p className="mt-2 text-sm text-[#DC2626] dark:text-[#a65d8a]">
-                      You save approx {RUPEE_SYMBOL}{orderSuccessSavingsAmount.toFixed(0)} on this order
-                    </p>
-                  )}
                 </div>
-
-                {/* Platform Pricing Savings Celebration */}
-                {platformPricingSavings.hasPlatformPricing && platformPricingSavings.totalSavings > 0 && (
-                  <motion.div
-                    className="mt-8 w-full max-w-sm bg-gradient-to-br from-[#DC2626]/10 to-[#DC2626]/5 dark:from-[#DC2626]/20 dark:to-[#DC2626]/10 border border-[#DC2626]/30 rounded-2xl p-4"
-                    initial={{ opacity: 0, scale: 0.9 }}
-                    animate={{ opacity: 1, scale: 1 }}
-                    transition={{ duration: 0.6, delay: 1.0 }}
-                  >
-                    <div className="flex items-center justify-center gap-2 mb-3">
-                      <Sparkles className="h-5 w-5 text-[#DC2626]" />
-                      <span className="font-bold text-[#DC2626]">You Saved on this Order</span>
-                    </div>
-                    <div className="text-center space-y-1">
-                      <div className="text-4xl font-black text-[#DC2626]">
-                        {RUPEE_SYMBOL}{platformPricingSavings.totalSavings.toFixed(0)}
-                      </div>
-                      <p className="text-sm text-gray-600 dark:text-gray-400">
-                        {platformPricingSavings.savingsPercentage}% cheaper than other platforms
-                      </p>
-                      <p className="text-xs text-gray-500 dark:text-gray-500 mt-2">
-                        By ordering with us instead of Swiggy, Zomato, & others
-                      </p>
-                    </div>
-                  </motion.div>
-                )}
 
                 {/* Action Button */}
                  <button

@@ -34,6 +34,13 @@ import { useRestaurantNotifications } from "@food/hooks/useRestaurantNotificatio
 import { jsPDF } from "jspdf";
 import autoTable from "jspdf-autotable";
 import ResendNotificationButton from "@food/components/restaurant/ResendNotificationButton";
+import {
+  getRestaurantItemLineTotal,
+  getRestaurantOrderTotal,
+  getMenuItemLevelMarkupTotal,
+  getOrderMarkupTotal,
+  getCustomerFacingOrderTotal,
+} from "@food/utils/restaurantOrderPricing";
 const debugLog = (...args) => { };
 const debugWarn = (...args) => { };
 const debugError = (...args) => { };
@@ -1570,27 +1577,9 @@ function OrdersMainInner() {
     );
   };
 
-  const getPopupOrderTotal = (orderLike) => {
-    if (!orderLike) return 0;
+  const getPopupOrderTotal = getRestaurantOrderTotal;
 
-    const directTotal = Number(orderLike.total);
-    if (Number.isFinite(directTotal) && directTotal > 0) return directTotal;
-
-    const pricingTotal = Number(orderLike.pricing?.total);
-    if (Number.isFinite(pricingTotal) && pricingTotal > 0) return pricingTotal;
-
-    const amountDue = Number(orderLike.payment?.amountDue);
-    if (Number.isFinite(amountDue) && amountDue > 0) return amountDue;
-
-    const items = Array.isArray(orderLike.items) ? orderLike.items : [];
-    const itemsTotal = items.reduce((sum, item) => {
-      const price = Number(item?.price || 0);
-      const qty = Number(item?.quantity || 0);
-      return sum + (Number.isFinite(price) ? price : 0) * (Number.isFinite(qty) ? qty : 0);
-    }, 0);
-
-    return Number.isFinite(itemsTotal) ? itemsTotal : 0;
-  };
+  const getRestaurantItemAmount = getRestaurantItemLineTotal;
 
   const lastOrderToastRef = useRef({ key: "", at: 0 });
 
@@ -3328,10 +3317,24 @@ function OrdersMainInner() {
                             </div>
                           </div>
 
-                          {/* Item Price */}
-                          <span className="text-sm sm:text-base font-black text-gray-900 shrink-0 ml-2 bg-gray-100/90 border border-gray-200 px-2.5 py-1 rounded-lg">
-                            ₹{item.price * item.quantity}
-                          </span>
+                          {/* Item Price: base + menu-item admin markup (if any) */}
+                          <div className="shrink-0 ml-2 text-right">
+                            <span className="inline-block text-sm sm:text-base font-black text-gray-900 bg-gray-100/90 border border-gray-200 px-2.5 py-1 rounded-lg">
+                              ₹{getRestaurantItemAmount(item)}
+                            </span>
+                            {(() => {
+                              const itemMarkup = getMenuItemLevelMarkupTotal(item);
+                              if (!(itemMarkup > 0)) return null;
+                              const itemBase = getRestaurantItemAmount(item);
+                              const itemCustomer = Math.round((itemBase + itemMarkup) * 100) / 100;
+                              return (
+                                <div className="mt-1 text-[10px] sm:text-xs font-semibold text-slate-600 leading-tight">
+                                  <div className="text-rose-700">+ ₹{itemMarkup} admin</div>
+                                  <div className="text-gray-900 font-bold">Total ₹{itemCustomer}</div>
+                                </div>
+                              );
+                            })()}
+                          </div>
                         </div>
                       );
                     };
@@ -3390,28 +3393,53 @@ function OrdersMainInner() {
                     );
                   })()}
 
-                  {/* Total bill */}
-                  <div className="mb-4 flex items-center justify-between py-3 border-y border-gray-200">
-                    <div className="flex items-center gap-2">
-                      <svg
-                        className="w-5 h-5 text-gray-700"
-                        fill="none"
-                        stroke="currentColor"
-                        viewBox="0 0 24 24">
-                        <path
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                          strokeWidth={2}
-                          d="M9 14l6-6m-5.5.5h.01m4.99 5h.01M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16l3.5-2 3.5 2 3.5-2 3.5 2z"
-                        />
-                      </svg>
-                      <span className="text-sm font-semibold text-gray-900">
-                        Total bill
-                      </span>
+                  {/* Total bill — restaurant base + admin markup breakdown */}
+                  <div className="mb-4 py-3 border-y border-gray-200">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <svg
+                          className="w-5 h-5 text-gray-700"
+                          fill="none"
+                          stroke="currentColor"
+                          viewBox="0 0 24 24">
+                          <path
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                            strokeWidth={2}
+                            d="M9 14l6-6m-5.5.5h.01m4.99 5h.01M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16l3.5-2 3.5 2 3.5-2 3.5 2z"
+                          />
+                        </svg>
+                        <span className="text-sm font-semibold text-gray-900">
+                          Total bill
+                        </span>
+                      </div>
+                      {(() => {
+                        const orderForBill = popupOrder || newOrder;
+                        const restaurantBill = getPopupOrderTotal(orderForBill);
+                        const adminMarkup = getOrderMarkupTotal(orderForBill);
+                        const customerBill = getCustomerFacingOrderTotal(orderForBill);
+                        if (adminMarkup > 0) {
+                          return (
+                            <div className="text-right">
+                              <div className="text-base font-bold text-gray-900">
+                                ₹{restaurantBill}{" "}
+                                <span className="text-rose-700 font-semibold">
+                                  + ₹{adminMarkup}
+                                </span>
+                              </div>
+                              <div className="text-xs font-semibold text-slate-600">
+                                Customer total ₹{customerBill}
+                              </div>
+                            </div>
+                          );
+                        }
+                        return (
+                          <span className="text-base font-bold text-gray-900">
+                            ₹{restaurantBill}
+                          </span>
+                        );
+                      })()}
                     </div>
-                    <span className="text-base font-bold text-gray-900">
-                      ₹{getPopupOrderTotal(popupOrder || newOrder)}
-                    </span>
                   </div>
 
                   {/* Payment method: treat cash/cod (any case) as COD */}

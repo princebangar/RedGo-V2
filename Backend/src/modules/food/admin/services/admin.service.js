@@ -635,6 +635,11 @@ export async function getDashboardStats(query = {}) {
                             $cond: [DELIVERED_ORDER_STATUS_EXPR, DASHBOARD_PLATFORM_FEE_EXPR, 0] 
                         } 
                     },
+                    markupTotal: {
+                        $sum: {
+                            $cond: [DELIVERED_ORDER_STATUS_EXPR, { $ifNull: ['$pricing.markupTotal', 0] }, 0]
+                        }
+                    },
                     deliveryFeeTotal: { 
                         $sum: { 
                             $cond: [DELIVERED_ORDER_STATUS_EXPR, DASHBOARD_DELIVERY_FEE_EXPR, 0] 
@@ -699,7 +704,7 @@ export async function getDashboardStats(query = {}) {
                             ]
                         }
                     },
-                    // Same basis as Transaction Report: subtotal + packaging − commission
+                    // Restaurant earning uses restaurant base (before admin markup)
                     restaurantEarningTotal: {
                         $sum: {
                             $cond: [
@@ -711,7 +716,12 @@ export async function getDashboardStats(query = {}) {
                                             $subtract: [
                                                 {
                                                     $add: [
-                                                        { $ifNull: ['$pricing.subtotal', 0] },
+                                                        {
+                                                            $ifNull: [
+                                                                '$pricing.baseSubtotal',
+                                                                { $ifNull: ['$pricing.subtotal', 0] },
+                                                            ],
+                                                        },
                                                         { $ifNull: ['$pricing.packagingFee', 0] }
                                                     ]
                                                 },
@@ -920,14 +930,15 @@ export async function getDashboardStats(query = {}) {
 
     const commissionTotal = Number(totals.commissionTotal || 0);
     const platformFeeTotal = Number(totals.platformFeeTotal || 0);
+    const markupTotal = Number(totals.markupTotal || 0);
     const deliveryFeeTotal = Number(totals.deliveryFeeTotal || 0);
     const riderEarningTotal = Number(totals.riderEarningTotal || 0);
     const gstTotal = Number(totals.gstTotal || 0);
     // Delivery fee kept by platform after paying riders
     const deliveryProfit = Math.max(0, deliveryFeeTotal - riderEarningTotal);
-    // Platform Total = Comm + Platform fee + Delivery net + GST (matches dashboard helper)
+    // Platform Total = Comm + Platform fee + Admin markup + Delivery net + GST
     const totalAdminEarnings =
-        Math.round((commissionTotal + platformFeeTotal + deliveryProfit + gstTotal) * 100) / 100;
+        Math.round((commissionTotal + platformFeeTotal + markupTotal + deliveryProfit + gstTotal) * 100) / 100;
 
     return {
         orders: {
@@ -952,6 +963,7 @@ export async function getDashboardStats(query = {}) {
         },
         commission: { total: commissionTotal },
         platformFee: { total: platformFeeTotal },
+        markup: { total: markupTotal },
         deliveryFee: { total: deliveryFeeTotal },
         riderEarnings: { total: riderEarningTotal },
         deliveryBoyEarning: Number(totals.deliveryBoyEarningTotal || 0),
@@ -1186,8 +1198,11 @@ export async function getTransactionReport(query = {}) {
             id: order._id,
             orderId: order.orderId || 'N/A',
             restaurant: order.restaurantId?.restaurantName || 'N/A',
+            restaurantId: order.restaurantId?._id || order.restaurantId || null,
             customerName: order.userId?.name || order.customerName || 'Guest',
             totalItemAmount: subtotal,
+            restaurantBaseAmount: toNum(pricing.baseSubtotal ?? Math.max(0, subtotal - toNum(pricing.markupTotal))),
+            adminMarkup: toNum(pricing.markupTotal),
             itemDiscount: discount,
             couponDiscount: discount,
             couponCode: pricing.couponCode || order.couponCode || null,
@@ -1208,10 +1223,12 @@ export async function getTransactionReport(query = {}) {
     let adminEarning = 0;
     let adminCommission = 0;
     let adminPlatformFee = 0;
+    let adminMarkup = 0;
     let adminDeliveryNet = 0;
     let adminGst = 0;
     let restaurantEarning = 0;
     let deliverymanEarning = 0;
+    const markupByRestaurantMap = new Map();
 
     for (const order of summaryOrders) {
         const pricing = order.pricing || {};
@@ -1222,20 +1239,36 @@ export async function getTransactionReport(query = {}) {
         const tax = toNum(pricing.tax);
         const rider = toNum(order.riderEarning);
         const subtotal = toNum(pricing.subtotal);
+        const baseSubtotal = toNum(pricing.baseSubtotal ?? pricing.subtotal);
+        const markupTotal = toNum(pricing.markupTotal);
         const packaging = toNum(pricing.packagingFee);
         const os = String(order.orderStatus || '').toLowerCase();
         const pay = String(order?.payment?.status || '').toLowerCase();
         const deliveryNet = Math.max(0, deliveryFee - rider);
+        const restaurantName = order.restaurantId?.restaurantName || 'Unknown';
+        const restaurantKey = String(order.restaurantId?._id || order.restaurantId || restaurantName);
 
         if (os === 'delivered') {
             completedTransaction += orderTotal;
             // Align with dashboard Platform Total components
-            adminEarning += commission + platformFee + deliveryNet + tax;
+            adminEarning += commission + platformFee + markupTotal + deliveryNet + tax;
             adminCommission += commission;
             adminPlatformFee += platformFee;
+            adminMarkup += markupTotal;
             adminDeliveryNet += deliveryNet;
             adminGst += tax;
-            restaurantEarning += Math.max(0, subtotal + packaging - commission);
+            restaurantEarning += Math.max(0, baseSubtotal + packaging - commission);
+            if (markupTotal > 0) {
+                const prev = markupByRestaurantMap.get(restaurantKey) || {
+                    restaurantId: restaurantKey,
+                    restaurant: restaurantName,
+                    adminMarkup: 0,
+                    orders: 0,
+                };
+                prev.adminMarkup += markupTotal;
+                prev.orders += 1;
+                markupByRestaurantMap.set(restaurantKey, prev);
+            }
             // Same as Delivery Earning page: delivered + assigned partner + riderEarning
             if (order?.dispatch?.deliveryPartnerId) {
                 deliverymanEarning += rider;
@@ -1265,9 +1298,17 @@ export async function getTransactionReport(query = {}) {
             platformTotalBreakdown: {
                 commission: Math.round(adminCommission * 100) / 100,
                 platformFee: Math.round(adminPlatformFee * 100) / 100,
+                markup: Math.round(adminMarkup * 100) / 100,
                 deliveryNet: Math.round(adminDeliveryNet * 100) / 100,
                 gst: Math.round(adminGst * 100) / 100,
             },
+            adminMarkupTotal: Math.round(adminMarkup * 100) / 100,
+            markupByRestaurant: [...markupByRestaurantMap.values()]
+                .map((row) => ({
+                    ...row,
+                    adminMarkup: Math.round(row.adminMarkup * 100) / 100,
+                }))
+                .sort((a, b) => b.adminMarkup - a.adminMarkup),
             restaurantEarning: Math.round(restaurantEarning * 100) / 100,
             deliverymanEarning: Math.round(deliverymanEarning * 100) / 100,
         },
@@ -2851,6 +2892,8 @@ function posDeliveredOrderMoneyBreakdown(order) {
     };
 
     const subtotal = toNum(pricing.subtotal);
+    const baseSubtotal = toNum(pricing.baseSubtotal ?? pricing.subtotal);
+    const markupTotal = toNum(pricing.markupTotal);
     const packagingFee = toNum(pricing.packagingFee);
     const deliveryFee = toNum(pricing.deliveryFee);
     const tax = toNum(pricing.tax);
@@ -2864,11 +2907,13 @@ function posDeliveredOrderMoneyBreakdown(order) {
             : Math.max(0, total - subtotal - packagingFee - deliveryFee - tax + discount);
     const rider = toNum(order?.riderEarning);
     const riderShare = order?.dispatch?.deliveryPartnerId ? rider : 0;
-    const restaurantShare = Math.max(0, subtotal + packagingFee - commission);
-    const platformNetProfit = Math.max(0, platformFee + deliveryFee + commission - riderShare);
+    const restaurantShare = Math.max(0, baseSubtotal + packagingFee - commission);
+    const platformNetProfit = Math.max(0, platformFee + deliveryFee + commission + markupTotal - riderShare);
 
     return {
         subtotal,
+        baseSubtotal,
+        markupTotal,
         packagingFee,
         deliveryFee,
         tax,

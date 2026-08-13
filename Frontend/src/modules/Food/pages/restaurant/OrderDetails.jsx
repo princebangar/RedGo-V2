@@ -19,6 +19,11 @@ import {
   FileText,
 } from "lucide-react"
 import ResendNotificationButton from "@food/components/restaurant/ResendNotificationButton"
+import {
+  getRestaurantItemLineTotal,
+  getRestaurantOrderTotal,
+  resolveRestaurantItemUnitPrice,
+} from "@food/utils/restaurantOrderPricing"
 import dishFallbackImage from "@food/assets/dish_fallback.webp"
 const debugLog = (...args) => {}
 const debugWarn = (...args) => {}
@@ -90,15 +95,15 @@ export default function OrderDetails() {
           const orderStatusRaw = String(order.status || order.orderStatus || "").toLowerCase()
           const pricing = order.pricing || {}
           const computedSubtotal = Array.isArray(order.items)
-            ? order.items.reduce((sum, item) => {
-                const price = Number(item?.price || 0)
-                const qty = Number(item?.quantity || 1)
-                return sum + (Number.isFinite(price) ? price : 0) * (Number.isFinite(qty) ? qty : 1)
-              }, 0)
+            ? order.items.reduce(
+                (sum, item) => sum + getRestaurantItemLineTotal(item),
+                0,
+              )
             : 0
 
           const itemSubtotal =
             firstNumber(
+              pricing.baseSubtotal,
               pricing.subtotal,
               pricing.itemsTotal,
               pricing.itemSubtotal,
@@ -124,21 +129,16 @@ export default function OrderDetails() {
           const total =
             firstNumber(
               pricing.total,
-              order.payment?.amountDue,
               order.totalAmount,
               order.total,
               order.amount
             ) ??
             Math.max(
               0,
-              itemSubtotal +
-                taxes +
-                packagingFee +
-                deliveryFee +
-                platformFee -
-                discount
+              itemSubtotal + packagingFee
             )
-          const paidAmount = firstNumber(order.payment?.amountDue, order.payment?.amount, total) ?? total
+          // Restaurant view: never show customer payment-due as their bill
+          const paidAmount = total
 
           const addressParts = [
             order.address?.street,
@@ -234,9 +234,10 @@ export default function OrderDetails() {
             items: order.items?.map(item => ({
               name: item.name,
               quantity: item.quantity,
-              price: item.price,
+              price: resolveRestaurantItemUnitPrice(item),
               image: item.image,
-              type: item.isVeg || item.foodType === 'Veg' ? 'Veg' : 'Non-Veg'
+              type: item.isVeg || item.foodType === 'Veg' ? 'Veg' : 'Non-Veg',
+              variantName: item.variantName || ''
             })) || [],
             billing: {
               itemSubtotal,

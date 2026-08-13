@@ -28,6 +28,7 @@ export const adminSidebarMenu = [
         subItems: [
           { label: "Restaurant Foods List", path: "/admin/food/foods" },
           { label: "Restaurant Addons List", path: "/admin/food/addons" },
+          { label: "Pricing Management", path: "/admin/food/pricing" },
         ],
       },
       {

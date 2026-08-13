@@ -32,6 +32,7 @@ import { getFirebaseDB } from '../../../../config/firebase.js';
 import * as foodTransactionService from './foodTransaction.service.js';
 import * as userWalletService from '../../user/services/userWallet.service.js';
 import { calculateOrderPricing } from './order-pricing.service.js';
+import { clearFoodCart } from '../../user/services/foodCart.service.js';
 import * as dispatchService from './order-dispatch.service.js';
 import * as deliveryService from './order-delivery.service.js';
 import * as paymentService from './order-payment.service.js';
@@ -41,6 +42,7 @@ import {
   assertRestaurantDeliversToZone,
   generateFourDigitDeliveryOtp,
   sanitizeOrderForExternal,
+  toRestaurantFacingOrder,
   emitDeliveryDropOtpToUser,
   notifyOwnersSafely,
   notifyOwnerSafely,
@@ -65,9 +67,9 @@ export async function updateDispatchSettings(dispatchMode, adminId) {
   return dispatchService.updateDispatchSettings(dispatchMode, adminId);
 }
 
-// ----- Calculate (validation + return pricing from payload) -----
+// ----- Calculate (server-authoritative prices from DB cart / FoodItem) -----
 export async function calculateOrder(userId, dto) {
-  return calculateOrderPricing(userId, dto);
+  return calculateOrderPricing(userId, { ...dto, useCart: dto?.useCart !== false });
 }
 
 // Store for pending razorpay online payment intents (allows Webhook to auto-create order if user phone drops network post-payment)
@@ -93,7 +95,15 @@ export async function createOrderFromPendingIntent(rzOrderId, rzPaymentId, rzSig
 
 // ----- Initiate online payment (Razorpay) -----
 export async function initiateOnlinePayment(userId, dto) {
-  const restaurant = await FoodRestaurant.findById(dto.restaurantId)
+  // SECURITY: Razorpay amount must come from server-calculated pricing, never client totals.
+  const priced = await calculateOrderPricing(userId, {
+    ...dto,
+    useCart: dto?.useCart !== false,
+    couponCode: dto?.couponCode || dto?.pricing?.couponCode || "",
+  });
+  const restaurantId = priced.restaurantId || dto.restaurantId;
+
+  const restaurant = await FoodRestaurant.findById(restaurantId)
     .select("status restaurantName zoneId location isAcceptingOrders takeawaySettings addressLine1 addressLine2 area city state pincode")
     .lean();
   if (!restaurant) throw new ValidationError("Restaurant not found");
@@ -104,11 +114,11 @@ export async function initiateOnlinePayment(userId, dto) {
     const { assertRestaurantOpenForOrders } = await import(
       "../../restaurant/services/outletTimings.service.js"
     );
-    await assertRestaurantOpenForOrders(dto.restaurantId);
+    await assertRestaurantOpenForOrders(restaurantId);
   } catch (timingError) {
     if (timingError instanceof ValidationError) throw timingError;
     logger.warn(
-      `[OrderInitiate] Outlet timing check skipped for ${dto.restaurantId}: ${timingError?.message || timingError}`
+      "[OrderInitiate] Outlet timing check skipped for " + restaurantId + ": " + (timingError?.message || timingError)
     );
   }
 
@@ -117,22 +127,9 @@ export async function initiateOnlinePayment(userId, dto) {
     throw new ValidationError("Online payment is currently disabled");
   }
 
-  const computedSubtotal = (dto.items || []).reduce((sum, item) => {
-    const price = Number(item?.price);
-    const qty = Number(item?.quantity);
-    if (!Number.isFinite(price) || !Number.isFinite(qty)) return sum;
-    return sum + Math.max(0, price) * Math.max(0, qty);
-  }, 0);
-
   const normalizedPricing = {
-    subtotal: Number(dto.pricing?.subtotal ?? computedSubtotal),
-    tax: Number(dto.pricing?.tax ?? 0),
-    packagingFee: Number(dto.pricing?.packagingFee ?? 0),
-    deliveryFee: (dto.orderType || "delivery") === "takeaway" ? 0 : Number(dto.pricing?.deliveryFee ?? 0),
-    platformFee: Number(dto.pricing?.platformFee ?? 0),
-    discount: Number(dto.pricing?.discount ?? 0),
-    total: Number(dto.pricing?.total ?? 0),
-    currency: String(dto.pricing?.currency || "INR"),
+    ...priced.pricing,
+    currency: String(priced.pricing?.currency || "INR"),
   };
 
   const amountPaise = Math.round((normalizedPricing.total ?? 0) * 100);
@@ -143,13 +140,22 @@ export async function initiateOnlinePayment(userId, dto) {
     throw new ValidationError("Payment gateway is not configured");
   }
 
-  const tempReceiptId = `rec_${Date.now()}_${Math.floor(Math.random() * 1000)}`;
+  const tempReceiptId = "rec_" + Date.now() + "_" + Math.floor(Math.random() * 1000);
   const rzOrder = await createRazorpayOrder(amountPaise, "INR", tempReceiptId);
 
-  // Store intent for 30 minutes in case phone disconnects before frontend calls createOrder
+  const safeDto = {
+    ...dto,
+    // Items already server-priced; don't re-read cart (may be cleared / race with webhook).
+    useCart: false,
+    restaurantId,
+    restaurantName: priced.restaurantName || dto.restaurantName,
+    items: priced.items,
+    pricing: normalizedPricing,
+    couponCode: normalizedPricing.couponCode || dto.couponCode || "",
+  };
   pendingOnlinePayments.set(rzOrder.id, {
     userId,
-    dto,
+    dto: safeDto,
     createdAt: Date.now()
   });
 
@@ -170,7 +176,21 @@ export async function initiateOnlinePayment(userId, dto) {
 
 // ----- Create order -----
 export async function createOrder(userId, dto) {
-  const restaurant = await FoodRestaurant.findById(dto.restaurantId)
+  // SECURITY: load items from DB cart + recompute fees/coupon server-side.
+  const priced = await calculateOrderPricing(userId, {
+    ...dto,
+    useCart: dto?.useCart !== false,
+    couponCode: dto?.couponCode || dto?.pricing?.couponCode || "",
+    deliveryAddress: dto.address?.location?.coordinates
+      ? { location: { coordinates: dto.address.location.coordinates } }
+      : dto.deliveryAddress,
+  });
+  const verifiedItems = priced.items || [];
+  const restaurantId = priced.restaurantId || dto.restaurantId;
+  if (!restaurantId) throw new ValidationError("Restaurant id required");
+  if (!verifiedItems.length) throw new ValidationError("Your cart is empty");
+
+  const restaurant = await FoodRestaurant.findById(restaurantId)
     .select("status restaurantName zoneId location isAcceptingOrders takeawaySettings addressLine1 addressLine2 area city state pincode")
     .lean();
   if (!restaurant) throw new ValidationError("Restaurant not found");
@@ -184,11 +204,11 @@ export async function createOrder(userId, dto) {
     const { assertRestaurantOpenForOrders } = await import(
       "../../restaurant/services/outletTimings.service.js"
     );
-    await assertRestaurantOpenForOrders(dto.restaurantId);
+    await assertRestaurantOpenForOrders(restaurantId);
   } catch (timingError) {
     if (timingError instanceof ValidationError) throw timingError;
     logger.warn(
-      `[OrderCreate] Outlet timing check skipped for ${dto.restaurantId}: ${timingError?.message || timingError}`
+      `[OrderCreate] Outlet timing check skipped for ${restaurantId}: ${timingError?.message || timingError}`
     );
   }
 
@@ -273,23 +293,24 @@ export async function createOrder(userId, dto) {
     }
   }
 
-  // Ensure pricing is present and consistent.
-  const computedSubtotal = (dto.items || []).reduce((sum, item) => {
-    const price = Number(item?.price);
-    const qty = Number(item?.quantity);
-    if (!Number.isFinite(price) || !Number.isFinite(qty)) return sum;
-    return sum + Math.max(0, price) * Math.max(0, qty);
-  }, 0);
+  // SECURITY: ignore client pricing; use server-calculated amounts only.
   const normalizedPricing = {
-    subtotal: Number(dto.pricing?.subtotal ?? computedSubtotal),
-    tax: Number(dto.pricing?.tax ?? 0),
-    packagingFee: Number(dto.pricing?.packagingFee ?? 0),
-    deliveryFee: orderType === "takeaway" ? 0 : Number(dto.pricing?.deliveryFee ?? 0),
-    platformFee: Number(dto.pricing?.platformFee ?? 0),
-    discount: Number(dto.pricing?.discount ?? 0),
-    total: Number(dto.pricing?.total ?? 0),
-    currency: String(dto.pricing?.currency || "INR"),
+    subtotal: Number(priced.pricing?.subtotal ?? 0),
+    baseSubtotal: Number(priced.pricing?.baseSubtotal ?? priced.pricing?.subtotal ?? 0),
+    markupTotal: Number(priced.pricing?.markupTotal ?? 0),
+    tax: Number(priced.pricing?.tax ?? 0),
+    packagingFee: Number(priced.pricing?.packagingFee ?? 0),
+    deliveryFee: orderType === "takeaway" ? 0 : Number(priced.pricing?.deliveryFee ?? 0),
+    platformFee: Number(priced.pricing?.platformFee ?? 0),
+    discount: Number(priced.pricing?.discount ?? 0),
+    total: Number(priced.pricing?.total ?? 0),
+    currency: String(priced.pricing?.currency || "INR"),
+    couponCode: priced.pricing?.couponCode || null,
   };
+  dto.items = verifiedItems;
+  dto.restaurantId = String(restaurantId);
+  dto.restaurantName = priced.restaurantName || dto.restaurantName || restaurant.restaurantName || "";
+
 
   if (paymentMethod === "razorpay") {
     const onlineConfig = await FoodSystemConfig.findOne({ key: "online_payment_enabled" }).select("value").lean();
@@ -391,6 +412,7 @@ export async function createOrder(userId, dto) {
                 0,
                 (normalizedPricing.deliveryFee ?? 0) +
                   (normalizedPricing.platformFee ?? 0) +
+                  (normalizedPricing.markupTotal ?? 0) +
                   (normalizedPricing.restaurantCommission ?? 0) -
                   (earningResolved.riderEarning ?? 0),
               );
@@ -503,6 +525,7 @@ export async function createOrder(userId, dto) {
     0,
     (Number.isFinite(normalizedPricing.deliveryFee) ? normalizedPricing.deliveryFee : 0) +
       (Number.isFinite(normalizedPricing.platformFee) ? normalizedPricing.platformFee : 0) +
+      (Number.isFinite(normalizedPricing.markupTotal) ? normalizedPricing.markupTotal : 0) +
       restaurantCommission -
       riderEarning,
   );
@@ -527,9 +550,9 @@ export async function createOrder(userId, dto) {
 
   const order = new FoodOrder({
     userId: new mongoose.Types.ObjectId(userId),
-    restaurantId: new mongoose.Types.ObjectId(dto.restaurantId),
+    restaurantId: new mongoose.Types.ObjectId(restaurantId),
     zoneId: resolvedOrderZoneId,
-    items: dto.items,
+    items: verifiedItems,
     deliveryAddress: orderType === "takeaway" ? undefined : deliveryAddress,
     orderType,
     customerName: dto.customerName || deliveryAddress.fullName || "",
@@ -559,6 +582,12 @@ export async function createOrder(userId, dto) {
   let razorpayPayload = null;
 
   await order.save();
+
+  try {
+    await clearFoodCart(userId);
+  } catch (cartClearErr) {
+    logger.warn("[OrderCreate] Failed to clear food cart for " + userId + ": " + (cartClearErr?.message || cartClearErr));
+  }
 
   if (isWallet) {
     try {
@@ -611,8 +640,8 @@ export async function createOrder(userId, dto) {
   } catch {
     // Don't block order placement on socket failures.
   }
-  const couponCode = dto.pricing?.couponCode
-    ? String(dto.pricing.couponCode).trim().toUpperCase()
+  const couponCode = normalizedPricing?.couponCode
+    ? String(normalizedPricing.couponCode).trim().toUpperCase()
     : "";
   if (couponCode) {
     const offer = await FoodOffer.findOne({ couponCode }).lean();
@@ -839,8 +868,11 @@ export async function getOrderById(
     }
   }
 
-  if (deliveryPartnerId || restaurantId) {
+  if (deliveryPartnerId) {
     return sanitizeOrderForExternal(order);
+  }
+  if (restaurantId) {
+    return toRestaurantFacingOrder(order);
   }
 
   if (userId) {
@@ -1340,7 +1372,7 @@ export async function listOrdersRestaurant(restaurantId, query) {
       .lean(),
     FoodOrder.countDocuments(filter),
   ]);
-  return buildPaginatedResult({ docs: docs.map(d => normalizeOrderForClient(d)), total, page, limit });
+  return buildPaginatedResult({ docs: docs.map(d => toRestaurantFacingOrder(d)), total, page, limit });
 }
 
 export async function updateOrderStatusRestaurant(
@@ -1361,7 +1393,7 @@ export async function updateOrderStatusRestaurant(
     // If order is already at a further-forward status (e.g. 'preparing' when accepting),
     // treat as success — the outcome is already achieved
     if (STATUS_PRIORITY[from] > STATUS_PRIORITY[orderStatus]) {
-      return sanitizeOrderForExternal(order);
+      return toRestaurantFacingOrder(order);
     }
     throw new ValidationError(`Current order status '${from}' is further ahead than '${orderStatus}'. Order cannot be moved backwards.`);
   }
@@ -1664,7 +1696,7 @@ export async function updateOrderStatusRestaurant(
       await order.save();
     }
 
-    return normalizeOrderForClient(order);
+    return toRestaurantFacingOrder(order);
 }
 
 /**

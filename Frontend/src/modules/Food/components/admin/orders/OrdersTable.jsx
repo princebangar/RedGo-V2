@@ -1,5 +1,15 @@
 import React, { useState, useEffect, useMemo } from "react"
 import { Eye, Printer, ArrowUpDown, Loader2, Check, X, Trash2, ChevronDown, ChevronUp } from "lucide-react"
+import {
+  resolveRestaurantItemUnitPrice,
+  resolveItemMarkupUnit,
+} from "@food/utils/restaurantOrderPricing"
+
+const formatINR = (value, digits = 0) =>
+  `₹${Number(value || 0).toLocaleString(undefined, {
+    minimumFractionDigits: digits,
+    maximumFractionDigits: 2,
+  })}`
 
 const getStatusColor = (orderStatus) => {
   const colors = {
@@ -427,13 +437,17 @@ export default function OrdersTable({
                           return (
                             <>
                               {itemsToShow.map((item, idx) => {
-                                const itemPrice = Number(item.price ?? 0)
+                                const qty = Number(item.quantity || 1) || 1
+                                const baseUnit = resolveRestaurantItemUnitPrice(item)
+                                const baseLine = baseUnit * qty
                                 return (
-                                  <div key={idx || item.itemId || `item-price-${idx}`} className="text-sm text-slate-500 text-left h-[20px] flex items-center">
-                                    {`₹${itemPrice.toLocaleString(undefined, {
-                                      minimumFractionDigits: 0,
-                                      maximumFractionDigits: 2
-                                    })}`}
+                                  <div
+                                    key={idx || item.itemId || `item-price-${idx}`}
+                                    className="text-sm text-left min-h-[20px] flex items-center"
+                                  >
+                                    <span className="font-medium text-slate-700">
+                                      {formatINR(baseLine)}
+                                    </span>
                                   </div>
                                 )
                               })}
@@ -474,12 +488,41 @@ export default function OrdersTable({
                         const amount = Number.isFinite(Number(rawAmount))
                           ? Number(rawAmount)
                           : 0;
-                        return `₹${amount.toLocaleString(undefined, {
-                          minimumFractionDigits: 2,
-                          maximumFractionDigits: 2
-                        })}`;
+                        return formatINR(amount, 2);
                       })()}
                     </div>
+                    {(() => {
+                      const base =
+                        Number(order.baseSubtotal) ||
+                        Number(order.pricing?.baseSubtotal) ||
+                        0
+                      let markup =
+                        Number(order.markupTotal) ||
+                        Number(order.pricing?.markupTotal) ||
+                        0
+                      if (!(markup > 0) && Array.isArray(order.items)) {
+                        markup = order.items.reduce((sum, item) => {
+                          const qty = Number(item.quantity || 1) || 1
+                          return sum + resolveItemMarkupUnit(item) * qty
+                        }, 0)
+                      }
+                      if (!(markup > 0)) return null
+                      const restaurantBase =
+                        base > 0
+                          ? base
+                          : Array.isArray(order.items)
+                            ? order.items.reduce((sum, item) => {
+                                const qty = Number(item.quantity || 1) || 1
+                                return sum + resolveRestaurantItemUnitPrice(item) * qty
+                              }, 0)
+                            : 0
+                      return (
+                        <div className="text-[11px] mt-0.5 font-semibold text-slate-500">
+                          {formatINR(restaurantBase)}{" "}
+                          <span className="text-rose-600">+ {formatINR(markup)}</span>
+                        </div>
+                      )
+                    })()}
                     <div className={`text-xs mt-0.5 text-left ${getPaymentStatusColor(order.paymentStatus)}`}>
                       {order.paymentStatus}
                     </div>

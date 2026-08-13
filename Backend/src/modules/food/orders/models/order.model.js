@@ -8,6 +8,16 @@ const orderItemSchema = new mongoose.Schema(
         variantName: { type: String, trim: true, default: '' },
         variantPrice: { type: Number, min: 0, default: 0 },
         price: { type: Number, required: true, min: 0 },
+        /** Restaurant base at order time. */
+        basePrice: { type: Number, default: null, min: 0 },
+        /** @deprecated Prefer markupAmount; kept for older order docs. */
+        otherPrice: { type: Number, default: 0, min: 0 },
+        /** Admin markup per unit (platform share). */
+        markupAmount: { type: Number, default: 0, min: 0 },
+        appliedPricingType: { type: String, default: null },
+        appliedPricingValue: { type: Number, default: null },
+        pricingScope: { type: String, default: null },
+        pricingRule: { type: mongoose.Schema.Types.Mixed, default: null },
         quantity: { type: Number, required: true, min: 1 },
         isVeg: { type: Boolean, default: true },
         image: { type: String, default: '' },
@@ -38,6 +48,10 @@ const deliveryAddressSchema = new mongoose.Schema(
 const pricingSchema = new mongoose.Schema(
     {
         subtotal: { type: Number, required: true, min: 0 },
+        /** Restaurant-owned item total (before admin markup). */
+        baseSubtotal: { type: Number, default: 0, min: 0 },
+        /** Admin markup total (goes to platform). */
+        markupTotal: { type: Number, default: 0, min: 0 },
         tax: { type: Number, default: 0, min: 0 },
         packagingFee: { type: Number, default: 0, min: 0 },
         deliveryFee: { type: Number, default: 0, min: 0 },
@@ -45,7 +59,8 @@ const pricingSchema = new mongoose.Schema(
         restaurantCommission: { type: Number, default: 0, min: 0 },
         discount: { type: Number, default: 0, min: 0 },
         total: { type: Number, required: true, min: 0 },
-        currency: { type: String, default: 'INR' }
+        currency: { type: String, default: 'INR' },
+        couponCode: { type: String, default: null, trim: true, uppercase: true }
     },
     { _id: false }
 );

@@ -10,6 +10,7 @@ export const SUB_ADMIN_PERMISSION_MODULES = [
   { key: 'food_approval', label: 'Food Approval', pathPrefixes: ['/admin/food/food-approval'] },
   { key: 'restaurant_foods_list', label: 'Restaurant Foods List', pathPrefixes: ['/admin/food/foods'] },
   { key: 'restaurant_addons_list', label: 'Restaurant Addons List', pathPrefixes: ['/admin/food/addons'] },
+  { key: 'pricing_management', label: 'Pricing Management', pathPrefixes: ['/admin/food/pricing'] },
   { key: 'category', label: 'Category', pathPrefixes: ['/admin/food/categories'] },
   { key: 'zone_setup', label: 'Zone Setup', pathPrefixes: ['/admin/food/zone-setup'] },
   { key: 'restaurants_list', label: 'Restaurants List', pathPrefixes: ['/admin/food/restaurants'] },

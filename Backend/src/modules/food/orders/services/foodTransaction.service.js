@@ -50,7 +50,8 @@ export function computeRestaurantCommissionAmount(baseAmount, rule) {
 }
 
 export async function getRestaurantCommissionSnapshot(orderDoc) {
-  const baseAmount = Number(orderDoc?.pricing?.subtotal ?? 0) || 0;
+  const baseAmount =
+    Number(orderDoc?.pricing?.baseSubtotal ?? orderDoc?.pricing?.subtotal ?? 0) || 0;
   const restaurantIdRaw =
     orderDoc?.restaurantId?._id ?? orderDoc?.restaurantId ?? null;
 
@@ -98,8 +99,18 @@ export async function createInitialTransaction(order) {
         Number.isFinite(restaurantCommissionFromOrder) && restaurantCommissionFromOrder > 0
             ? restaurantCommissionFromOrder
             : (commissionAmount || 0);
-    const restaurantNet = (order.pricing?.subtotal || 0) + (order.pricing?.packagingFee || 0) - restaurantCommission;
-    const platformNetProfit = Math.max(0, (order.pricing?.platformFee || 0) + (order.pricing?.deliveryFee || 0) + restaurantCommission - riderShare);
+    const baseSubtotal =
+        Number(order.pricing?.baseSubtotal ?? order.pricing?.subtotal ?? 0) || 0;
+    const markupTotal = Math.max(0, Number(order.pricing?.markupTotal ?? 0) || 0);
+    const restaurantNet = baseSubtotal + (order.pricing?.packagingFee || 0) - restaurantCommission;
+    const platformNetProfit = Math.max(
+        0,
+        (order.pricing?.platformFee || 0) +
+            (order.pricing?.deliveryFee || 0) +
+            restaurantCommission +
+            markupTotal -
+            riderShare,
+    );
 
     const transaction = new FoodTransaction({
         orderId: order._id,
@@ -129,6 +140,8 @@ export async function createInitialTransaction(order) {
         },
         pricing: {
             subtotal: Number(order.pricing?.subtotal || 0) || 0,
+            baseSubtotal,
+            markupTotal,
             tax: Number(order.pricing?.tax || 0) || 0,
             packagingFee: Number(order.pricing?.packagingFee || 0) || 0,
             deliveryFee: Number(order.pricing?.deliveryFee || 0) || 0,

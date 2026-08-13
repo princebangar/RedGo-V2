@@ -3,11 +3,13 @@ import { ValidationError } from '../../../../core/auth/errors.js';
 
 const orderItemSchema = z.object({
     itemId: z.string().min(1, 'Item id required'),
-    name: z.string().min(1, 'Item name required'),
+    name: z.string().optional(),
     variantId: z.string().optional(),
     variantName: z.string().optional(),
     variantPrice: z.number().min(0).optional(),
-    price: z.number().min(0),
+    price: z.number().min(0).optional(),
+    basePrice: z.number().min(0).optional(),
+    otherPrice: z.number().min(0).optional(),
     quantity: z.number().int().min(1),
     isVeg: z.boolean().optional().default(true),
     image: z.string().optional(),
@@ -33,20 +35,22 @@ const addressSchema = z.object({
 });
 
 const pricingSchema = z.object({
-    subtotal: z.number().min(0),
+    subtotal: z.number().min(0).optional(),
     tax: z.number().min(0).optional(),
     packagingFee: z.number().min(0).optional(),
     deliveryFee: z.number().min(0).optional(),
     platformFee: z.number().min(0).optional(),
     discount: z.number().min(0).optional(),
-    total: z.number().min(0),
-    currency: z.string().optional()
-});
+    total: z.number().min(0).optional(),
+    currency: z.string().optional(),
+    couponCode: z.string().nullable().optional()
+}).optional();
 
 export function validateCalculateOrderDto(body) {
     const schema = z.object({
-        items: z.array(orderItemSchema).min(1, 'At least one item required'),
-        restaurantId: z.string().min(1, 'Restaurant id required'),
+        useCart: z.boolean().optional().default(true),
+        items: z.array(orderItemSchema).optional().default([]),
+        restaurantId: z.string().optional(),
         deliveryAddress: z
             .object({
                 location: z
@@ -62,6 +66,13 @@ export function validateCalculateOrderDto(body) {
         couponCode: z.string().nullable().optional(),
         deliveryFleet: z.string().optional(),
         orderType: z.enum(['delivery', 'dining', 'takeaway']).optional().default('delivery')
+    }).superRefine((data, ctx) => {
+        if (data.useCart === false && (!data.items || data.items.length === 0)) {
+            ctx.addIssue({ code: z.ZodIssueCode.custom, message: 'At least one item required', path: ['items'] });
+        }
+        if (data.useCart === false && !data.restaurantId) {
+            ctx.addIssue({ code: z.ZodIssueCode.custom, message: 'Restaurant id required', path: ['restaurantId'] });
+        }
     });
     const result = schema.safeParse(body);
     if (!result.success) {
@@ -75,14 +86,16 @@ export function validateCalculateOrderDto(body) {
 
 export function validateCreateOrderDto(body) {
     const schema = z.object({
-        items: z.array(orderItemSchema).min(1, 'At least one item required'),
+        useCart: z.boolean().optional().default(true),
+        items: z.array(orderItemSchema).optional().default([]),
         address: addressSchema.optional(),
         orderType: z.enum(['delivery', 'dining', 'takeaway']).optional().default('delivery'),
-        restaurantId: z.string().min(1, 'Restaurant id required'),
+        restaurantId: z.string().optional(),
         restaurantName: z.string().optional(),
         customerName: z.string().optional(),
         customerPhone: z.string().optional(),
         pricing: pricingSchema,
+        couponCode: z.string().nullable().optional(),
         deliveryFleet: z.string().optional(),
         note: z.string().optional(),
         restaurantNote: z.string().optional(),
@@ -94,10 +107,18 @@ export function validateCreateOrderDto(body) {
         razorpayOrderId: z.string().optional(),
         razorpayPaymentId: z.string().optional(),
         razorpaySignature: z.string().optional()
+    }).superRefine((data, ctx) => {
+        if (data.useCart === false && (!data.items || data.items.length === 0)) {
+            ctx.addIssue({ code: z.ZodIssueCode.custom, message: 'At least one item required', path: ['items'] });
+        }
+        if (data.useCart === false && !data.restaurantId) {
+            ctx.addIssue({ code: z.ZodIssueCode.custom, message: 'Restaurant id required', path: ['restaurantId'] });
+        }
     });
     const result = schema.safeParse(body);
     if (!result.success) {
-        const msg = result.error.errors?.[0]?.message || 'Validation failed';
+        const first = result.error.issues?.[0];
+        const msg = first?.message || result.error.errors?.[0]?.message || 'Validation failed';
         throw new ValidationError(msg);
     }
     return result.data;

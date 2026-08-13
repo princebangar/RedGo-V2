@@ -13,6 +13,7 @@ export const normalizeFoodVariants = (value) =>
         _id: id,
         name,
         price,
+        ...(entry?.basePrice != null ? { basePrice: Number(entry.basePrice) } : {}),
       }
     })
     .filter(Boolean)

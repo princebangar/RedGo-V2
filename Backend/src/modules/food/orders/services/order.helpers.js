@@ -89,6 +89,136 @@ export function sanitizeOrderForExternal(orderDoc) {
   return o;
 }
 
+function deriveBaseFromAppliedPricingRule(price, item = {}) {
+  const type = String(item?.appliedPricingType || '').toUpperCase();
+  const value = Number(item?.appliedPricingValue);
+  const selling = Number(price) || 0;
+  if (!Number.isFinite(value) || value <= 0 || selling <= 0) return null;
+  if (type === 'PERCENTAGE') {
+    return Math.max(0, Math.round((selling / (1 + value / 100)) * 100) / 100);
+  }
+  if (type === 'FIXED') {
+    return Math.max(0, Math.round((selling - value) * 100) / 100);
+  }
+  return null;
+}
+
+/** Unit price the restaurant owns (before admin markup). */
+export function resolveRestaurantItemUnitPrice(item = {}) {
+  const price = Number(item?.price) || 0;
+  const markup = Number(item?.markupAmount) || 0;
+  const other = Number(item?.otherPrice) || 0;
+  const base = Number(item?.basePrice);
+  const hasAdminScope =
+    item?.pricingScope && String(item.pricingScope).toUpperCase() !== 'LEGACY';
+
+  if (Number.isFinite(base) && base >= 0) {
+    if (markup > 0 || (hasAdminScope && other > base + 0.01) || base < price - 0.01) {
+      return base;
+    }
+    if (Math.abs(base - price) < 0.01) {
+      const derived = deriveBaseFromAppliedPricingRule(price, item);
+      if (derived != null && derived < price - 0.01) return derived;
+    }
+    return base;
+  }
+
+  if (markup > 0) return Math.max(0, Math.round((price - markup) * 100) / 100);
+
+  const derived = deriveBaseFromAppliedPricingRule(price, item);
+  if (derived != null) return derived;
+
+  return price;
+}
+
+/**
+ * Restaurant-facing order view: show restaurant base as price, but keep
+ * admin markup metadata so the accept popup can show "149 + 51 = 200".
+ */
+export function toRestaurantFacingOrder(orderDoc) {
+  const order = sanitizeOrderForExternal(orderDoc);
+  const pricing = order.pricing || {};
+  const items = Array.isArray(order.items)
+    ? order.items.map((item) => {
+        const customerUnit = Number(item?.price) || 0;
+        const restaurantUnit = resolveRestaurantItemUnitPrice(item);
+        const qty = Number(item?.quantity) || 1;
+        let markupUnit = Number(item?.markupAmount);
+        if (!Number.isFinite(markupUnit) || markupUnit < 0) {
+          markupUnit = Math.max(0, Math.round((customerUnit - restaurantUnit) * 100) / 100);
+        }
+        return {
+          ...item,
+          customerPrice: customerUnit,
+          price: restaurantUnit,
+          variantPrice: restaurantUnit,
+          basePrice: restaurantUnit,
+          markupAmount: markupUnit,
+          otherPrice: Number(item?.otherPrice) || customerUnit,
+          appliedPricingType: item?.appliedPricingType || null,
+          appliedPricingValue: item?.appliedPricingValue ?? null,
+          pricingScope: item?.pricingScope || item?.pricingRule?.scope || null,
+          pricingRule: item?.pricingRule || null,
+          lineMarkupTotal: Math.round(markupUnit * qty * 100) / 100,
+        };
+      })
+    : [];
+
+  const computedBaseSubtotal = items.reduce((sum, item) => {
+    const unit = Number(item.price) || 0;
+    const qty = Number(item.quantity) || 1;
+    return sum + unit * qty;
+  }, 0);
+
+  const computedMarkupTotal = items.reduce((sum, item) => {
+    return sum + (Number(item.lineMarkupTotal) || 0);
+  }, 0);
+
+  const storedBase = Number(pricing.baseSubtotal);
+  const storedMarkup = Number(pricing.markupTotal);
+  const storedSubtotal = Number(pricing.subtotal);
+  let restaurantSubtotal = computedBaseSubtotal;
+  if (Number.isFinite(storedBase) && storedBase >= 0) {
+    restaurantSubtotal = storedBase;
+  } else if (
+    Number.isFinite(storedSubtotal) &&
+    Number.isFinite(storedMarkup) &&
+    storedMarkup > 0
+  ) {
+    restaurantSubtotal = Math.max(0, storedSubtotal - storedMarkup);
+  }
+
+  const markupTotal =
+    Number.isFinite(storedMarkup) && storedMarkup >= 0
+      ? storedMarkup
+      : computedMarkupTotal;
+
+  const packagingFee = Number(pricing.packagingFee) || 0;
+  const restaurantTotal = Math.max(
+    0,
+    Math.round((restaurantSubtotal + packagingFee) * 100) / 100,
+  );
+
+  return {
+    ...order,
+    items,
+    pricing: {
+      ...pricing,
+      customerSubtotal: Number.isFinite(storedSubtotal) ? storedSubtotal : undefined,
+      customerTotal: Number(pricing.total) || undefined,
+      markupTotal: Math.round(markupTotal * 100) / 100,
+      subtotal: Math.round(restaurantSubtotal * 100) / 100,
+      baseSubtotal: Math.round(restaurantSubtotal * 100) / 100,
+      // Restaurant bill excludes delivery / platform fee from their earning total.
+      deliveryFee: 0,
+      platformFee: 0,
+      total: restaurantTotal,
+    },
+    total: restaurantTotal,
+    amount: restaurantTotal,
+  };
+}
+
 export function emitDeliveryDropOtpToUser(order, plainOtp) {
   try {
     const io = getIO();
@@ -324,11 +454,7 @@ export async function notifyRestaurantNewOrder(orderDoc) {
 
     const io = getIO();
     if (io) {
-      const payload = {
-        ...orderDoc.toObject(),
-        orderMongoId: orderDoc._id?.toString?.() || undefined,
-        orderId: orderDoc.order_id || orderDoc._id?.toString?.(),
-      };
+      const payload = toRestaurantFacingOrder(orderDoc);
       logger.info(
         `[RestaurantOrders] Emitting new_order to ${rooms.restaurant(orderDoc.restaurantId)} for order ${orderDoc._id?.toString?.() || ''}`,
       );

@@ -1400,13 +1400,15 @@ function RestaurantDetailsContent() {
       restaurant_restaurantId: restaurant.restaurantId
     });
 
-    // Prepare cart item with all required properties
+    // Prepare cart item with all required properties (selling price already includes admin markup).
     const cartItem = {
       id: lineItemId,
       lineItemId,
       itemId: item.id,
       name: item.name,
       price: resolvedVariant?.price ?? item.price,
+      basePrice: resolvedVariant?.basePrice ?? item.basePrice ?? resolvedVariant?.price ?? item.price,
+      markupAmount: resolvedVariant?.markupAmount ?? item.markupAmount ?? 0,
       variantId: resolvedVariant?.id || "",
       variantName: resolvedVariant?.name || "",
       variantPrice: resolvedVariant?.price ?? item.price,
@@ -1415,12 +1417,12 @@ function RestaurantDetailsContent() {
       restaurantId: validRestaurantId, // Use validated restaurantId
       restaurantZoneId: restaurant.zoneId ? String(restaurant.zoneId) : "",
       description: item.description,
-      originalPrice: item.originalPrice,
       isVeg: item.isVeg === true, // Use strict check
       foodType: item.foodType, // Include foodType for robustness
       preparationTime: item.preparationTime, // Add preparationTime property
-      priceOnOtherPlatforms: item.priceOnOtherPlatforms || null, // Include platform pricing for savings display
-      otherPlatformGst: item.otherPlatformGst ?? null,
+      pricingScope: resolvedVariant?.pricingScope ?? item.pricingScope ?? null,
+      appliedPricingType: resolvedVariant?.appliedPricingType ?? item.appliedPricingType ?? null,
+      appliedPricingValue: resolvedVariant?.appliedPricingValue ?? item.appliedPricingValue ?? null,
     }
 
     // Get source position for animation from event target
@@ -4147,11 +4149,6 @@ function RestaurantDetailsContent() {
                             : (hasFoodVariants(selectedItem) ? "Add" : "Add item")}
                         </span>
                         <div className="flex flex-wrap items-center justify-center gap-1 overflow-hidden">
-                          {selectedItem.originalPrice && selectedItem.originalPrice > selectedItem.price && (
-                            <span className="text-xs sm:text-sm line-through text-red-200">
-                              {RUPEE_SYMBOL}{Math.round(selectedItem.originalPrice)}
-                            </span>
-                          )}
                           <span className="text-sm sm:text-base font-bold whitespace-nowrap">
                             {hasFoodVariants(selectedItem)
                               ? `${getVariantForDish(selectedItem, selectedVariantId)?.name || "Default"} · ${RUPEE_SYMBOL}${Math.round(getVariantForDish(selectedItem, selectedVariantId)?.price || selectedItem.price)}`

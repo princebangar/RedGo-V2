@@ -32,9 +32,9 @@ const METRIC_INFO = {
   refunded:
     "Total amount actually refunded to customers (online/wallet payments where payment status is refunded). COD cancels are excluded — no money was collected, so nothing is refunded.",
   admin:
-    "Platform Total (same as dashboard) = restaurant commission + platform fee + delivery net (delivery fee − rider earning) + GST, for delivered orders only.",
+    "Platform Total (same as dashboard) = restaurant commission + platform fee + admin pricing markup + delivery net (delivery fee − rider earning) + GST, for delivered orders only.",
   restaurant:
-    "Restaurant share = (item subtotal + packaging) − restaurant commission, for delivered orders only.",
+    "Restaurant share = (restaurant base item amount + packaging) − restaurant commission, for delivered orders only. Admin pricing markup is not included in restaurant wallet.",
   deliveryman:
     "Total delivery partner earnings — sum of riderEarning on delivered orders that have an assigned delivery partner (same basis as Delivery Earning page).",
 }
@@ -119,6 +119,7 @@ export default function TransactionReport() {
     platformTotalBreakdown: {
       commission: 0,
       platformFee: 0,
+      markup: 0,
       deliveryNet: 0,
       gst: 0,
     },
@@ -220,6 +221,7 @@ export default function TransactionReport() {
             platformTotalBreakdown: {
               commission: 0,
               platformFee: 0,
+              markup: 0,
               deliveryNet: 0,
               gst: 0,
               ...(data.summary?.platformTotalBreakdown || {}),
@@ -284,10 +286,12 @@ export default function TransactionReport() {
   }
 
   const formatCurrency = (amount) => {
-    if (amount >= 1000) {
-      return `\u20B9 ${(amount / 1000).toFixed(2)}K`
+    const num = Number(amount)
+    const safe = Number.isFinite(num) ? num : 0
+    if (safe >= 1000) {
+      return `\u20B9 ${(safe / 1000).toFixed(2)}K`
     }
-    return `\u20B9 ${amount.toFixed(2)}`
+    return `\u20B9 ${safe.toFixed(2)}`
   }
 
   const formatFullCurrency = (amount) => {
@@ -328,18 +332,24 @@ export default function TransactionReport() {
   const platformTotalValue = Number(
     summary.platformTotal ?? summary.adminEarning ?? 0,
   )
-  const platformBreakdown = summary.platformTotalBreakdown || {
+  const platformBreakdown = {
     commission: 0,
     platformFee: 0,
+    markup: 0,
     deliveryNet: 0,
     gst: 0,
+    ...(summary.platformTotalBreakdown || {}),
   }
   const platformTotalHelper = [
     `Comm: ${formatCurrency(platformBreakdown.commission)}`,
     `Platform: ${formatCurrency(platformBreakdown.platformFee)}`,
+    `Admin Pricing: ${formatCurrency(platformBreakdown.markup)}`,
     `Delivery Net: ${formatCurrency(platformBreakdown.deliveryNet)}`,
     `GST: ${formatCurrency(platformBreakdown.gst)}`,
   ].join(" + ")
+  const markupByRestaurant = Array.isArray(summary.markupByRestaurant)
+    ? summary.markupByRestaurant
+    : []
 
   return (
     <div className="p-2 lg:p-3 bg-slate-50 min-h-screen">
@@ -489,6 +499,28 @@ export default function TransactionReport() {
               </div>
             </div>
 
+            {!amountsLoading && markupByRestaurant.length > 0 ? (
+              <div className="rounded-lg shadow-sm border border-slate-200 bg-white p-3">
+                <p className="text-sm font-semibold text-slate-900 mb-2">Admin Pricing by Restaurant</p>
+                <div className="space-y-1.5 max-h-40 overflow-y-auto">
+                  {markupByRestaurant.map((row) => (
+                    <div
+                      key={row.restaurantId || row.restaurant}
+                      className="flex items-center justify-between gap-3 text-xs"
+                    >
+                      <span className="text-slate-700 truncate">
+                        {row.restaurant}
+                        <span className="text-slate-400"> · {row.orders} order{row.orders === 1 ? "" : "s"}</span>
+                      </span>
+                      <span className="font-semibold text-slate-900 shrink-0">
+                        {formatCurrency(row.adminMarkup)}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ) : null}
+
             <div className="rounded-lg shadow-sm border border-slate-200 p-3" style={{ backgroundColor: '#f1f5f9' }}>
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-3">
@@ -594,20 +626,22 @@ export default function TransactionReport() {
                   <th className="px-1.5 py-1 text-left text-[8px] font-bold text-slate-700 uppercase tracking-wider" style={{ width: '7%' }}>Order Id</th>
                   <th className="px-1.5 py-1 text-left text-[8px] font-bold text-slate-700 uppercase tracking-wider" style={{ width: '10%' }}>Restaurant</th>
                   <th className="px-1.5 py-1 text-left text-[8px] font-bold text-slate-700 uppercase tracking-wider" style={{ width: '10%' }}>Customer Name</th>
-                  <th className="px-1.5 py-1 text-left text-[8px] font-bold text-slate-700 uppercase tracking-wider" style={{ width: '11%' }}>Total Item Amount</th>
-                  <th className="px-1.5 py-1 text-left text-[8px] font-bold text-slate-700 uppercase tracking-wider" style={{ width: '9%' }}>Coupon Discount</th>
-                  <th className="px-1.5 py-1 text-left text-[8px] font-bold text-slate-700 uppercase tracking-wider" style={{ width: '9%' }}>Vat/Tax</th>
-                  <th className="px-1.5 py-1 text-left text-[8px] font-bold text-slate-700 uppercase tracking-wider" style={{ width: '10%' }}>Delivery Charge</th>
-                  <th className="px-1.5 py-1 text-left text-[8px] font-bold text-slate-700 uppercase tracking-wider" style={{ width: '9%' }}>Platform Fee</th>
-                  <th className="px-1.5 py-1 text-left text-[8px] font-bold text-slate-700 uppercase tracking-wider" style={{ width: '9%' }}>Order Amount</th>
-                  <th className="px-1.5 py-1 text-left text-[8px] font-bold text-slate-700 uppercase tracking-wider" style={{ width: '8%' }}>Status</th>
+                  <th className="px-1.5 py-1 text-left text-[8px] font-bold text-slate-700 uppercase tracking-wider" style={{ width: '9%' }}>Total Item Amount</th>
+                  <th className="px-1.5 py-1 text-left text-[8px] font-bold text-slate-700 uppercase tracking-wider" style={{ width: '8%' }}>Restaurant Base</th>
+                  <th className="px-1.5 py-1 text-left text-[8px] font-bold text-slate-700 uppercase tracking-wider" style={{ width: '8%' }}>Admin Pricing</th>
+                  <th className="px-1.5 py-1 text-left text-[8px] font-bold text-slate-700 uppercase tracking-wider" style={{ width: '8%' }}>Coupon Discount</th>
+                  <th className="px-1.5 py-1 text-left text-[8px] font-bold text-slate-700 uppercase tracking-wider" style={{ width: '7%' }}>Vat/Tax</th>
+                  <th className="px-1.5 py-1 text-left text-[8px] font-bold text-slate-700 uppercase tracking-wider" style={{ width: '8%' }}>Delivery Charge</th>
+                  <th className="px-1.5 py-1 text-left text-[8px] font-bold text-slate-700 uppercase tracking-wider" style={{ width: '7%' }}>Platform Fee</th>
+                  <th className="px-1.5 py-1 text-left text-[8px] font-bold text-slate-700 uppercase tracking-wider" style={{ width: '8%' }}>Order Amount</th>
+                  <th className="px-1.5 py-1 text-left text-[8px] font-bold text-slate-700 uppercase tracking-wider" style={{ width: '7%' }}>Status</th>
                 </tr>
               </thead>
               <tbody className="bg-white divide-y divide-slate-100">
                 {amountsLoading ? (
                   Array.from({ length: 6 }).map((_, index) => (
                     <tr key={`sk-${index}`}>
-                      {Array.from({ length: 11 }).map((__, col) => (
+                      {Array.from({ length: 13 }).map((__, col) => (
                         <td key={col} className="px-1.5 py-2">
                           <AmountSkeleton className="h-3 w-full max-w-[4.5rem]" />
                         </td>
@@ -616,7 +650,7 @@ export default function TransactionReport() {
                   ))
                 ) : transactions.length === 0 ? (
                   <tr>
-                    <td colSpan={11} className="px-6 py-20 text-center">
+                    <td colSpan={13} className="px-6 py-20 text-center">
                       <div className="flex flex-col items-center justify-center">
                         <p className="text-lg font-semibold text-slate-700 mb-1">No Data Found</p>
                         <p className="text-sm text-slate-500">No transactions match your search</p>
@@ -649,6 +683,18 @@ export default function TransactionReport() {
                       </td>
                       <td className="px-1.5 py-1">
                         <span className="text-[10px] text-slate-700">{formatFullCurrency(transaction.totalItemAmount)}</span>
+                      </td>
+                      <td className="px-1.5 py-1">
+                        <span className="text-[10px] text-slate-700">
+                          {formatFullCurrency(transaction.restaurantBaseAmount ?? transaction.totalItemAmount)}
+                        </span>
+                      </td>
+                      <td className="px-1.5 py-1">
+                        <span className={`text-[10px] ${(Number(transaction.adminMarkup) || 0) > 0 ? "font-semibold text-rose-600" : "text-slate-400"}`}>
+                          {(Number(transaction.adminMarkup) || 0) > 0
+                            ? formatFullCurrency(transaction.adminMarkup)
+                            : "—"}
+                        </span>
                       </td>
                       <td className="px-1.5 py-1">
                         {transaction.couponDiscount > 0 ? (

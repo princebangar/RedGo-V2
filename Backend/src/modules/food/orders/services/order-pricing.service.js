@@ -7,10 +7,23 @@ import { ValidationError } from '../../../../core/auth/errors.js';
 import { haversineKm, assertRestaurantDeliversToZone } from './order.helpers.js';
 import { fetchDrivingDistanceKm } from '../utils/googleMaps.js';
 import { resolveFeeSettingsForZone } from '../../admin/services/zoneScopedSettings.service.js';
+import {
+  enforceMinimumFoodItemPrices,
+  resolveCheckoutItems,
+} from './order-item-pricing.service.js';
 
 export async function calculateOrderPricing(userId, dto) {
-  const restaurant = await FoodRestaurant.findById(dto.restaurantId)
-    .select("status location zoneId")
+  const resolved = await resolveCheckoutItems(userId, dto);
+  const items = await enforceMinimumFoodItemPrices(
+    resolved.items,
+    resolved.restaurantId || dto.restaurantId,
+  );
+
+  const restaurantId = resolved.restaurantId || dto.restaurantId;
+  if (!restaurantId) throw new ValidationError('Restaurant id required');
+
+  const restaurant = await FoodRestaurant.findById(restaurantId)
+    .select("status location zoneId restaurantName")
     .lean();
   if (!restaurant) throw new ValidationError("Restaurant not found");
   if (restaurant.status !== "approved")
@@ -22,9 +35,24 @@ export async function calculateOrderPricing(userId, dto) {
     deliveryAddress: dto.deliveryAddress,
   });
 
-  const items = Array.isArray(dto.items) ? dto.items : [];
+  const couponCode = String(
+    dto.couponCode || resolved.couponCode || dto.pricing?.couponCode || "",
+  )
+    .trim()
+    .toUpperCase();
+
   const subtotal = items.reduce(
     (sum, it) => sum + (Number(it.price) || 0) * (Number(it.quantity) || 1),
+    0,
+  );
+  const baseSubtotal = items.reduce((sum, it) => {
+    const base = Number(it.basePrice);
+    const unit = Number.isFinite(base) && base >= 0 ? base : Number(it.price) || 0;
+    return sum + unit * (Number(it.quantity) || 1);
+  }, 0);
+  const markupTotal = items.reduce(
+    (sum, it) =>
+      sum + Math.max(0, Number(it.markupAmount) || 0) * (Number(it.quantity) || 1),
     0,
   );
 
@@ -128,9 +156,7 @@ export async function calculateOrderPricing(userId, dto) {
 
   let discount = 0;
   let appliedCoupon = null;
-  const codeRaw = dto.couponCode
-    ? String(dto.couponCode).trim().toUpperCase()
-    : "";
+  const codeRaw = couponCode;
 
   if (codeRaw) {
     const now = new Date();
@@ -141,7 +167,7 @@ export async function calculateOrderPricing(userId, dto) {
       const endOk = !offer.endDate || now < new Date(offer.endDate);
       const scopeOk =
         offer.restaurantScope !== "selected" ||
-        String(offer.restaurantId || "") === String(dto.restaurantId || "");
+        String(offer.restaurantId || "") === String(restaurantId || "");
       const minOrderValue = Number(offer.minOrderValue);
       const minOk = !Number.isFinite(minOrderValue) || minOrderValue <= 0 || subtotal >= minOrderValue;
       let usageOk = true;
@@ -219,6 +245,8 @@ export async function calculateOrderPricing(userId, dto) {
   return {
     pricing: {
       subtotal,
+      baseSubtotal: Math.round(baseSubtotal * 100) / 100,
+      markupTotal: Math.round(markupTotal * 100) / 100,
       tax,
       packagingFee,
       deliveryFee,
@@ -231,5 +259,8 @@ export async function calculateOrderPricing(userId, dto) {
       couponCode: appliedCoupon?.code || codeRaw || null,
       appliedCoupon,
     },
+    items,
+    restaurantId: String(restaurantId),
+    restaurantName: restaurant.restaurantName || "",
   };
 }

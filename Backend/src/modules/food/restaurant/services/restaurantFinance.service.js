@@ -97,7 +97,10 @@ export async function getRestaurantFinance(restaurantId, query = {}) {
         const foodNames = items.map((it) => it?.name).filter(Boolean).join(', ');
         const orderTotalExclTax = Math.max(
             0,
-            Number(order?.pricing?.total ?? 0) - Number(order?.pricing?.tax ?? 0) || 0
+            Number(
+              order?.pricing?.baseSubtotal ??
+                (Number(order?.pricing?.subtotal ?? 0) - Number(order?.pricing?.markupTotal ?? 0))
+            ) || 0
         );
         return {
             orderId: order?.order_id || tx.orderReadableId,
