@@ -992,8 +992,8 @@ export default function Under250({ isTabActive = true }) {
       description: item.description || "",
       originalPrice: item.originalPrice || item.price,
       isVeg: item.isVeg === true,
-      priceOnOtherPlatforms: item.priceOnOtherPlatforms || null, // Include platform pricing for savings display
-      otherPlatformGst: item.otherPlatformGst ?? null,
+      priceOnOtherPlatforms: null,
+      otherPlatformGst: null,
     }
 
     // Get source position for animation from event target

@@ -82,7 +82,8 @@ export default function AdminLayout() {
     normalizedPath !== "/admin/food/coupons" &&
     normalizedPath !== "/admin/food/cash-confirmations" &&
     normalizedPath !== "/admin/food/sub-admins" &&
-    normalizedPath !== "/admin/food/broadcast-notification";
+    normalizedPath !== "/admin/food/broadcast-notification" &&
+    normalizedPath !== "/admin/food/pricing";
 
   const handleBackClick = () => {
     if (window.history.state && window.history.state.idx > 0) {

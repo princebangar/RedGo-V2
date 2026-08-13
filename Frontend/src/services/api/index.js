@@ -525,6 +525,22 @@ export const adminAPI = {
   /** Foods (admin) - separate collection */
   getFoods: (params = {}) =>
     apiClient.get("/food/admin/foods", { params, contextModule: "admin" }),
+  getPricingSummary: (params = {}) =>
+    apiClient.get("/food/admin/pricing/summary", { params, contextModule: "admin" }),
+  getPricingRules: (params = {}) =>
+    apiClient.get("/food/admin/pricing/rules", { params, contextModule: "admin" }),
+  upsertPricingRule: (body) =>
+    apiClient.post("/food/admin/pricing/rules", body ?? {}, { contextModule: "admin" }),
+  bulkUpsertRestaurantPricingRules: (body) =>
+    apiClient.post("/food/admin/pricing/rules/bulk-restaurant", body ?? {}, { contextModule: "admin" }),
+  bulkUpsertMenuItemPricingRules: (body) =>
+    apiClient.post("/food/admin/pricing/rules/bulk-menu-item", body ?? {}, { contextModule: "admin" }),
+  deletePricingRule: (id) =>
+    apiClient.delete(`/food/admin/pricing/rules/${id}`, { contextModule: "admin" }),
+  previewPricingRule: (body) =>
+    apiClient.post("/food/admin/pricing/preview", body ?? {}, { contextModule: "admin" }),
+  getPricingAudits: (params = {}) =>
+    apiClient.get("/food/admin/pricing/audits", { params, contextModule: "admin" }),
   createFood: (body) =>
     apiClient.post("/food/admin/foods", body ?? {}, { contextModule: "admin" }),
   updateFood: (id, body) =>
@@ -2554,6 +2570,32 @@ export const uploadAPI = {
   },
 };
 /** Order API (user app – Bearer USER token). Minimal calls: single create/verify, list/details cached by caller. */
+export const foodCartAPI = {
+  getCart: () => apiClient.get("/food/cart", { contextModule: "user" }),
+  addItem: (payload) =>
+    apiClient.post("/food/cart/items", payload ?? {}, {
+      contextModule: "user",
+    }),
+  updateItem: (lineId, payload) =>
+    apiClient.patch(
+      `/food/cart/items/${encodeURIComponent(String(lineId))}`,
+      payload ?? {},
+      { contextModule: "user" },
+    ),
+  removeItem: (lineId) =>
+    apiClient.delete(`/food/cart/items/${encodeURIComponent(String(lineId))}`, {
+      contextModule: "user",
+    }),
+  clearCart: () =>
+    apiClient.delete("/food/cart/clear", { contextModule: "user" }),
+  setCoupon: (couponCode) =>
+    apiClient.put(
+      "/food/cart/coupon",
+      { couponCode: couponCode || "" },
+      { contextModule: "user" },
+    ),
+};
+
 export const orderAPI = {
   calculateOrder: (payload) =>
     apiClient.post("/food/orders/calculate", payload ?? {}, {

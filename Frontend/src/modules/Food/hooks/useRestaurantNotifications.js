@@ -8,6 +8,7 @@ import {
   isNativeAppWebView,
   shouldSkipDuplicateOsNotification,
 } from '@food/utils/firebaseMessaging';
+import { normalizeRestaurantOrderView } from '@food/utils/restaurantOrderPricing';
 
 const alertSound = '/restaurant_alert.mp3';
 const debugLog = (...args) => {};
@@ -530,35 +531,36 @@ export const useRestaurantNotifications = () => {
 
   const handleIncomingOrderAlert = useCallback((orderData, source = 'unknown') => {
     const isSocket = source === 'socket';
+    const normalizedOrder = normalizeRestaurantOrderView(orderData);
     
-    if (isProcessedOrder(orderData)) {
+    if (isProcessedOrder(normalizedOrder)) {
       return;
     }
 
-    if (orderData?.scheduledAt) {
-      const scheduledTime = new Date(orderData.scheduledAt).getTime();
+    if (normalizedOrder?.scheduledAt) {
+      const scheduledTime = new Date(normalizedOrder.scheduledAt).getTime();
       const now = Date.now();
       if (scheduledTime > now + 15 * 60000) {
         return;
       }
     }
 
-    const deduped = !shouldProcessOrderAlert(orderData);
+    const deduped = !shouldProcessOrderAlert(normalizedOrder);
     if (deduped && !isSocket) {
       return;
     }
 
-    updateGlobalState({ newOrder: orderData });
+    updateGlobalState({ newOrder: normalizedOrder });
 
-    if (!isOrderMuted(orderData)) {
+    if (!isOrderMuted(normalizedOrder)) {
       // startGlobalAlertLoop already plays the sound immediately (and then loops),
       // so we must NOT play here as well — that caused the double sound.
-      startGlobalAlertLoop(orderData);
+      startGlobalAlertLoop(normalizedOrder);
     }
 
     const isTabHidden = typeof document !== 'undefined' && document.visibilityState === 'hidden';
     if (isTabHidden) {
-      showBackgroundOrderNotification(orderData);
+      showBackgroundOrderNotification(normalizedOrder);
     }
   }, []);
 
@@ -672,11 +674,11 @@ export const useRestaurantNotifications = () => {
     });
 
     globalSocket.on('new_order', (orderData) => {
-      const normalizedOrder = {
+      const normalizedOrder = normalizeRestaurantOrderView({
         ...orderData,
         orderMongoId: orderData?.orderMongoId || orderData?._id || orderData?.order_id,
         orderId: orderData?.orderId || orderData?.order_id || orderData?._id,
-      };
+      });
       updateGlobalState({ newOrder: normalizedOrder });
       handleIncomingOrderAlert(normalizedOrder, 'socket');
     });

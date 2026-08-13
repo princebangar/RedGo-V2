@@ -17,6 +17,10 @@ import {
 import { adminAPI } from "@food/api"
 import { toast } from "sonner"
 import { removePlusCode } from "@food/utils/common"
+import {
+  resolveRestaurantItemUnitPrice,
+  resolveItemMarkupUnit,
+} from "@food/utils/restaurantOrderPricing"
 
 const debugLog = (...args) => {}
 const debugWarn = (...args) => {}
@@ -715,9 +719,66 @@ export default function ViewOrderDialog({ isOpen, onOpenChange, order, onOrderUp
                         <p className="text-xs text-slate-500 mt-1 ml-8">{item.description}</p>
                       )}
                     </div>
-                    <p className="text-sm font-semibold text-slate-900 shrink-0 ml-3">
-                      ₹{((item.price || 0) * (item.quantity || 1)).toFixed(2)}
-                    </p>
+                    <div className="text-right shrink-0 ml-3">
+                      {(() => {
+                        const qty = Number(item.quantity || 1) || 1
+                        const sellingUnit =
+                          Number(item.customerPrice) ||
+                          Number(item.otherPrice) ||
+                          Number(item.price) ||
+                          0
+                        let baseUnit = resolveRestaurantItemUnitPrice(item)
+                        let markupUnit = resolveItemMarkupUnit(item)
+
+                        // Fallback: selling - base when markup fields missing
+                        if (!(markupUnit > 0) && sellingUnit > baseUnit + 0.01) {
+                          markupUnit = Math.round((sellingUnit - baseUnit) * 100) / 100
+                        }
+
+                        // Order-level admin markup fallback (older / restaurant-rule orders)
+                        if (!(markupUnit > 0)) {
+                          const orderMarkup = Number(
+                            order.markupTotal ?? order.pricing?.markupTotal ?? 0,
+                          )
+                          const itemCount = Array.isArray(order.items) ? order.items.length : 0
+                          if (orderMarkup > 0 && itemCount === 1) {
+                            markupUnit = Math.round((orderMarkup / qty) * 100) / 100
+                            if (!(Number(item.basePrice) >= 0) || Math.abs(baseUnit - sellingUnit) < 0.01) {
+                              baseUnit = Math.max(0, Math.round((sellingUnit - markupUnit) * 100) / 100)
+                            }
+                          }
+                        }
+
+                        const baseLine = Math.round(baseUnit * qty * 100) / 100
+                        const markupLine = Math.round(markupUnit * qty * 100) / 100
+                        const totalLine =
+                          markupLine > 0
+                            ? Math.round((baseLine + markupLine) * 100) / 100
+                            : Math.round((sellingUnit || baseUnit) * qty * 100) / 100
+
+                        if (markupLine > 0) {
+                          return (
+                            <div className="leading-tight">
+                              <p className="text-sm font-semibold text-slate-900">
+                                ₹{baseLine.toFixed(2)}
+                              </p>
+                              <p className="text-[11px] font-semibold text-rose-600 mt-0.5">
+                                + ₹{markupLine.toFixed(2)} admin
+                              </p>
+                              <p className="text-[11px] font-bold text-slate-900 mt-0.5">
+                                Total ₹{totalLine.toFixed(2)}
+                              </p>
+                            </div>
+                          )
+                        }
+
+                        return (
+                          <p className="text-sm font-semibold text-slate-900">
+                            ₹{baseLine.toFixed(2)}
+                          </p>
+                        )
+                      })()}
+                    </div>
                   </div>
                   )
                 })}
@@ -823,12 +884,47 @@ export default function ViewOrderDialog({ isOpen, onOpenChange, order, onOrderUp
           <div className="border-t border-slate-200 pt-4">
             <h3 className="text-sm font-semibold text-slate-700 mb-4">Pricing Breakdown</h3>
             <div className="space-y-2">
-              {order.totalItemAmount !== undefined && (
-                <div className="flex justify-between text-sm">
-                  <span className="text-slate-600">Subtotal</span>
-                  <span className="font-medium text-slate-900">₹{order.totalItemAmount.toFixed(2)}</span>
-                </div>
-              )}
+              {(() => {
+                const items = Array.isArray(order.items) ? order.items : []
+                const computedBase = items.reduce((sum, item) => {
+                  const qty = Number(item.quantity || 1) || 1
+                  return sum + resolveRestaurantItemUnitPrice(item) * qty
+                }, 0)
+                const computedMarkup = items.reduce((sum, item) => {
+                  const qty = Number(item.quantity || 1) || 1
+                  return sum + resolveItemMarkupUnit(item) * qty
+                }, 0)
+                const baseSubtotal = Number(
+                  order.baseSubtotal ??
+                    order.pricing?.baseSubtotal ??
+                    (computedBase > 0 ? computedBase : order.totalItemAmount) ??
+                    0,
+                )
+                const markupTotal = Number(
+                  order.markupTotal ??
+                    order.pricing?.markupTotal ??
+                    computedMarkup ??
+                    0,
+                )
+                return (
+                  <>
+                    <div className="flex justify-between text-sm">
+                      <span className="text-slate-600">Subtotal (Restaurant)</span>
+                      <span className="font-medium text-slate-900">
+                        ₹{Number(baseSubtotal || 0).toFixed(2)}
+                      </span>
+                    </div>
+                    {markupTotal > 0 ? (
+                      <div className="flex justify-between text-sm">
+                        <span className="text-slate-600">Admin Pricing</span>
+                        <span className="font-medium text-rose-600">
+                          + ₹{Number(markupTotal).toFixed(2)}
+                        </span>
+                      </div>
+                    ) : null}
+                  </>
+                )
+              })()}
               {order.itemDiscount !== undefined && order.itemDiscount > 0 && (
                 <div className="flex justify-between text-sm">
                   <span className="text-slate-600">Discount</span>

@@ -42,12 +42,18 @@ const getUploadErrorMessage = (error, fileName = "image") => {
   return `Failed to upload ${fileName}: ${message}`
 }
 
-const createVariantDraft = (variant = {}) => ({
-  localId: String(variant?.id || variant?._id || `variant-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`),
-  persistedId: String(variant?.id || variant?._id || ""),
-  name: String(variant?.name || ""),
-  price: variant?.price != null ? String(variant.price) : "",
-})
+const createVariantDraft = (variant = {}) => {
+  const restaurantPrice =
+    variant?.basePrice != null && Number.isFinite(Number(variant.basePrice))
+      ? Number(variant.basePrice)
+      : variant?.price;
+  return {
+    localId: String(variant?.id || variant?._id || `variant-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`),
+    persistedId: String(variant?.id || variant?._id || ""),
+    name: String(variant?.name || ""),
+    price: restaurantPrice != null ? String(restaurantPrice) : "",
+  };
+}
 
 export default function ItemDetailsPage() {
   const navigate = useNavigate()
@@ -155,9 +161,35 @@ export default function ItemDetailsPage() {
     } else {
       setFoodType(item.foodType === "Veg" ? "Veg" : "Non-Veg")
     }
-    const itemVariants = getFoodVariants(item)
+    const rawVariants = Array.isArray(item.variants)
+      ? item.variants
+      : Array.isArray(item.variations)
+        ? item.variations
+        : []
+    // Restaurant edit must use basePrice (own price), never admin selling price.
+    const itemVariants = rawVariants.length
+      ? rawVariants
+          .map((variant, index) => {
+            const name = String(variant?.name || "").trim()
+            const base = Number(variant?.basePrice)
+            const price = Number.isFinite(base) && base >= 0 ? base : Number(variant?.price)
+            if (!name || !Number.isFinite(price) || price <= 0) return null
+            return {
+              id: String(variant?.id || variant?._id || `variant-${index}`),
+              _id: String(variant?.id || variant?._id || `variant-${index}`),
+              name,
+              price,
+              basePrice: price,
+            }
+          })
+          .filter(Boolean)
+      : getFoodVariants(item)
     setVariants(itemVariants.map(createVariantDraft))
-    setBasePrice(itemVariants.length === 0 ? item.price?.toString() || "" : "")
+    const restaurantBase =
+      item.basePrice != null && Number.isFinite(Number(item.basePrice))
+        ? item.basePrice
+        : item.price
+    setBasePrice(itemVariants.length === 0 ? (restaurantBase != null ? String(restaurantBase) : "") : "")
     setPreparationTime(item.preparationTime || "")
     setGst(item.gst?.toString() || "5.0")
     setIsRecommended(item.isRecommended || false)

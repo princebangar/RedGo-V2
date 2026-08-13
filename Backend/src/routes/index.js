@@ -7,6 +7,7 @@ import { getPublicDiningCategories, getPublicDiningRestaurants } from '../module
 import uploadRoutes from '../modules/uploads/routes/upload.routes.js';
 import restaurantAdminRoutes from '../modules/food/admin/routes/admin.routes.js';
 import userRoutes from '../modules/food/user/routes/user.routes.js';
+import foodCartRoutes from '../modules/food/user/routes/foodCart.routes.js';
 import orderUserRoutes from '../modules/food/orders/routes/order.routes.user.js';
 import paymentRoutes from '../core/payments/payment.routes.js';
 import fcmRoutes from '../core/notifications/fcm.routes.js';
@@ -49,6 +50,7 @@ router.get('/v1/food/public/restaurant-settings', systemConfigController.getRest
 
 router.use('/v1/food/admin', authMiddleware, requireRoles('ADMIN', 'SUB_ADMIN'), restaurantAdminRoutes);
 router.use('/v1/food/user', authMiddleware, requireRoles('USER'), userRoutes);
+router.use('/v1/food/cart', authMiddleware, requireRoles('USER'), foodCartRoutes);
 router.use('/v1/food/notifications', authMiddleware, requireRoles('USER', 'RESTAURANT', 'DELIVERY_PARTNER'), notificationRoutes);
 router.use('/v1/food/orders', authMiddleware, requireRoles('USER'), orderUserRoutes);
 router.use('/v1/food/payments', authMiddleware, paymentRoutes);

@@ -16,6 +16,7 @@ const STABLE_KEYS_BY_PATH = {
   "/admin/food/food-approval": "food_approval",
   "/admin/food/foods": "restaurant_foods_list",
   "/admin/food/addons": "restaurant_addons_list",
+  "/admin/food/pricing": "pricing_management",
   "/admin/food/categories": "category",
   "/admin/food/zone-setup": "zone_setup",
   "/admin/food/restaurants": "restaurants_list",

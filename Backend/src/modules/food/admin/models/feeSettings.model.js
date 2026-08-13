@@ -14,7 +14,6 @@ const feeSettingsSchema = new mongoose.Schema(
         zoneId: {
             type: mongoose.Schema.Types.ObjectId,
             ref: 'FoodZone',
-            index: true
         },
         // No defaults here; admin must explicitly configure values.
         deliveryFee: { type: Number, min: 0 },

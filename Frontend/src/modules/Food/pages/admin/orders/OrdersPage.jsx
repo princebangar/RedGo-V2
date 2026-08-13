@@ -362,6 +362,10 @@ export default function OrdersPage({ statusKey = "all" }) {
 
       const pricing = order.pricing || {}
       const subtotal = Number(pricing.subtotal || 0)
+      let baseSubtotal = Number(
+        pricing.baseSubtotal != null ? pricing.baseSubtotal : NaN,
+      )
+      let markupTotal = Math.max(0, Number(pricing.markupTotal || 0))
       const deliveryFee = Number(pricing.deliveryFee || 0)
       const platformFee = Number(pricing.platformFee || 0)
       const taxAmount = Number(pricing.tax || 0)
@@ -440,17 +444,73 @@ export default function OrdersPage({ statusKey = "all" }) {
         ""
 
       const items = Array.isArray(order.items)
-        ? order.items.map((item) => ({
-            quantity: item.quantity || 1,
-            name: item.name || item.foodName || item.title || "Item",
-            price: item.price || item.variantPrice || 0,
-            variantName: item.variantName || item.variant || item.selectedVariant?.name || "",
-            variantId: item.variantId || item.selectedVariant?.id || "",
-            isVeg: item.isVeg,
-            description: item.description || "",
-            addons: item.addons || item.addOns || [],
-          }))
+        ? order.items.map((item) => {
+            const selling = Number(item.price || item.variantPrice || 0) || 0
+            let base =
+              item.basePrice != null && Number.isFinite(Number(item.basePrice))
+                ? Number(item.basePrice)
+                : null
+            let markup =
+              item.markupAmount != null && Number.isFinite(Number(item.markupAmount))
+                ? Math.max(0, Number(item.markupAmount))
+                : 0
+
+            if (!(markup > 0) && base != null && selling > base + 0.01) {
+              markup = Math.round((selling - base) * 100) / 100
+            }
+
+            // Recover base when older orders stored selling price in both fields
+            if (
+              (base == null || Math.abs(base - selling) < 0.01) &&
+              markup <= 0
+            ) {
+              const type = String(item.appliedPricingType || "").toUpperCase()
+              const value = Number(item.appliedPricingValue)
+              if (type === "FIXED" && value > 0 && selling > value) {
+                base = Math.round((selling - value) * 100) / 100
+                markup = value
+              } else if (type === "PERCENTAGE" && value > 0) {
+                base = Math.round((selling / (1 + value / 100)) * 100) / 100
+                markup = Math.round((selling - base) * 100) / 100
+              }
+            }
+
+            if (base == null) base = selling
+
+            return {
+              quantity: item.quantity || 1,
+              name: item.name || item.foodName || item.title || "Item",
+              price: selling,
+              basePrice: base,
+              markupAmount: markup,
+              otherPrice: item.otherPrice != null ? item.otherPrice : selling,
+              pricingScope: item.pricingScope || item.pricingRule?.scope || null,
+              appliedPricingType: item.appliedPricingType || null,
+              appliedPricingValue: item.appliedPricingValue ?? null,
+              variantName: item.variantName || item.variant || item.selectedVariant?.name || "",
+              variantId: item.variantId || item.selectedVariant?.id || "",
+              isVeg: item.isVeg,
+              description: item.description || "",
+              addons: item.addons || item.addOns || [],
+            }
+          })
         : []
+
+      if (!Number.isFinite(baseSubtotal) || baseSubtotal < 0) {
+        baseSubtotal = items.reduce((sum, item) => {
+          const qty = Number(item.quantity || 1) || 1
+          return sum + Number(item.basePrice || 0) * qty
+        }, 0)
+      }
+      if (!(markupTotal > 0)) {
+        markupTotal = items.reduce((sum, item) => {
+          const qty = Number(item.quantity || 1) || 1
+          return sum + Number(item.markupAmount || 0) * qty
+        }, 0)
+      }
+      if (!(markupTotal > 0) && subtotal > baseSubtotal + 0.01) {
+        markupTotal = Math.round((subtotal - baseSubtotal) * 100) / 100
+      }
 
       const customerName = order.customerName || order.userId?.name || "N/A"
       const customerPhone = order.customerPhone || order.userId?.phone || "N/A"
@@ -477,6 +537,8 @@ export default function OrdersPage({ statusKey = "all" }) {
         restaurant,
         items,
         subtotal,
+        baseSubtotal,
+        markupTotal,
         totalItemAmount: subtotal,
         couponDiscount: discountAmount,
         itemDiscount: 0,

@@ -77,11 +77,18 @@ export const serializeFoodVariants = (value = []) =>
 export const hasFoodVariants = (value = {}) => serializeFoodVariants(value?.variants || value?.variations || []).length > 0;
 
 export const getFoodDisplayPrice = (value = {}) => {
+    const price = Number(value?.price);
+    if (Number.isFinite(price) && price > 0) {
+        return price;
+    }
+
     const variants = serializeFoodVariants(value?.variants || value?.variations || []);
     if (variants.length > 0) {
         return Math.min(...variants.map((entry) => Number(entry.price) || 0));
     }
 
-    const price = Number(value?.price);
-    return Number.isFinite(price) ? price : 0;
+    return 0;
 };
+
+/** @deprecated Legacy compare-at removed — always returns 0. */
+export const getFoodDisplayOtherPrice = () => 0;
