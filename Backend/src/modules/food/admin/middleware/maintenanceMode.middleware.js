@@ -15,6 +15,40 @@ const ALWAYS_ALLOW_PREFIXES = [
   '/v1/auth',
 ];
 
+const LOCAL_HOST_RE =
+  /^(localhost|127\.0\.0\.1|0\.0\.0\.0|\[::1\])$/i;
+
+function hostFromUrlLike(value) {
+  try {
+    const raw = String(value || '').trim();
+    if (!raw) return '';
+    // Origin is usually already a full URL; Referer too.
+    const url = new URL(raw, 'http://localhost');
+    return String(url.hostname || '').toLowerCase();
+  } catch {
+    return '';
+  }
+}
+
+/**
+ * Local frontend (localhost / 127.0.0.1) hitting the SAME live backend
+ * must keep working while production users are locked.
+ * Browser sends Origin/Referer automatically from Vite / local WebView.
+ */
+function isLocalDevClient(req) {
+  const originHost = hostFromUrlLike(req.headers.origin);
+  if (originHost && LOCAL_HOST_RE.test(originHost)) return true;
+
+  const refererHost = hostFromUrlLike(req.headers.referer);
+  if (refererHost && LOCAL_HOST_RE.test(refererHost)) return true;
+
+  // Optional explicit marker from local axios (harmless if spoofed; Origin is primary)
+  const marker = String(req.headers['x-redgo-client'] || '').toLowerCase();
+  if (marker === 'local-dev') return true;
+
+  return false;
+}
+
 function resolvePath(req) {
   const raw = String(req.originalUrl || req.url || req.path || '');
   const withoutQuery = raw.split('?')[0] || '';
@@ -44,14 +78,15 @@ function isAdminBearer(req) {
 }
 
 /**
- * Blocks user / restaurant / delivery APIs while maintenance is on.
- * Admin stays fully available (admin routes + any admin-authenticated request).
+ * Blocks user / restaurant / delivery APIs while maintenance is on (live clients).
+ * - Admin always allowed
+ * - Localhost / local-dev clients allowed (same live backend, local frontend)
  */
 export async function maintenanceModeMiddleware(req, res, next) {
   try {
     const path = resolvePath(req);
 
-    if (isAlwaysAllowed(path) || isAdminBearer(req)) {
+    if (isAlwaysAllowed(path) || isAdminBearer(req) || isLocalDevClient(req)) {
       return next();
     }
 

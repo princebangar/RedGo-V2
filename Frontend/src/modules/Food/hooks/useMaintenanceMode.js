@@ -1,48 +1,64 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import apiClient from "@food/api/axios";
+import { shouldEnforceMaintenanceOnClient } from "@food/utils/maintenanceEnv";
 
 const POLL_WHEN_ON_MS = 2500;
 const POLL_WHEN_OFF_MS = 8000;
 
 /**
- * Strict maintenance flag: only true when API returns maintenance_mode_enabled === true.
- * Defaults to false so toggle-off never accidentally shows the maintenance screen.
+ * Strict maintenance flag: only true when API returns maintenance_mode_enabled === true
+ * AND this client is allowed to enforce it (live only; local stays open).
  */
 export function useMaintenanceMode({ active = true } = {}) {
   const [enabled, setEnabled] = useState(false);
   const [ready, setReady] = useState(false);
   const enabledRef = useRef(false);
+  const enforce = shouldEnforceMaintenanceOnClient();
 
-  const applyFlag = useCallback((value) => {
-    const next = value === true;
-    enabledRef.current = next;
-    setEnabled(next);
+  const applyFlag = useCallback(
+    (value) => {
+      const next = enforce && value === true;
+      enabledRef.current = next;
+      setEnabled(next);
 
-    try {
-      const raw = localStorage.getItem("redgo_customization_settings");
-      const parsed = raw ? JSON.parse(raw) : {};
-      const nextSettings = { ...parsed, maintenance_mode_enabled: next };
-      localStorage.setItem("redgo_customization_settings", JSON.stringify(nextSettings));
-    } catch {
-      /* ignore */
-    }
-  }, []);
+      try {
+        const raw = localStorage.getItem("redgo_customization_settings");
+        const parsed = raw ? JSON.parse(raw) : {};
+        // Keep the real DB flag in cache; UI lock only follows `next`.
+        localStorage.setItem(
+          "redgo_customization_settings",
+          JSON.stringify({
+            ...parsed,
+            maintenance_mode_enabled: value === true,
+          })
+        );
+      } catch {
+        /* ignore */
+      }
+    },
+    [enforce]
+  );
 
   const fetchFlag = useCallback(async () => {
+    if (!enforce) {
+      applyFlag(false);
+      setReady(true);
+      return;
+    }
+
     try {
       const response = await apiClient.get("/food/public/customization-settings");
       const settings = response?.data?.data || response?.data || {};
       applyFlag(settings?.maintenance_mode_enabled === true);
     } catch {
-      // Fail open: if settings cannot be fetched, never lock the apps.
       applyFlag(false);
     } finally {
       setReady(true);
     }
-  }, [applyFlag]);
+  }, [applyFlag, enforce]);
 
   useEffect(() => {
-    if (!active) {
+    if (!active || !enforce) {
       setEnabled(false);
       setReady(true);
       return undefined;
@@ -87,7 +103,7 @@ export function useMaintenanceMode({ active = true } = {}) {
       document.removeEventListener("visibilitychange", onVisibility);
       window.removeEventListener("maintenanceModeChanged", onMaintenanceEvent);
     };
-  }, [active, fetchFlag, applyFlag]);
+  }, [active, fetchFlag, applyFlag, enforce]);
 
   return { enabled, ready };
 }

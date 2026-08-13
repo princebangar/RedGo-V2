@@ -124,6 +124,22 @@ function onRefreshFailed(module) {
   }
 }
 
+function isLocalDevBrowser() {
+  try {
+    if (typeof window === "undefined") return false;
+    if (import.meta.env?.DEV) return true;
+    const host = String(window.location.hostname || "").toLowerCase();
+    return (
+      host === "localhost" ||
+      host === "127.0.0.1" ||
+      host === "0.0.0.0" ||
+      host.endsWith(".local")
+    );
+  } catch {
+    return false;
+  }
+}
+
 apiClient.interceptors.request.use(
   (config) => {
     config.contextModule = getModuleFromConfig(config);
@@ -133,6 +149,11 @@ apiClient.interceptors.request.use(
       if (config.headers && config.headers["Content-Type"]) {
         delete config.headers["Content-Type"];
       }
+    }
+
+    // Same live backend: mark local frontend so maintenance APIs stay open for dev.
+    if (isLocalDevBrowser()) {
+      config.headers["X-Redgo-Client"] = "local-dev";
     }
 
     const token = getAccessToken(config);
