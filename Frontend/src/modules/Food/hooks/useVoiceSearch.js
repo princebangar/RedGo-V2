@@ -1,15 +1,36 @@
 import { useState, useCallback, useRef } from 'react';
 import { toast } from 'sonner';
 
+const MAX_AUTO_RETRIES = 2;
+const SILENCE_COMMIT_MS = 2000;
+
+const ensureMicrophonePermission = async () => {
+    if (!navigator.mediaDevices?.getUserMedia) {
+        return true;
+    }
+
+    try {
+        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        stream.getTracks().forEach((track) => track.stop());
+        return true;
+    } catch {
+        return false;
+    }
+};
+
 export const useVoiceSearch = (onResult, onError) => {
     const [isListening, setIsListening] = useState(false);
     const [transcript, setTranscript] = useState('');
+    const [error, setError] = useState(null);
+
     const recognitionRef = useRef(null);
     const isStartingRef = useRef(false);
     const silenceTimeoutRef = useRef(null);
     const latestTranscriptRef = useRef('');
+    const hasCommittedRef = useRef(false);
+    const retryCountRef = useRef(0);
+    const shouldKeepListeningRef = useRef(false);
 
-    // Keep dynamic callback and state in refs to keep startListening stable
     const onResultRef = useRef(onResult);
     onResultRef.current = onResult;
 
@@ -19,148 +40,273 @@ export const useVoiceSearch = (onResult, onError) => {
     const isListeningRef = useRef(false);
     isListeningRef.current = isListening;
 
-    const stopListening = useCallback(() => {
+    const clearSilenceTimeout = () => {
         if (silenceTimeoutRef.current) {
             clearTimeout(silenceTimeoutRef.current);
             silenceTimeoutRef.current = null;
         }
-        if (recognitionRef.current) {
-            try {
-                recognitionRef.current.onstart = null;
-                recognitionRef.current.onaudiostart = null;
-                recognitionRef.current.onsoundstart = null;
-                recognitionRef.current.onspeechstart = null;
-                recognitionRef.current.onspeechend = null;
-                recognitionRef.current.onsoundend = null;
-                recognitionRef.current.onaudioend = null;
-                recognitionRef.current.onresult = null;
-                recognitionRef.current.onerror = null;
-                recognitionRef.current.onend = null;
-                recognitionRef.current.stop();
-            } catch (e) {
-                // Ignore errors on stop
-            }
-            recognitionRef.current = null;
+    };
+
+    const teardownRecognition = useCallback(() => {
+        clearSilenceTimeout();
+
+        if (!recognitionRef.current) {
+            return;
         }
-        setIsListening(false);
-        isStartingRef.current = false;
+
+        try {
+            recognitionRef.current.onstart = null;
+            recognitionRef.current.onaudiostart = null;
+            recognitionRef.current.onsoundstart = null;
+            recognitionRef.current.onspeechstart = null;
+            recognitionRef.current.onspeechend = null;
+            recognitionRef.current.onsoundend = null;
+            recognitionRef.current.onaudioend = null;
+            recognitionRef.current.onresult = null;
+            recognitionRef.current.onerror = null;
+            recognitionRef.current.onend = null;
+            recognitionRef.current.stop();
+        } catch {
+            // Ignore stop errors.
+        }
+
+        recognitionRef.current = null;
     }, []);
 
-    const startListening = useCallback(() => {
-        if (isListeningRef.current || isStartingRef.current) return;
+    const stopListening = useCallback(() => {
+        shouldKeepListeningRef.current = false;
+        teardownRecognition();
+        setIsListening(false);
+        isStartingRef.current = false;
+    }, [teardownRecognition]);
+
+    const commitResult = useCallback(() => {
+        if (hasCommittedRef.current) {
+            return;
+        }
+
+        const finalResult = latestTranscriptRef.current.trim();
+        if (!finalResult) {
+            return;
+        }
+
+        hasCommittedRef.current = true;
+        shouldKeepListeningRef.current = false;
+        onResultRef.current?.(finalResult);
+        stopListening();
+    }, [stopListening]);
+
+    const scheduleSilenceCommit = useCallback(() => {
+        clearSilenceTimeout();
+        silenceTimeoutRef.current = setTimeout(() => {
+            if (latestTranscriptRef.current.trim()) {
+                commitResult();
+            }
+        }, SILENCE_COMMIT_MS);
+    }, [commitResult]);
+
+    const createRecognition = useCallback(() => {
+        const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+        if (!SpeechRecognition) {
+            return null;
+        }
+
+        const recognition = new SpeechRecognition();
+        recognition.lang = 'en-IN';
+        recognition.continuous = true;
+        recognition.interimResults = true;
+        recognition.maxAlternatives = 1;
+
+        recognition.onstart = () => {
+            setIsListening(true);
+            setError(null);
+            isStartingRef.current = false;
+        };
+
+        recognition.onresult = (event) => {
+            let interimTranscript = '';
+            let finalTranscript = '';
+
+            for (let i = event.resultIndex; i < event.results.length; i += 1) {
+                const transcriptText = event.results[i][0].transcript;
+                if (event.results[i].isFinal) {
+                    finalTranscript += transcriptText;
+                } else {
+                    interimTranscript += transcriptText;
+                }
+            }
+
+            const currentText = (finalTranscript || interimTranscript).trim();
+            if (!currentText) {
+                return;
+            }
+
+            latestTranscriptRef.current = currentText;
+            setTranscript(currentText);
+            setError(null);
+
+            if (finalTranscript.trim()) {
+                commitResult();
+                return;
+            }
+
+            scheduleSilenceCommit();
+        };
+
+        recognition.onerror = (event) => {
+            const errorType = event.error;
+            console.error('Speech recognition error:', errorType);
+
+            if (errorType === 'aborted') {
+                return;
+            }
+
+            if (errorType === 'not-allowed') {
+                const message = 'Microphone access denied.';
+                setError(message);
+                toast.error(message, { duration: 3000 });
+                onErrorRef.current?.(errorType);
+                stopListening();
+                return;
+            }
+
+            if (errorType === 'network') {
+                const message = 'Network error during voice search.';
+                setError(message);
+                toast.error(message, { duration: 3000 });
+                onErrorRef.current?.(errorType);
+                stopListening();
+                return;
+            }
+
+            if (errorType === 'no-speech') {
+                if (
+                    shouldKeepListeningRef.current &&
+                    !hasCommittedRef.current &&
+                    retryCountRef.current < MAX_AUTO_RETRIES
+                ) {
+                    retryCountRef.current += 1;
+                    return;
+                }
+
+                if (!hasCommittedRef.current && !latestTranscriptRef.current.trim()) {
+                    setError('No speech detected. Tap try again and speak clearly.');
+                }
+            }
+        };
+
+        recognition.onend = () => {
+            if (hasCommittedRef.current || !shouldKeepListeningRef.current) {
+                setIsListening(false);
+                isStartingRef.current = false;
+                recognitionRef.current = null;
+                return;
+            }
+
+            if (latestTranscriptRef.current.trim()) {
+                commitResult();
+                return;
+            }
+
+            if (retryCountRef.current < MAX_AUTO_RETRIES) {
+                retryCountRef.current += 1;
+                recognitionRef.current = null;
+                isStartingRef.current = false;
+                setIsListening(false);
+
+                window.setTimeout(() => {
+                    if (!shouldKeepListeningRef.current || hasCommittedRef.current) {
+                        return;
+                    }
+
+                    try {
+                        const nextRecognition = createRecognition();
+                        if (!nextRecognition) {
+                            throw new Error('Speech recognition unavailable');
+                        }
+
+                        isStartingRef.current = true;
+                        recognitionRef.current = nextRecognition;
+                        nextRecognition.start();
+                    } catch (restartError) {
+                        console.error('Speech recognition restart failed:', restartError);
+                        setError('Could not keep listening. Please try again.');
+                        stopListening();
+                    }
+                }, 250);
+                return;
+            }
+
+            setError('No speech detected. Tap try again and speak clearly.');
+            setIsListening(false);
+            isStartingRef.current = false;
+            recognitionRef.current = null;
+        };
+
+        return recognition;
+    }, [commitResult, scheduleSilenceCommit, stopListening]);
+
+    const startListening = useCallback(async () => {
+        if (isListeningRef.current || isStartingRef.current) {
+            return;
+        }
 
         const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
-
         if (!SpeechRecognition) {
-            toast.error("Voice search is not supported in this browser.");
+            const message = 'Voice search is not supported in this browser.';
+            setError(message);
+            toast.error(message);
+            onErrorRef.current?.('unsupported');
+            return;
+        }
+
+        const hasPermission = await ensureMicrophonePermission();
+        if (!hasPermission) {
+            const message = 'Microphone access denied.';
+            setError(message);
+            toast.error(message, { duration: 3000 });
+            onErrorRef.current?.('not-allowed');
             return;
         }
 
         try {
             isStartingRef.current = true;
+            shouldKeepListeningRef.current = true;
+            hasCommittedRef.current = false;
+            retryCountRef.current = 0;
             latestTranscriptRef.current = '';
             setTranscript('');
-            
-            const recognition = new SpeechRecognition();
-            recognition.lang = 'en-IN';
-            recognition.continuous = false;
-            recognition.interimResults = true; // Use interim results to work around WebView delays
-            recognition.maxAlternatives = 1;
+            setError(null);
 
-            const handleSpeechEnd = () => {
-                const finalResult = latestTranscriptRef.current.trim();
-                if (finalResult && onResultRef.current) {
-                    onResultRef.current(finalResult);
-                }
-                stopListening();
-            };
+            teardownRecognition();
 
-            recognition.onstart = () => {
-                console.log('Speech recognition started');
-                setIsListening(true);
-                isStartingRef.current = false;
-            };
-
-            recognition.onresult = (event) => {
-                let interimTranscript = '';
-                let finalTranscript = '';
-
-                for (let i = event.resultIndex; i < event.results.length; ++i) {
-                    const transcriptText = event.results[i][0].transcript;
-                    if (event.results[i].isFinal) {
-                        finalTranscript += transcriptText;
-                    } else {
-                        interimTranscript += transcriptText;
-                    }
-                }
-
-                const currentText = finalTranscript || interimTranscript;
-                console.log('Speech recognition result:', { currentText, isFinal: !!finalTranscript });
-                
-                if (currentText.trim()) {
-                    latestTranscriptRef.current = currentText;
-                    setTranscript(currentText.trim());
-                }
-
-                if (finalTranscript.trim()) {
-                    if (silenceTimeoutRef.current) clearTimeout(silenceTimeoutRef.current);
-                    handleSpeechEnd();
-                } else {
-                    if (silenceTimeoutRef.current) clearTimeout(silenceTimeoutRef.current);
-                    silenceTimeoutRef.current = setTimeout(() => {
-                        console.log('Speech recognition silence timeout reached, committing result:', latestTranscriptRef.current);
-                        handleSpeechEnd();
-                    }, 1500); // 1.5 seconds of silence auto-commits the interim result
-                }
-            };
-
-            recognition.onerror = (event) => {
-                const errorType = event.error;
-                console.error('Speech recognition error:', errorType);
-                
-                if (errorType === 'not-allowed') {
-                    toast.error("Microphone access denied.", { duration: 3000 });
-                } else if (errorType === 'no-speech') {
-                    toast.error("No speech detected. Please try again.", { duration: 3000 });
-                } else if (errorType === 'network') {
-                    toast.error("Network error during voice search.", { duration: 3000 });
-                }
-                
-                if (onErrorRef.current) {
-                    onErrorRef.current(errorType);
-                }
-                stopListening();
-            };
-
-            recognition.onend = () => {
-                console.log('Speech recognition ended');
-                // If we ended but have some speech captured, process it
-                if (latestTranscriptRef.current.trim()) {
-                    handleSpeechEnd();
-                } else {
-                    if (onErrorRef.current) {
-                        onErrorRef.current('no-speech');
-                    }
-                    stopListening();
-                }
-            };
-
-            // Optional diagnostic events
-            recognition.onspeechstart = () => console.log('Speech detected');
-            recognition.onspeechend = () => console.log('Speech ended');
+            const recognition = createRecognition();
+            if (!recognition) {
+                throw new Error('Speech recognition unavailable');
+            }
 
             recognitionRef.current = recognition;
             recognition.start();
-        } catch (error) {
+        } catch (startError) {
             isStartingRef.current = false;
-            console.error('Speech recognition initialization failed:', error);
+            shouldKeepListeningRef.current = false;
+            console.error('Speech recognition initialization failed:', startError);
+            const message = 'Could not start voice search. Please try again.';
+            setError(message);
+            toast.error(message, { duration: 3000 });
         }
-    }, [stopListening]);
+    }, [createRecognition, teardownRecognition]);
+
+    const clearError = useCallback(() => {
+        setError(null);
+    }, []);
 
     return {
         isListening,
         transcript,
+        error,
         startListening,
-        stopListening
+        stopListening,
+        clearError,
     };
 };
