@@ -36,6 +36,10 @@ import useAppBackNavigation from "@food/hooks/useAppBackNavigation"
 import { ImageSourcePicker } from "@food/components/ImageSourcePicker"
 import { isFlutterBridgeAvailable } from "@food/utils/imageUploadUtils"
 import { EMAIL_REGEX } from "@/shared/utils/emailValidation"
+import {
+  compressImageForUpload,
+  PROFILE_PRESET,
+} from "@/shared/utils/imageCompressor"
 import dayjs from 'dayjs'
 const debugLog = (...args) => { }
 const debugWarn = (...args) => { }
@@ -100,58 +104,6 @@ const clearEditProfileDraft = () => {
   } catch (error) {
     debugError('Error clearing edit profile draft from localStorage:', error)
   }
-}
-
-const convertToWebP = (file, quality = 0.8) => {
-  return new Promise((resolve) => {
-    const img = new Image()
-    img.src = URL.createObjectURL(file)
-    img.onload = () => {
-      URL.revokeObjectURL(img.src)
-      const canvas = document.createElement('canvas')
-      const ctx = canvas.getContext('2d')
-      if (!ctx) {
-        resolve(file)
-        return
-      }
-
-      // Downscale to max 1024px for profile photo performance
-      const maxDim = 1024
-      let width = img.width
-      let height = img.height
-      if (width > maxDim || height > maxDim) {
-        if (width > height) {
-          height = Math.round((height * maxDim) / width)
-          width = maxDim
-        } else {
-          width = Math.round((width * maxDim) / height)
-          height = maxDim
-        }
-      }
-
-      canvas.width = width
-      canvas.height = height
-      ctx.drawImage(img, 0, 0, width, height)
-
-      canvas.toBlob(
-        (blob) => {
-          if (!blob) {
-            resolve(file)
-            return
-          }
-          const webpFile = new File(
-            [blob],
-            file.name.replace(/\.[^/.]+$/, "") + ".webp",
-            { type: "image/webp", lastModified: Date.now() }
-          )
-          resolve(webpFile)
-        },
-        "image/webp",
-        quality
-      )
-    }
-    img.onerror = () => resolve(file)
-  })
 }
 
 export default function EditProfile() {
@@ -278,15 +230,18 @@ export default function EditProfile() {
       return
     }
 
-    // Validate file size (max 5MB)
-    if (file.size > 5 * 1024 * 1024) {
-      toast.error('Image size should be less than 5MB')
-      return
+    try {
+      const compressedFile = await compressImageForUpload(file, {
+        ...PROFILE_PRESET,
+        maxWidth: 1600,
+        maxHeight: 1600,
+      })
+      setCropImageFile(compressedFile)
+      setIsCropModalOpen(true)
+    } catch {
+      setCropImageFile(file)
+      setIsCropModalOpen(true)
     }
-
-    // Open crop modal instead of uploading directly
-    setCropImageFile(file)
-    setIsCropModalOpen(true)
   }
 
   const handleCropComplete = async (croppedFile) => {
@@ -296,16 +251,16 @@ export default function EditProfile() {
     if (!croppedFile) return
 
     try {
-      const webpFile = await convertToWebP(croppedFile, 0.8)
+      const compressedFile = await compressImageForUpload(croppedFile, PROFILE_PRESET)
       const reader = new FileReader()
       reader.onloadend = () => {
         const base64Data = reader.result
         setImagePreview(base64Data)
-        setPendingImageFile(webpFile)
+        setPendingImageFile(compressedFile)
       }
-      reader.readAsDataURL(webpFile)
+      reader.readAsDataURL(compressedFile)
     } catch (err) {
-      console.error("WebP conversion failed, falling back to original cropped file", err)
+      console.error("Profile image compression failed, falling back to cropped file", err)
       const reader = new FileReader()
       reader.onloadend = () => {
         const base64Data = reader.result
@@ -360,10 +315,19 @@ export default function EditProfile() {
         setIsUploadingImage(true)
         try {
           const uploadRes = await userAPI.uploadProfileImage(pendingImageFile)
-          finalImageUrl = uploadRes?.data?.data?.profileImage || uploadRes?.data?.profileImage || profileImage
+          finalImageUrl =
+            uploadRes?.data?.data?.profileImage ||
+            uploadRes?.data?.profileImage ||
+            uploadRes?.data?.data?.user?.profileImage ||
+            profileImage
         } catch (uploadErr) {
           debugError('Error uploading image:', uploadErr)
-          toast.error('Failed to upload image')
+          toast.error(
+            uploadErr?.response?.data?.error ||
+              uploadErr?.response?.data?.message ||
+              uploadErr?.message ||
+              'Failed to upload image'
+          )
           setIsUploadingImage(false)
           setIsSaving(false)
           return

@@ -8,6 +8,7 @@ import {
   DialogTitle,
 } from "@food/components/ui/dialog"
 import { openCamera, openGallery } from "@food/utils/imageUploadUtils"
+import { compressImageForUpload } from "@/shared/utils/imageCompressor"
 
 /**
  * ImageSourcePicker component to choose between Camera and Gallery
@@ -61,10 +62,15 @@ export const ImageSourcePicker = ({
         ref={internalInputRef} 
         style={{ display: 'none' }} 
         accept="image/*" 
-        onChange={(e) => {
+        onChange={async (e) => {
           const file = e.target.files?.[0]
           if (file && onFileSelect) {
-            onFileSelect(file)
+            try {
+              const compressedFile = await compressImageForUpload(file)
+              onFileSelect(compressedFile)
+            } catch {
+              onFileSelect(file)
+            }
           }
           e.target.value = ""
         }} 
