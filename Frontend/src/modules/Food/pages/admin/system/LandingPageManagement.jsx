@@ -8,6 +8,10 @@ import { Label } from "@food/components/ui/label"
 import { Button } from "@food/components/ui/button"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@food/components/ui/dialog"
 import { Checkbox } from "@food/components/ui/checkbox"
+import {
+  prepareUploadFile,
+  prepareUploadFiles,
+} from "@/shared/utils/imageCompressor"
 
 const debugLog = (...args) => {}
 const debugWarn = (...args) => {}
@@ -255,9 +259,11 @@ export default function LandingPageManagement() {
       setSuccess(null)
       setBannersUploadProgress({ current: 0, total: files.length })
 
+      const preparedFiles = await prepareUploadFiles(files)
+
       // Use batch upload endpoint for multiple files
       const formData = new FormData()
-      files.forEach((file) => {
+      preparedFiles.forEach((file) => {
         // Backend expects field name "files" (upload.array('files'))
         formData.append('files', file)
         if(selectedZoneId) formData.append('zoneId', selectedZoneId)
@@ -556,7 +562,7 @@ export default function LandingPageManagement() {
         }
 
         const formData = new FormData()
-        formData.append('image', item.file)
+        formData.append('image', await prepareUploadFile(item.file))
         if(selectedZoneId) formData.append('zoneId', selectedZoneId)
         formData.append('label', item.label.trim())
 
@@ -698,17 +704,13 @@ export default function LandingPageManagement() {
       setError('Please select an image file')
       return
     }
-    if (file.size > 5 * 1024 * 1024) {
-      setError('Image size exceeds 5MB')
-      return
-    }
 
     try {
       setExploreMoreUploading(true)
       setError(null)
       setSuccess(null)
       const formData = new FormData()
-      formData.append('image', file)
+      formData.append('image', await prepareUploadFile(file))
       if(selectedZoneId) formData.append('zoneId', selectedZoneId)
       formData.append('label', exploreMoreLabel.trim())
       formData.append('link', exploreMoreLink.trim())
@@ -774,7 +776,7 @@ export default function LandingPageManagement() {
 
     // Create FormData
     const formData = new FormData()
-    formData.append('image', file)
+    formData.append('image', await prepareUploadFile(file))
       if(selectedZoneId) formData.append('zoneId', selectedZoneId)
 
     try {
@@ -876,8 +878,10 @@ export default function LandingPageManagement() {
       setSuccess(null)
       setUnder250BannersUploadProgress({ current: 0, total: files.length })
 
+      const preparedFiles = await prepareUploadFiles(files)
+
       const formData = new FormData()
-      files.forEach((file) => {
+      preparedFiles.forEach((file) => {
         // Backend expects field name "files" (upload.array('files'))
         formData.append('files', file)
         if(selectedZoneId) formData.append('zoneId', selectedZoneId)
@@ -1002,8 +1006,10 @@ export default function LandingPageManagement() {
       setSuccess(null)
       setDiningBannersUploadProgress({ current: 0, total: files.length })
 
+      const preparedFiles = await prepareUploadFiles(files)
+
       const formData = new FormData()
-      files.forEach((file) => {
+      preparedFiles.forEach((file) => {
         formData.append('files', file)
         if(selectedZoneId) formData.append('zoneId', selectedZoneId)
       })
@@ -1129,7 +1135,7 @@ export default function LandingPageManagement() {
       if (selectedFestBannerFile) {
         setFestBannerUploading(true)
         const formData = new FormData()
-        formData.append('file', selectedFestBannerFile)
+        formData.append('file', await prepareUploadFile(selectedFestBannerFile))
         formData.append('folder', 'food/landing/fest-banner')
         if (selectedZoneId) formData.append('zoneId', selectedZoneId)
 
