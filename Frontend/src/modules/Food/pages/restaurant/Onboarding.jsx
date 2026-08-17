@@ -25,6 +25,10 @@ import { getGoogleMapsApiKey } from "@food/utils/googleMapsApiKey"
 import { clearModuleAuth, clearAuthData, isModuleAuthenticated, getModuleToken } from "@food/utils/auth"
 import { ImageSourcePicker } from "@food/components/ImageSourcePicker"
 import { EMAIL_REGEX } from "@/shared/utils/emailValidation"
+import {
+  prepareUploadFile,
+  prepareUploadFiles,
+} from "@/shared/utils/imageCompressor"
 import { OnboardingSkeleton } from "@food/components/ui/loading-skeletons"
 import OnboardingExitModal from "@/shared/components/OnboardingExitModal"
 import useOnboardingExitGuard from "@/shared/hooks/useOnboardingExitGuard"
@@ -1542,13 +1546,16 @@ export default function RestaurantOnboarding() {
         if (menuFiles.length === 0) {
           throw new Error("At least one menu image must be uploaded")
         }
-        menuFiles.forEach((file) => formData.append("menuImages", file))
-
+        const preparedMenuFiles = await prepareUploadFiles(menuFiles)
+        preparedMenuFiles.forEach((file) => formData.append("menuImages", file))
 
         if (!isUploadableFile(step2.profileImage)) {
           throw new Error("Restaurant profile image is required")
         }
-        formData.append("profileImage", step2.profileImage)
+        formData.append(
+          "profileImage",
+          await prepareUploadFile(step2.profileImage, { preset: "profile" }),
+        )
 
         // Step 3
         formData.append("panNumber", step3.panNumber || "")
@@ -1556,7 +1563,7 @@ export default function RestaurantOnboarding() {
         if (!isUploadableFile(step3.panImage)) {
           throw new Error("PAN image is required")
         }
-        formData.append("panImage", step3.panImage)
+        formData.append("panImage", await prepareUploadFile(step3.panImage))
 
         formData.append("gstRegistered", step3.gstRegistered ? "true" : "false")
         if (step3.gstRegistered) {
@@ -1566,7 +1573,7 @@ export default function RestaurantOnboarding() {
           if (!isUploadableFile(step3.gstImage)) {
             throw new Error("GST image is required when GST registered")
           }
-          formData.append("gstImage", step3.gstImage)
+          formData.append("gstImage", await prepareUploadFile(step3.gstImage))
         }
 
         formData.append("fssaiNumber", step3.fssaiNumber || "")
@@ -1574,7 +1581,7 @@ export default function RestaurantOnboarding() {
         if (!isUploadableFile(step3.fssaiImage)) {
           throw new Error("FSSAI image is required")
         }
-        formData.append("fssaiImage", step3.fssaiImage)
+        formData.append("fssaiImage", await prepareUploadFile(step3.fssaiImage))
 
         formData.append("accountNumber", step3.accountNumber || "")
         formData.append("ifscCode", (step3.ifscCode || "").toUpperCase())

@@ -3,8 +3,9 @@ import { ArrowLeft, Eye, Edit2, Loader2, Camera, X, Plus, FileText, Image as Ima
 import { motion, AnimatePresence } from 'framer-motion';
 import { deliveryAPI } from '@food/api';
 import { toast } from 'sonner';
-import { openCamera, openGallery } from "@food/utils/imageUploadUtils";
-import useDeliveryBackNavigation from '../../hooks/useDeliveryBackNavigation';
+import { openCamera, openGallery } from "@food/utils/imageUploadUtils"
+import { prepareUploadFile } from "@/shared/utils/imageCompressor"
+import useDeliveryBackNavigation from '../../hooks/useDeliveryBackNavigation'
 
 /**
  * ProfileDocsV2 - Restored Old UI for Registration Documents & Vehicle Info.
@@ -33,7 +34,7 @@ export const ProfileDocsV2 = () => {
      if (!file) return;
      setIsUpdating(true);
      const formData = new FormData();
-     formData.append(field, file);
+     formData.append(field, await prepareUploadFile(file, field === "profilePhoto" ? { preset: "profile" } : {}));
      try {
         const res = await deliveryAPI.updateProfileMultipart(formData);
         if (res?.data?.success) {

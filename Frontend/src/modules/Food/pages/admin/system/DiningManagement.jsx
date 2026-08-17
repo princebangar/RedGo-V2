@@ -5,6 +5,7 @@ import { getModuleToken } from "@food/utils/auth"
 import { Input } from "@food/components/ui/input"
 import { Label } from "@food/components/ui/label"
 import { Button } from "@food/components/ui/button"
+import { prepareUploadFile } from "@/shared/utils/imageCompressor"
 const debugLog = (...args) => {}
 const debugWarn = (...args) => {}
 const debugError = (...args) => {}
@@ -162,7 +163,7 @@ export default function DiningManagement() {
         try {
             setBannersUploading(true)
             const formData = new FormData()
-            formData.append('files', bannerFile)
+            formData.append('files', await prepareUploadFile(bannerFile))
             if (bannerTagline.trim()) formData.append('title', bannerTagline.trim())
             if (bannerPercentageOff.trim()) formData.append('ctaText', bannerPercentageOff.trim())
 

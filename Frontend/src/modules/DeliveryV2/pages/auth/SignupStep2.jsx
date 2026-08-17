@@ -24,6 +24,9 @@ import {
   finalizeDeliveryPendingSubmission,
   prefetchModuleFcmToken,
 } from "@food/utils/firebaseMessaging"
+import {
+  prepareUploadFile,
+} from "@/shared/utils/imageCompressor"
 
 const debugError = (...args) => { }
 
@@ -223,10 +226,23 @@ export default function SignupStep2() {
     }
     if (details.panNumber) formData.append("panNumber", details.panNumber)
     if (details.aadharNumber) formData.append("aadharNumber", details.aadharNumber)
-    formData.append("profilePhoto", resolvedDocuments.profilePhoto)
-    formData.append("aadharPhoto", resolvedDocuments.aadharPhoto)
-    formData.append("panPhoto", resolvedDocuments.panPhoto)
-    formData.append("drivingLicensePhoto", resolvedDocuments.drivingLicensePhoto)
+
+    const [
+      profilePhoto,
+      aadharPhoto,
+      panPhoto,
+      drivingLicensePhoto,
+    ] = await Promise.all([
+      prepareUploadFile(resolvedDocuments.profilePhoto, { preset: "profile" }),
+      prepareUploadFile(resolvedDocuments.aadharPhoto),
+      prepareUploadFile(resolvedDocuments.panPhoto),
+      prepareUploadFile(resolvedDocuments.drivingLicensePhoto),
+    ])
+
+    formData.append("profilePhoto", profilePhoto)
+    formData.append("aadharPhoto", aadharPhoto)
+    formData.append("panPhoto", panPhoto)
+    formData.append("drivingLicensePhoto", drivingLicensePhoto)
 
     if (fcmToken) {
       formData.append("fcmToken", fcmToken)

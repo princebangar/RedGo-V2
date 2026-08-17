@@ -10,6 +10,7 @@ import BottomPopup from "@delivery/components/BottomPopup"
 import { toast } from "sonner"
 import { showUserFacingApiError } from "@/shared/utils/apiError"
 import { openCamera, openGallery, isFlutterBridgeAvailable } from "@food/utils/imageUploadUtils"
+import { prepareUploadFile } from "@/shared/utils/imageCompressor"
 import { deliveryAPI } from "@food/api"
 import { motion, AnimatePresence } from "framer-motion"
 import useDeliveryBackNavigation from "../../hooks/useDeliveryBackNavigation"
@@ -278,7 +279,7 @@ export const ProfileDetailsV2 = () => {
     try {
       setIsUploadingImage(true)
       const formData = new FormData()
-      formData.append("profilePhoto", file)
+      formData.append("profilePhoto", await prepareUploadFile(file, { preset: "profile" }))
       const response = await deliveryAPI.updateProfileMultipart(formData)
       if (response?.data?.success) {
         toast.success("Profile photo updated")
@@ -354,11 +355,6 @@ export const ProfileDetailsV2 = () => {
       return
     }
 
-    if (file.size > 5 * 1024 * 1024) {
-      toast.error("Image size should be less than 5MB")
-      return
-    }
-
     setUpiQrFile(file)
     setUpiQrPreview(URL.createObjectURL(file))
     toast.success("UPI QR selected")
@@ -399,7 +395,7 @@ export const ProfileDetailsV2 = () => {
       formData.append("documents[pan][number]", (bankDetails.panNumber || "").trim().toUpperCase())
 
       if (upiQrFile) {
-        formData.append("upiQrCode", upiQrFile)
+        formData.append("upiQrCode", await prepareUploadFile(upiQrFile))
       }
 
       await deliveryAPI.updateBankDetailsMultipart(formData)

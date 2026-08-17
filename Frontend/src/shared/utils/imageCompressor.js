@@ -210,3 +210,26 @@ export const prepareUploadFile = async (file, options = {}) =>
 
 export const prepareUploadFiles = async (files, options = {}) =>
   compressImagesForUpload(files, options)
+
+export const appendCompressedImageToFormData = async (
+  formData,
+  fieldName,
+  file,
+  options = {},
+) => {
+  if (!formData || !fieldName || !file) return formData
+  formData.append(fieldName, await prepareUploadFile(file, options))
+  return formData
+}
+
+export const appendCompressedImagesToFormData = async (
+  formData,
+  fieldName,
+  files,
+  options = {},
+) => {
+  if (!formData || !fieldName) return formData
+  const preparedFiles = await prepareUploadFiles(files, options)
+  preparedFiles.forEach((file) => formData.append(fieldName, file))
+  return formData
+}
