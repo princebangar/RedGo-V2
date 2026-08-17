@@ -42,6 +42,7 @@ import {
 import { motion, AnimatePresence } from "framer-motion";
 import Footer from "@food/components/user/Footer";
 import VoiceSearchOverlay from "@food/components/user/VoiceSearchOverlay";
+import { useVoiceSearch } from "@food/hooks/useVoiceSearch";
 import AddToCartButton from "@food/components/user/AddToCartButton";
 import StickyCartCard from "@food/components/user/StickyCartCard";
 import OrderTrackingCard from "@food/components/user/OrderTrackingCard";
@@ -1182,6 +1183,10 @@ export default function Home({ homeMode = null, isTabActive = true }) {
   const [selectedCuisine, setSelectedCuisine] = useState(null);
   const [isFilterOpen, setIsFilterOpen] = useState(false);
   const [isVoiceOverlayOpen, setIsVoiceOverlayOpen] = useState(false);
+  const voiceSearch = useVoiceSearch((transcript) => {
+    navigate(`/food/user/search?q=${encodeURIComponent(transcript)}&mode=delivery`);
+    setIsVoiceOverlayOpen(false);
+  });
   const [appliedFilters, setAppliedFilters] = useState({
     activeFilters: new Set(),
     sortBy: null,
@@ -3179,6 +3184,8 @@ export default function Home({ homeMode = null, isTabActive = true }) {
                                 className="h-5 w-5 text-[#DC2626] dark:text-[#a14b84]"
                                 onClick={(e) => {
                                   e.stopPropagation();
+                                  voiceSearch.clearError();
+                                  void voiceSearch.startListening();
                                   setIsVoiceOverlayOpen(true);
                                 }}
                               />
@@ -3766,10 +3773,15 @@ export default function Home({ homeMode = null, isTabActive = true }) {
 
       <VoiceSearchOverlay
         isOpen={isVoiceOverlayOpen}
-        onClose={() => setIsVoiceOverlayOpen(false)}
+        onClose={() => {
+          voiceSearch.stopListening();
+          setIsVoiceOverlayOpen(false);
+        }}
         onSearchResult={(transcript) => {
           navigate(`/food/user/search?q=${encodeURIComponent(transcript)}&mode=delivery`);
         }}
+        voiceSearch={voiceSearch}
+        autoStart={false}
       />
 
       {/* Filter Modal - Bottom Sheet */}
