@@ -1,31 +1,11 @@
 import { toast } from "sonner"
 import { compressImageForUpload } from "@/shared/utils/imageCompressor"
 
-export const notifySelectedFile = async (
-  file,
-  onSelectFile,
-  compressOptions = {},
-  shouldCompress = true,
-) => {
-  if (!file || typeof onSelectFile !== "function") return
-
-  let output = file
-  if (shouldCompress) {
-    try {
-      output = await compressImageForUpload(file, compressOptions)
-    } catch {
-      output = file
-    }
-  }
-
-  onSelectFile(output)
-}
-
 const openTransientImageInput = ({
   onSelectFile,
   accept = "image/*",
   capture = undefined,
-  compressOptions = {},
+  compressOptions = undefined,
   shouldCompress = true,
 }) => {
   if (typeof document === "undefined") {
@@ -125,6 +105,28 @@ const isSuccessfulFlutterImageResult = (result) =>
   result?.success === true ||
   Boolean(result?.base64 || result?.base64String || result?.data?.base64 || result?.file)
 
+export const notifySelectedFile = async (
+  file,
+  onSelectFile,
+  compressOptions,
+  shouldCompress = true,
+) => {
+  if (!file || typeof onSelectFile !== "function") return
+
+  if (!shouldCompress || !String(file.type || "").startsWith("image/")) {
+    onSelectFile(file)
+    return
+  }
+
+  try {
+    const compressed = await compressImageForUpload(file, compressOptions)
+    onSelectFile(compressed)
+  } catch (error) {
+    console.warn("Image compression failed during selection:", error)
+    onSelectFile(file)
+  }
+}
+
 const fileFromFlutterImageResult = (result, fileNamePrefix) => {
   const base64Value = result?.base64 || result?.base64String || result?.data?.base64
   const mimeType = result?.mimeType || result?.type || result?.data?.mimeType || "image/jpeg"
@@ -146,12 +148,8 @@ const fileFromFlutterImageResult = (result, fileNamePrefix) => {
   return null
 }
 
-const openBrowserGalleryFallback = (
-  onSelectFile,
-  fallbackInputRef = null,
-  compressOptions = {},
-  shouldCompress = true,
-) => {
+const openBrowserGalleryFallback = (onSelectFile, fallbackInputRef = null, options = {}) => {
+  const { compressOptions, shouldCompress = true } = options
   if (fallbackInputRef?.current) {
     fallbackInputRef.current.click()
     return
@@ -168,12 +166,8 @@ const openBrowserGalleryFallback = (
 /**
  * Standard browser camera fallback
  */
-export const openBrowserCameraFallback = (
-  onSelectFile,
-  fallbackInputRef = null,
-  compressOptions = {},
-  shouldCompress = true,
-) => {
+export const openBrowserCameraFallback = (onSelectFile, fallbackInputRef = null, options = {}) => {
+  const { compressOptions, shouldCompress = true } = options
   if (!onSelectFile || typeof onSelectFile !== "function") {
     console.warn("openBrowserCameraFallback: onSelectFile callback not provided")
     return
@@ -262,7 +256,7 @@ const invokeFlutterImageHandlers = async ({
   fileNamePrefix,
   quality = 0.8,
   onCancel,
-  compressOptions = {},
+  compressOptions,
   shouldCompress = true,
 }) => {
   const handlerNames = isCamera ? CAMERA_BRIDGE_HANDLERS : GALLERY_BRIDGE_HANDLERS
@@ -291,12 +285,7 @@ const invokeFlutterImageHandlers = async ({
         continue
       }
 
-      await notifySelectedFile(
-        selectedFile,
-        onSelectFile,
-        compressOptions,
-        shouldCompress,
-      )
+      await notifySelectedFile(selectedFile, onSelectFile, compressOptions, shouldCompress)
       return { status: "success", handlerName }
     } catch (error) {
       lastError = error
@@ -317,7 +306,7 @@ export const handleImageUpload = async ({
   quality = 0.8,
   onCancel,
   compress = true,
-  compressOptions = {},
+  compressOptions = undefined,
 }) => {
   if (!onSelectFile || typeof onSelectFile !== "function") {
     console.warn("handleImageUpload: onSelectFile callback not provided")
@@ -325,6 +314,11 @@ export const handleImageUpload = async ({
   }
 
   const isCamera = source === "camera"
+
+  const pickerOptions = {
+    compressOptions,
+    shouldCompress: compress,
+  }
 
   if (isFlutterBridgeAvailable()) {
     const outcome = await invokeFlutterImageHandlers({
@@ -355,11 +349,11 @@ export const handleImageUpload = async ({
   }
 
   if (isCamera) {
-    openBrowserCameraFallback(onSelectFile, fallbackInputRef, compressOptions, compress)
+    openBrowserCameraFallback(onSelectFile, fallbackInputRef, pickerOptions)
     return
   }
 
-  openBrowserGalleryFallback(onSelectFile, fallbackInputRef, compressOptions, compress)
+  openBrowserGalleryFallback(onSelectFile, fallbackInputRef, pickerOptions)
 }
 
 /**
@@ -372,7 +366,7 @@ export const openCamera = async ({
   fallbackInputRef = null,
   onCancel,
   compress = true,
-  compressOptions = {},
+  compressOptions = undefined,
 }) => {
   return handleImageUpload({
     source: "camera",
@@ -395,7 +389,7 @@ export const openGallery = async ({
   fallbackInputRef = null,
   onCancel,
   compress = true,
-  compressOptions = {},
+  compressOptions = undefined,
 }) => {
   return handleImageUpload({
     source: "gallery",
