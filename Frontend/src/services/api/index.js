@@ -6,6 +6,10 @@ import apiClient from "./axios.js";
 import { API_ENDPOINTS } from "./config.js";
 import * as authService from "./auth.js";
 import { filterPublicOffers } from "@food/utils/offerUtils";
+import {
+  prepareUploadFile,
+  prepareUploadFiles,
+} from "@/shared/utils/imageCompressor";
 
 const stub = () =>
   Promise.resolve({
@@ -1010,13 +1014,17 @@ export const adminAPI = {
     apiClient.get(API_ENDPOINTS.ADMIN.BUSINESS_SETTINGS, {
       contextModule: "admin",
     }),
-  updateBusinessSettings: (data, files = {}) => {
+  updateBusinessSettings: async (data, files = {}) => {
     const formData = new FormData();
     // Add JSON data
     formData.append("data", JSON.stringify(data));
     // Add files
-    if (files.logo) formData.append("logo", files.logo);
-    if (files.favicon) formData.append("favicon", files.favicon);
+    if (files.logo) {
+      formData.append("logo", await prepareUploadFile(files.logo));
+    }
+    if (files.favicon) {
+      formData.append("favicon", await prepareUploadFile(files.favicon));
+    }
 
     return apiClient.patch(API_ENDPOINTS.ADMIN.BUSINESS_SETTINGS, formData, {
       headers: { "Content-Type": "multipart/form-data" },
@@ -1167,43 +1175,49 @@ export const restaurantAPI = {
         return res;
       }),
   /** Upload and set restaurant profile image (multipart). Field name: file */
-  uploadProfileImage: (file) => {
+  uploadProfileImage: async (file) => {
     if (!file) return Promise.reject(new Error("File is required"));
     const formData = new FormData();
-    formData.append("file", file);
+    formData.append("file", await prepareUploadFile(file, { preset: "profile" }));
     return apiClient.post("/food/restaurant/profile/profile-image", formData, {
       contextModule: "restaurant",
+      timeout: 60000,
     });
   },
   /** Upload a menu/cover image (multipart). Does not auto-attach; use updateProfile(menuImages) after. */
-  uploadMenuImage: (file) => {
+  uploadMenuImage: async (file) => {
     if (!file) return Promise.reject(new Error("File is required"));
     const formData = new FormData();
-    formData.append("file", file);
+    formData.append("file", await prepareUploadFile(file));
     return apiClient.post("/food/restaurant/profile/menu-image", formData, {
       contextModule: "restaurant",
+      timeout: 60000,
     });
   },
-  uploadCoverImages: (files = []) => {
+  uploadCoverImages: async (files = []) => {
     const normalizedFiles = Array.from(files || []).filter(Boolean);
     if (normalizedFiles.length === 0) {
       return Promise.reject(new Error("At least one file is required"));
     }
     const formData = new FormData();
-    normalizedFiles.forEach((file) => formData.append("files", file));
+    const preparedFiles = await prepareUploadFiles(normalizedFiles);
+    preparedFiles.forEach((file) => formData.append("files", file));
     return apiClient.post("/food/restaurant/profile/cover-images", formData, {
       contextModule: "restaurant",
+      timeout: 90000,
     });
   },
-  uploadMenuImages: (files = []) => {
+  uploadMenuImages: async (files = []) => {
     const normalizedFiles = Array.from(files || []).filter(Boolean);
     if (normalizedFiles.length === 0) {
       return Promise.reject(new Error("At least one file is required"));
     }
     const formData = new FormData();
-    normalizedFiles.forEach((file) => formData.append("files", file));
+    const preparedFiles = await prepareUploadFiles(normalizedFiles);
+    preparedFiles.forEach((file) => formData.append("files", file));
     return apiClient.post("/food/restaurant/profile/menu-images", formData, {
       contextModule: "restaurant",
+      timeout: 90000,
     });
   },
   /** Public Offers for users (global/selected restaurant) */
@@ -2371,12 +2385,13 @@ export const userAPI = {
       contextModule: "user",
     }),
   /** Upload and set user profile image (multipart). Field name: file */
-  uploadProfileImage: (file) => {
+  uploadProfileImage: async (file) => {
     if (!file) return Promise.reject(new Error("File is required"));
     const formData = new FormData();
-    formData.append("file", file);
+    formData.append("file", await prepareUploadFile(file, { preset: "profile" }));
     return apiClient.post("/food/user/profile/profile-image", formData, {
       contextModule: "user",
+      timeout: 60000,
     });
   },
   /** GET /food/user/wallet (Bearer USER). Deduped + short-cached. */
@@ -2553,19 +2568,20 @@ export const uploadAPI = {
    * @param {File|Blob} file
    * @param {{ folder?: string }} options
    */
-  uploadMedia: (file, options = {}) => {
+  uploadMedia: async (file, options = {}) => {
     if (!file) {
       return Promise.reject(new Error("File is required for upload"));
     }
 
     const formData = new FormData();
-    formData.append("file", file);
+    formData.append("file", await prepareUploadFile(file, options.compress));
     if (options.folder) {
       formData.append("folder", options.folder);
     }
 
     return apiClient.post("/uploads/image", formData, {
       headers: { "Content-Type": "multipart/form-data" },
+      timeout: 60000,
     });
   },
 };
