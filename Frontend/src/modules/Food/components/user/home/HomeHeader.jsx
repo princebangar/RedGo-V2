@@ -6,6 +6,7 @@ import { Avatar, AvatarFallback, AvatarImage } from "@food/components/ui/avatar"
 import { useProfile } from "@food/context/ProfileContext";
 import useNotificationInbox from "@food/hooks/useNotificationInbox";
 import VoiceSearchOverlay from "@food/components/user/VoiceSearchOverlay";
+import { useVoiceSearch } from "@food/hooks/useVoiceSearch";
 import { isModuleAuthenticated } from "@food/utils/auth";
 
 // Images for banner - exactly as in FestBanner.jsx
@@ -57,6 +58,10 @@ export default function HomeHeader({
   const routerLocation = useLocation();
   const { userProfile } = useProfile();
   const [isVoiceOverlayOpen, setIsVoiceOverlayOpen] = useState(false);
+  const voiceSearch = useVoiceSearch((transcript) => {
+    navigate(`/food/user/search?q=${encodeURIComponent(transcript)}&mode=delivery`);
+    setIsVoiceOverlayOpen(false);
+  });
   const { unreadCount: broadcastUnread } = useNotificationInbox("user", {
     pollMs: 60000,
     enabled: isTabActive,
@@ -284,6 +289,8 @@ export default function HomeHeader({
                 className="h-5 w-5 text-gray-400"
                 onClick={(e) => {
                   e.stopPropagation();
+                  voiceSearch.clearError();
+                  void voiceSearch.startListening();
                   setIsVoiceOverlayOpen(true);
                   handleVoiceSearchClick?.();
                 }}
@@ -293,11 +300,15 @@ export default function HomeHeader({
 
           <VoiceSearchOverlay 
             isOpen={isVoiceOverlayOpen}
-            onClose={() => setIsVoiceOverlayOpen(false)}
+            onClose={() => {
+              voiceSearch.stopListening();
+              setIsVoiceOverlayOpen(false);
+            }}
             onSearchResult={(transcript) => {
-              // Navigate to search with the transcript
               navigate(`/food/user/search?q=${encodeURIComponent(transcript)}&mode=delivery`);
             }}
+            voiceSearch={voiceSearch}
+            autoStart={false}
           />
 
           {/* Veg Mode Toggle - Styled like SS2 (Label above toggle) */}

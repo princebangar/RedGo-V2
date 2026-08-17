@@ -4,7 +4,18 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { Mic, X } from 'lucide-react';
 import { useVoiceSearch } from '@food/hooks/useVoiceSearch';
 
-const VoiceSearchOverlay = ({ isOpen, onClose, onSearchResult }) => {
+const VoiceSearchOverlay = ({
+  isOpen,
+  onClose,
+  onSearchResult,
+  voiceSearch: externalVoiceSearch = null,
+  autoStart = true,
+}) => {
+  const internalVoiceSearch = useVoiceSearch((result) => {
+    onSearchResult(result);
+    onClose();
+  });
+
   const {
     isListening,
     transcript,
@@ -12,10 +23,7 @@ const VoiceSearchOverlay = ({ isOpen, onClose, onSearchResult }) => {
     startListening,
     stopListening,
     clearError,
-  } = useVoiceSearch((result) => {
-    onSearchResult(result);
-    onClose();
-  });
+  } = externalVoiceSearch || internalVoiceSearch;
 
   useEffect(() => {
     if (!isOpen) {
@@ -23,23 +31,20 @@ const VoiceSearchOverlay = ({ isOpen, onClose, onSearchResult }) => {
       return undefined;
     }
 
-    let cancelled = false;
-    const timeoutId = window.setTimeout(() => {
-      if (!cancelled) {
-        startListening();
-      }
-    }, 150);
+    if (!autoStart || externalVoiceSearch) {
+      return undefined;
+    }
+
+    void startListening();
 
     return () => {
-      cancelled = true;
-      window.clearTimeout(timeoutId);
       stopListening();
     };
-  }, [isOpen, startListening, stopListening]);
+  }, [isOpen, autoStart, externalVoiceSearch, startListening, stopListening]);
 
   const handleRetry = () => {
     clearError();
-    startListening();
+    void startListening();
   };
 
   const handleClose = () => {

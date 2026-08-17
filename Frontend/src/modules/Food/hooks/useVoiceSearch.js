@@ -4,7 +4,132 @@ import { toast } from 'sonner';
 const MAX_AUTO_RETRIES = 2;
 const SILENCE_COMMIT_MS = 2000;
 
+const MIC_PERMISSION_HANDLER_NAMES = [
+    'requestMicrophonePermission',
+    'checkMicrophonePermission',
+    'requestMicPermission',
+    'requestPermission',
+];
+
+const isNativeWebView = () => {
+    if (typeof window === 'undefined') return false;
+
+    const userAgent = String(window.navigator?.userAgent || '').toLowerCase();
+    return (
+        Boolean(window.flutter_inappwebview) ||
+        Boolean(window.ReactNativeWebView) ||
+        userAgent.includes(' wv') ||
+        userAgent.includes('; wv')
+    );
+};
+
+const isIOSDevice = () => {
+    if (typeof navigator === 'undefined') return false;
+
+    const userAgent = navigator.userAgent || '';
+    return (
+        /iPad|iPhone|iPod/i.test(userAgent) ||
+        (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1)
+    );
+};
+
+const isSuccessfulBridgePermission = (result) => {
+    if (result == null) return false;
+    if (result === true) return true;
+    if (typeof result === 'string') {
+        const normalized = result.trim().toLowerCase();
+        return normalized === 'granted' || normalized === 'authorized' || normalized === 'true';
+    }
+
+    const granted =
+        result.granted ??
+        result.authorized ??
+        result.hasPermission ??
+        result.success ??
+        result.data?.granted ??
+        result.data?.authorized ??
+        result.data?.hasPermission;
+
+    if (granted === true) return true;
+
+    const status = String(
+        result.status ??
+        result.permission ??
+        result.permissionStatus ??
+        result.data?.status ??
+        result.data?.permission ??
+        '',
+    ).trim().toLowerCase();
+
+    return status === 'granted' || status === 'authorized';
+};
+
+const requestNativeMicrophonePermission = async () => {
+    if (
+        typeof window === 'undefined' ||
+        !window.flutter_inappwebview ||
+        typeof window.flutter_inappwebview.callHandler !== 'function'
+    ) {
+        return null;
+    }
+
+    for (const handlerName of MIC_PERMISSION_HANDLER_NAMES) {
+        try {
+            const payload =
+                handlerName === 'requestPermission'
+                    ? { type: 'microphone', permission: 'microphone' }
+                    : { permission: 'microphone', type: 'microphone' };
+            const result = await window.flutter_inappwebview.callHandler(handlerName, payload);
+            if (isSuccessfulBridgePermission(result)) {
+                return true;
+            }
+            if (result === false) {
+                return false;
+            }
+        } catch {
+            // Try the next native handler.
+        }
+    }
+
+    return null;
+};
+
+const queryMicrophonePermissionState = async () => {
+    if (!navigator.permissions?.query) {
+        return null;
+    }
+
+    try {
+        const status = await navigator.permissions.query({ name: 'microphone' });
+        return status.state;
+    } catch {
+        return null;
+    }
+};
+
 const ensureMicrophonePermission = async () => {
+    const permissionState = await queryMicrophonePermissionState();
+    if (permissionState === 'granted') {
+        return true;
+    }
+    if (permissionState === 'denied' && !isNativeWebView()) {
+        return false;
+    }
+
+    const nativePermission = await requestNativeMicrophonePermission();
+    if (nativePermission === true) {
+        return true;
+    }
+    if (nativePermission === false) {
+        return false;
+    }
+
+    // WebView getUserMedia often fails even when native mic permission is granted.
+    // Let SpeechRecognition request/use audio instead of blocking here.
+    if (isNativeWebView()) {
+        return true;
+    }
+
     if (!navigator.mediaDevices?.getUserMedia) {
         return true;
     }
@@ -13,8 +138,9 @@ const ensureMicrophonePermission = async () => {
         const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
         stream.getTracks().forEach((track) => track.stop());
         return true;
-    } catch {
-        return false;
+    } catch (error) {
+        console.warn('Microphone preflight failed, continuing with speech recognition:', error);
+        return true;
     }
 };
 
@@ -113,7 +239,7 @@ export const useVoiceSearch = (onResult, onError) => {
 
         const recognition = new SpeechRecognition();
         recognition.lang = 'en-IN';
-        recognition.continuous = true;
+        recognition.continuous = !(isIOSDevice() || isNativeWebView());
         recognition.interimResults = true;
         recognition.maxAlternatives = 1;
 
@@ -162,7 +288,9 @@ export const useVoiceSearch = (onResult, onError) => {
             }
 
             if (errorType === 'not-allowed') {
-                const message = 'Microphone access denied.';
+                const message = isNativeWebView()
+                    ? 'Microphone access denied. Enable microphone for this app in phone settings, then try again.'
+                    : 'Microphone access denied.';
                 setError(message);
                 toast.error(message, { duration: 3000 });
                 onErrorRef.current?.(errorType);
@@ -262,7 +390,9 @@ export const useVoiceSearch = (onResult, onError) => {
 
         const hasPermission = await ensureMicrophonePermission();
         if (!hasPermission) {
-            const message = 'Microphone access denied.';
+            const message = isNativeWebView()
+                ? 'Microphone access denied. Enable microphone for this app in phone settings, then try again.'
+                : 'Microphone access denied.';
             setError(message);
             toast.error(message, { duration: 3000 });
             onErrorRef.current?.('not-allowed');
