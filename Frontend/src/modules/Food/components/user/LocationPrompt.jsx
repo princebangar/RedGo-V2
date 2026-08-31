@@ -1,7 +1,7 @@
 import { useEffect, useState, useRef } from "react"
 import { MapPin, X } from "lucide-react"
 import { useNavigate } from "react-router-dom"
-import { useLocation, hasValidStoredUserLocation } from "@food/hooks/useLocation"
+import { useLocation, hasValidStoredUserLocation, isLocationPermissionGranted, isLocationPermissionDenied } from "@food/hooks/useLocation"
 
 export default function LocationPrompt() {
   const navigate = useNavigate()
@@ -12,10 +12,37 @@ export default function LocationPrompt() {
 
   useEffect(() => {
     const promptDismissed = localStorage.getItem("locationPromptDismissed")
-    if (hasValidStoredUserLocation() || promptDismissed) return
+    if (
+      hasValidStoredUserLocation() ||
+      promptDismissed ||
+      isLocationPermissionGranted() ||
+      isLocationPermissionDenied()
+    ) {
+      return
+    }
+
+    // Sync with browser permission state (Android/iOS remember grant across app restarts).
+    if (navigator.permissions?.query) {
+      navigator.permissions
+        .query({ name: "geolocation" })
+        .then((result) => {
+          if (result.state === "granted") {
+            localStorage.setItem("locationPermissionGranted", "true")
+            localStorage.setItem("locationPromptDismissed", "true")
+          } else if (result.state === "denied") {
+            localStorage.setItem("locationPermissionGranted", "denied")
+          }
+        })
+        .catch(() => {})
+    }
 
     const timer = setTimeout(() => {
-      if (!hasValidStoredUserLocation() && !permissionGranted) {
+      if (
+        !hasValidStoredUserLocation() &&
+        !permissionGranted &&
+        !isLocationPermissionGranted() &&
+        !isLocationPermissionDenied()
+      ) {
         setShowPrompt(true)
         document.body.style.overflow = "hidden"
         if (cardRef.current) {
@@ -48,6 +75,7 @@ export default function LocationPrompt() {
     setIsRequesting(true)
     try {
       await requestLocation()
+      localStorage.setItem("locationPermissionGranted", "true")
       localStorage.setItem("locationPromptDismissed", "true")
       setShowPrompt(false)
       document.body.style.overflow = ""

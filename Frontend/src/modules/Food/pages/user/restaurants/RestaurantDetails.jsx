@@ -128,7 +128,7 @@ function RestaurantDetailsContent() {
   const showOnlyUnder250 = searchParams.get('under250') === 'true'
   const targetDishId = useMemo(() => String(searchParams.get('dish') || '').trim(), [searchParams])
   const { addToCart, updateQuantity, removeFromCart, getCartItem, cart, itemCount } = useCart()
-  const { vegMode, addDishFavorite, removeDishFavorite, isDishFavorite, getDishFavorites, getFavorites, addFavorite, removeFavorite, isFavorite, orderType, getDefaultAddress } = useProfile()
+  const { vegMode, addDishFavorite, removeDishFavorite, isDishFavorite, getDishFavorites, getFavorites, addFavorite, removeFavorite, isFavorite, orderType } = useProfile()
   const seededRestaurant = routerLocation.state?.restaurantData || null
   const seededMongoId = useMemo(() => {
     const candidates = [
@@ -151,23 +151,8 @@ function RestaurantDetailsContent() {
       prev.vegNonVeg === "non-veg" ? { ...prev, vegNonVeg: null } : prev,
     )
   }, [vegMode])
-  const { location: userLocation } = useLocation() // Get user's current location
-  // MUST match cart: prefer saved delivery address coordinates for distance.
+  const { location: userLocation } = useLocation() // effective location (current GPS or saved address per deliveryAddressMode)
   const distanceOrigin = useMemo(() => {
-    const saved = getDefaultAddress?.() || null
-    const coords = saved?.location?.coordinates
-    if (Array.isArray(coords) && coords.length >= 2) {
-      const lng = Number(coords[0])
-      const lat = Number(coords[1])
-      if (Number.isFinite(lat) && Number.isFinite(lng)) {
-        return { latitude: lat, longitude: lng }
-      }
-    }
-    const lat = Number(saved?.latitude ?? saved?.lat)
-    const lng = Number(saved?.longitude ?? saved?.lng)
-    if (Number.isFinite(lat) && Number.isFinite(lng)) {
-      return { latitude: lat, longitude: lng }
-    }
     if (
       Number.isFinite(Number(userLocation?.latitude)) &&
       Number.isFinite(Number(userLocation?.longitude))
@@ -178,7 +163,7 @@ function RestaurantDetailsContent() {
       }
     }
     return null
-  }, [getDefaultAddress, userLocation?.latitude, userLocation?.longitude])
+  }, [userLocation?.latitude, userLocation?.longitude])
   const { zoneId, zone, loading: loadingZone, isOutOfService } = useZone(userLocation) // Get user's zone for zone-based filtering
   const [currentImageIndex, setCurrentImageIndex] = useState(0)
   const [highlightIndex, setHighlightIndex] = useState(0)

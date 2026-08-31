@@ -1413,43 +1413,9 @@ export default function Home({ homeMode = null, isTabActive = true }) {
     return formatSavedAddress(defaultAddress);
   }, [getDefaultAddress, formatSavedAddress]);
 
-  const defaultSavedAddress = useMemo(
-    () => getDefaultAddress?.() || null,
-    [getDefaultAddress],
-  );
-
-  const defaultSavedAddressLocation = useMemo(() => {
-    const coords = defaultSavedAddress?.location?.coordinates;
-    if (Array.isArray(coords) && coords.length >= 2) {
-      const lng = parseFloat(coords[0]);
-      const lat = parseFloat(coords[1]);
-      if (Number.isFinite(lat) && Number.isFinite(lng)) {
-        return { latitude: lat, longitude: lng };
-      }
-    }
-
-    const lat = parseFloat(
-      defaultSavedAddress?.latitude || defaultSavedAddress?.lat,
-    );
-    const lng = parseFloat(
-      defaultSavedAddress?.longitude || defaultSavedAddress?.lng,
-    );
-    if (Number.isFinite(lat) && Number.isFinite(lng)) {
-      return { latitude: lat, longitude: lng };
-    }
-
-    return null;
-  }, [defaultSavedAddress]);
-
   const effectiveLocation = location;
-  // Prefer selected/saved delivery address for distance so home cards match cart bill.
+  // Match zone + navbar: use effective location (current GPS or saved delivery address per deliveryAddressMode).
   const distanceOrigin = useMemo(() => {
-    if (
-      Number.isFinite(defaultSavedAddressLocation?.latitude) &&
-      Number.isFinite(defaultSavedAddressLocation?.longitude)
-    ) {
-      return defaultSavedAddressLocation;
-    }
     if (
       Number.isFinite(effectiveLocation?.latitude) &&
       Number.isFinite(effectiveLocation?.longitude)
@@ -1460,7 +1426,7 @@ export default function Home({ homeMode = null, isTabActive = true }) {
       };
     }
     return null;
-  }, [defaultSavedAddressLocation, effectiveLocation]);
+  }, [effectiveLocation?.latitude, effectiveLocation?.longitude]);
   // Single zone hook — duplicate useZone(location) caused double detect + loading flicker.
   const effectiveZoneId = zoneId;
   const effectiveZoneLoading = zoneLoading;

@@ -311,6 +311,42 @@ export const hasValidStoredUserLocation = () => {
   }
 }
 
+/** Persisted after user grants GPS once — avoids re-showing in-app location popup. */
+export const LOCATION_PERMISSION_GRANTED_KEY = "locationPermissionGranted"
+
+export const isLocationPermissionGranted = () => {
+  try {
+    return localStorage.getItem(LOCATION_PERMISSION_GRANTED_KEY) === "true"
+  } catch {
+    return false
+  }
+}
+
+export const isLocationPermissionDenied = () => {
+  try {
+    return localStorage.getItem(LOCATION_PERMISSION_GRANTED_KEY) === "denied"
+  } catch {
+    return false
+  }
+}
+
+const markLocationPermissionGranted = () => {
+  try {
+    localStorage.setItem(LOCATION_PERMISSION_GRANTED_KEY, "true")
+    localStorage.setItem("locationPromptDismissed", "true")
+  } catch {
+    /* ignore */
+  }
+}
+
+const markLocationPermissionDenied = () => {
+  try {
+    localStorage.setItem(LOCATION_PERMISSION_GRANTED_KEY, "denied")
+  } catch {
+    /* ignore */
+  }
+}
+
 let pageLoadAutoRefreshStarted = false
 let pageLoadDeliveryModeBootstrapped = false
 let cachedIsNewAppSession = false
@@ -1198,6 +1234,7 @@ export function useLocation() {
             try {
               const { latitude, longitude, accuracy } = pos.coords
               const timestamp = pos.timestamp || Date.now()
+              markLocationPermissionGranted()
 
               debugLog(`? Got location${isRetry ? ' (lower accuracy)' : ' (high accuracy)'}:`, {
                 latitude,
@@ -1405,6 +1442,10 @@ export function useLocation() {
               debugWarn("?? Geolocation timeout (code 3) - using fallback location")
             } else {
               debugError("? Geolocation error:", err.code, err.message)
+            }
+
+            if (err.code === 1) {
+              markLocationPermissionDenied()
             }
 
             // Explicit user action must not silently reuse stale cached coordinates.
@@ -1777,7 +1818,7 @@ export function useLocation() {
     clearTimeout(updateTimerRef.current)
   }
 
-  const refreshLocationIfPermitted = async ({ showLoading = false } = {}) => {
+  const refreshLocationIfPermitted = async ({ showLoading = false, forceFresh = true } = {}) => {
     if (isDefaultLocationMode || !navigator.geolocation) return null
 
     let permissionState = "unknown"
@@ -1785,23 +1826,35 @@ export function useLocation() {
       try {
         const result = await navigator.permissions.query({ name: "geolocation" })
         permissionState = result.state
-        if (permissionState === "denied") return null
+        if (permissionState === "granted") {
+          markLocationPermissionGranted()
+        }
+        if (permissionState === "denied") {
+          markLocationPermissionDenied()
+          return null
+        }
       } catch {
         permissionState = "unknown"
       }
     }
 
     const hasPriorSavedLocation = hasValidStoredUserLocation()
+    const permissionPreviouslyGranted = isLocationPermissionGranted()
 
     // First visit: wait for the location popup button so we don't trigger a browser prompt on load.
-    if (permissionState !== "granted" && !hasPriorSavedLocation) {
+    if (
+      permissionState !== "granted" &&
+      !permissionPreviouslyGranted &&
+      !hasPriorSavedLocation
+    ) {
       return null
     }
 
     try {
       if (showLoading) setGlobalLocationLoading(true)
-      const loc = await getLocation(true, true, showLoading)
+      const loc = await getLocation(true, forceFresh, showLoading)
       if (loc && !isPlaceholderLocation(loc)) {
+        markLocationPermissionGranted()
         setLocation(loc)
         setPermissionGranted(true)
         window.dispatchEvent(new CustomEvent("userLocationUpdated"))
@@ -1927,30 +1980,49 @@ export function useLocation() {
       })
     }, 5000) // 5 second safety timeout
 
-    // Fresh tab/app open → force current GPS (F5 keeps selected city via isNewAppSession=false).
+    // Fresh tab/app open → silent fresh GPS (keep cached coords visible; no popup flash).
     const startAutoLocationRefresh = () => {
-      runDedupedAutoRefresh(() => refreshLocationIfPermitted({ showLoading: false }))
+      runDedupedAutoRefresh(() =>
+        refreshLocationIfPermitted({ showLoading: false, forceFresh: true }),
+      )
     }
 
     if (!isDefaultLocationMode && !isSuppressedPath && isNewAppSession) {
       if (!pageLoadAutoRefreshStarted) {
         pageLoadAutoRefreshStarted = true
         try {
-          sessionStorage.setItem("manual_location_update", "true")
           localStorage.setItem("deliveryAddressMode", "current")
           window.dispatchEvent(new CustomEvent("deliveryAddressModeUpdated"))
         } catch {}
-        // requestLocation clears the prior city pin and pulls live GPS (not a silent cache hit).
-        runDedupedAutoRefresh(() =>
-          requestLocation().catch((err) => {
-            debugError("New-tab current location fetch failed, falling back:", err)
-            return refreshLocationIfPermitted({ showLoading: true })
-          }),
-        )
+        startAutoLocationRefresh()
       }
     } else {
       setLoading(false)
     }
+
+    // App resume from background (Android/iOS WebView) → refresh GPS silently if already allowed.
+    let hiddenAt = null
+    const APP_RESUME_REFRESH_MS = 5_000
+
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === "hidden") {
+        hiddenAt = Date.now()
+        return
+      }
+      if (document.visibilityState !== "visible") return
+      if (isDefaultLocationMode || isSuppressedPath) return
+
+      const hiddenDuration = hiddenAt ? Date.now() - hiddenAt : APP_RESUME_REFRESH_MS + 1
+      if (hiddenDuration < APP_RESUME_REFRESH_MS) return
+
+      if (isLocationPermissionGranted() || hasValidStoredUserLocation()) {
+        runDedupedAutoRefresh(() =>
+          refreshLocationIfPermitted({ showLoading: false, forceFresh: true }),
+        )
+      }
+    }
+
+    document.addEventListener("visibilitychange", handleVisibilityChange)
 
     // Listen for storage changes to keep location in sync across components/tabs
     const handleStorageChange = (e) => {
@@ -1997,7 +2069,7 @@ export function useLocation() {
         window.dispatchEvent(new CustomEvent("deliveryAddressModeUpdated"))
       } catch {}
       setTimeout(() => {
-        requestLocation().then(() => {
+        refreshLocationIfPermitted({ showLoading: false, forceFresh: true }).then(() => {
           sessionStorage.setItem('lastLoginLocationFetch', 'true');
         }).catch(err => {
           debugError("Failed to auto-fetch location after login:", err)
@@ -2012,6 +2084,7 @@ export function useLocation() {
       clearTimeout(loadingTimeout)
       debugLog("?? Cleaning up location watcher")
       stopWatchingLocation()
+      document.removeEventListener("visibilitychange", handleVisibilityChange)
       window.removeEventListener('storage', handleStorageChange)
       window.removeEventListener('userLocationUpdated', handleCustomUpdate)
       window.removeEventListener('userLoginSuccess', handleLoginSuccess)
