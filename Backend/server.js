@@ -16,6 +16,7 @@ const SHUTDOWN_TIMEOUT_MS = 10000;
 let server = null;
 let expireOffersInterval = null;
 let fssaiExpiryInterval = null;
+let paymentReconcileInterval = null;
 
 const gracefulShutdown = async (signal) => {
     logger.info(`${signal} received, starting graceful shutdown`);
@@ -30,6 +31,7 @@ const gracefulShutdown = async (signal) => {
             await closeBullMQConnection();
             if (expireOffersInterval) clearInterval(expireOffersInterval);
             if (fssaiExpiryInterval) clearInterval(fssaiExpiryInterval);
+            if (paymentReconcileInterval) clearInterval(paymentReconcileInterval);
             logger.info('Graceful shutdown complete');
             process.exit(0);
         } catch (err) {
@@ -107,6 +109,18 @@ const startServer = async () => {
         };
         runFssaiExpirySync();
         fssaiExpiryInterval = setInterval(runFssaiExpirySync, 60 * 60 * 1000);
+
+        // Paid-but-no-order safety net: create the order from the persisted intent, else auto-refund.
+        const runPaymentReconcile = async () => {
+            try {
+                const { reconcilePendingOnlinePayments } = await import('./src/modules/food/orders/services/order.service.js');
+                await reconcilePendingOnlinePayments();
+            } catch (err) {
+                logger.error(`Payment reconcile error: ${err.message}`);
+            }
+        };
+        setTimeout(runPaymentReconcile, 30 * 1000);
+        paymentReconcileInterval = setInterval(runPaymentReconcile, 2 * 60 * 1000);
 
         process.on('SIGINT', () => gracefulShutdown('SIGINT'));
         process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));

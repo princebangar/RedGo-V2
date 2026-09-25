@@ -172,7 +172,7 @@ export async function fetchRazorpayQrCodePayments(qrCodeId) {
  * @param {string} paymentId - Original Razorpay payment_id (captured)
  * @param {number} amount - Amount to refund (in major unit, e.g., INR 123.45)
  */
-export async function initiateRazorpayRefund(paymentId, amount) {
+export async function initiateRazorpayRefund(paymentId, amount, reason = 'Order cancelled by system flow') {
     if (!isRazorpayConfigured()) {
         throw new Error('Razorpay is not configured on this server');
     }
@@ -181,7 +181,7 @@ export async function initiateRazorpayRefund(paymentId, amount) {
         const refund = await instance.payments.refund(paymentId, {
             amount: Math.round(Number(amount) * 100), // convert to paise
             notes: {
-                reason: 'Order cancelled by system flow',
+                reason,
                 at: new Date().toISOString()
             }
         });

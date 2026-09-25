@@ -23,7 +23,9 @@ import {
     initiateRazorpayRefund,
     fetchRazorpayPayment,
     assertRazorpayPaymentMatches,
+    getRazorpayInstance,
 } from '../helpers/razorpay.helper.js';
+import { PendingOnlinePayment } from '../models/pendingOnlinePayment.model.js';
 import { getIO, rooms } from '../../../../config/socket.js';
 import { addOrderJob } from '../../../../queues/producers/order.producer.js';
 import { fetchPolyline, toGeoJsonPoint } from '../utils/googleMaps.js';
@@ -72,34 +74,223 @@ export async function calculateOrder(userId, dto) {
   return calculateOrderPricing(userId, { ...dto, useCart: dto?.useCart !== false });
 }
 
-// Store for pending razorpay online payment intents (allows Webhook to auto-create order if user phone drops network post-payment)
-const pendingOnlinePayments = new Map();
+// Pending razorpay online payment intents are persisted in MongoDB (PendingOnlinePayment) so the
+// Webhook / reconcile job can auto-create the order (or refund) even if the customer's phone drops
+// network after paying or the server restarts.
+const PENDING_LOCK_STALE_MS = 2 * 60 * 1000;
+const RECONCILE_GRACE_MS = 3 * 60 * 1000; // give the client flow / webhook time first
+const RECONCILE_ABANDON_MS = 30 * 60 * 1000; // unpaid intents older than this are dropped
+const RECONCILE_MAX_AGE_MS = 3 * 24 * 60 * 60 * 1000;
+
+async function findOrderByRazorpayOrderId(rzOrderId) {
+  if (!rzOrderId) return null;
+  return FoodOrder.findOne({ 'payment.razorpay.orderId': String(rzOrderId) });
+}
+
+// Atomically take ownership of an intent so webhook + reconcile job never process it twice.
+async function claimPendingIntent(rzOrderId) {
+  const staleBefore = new Date(Date.now() - PENDING_LOCK_STALE_MS);
+  return PendingOnlinePayment.findOneAndUpdate(
+    {
+      rzOrderId,
+      $or: [
+        { status: 'pending' },
+        { status: 'processing', lockedAt: { $lt: staleBefore } },
+      ],
+    },
+    { $set: { status: 'processing', lockedAt: new Date() } },
+    { new: true },
+  );
+}
+
+async function markPendingIntentCompleted(rzOrderId, rzPaymentId, orderId) {
+  try {
+    await PendingOnlinePayment.updateOne(
+      { rzOrderId },
+      {
+        $set: {
+          status: 'completed',
+          lockedAt: null,
+          rzPaymentId: rzPaymentId || '',
+          orderId: orderId || null,
+          lastError: '',
+        },
+      },
+    );
+  } catch (err) {
+    logger.warn(`[PendingPayment] Failed to mark ${rzOrderId} completed: ${err?.message || err}`);
+  }
+}
 
 export async function createOrderFromPendingIntent(rzOrderId, rzPaymentId, rzSignature = "webhook_verified") {
-  const intent = pendingOnlinePayments.get(rzOrderId);
+  const existing = await findOrderByRazorpayOrderId(rzOrderId);
+  if (existing) {
+    await markPendingIntentCompleted(rzOrderId, rzPaymentId, existing._id);
+    return existing;
+  }
+
+  const intent = await claimPendingIntent(rzOrderId);
   if (!intent) return null;
-  const { userId, dto } = intent;
-  dto.razorpayOrderId = rzOrderId;
-  dto.razorpayPaymentId = rzPaymentId;
-  dto.razorpaySignature = rzSignature;
-  
+
+  const dto = {
+    ...(intent.dto || {}),
+    razorpayOrderId: rzOrderId,
+    razorpayPaymentId: rzPaymentId,
+    razorpaySignature: rzSignature,
+  };
+
   try {
-    const result = await createOrder(userId, dto);
-    pendingOnlinePayments.delete(rzOrderId);
+    const result = await createOrder(String(intent.userId), dto, { serverVerifiedPayment: true });
+    await markPendingIntentCompleted(rzOrderId, rzPaymentId, result?.order?._id);
     return result?.order || null;
   } catch (err) {
     logger.error(`[PendingPaymentRecovery] Failed to create order for ${rzOrderId}: ${err?.message || err}`);
+    // Release the lock so the reconcile job can retry / refund.
+    await PendingOnlinePayment.updateOne(
+      { rzOrderId, status: 'processing' },
+      { $set: { status: 'pending', lockedAt: null, lastError: String(err?.message || err).slice(0, 500) } },
+    ).catch(() => {});
     return null;
   }
+}
+
+/**
+ * Auto-refund a captured Razorpay payment for which no order could be created.
+ * Safe to call repeatedly: it never refunds when an order exists for the payment.
+ */
+async function refundUnfulfilledPayment(intent, rzPayment, reason) {
+  const rzOrderId = intent.rzOrderId;
+  if (await findOrderByRazorpayOrderId(rzOrderId)) return;
+
+  const amountRupees = Number(rzPayment.amount || 0) / 100;
+  const result = await initiateRazorpayRefund(
+    rzPayment.id,
+    amountRupees,
+    'Auto-refund: payment received but order could not be placed',
+  );
+  if (result.success) {
+    await PendingOnlinePayment.updateOne(
+      { _id: intent._id },
+      {
+        $set: {
+          status: 'refunded',
+          lockedAt: null,
+          rzPaymentId: rzPayment.id,
+          refundId: result.refundId || '',
+          lastError: String(reason || '').slice(0, 500),
+        },
+      },
+    );
+    logger.warn(
+      `[PaymentReconcile] Auto-refunded ${rzPayment.id} (₹${amountRupees}) for ${rzOrderId}. Reason: ${reason}`,
+    );
+    try {
+      await notifyOwnersSafely([{ ownerType: 'USER', ownerId: String(intent.userId) }], {
+        title: 'Payment refunded',
+        body: `We could not place your order, so ₹${amountRupees} is being refunded to your original payment method.`,
+        data: { type: 'payment_auto_refund', link: '/food/user/orders' },
+      });
+    } catch {
+      // notification is best-effort
+    }
+  } else {
+    await PendingOnlinePayment.updateOne(
+      { _id: intent._id },
+      {
+        $set: {
+          status: 'refund_failed',
+          lockedAt: null,
+          rzPaymentId: rzPayment.id,
+          lastError: `Refund failed: ${result.error || 'unknown'} (order error: ${reason})`.slice(0, 500),
+        },
+      },
+    );
+    logger.error(
+      `[PaymentReconcile] AUTO-REFUND FAILED for ${rzPayment.id} (order ${rzOrderId}): ${result.error}. MANUAL ACTION REQUIRED.`,
+    );
+  }
+}
+
+/**
+ * Reconcile job: for online payments initiated a few minutes ago that still have no order,
+ *  - captured on Razorpay  -> create the order; if that fails -> auto-refund
+ *  - never paid            -> mark abandoned after a while
+ */
+export async function reconcilePendingOnlinePayments() {
+  if (!isRazorpayConfigured()) return { checked: 0 };
+
+  const now = Date.now();
+  const intents = await PendingOnlinePayment.find({
+    status: { $in: ['pending', 'processing'] },
+    createdAt: {
+      $lt: new Date(now - RECONCILE_GRACE_MS),
+      $gt: new Date(now - RECONCILE_MAX_AGE_MS),
+    },
+  })
+    .limit(50)
+    .lean();
+
+  const rz = getRazorpayInstance();
+  let processed = 0;
+
+  for (const intent of intents) {
+    try {
+      if (await findOrderByRazorpayOrderId(intent.rzOrderId)) {
+        await markPendingIntentCompleted(intent.rzOrderId, intent.rzPaymentId, null);
+        continue;
+      }
+
+      const res = await rz.orders.fetchPayments(intent.rzOrderId);
+      const items = Array.isArray(res?.items) ? res.items : [];
+      const paid = items.find((p) => String(p?.status || '').toLowerCase() === 'captured');
+
+      if (!paid) {
+        if (now - new Date(intent.createdAt).getTime() > RECONCILE_ABANDON_MS) {
+          await PendingOnlinePayment.updateOne(
+            { _id: intent._id, status: { $in: ['pending', 'processing'] } },
+            { $set: { status: 'abandoned', lockedAt: null } },
+          );
+        }
+        continue;
+      }
+
+      // Money was captured but no order exists: try to create it, else refund.
+      const order = await createOrderFromPendingIntent(intent.rzOrderId, paid.id);
+      if (order) {
+        processed += 1;
+        continue;
+      }
+
+      const fresh = await PendingOnlinePayment.findOne({ _id: intent._id });
+      if (fresh && (fresh.status === 'pending' || fresh.status === 'processing')) {
+        // Only refund when we own the intent (avoid racing an in-flight creation).
+        const claimed = await claimPendingIntent(intent.rzOrderId);
+        if (claimed) {
+          await refundUnfulfilledPayment(claimed, paid, fresh.lastError || 'Order could not be created');
+          processed += 1;
+        }
+      }
+    } catch (err) {
+      logger.error(`[PaymentReconcile] Error for ${intent.rzOrderId}: ${err?.error?.description || err?.message || JSON.stringify(err)}`);
+    }
+  }
+
+  return { checked: intents.length, processed };
 }
 
 // ----- Initiate online payment (Razorpay) -----
 export async function initiateOnlinePayment(userId, dto) {
   // SECURITY: Razorpay amount must come from server-calculated pricing, never client totals.
+  // Must price exactly like createOrder (incl. distance-based delivery fee from the
+  // address coordinates), otherwise the amount charged here won't match what
+  // createOrder re-computes after payment and the paid order is rejected.
   const priced = await calculateOrderPricing(userId, {
     ...dto,
     useCart: dto?.useCart !== false,
     couponCode: dto?.couponCode || dto?.pricing?.couponCode || "",
+    deliveryAddress: dto.address?.location?.coordinates
+      ? { location: { coordinates: dto.address.location.coordinates } }
+      : dto.deliveryAddress,
   });
   const restaurantId = priced.restaurantId || dto.restaurantId;
 
@@ -153,18 +344,12 @@ export async function initiateOnlinePayment(userId, dto) {
     pricing: normalizedPricing,
     couponCode: normalizedPricing.couponCode || dto.couponCode || "",
   };
-  pendingOnlinePayments.set(rzOrder.id, {
-    userId,
-    dto: safeDto,
-    createdAt: Date.now()
+  await PendingOnlinePayment.create({
+    rzOrderId: rzOrder.id,
+    userId: new mongoose.Types.ObjectId(userId),
+    dto: JSON.parse(JSON.stringify(safeDto)),
+    amountPaise: rzOrder.amount,
   });
-
-  // Clean up expired pending intents (> 30 mins)
-  for (const [key, val] of pendingOnlinePayments.entries()) {
-    if (Date.now() - val.createdAt > 30 * 60 * 1000) {
-      pendingOnlinePayments.delete(key);
-    }
-  }
 
   return {
     key: getRazorpayKeyId(),
@@ -175,7 +360,7 @@ export async function initiateOnlinePayment(userId, dto) {
 }
 
 // ----- Create order -----
-export async function createOrder(userId, dto) {
+export async function createOrder(userId, dto, options = {}) {
   // SECURITY: load items from DB cart + recompute fees/coupon server-side.
   const priced = await calculateOrderPricing(userId, {
     ...dto,
@@ -326,8 +511,17 @@ export async function createOrder(userId, dto) {
       throw new ValidationError("Payment details (razorpayOrderId, razorpayPaymentId, razorpaySignature) are required for online payment");
     }
 
-    const valid = verifyPaymentSignature(rzOrderId, rzPaymentId, rzSignature);
+    // Server-side recovery (webhook / reconcile) has no client signature; the payment is still
+    // validated against the Razorpay API below. Never derived from client input.
+    const valid = options?.serverVerifiedPayment === true || verifyPaymentSignature(rzOrderId, rzPaymentId, rzSignature);
     if (!valid) throw new ValidationError("Payment verification failed: Invalid signature");
+
+    // Idempotency: client flow, webhook and reconcile job may all try to create this order.
+    const alreadyCreated = await findOrderByRazorpayOrderId(rzOrderId);
+    if (alreadyCreated) {
+      await markPendingIntentCompleted(rzOrderId, rzPaymentId, alreadyCreated._id);
+      return { order: normalizeOrderForClient(alreadyCreated), razorpay: null };
+    }
 
     if (isRazorpayConfigured()) {
       try {
@@ -676,6 +870,10 @@ export async function createOrder(userId, dto) {
     } catch {
       // leave unassigned
     }
+  }
+
+  if (isPaidOnline) {
+    await markPendingIntentCompleted(payment.razorpay.orderId, payment.razorpay.paymentId, order._id);
   }
 
   const saved = normalizeOrderForClient(order);
