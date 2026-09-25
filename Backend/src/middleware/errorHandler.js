@@ -27,8 +27,10 @@ const errorHandler = (err, req, res, next) => {
         logger.error(`[${requestId}] ${err.stack}`);
     }
 
+    // `message` is what the apps read (toasts / alerts); keep `error` for older clients.
     res.status(statusCode).json({
         success: false,
+        message,
         error: message
     });
 };

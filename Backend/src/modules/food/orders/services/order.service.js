@@ -689,17 +689,26 @@ export async function createOrder(userId, dto, options = {}) {
   // applied to the saved order in the background after the response is sent.
   const isRazorpayOrder = paymentMethod === 'razorpay';
 
+  // The geocode runs in the background, but its result must only be applied AFTER the order
+  // has been created below (it needs order._id). Applying it earlier hit a
+  // "Cannot access 'order' before initialization" error whenever geocoding finished first,
+  // which silently dropped distance / riderEarning for online orders.
+  let razorpayGeocodePromise = null;
+  let applyRazorpayGeocode = null;
+
   if (orderType !== 'takeaway') {
     if (isRazorpayOrder) {
       // Fire-and-forget: don't await geocoding for online payment orders.
       // The order will be updated with distance/riderEarning after geocode resolves.
-      resolveRiderEarningForDelivery({
+      razorpayGeocodePromise = resolveRiderEarningForDelivery({
         restaurant,
         deliveryAddress: { ...deliveryAddress },
         orderType,
         zoneId: restaurant?.zoneId || dto.zoneId || null,
-      })
-        .then(async (earningResolved) => {
+      });
+      // Avoid an unhandled rejection before the order exists; the failure is logged once it does.
+      razorpayGeocodePromise.catch(() => {});
+      applyRazorpayGeocode = async (earningResolved) => {
           try {
             const updateFields = {};
             if (earningResolved.distanceKm != null) {
@@ -750,10 +759,7 @@ export async function createOrder(userId, dto, options = {}) {
           } catch (err) {
             logger.warn(`Background geocode update failed for order ${order._id}: ${err?.message || err}`);
           }
-        })
-        .catch((err) => {
-          logger.warn(`Background geocode failed for Razorpay order ${order._id}: ${err?.message || err}`);
-        });
+      };
     } else {
       // COD / wallet: wait for geocode so riderEarning is accurate before saving
       const earningResolved = await resolveRiderEarningForDelivery({
@@ -879,6 +885,14 @@ export async function createOrder(userId, dto, options = {}) {
   let razorpayPayload = null;
 
   await order.save();
+
+  if (razorpayGeocodePromise && applyRazorpayGeocode) {
+    razorpayGeocodePromise
+      .then(applyRazorpayGeocode)
+      .catch((err) => {
+        logger.warn(`Background geocode failed for Razorpay order ${order._id}: ${err?.message || err}`);
+      });
+  }
 
   try {
     await clearFoodCart(userId);
