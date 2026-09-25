@@ -19,6 +19,9 @@ module.exports = {
       instances: 1,
       exec_mode: 'fork',
       max_memory_restart: '512M',
+      // server.js waits up to 10s for in-flight requests (orders, payments, refunds) on SIGINT;
+      // PM2's default 1.6s SIGKILL cut them off mid-way.
+      kill_timeout: 12000,
       env: {
         NODE_ENV: 'production',
       },
@@ -31,6 +34,7 @@ module.exports = {
       exec_mode: 'fork',
       max_memory_restart: '256M',
       restart_delay: 5000,
+      kill_timeout: 10000,
       env: { NODE_ENV: 'production' },
     },
     {
@@ -41,6 +45,7 @@ module.exports = {
       exec_mode: 'fork',
       max_memory_restart: '256M',
       restart_delay: 5000,
+      kill_timeout: 10000,
       env: { NODE_ENV: 'production' },
     },
     {
@@ -51,6 +56,7 @@ module.exports = {
       exec_mode: 'fork',
       max_memory_restart: '256M',
       restart_delay: 5000,
+      kill_timeout: 10000,
       env: { NODE_ENV: 'production' },
     },
     {
@@ -61,6 +67,7 @@ module.exports = {
       exec_mode: 'fork',
       max_memory_restart: '256M',
       restart_delay: 5000,
+      kill_timeout: 10000,
       env: { NODE_ENV: 'production' },
     },
     {
@@ -71,6 +78,7 @@ module.exports = {
       exec_mode: 'fork',
       max_memory_restart: '256M',
       restart_delay: 5000,
+      kill_timeout: 10000,
       env: { NODE_ENV: 'production' },
     },
   ],

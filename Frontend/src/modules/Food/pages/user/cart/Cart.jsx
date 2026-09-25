@@ -2254,7 +2254,14 @@ export default function Cart() {
         currency: razorpay.currency || 'INR',
         order_id: razorpay.orderId,
         name: companyName,
-        description: `Order Payment - ${RUPEE_SYMBOL}${(razorpay.amount / 100).toFixed(2)}`,
+        // In the iPhone app the UPI app does not bring the customer back on its own, so tell them.
+        description: `Order Payment - ${RUPEE_SYMBOL}${(razorpay.amount / 100).toFixed(2)}${
+          typeof window !== "undefined" &&
+          Boolean(window.flutter_inappwebview) &&
+          /iPhone|iPad|iPod/i.test(window.navigator?.userAgent || "")
+            ? " | After paying in your UPI app, come back to the RedGo app to confirm your order."
+            : ""
+        }`,
         callback_url: callbackUrl,
         redirect: true,
         prefill: {

@@ -386,6 +386,37 @@ export const initSocket = async (server) => {
  * Returns the initialized Socket.IO instance.
  * @returns {Server | null}
  */
+/**
+ * Headless Socket.IO for background workers (no HTTP server, no client connections).
+ * With the Redis adapter, io.to(room).emit(...) is published through Redis and delivered by the API
+ * process to the connected clients, so workers (e.g. rider dispatch re-tries) can emit real-time
+ * events too. Without Redis it does nothing (getIO() stays null, as before).
+ */
+export const initEmitterSocket = async () => {
+    if (io) return io;
+    if (!(config.redisEnabled && config.redisUrl)) {
+        logger.warn('Socket emitter skipped: Redis is not enabled');
+        return null;
+    }
+    const emitter = new Server();
+    try {
+        const { createAdapter } = await import('@socket.io/redis-adapter');
+        const { createClient } = await import('redis');
+        const pubClient = createClient({ url: config.redisUrl });
+        const subClient = pubClient.duplicate();
+        pubClient.on('error', (err) => logger.error(`Socket emitter Redis pub client: ${err.message}`));
+        subClient.on('error', (err) => logger.error(`Socket emitter Redis sub client: ${err.message}`));
+        await Promise.all([pubClient.connect(), subClient.connect()]);
+        emitter.adapter(createAdapter(pubClient, subClient));
+        io = emitter;
+        logger.info('Socket.IO emitter (Redis adapter) ready for worker');
+        return io;
+    } catch (err) {
+        logger.warn(`Socket emitter skipped: ${err.message}`);
+        return null;
+    }
+};
+
 export const getIO = () => {
     if (!io) {
         logger.warn('Socket.IO not initialized');

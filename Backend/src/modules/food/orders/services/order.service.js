@@ -809,6 +809,36 @@ export async function createOrder(userId, dto, options = {}) {
             if (Object.keys(updateFields).length > 0) {
               await FoodOrder.updateOne({ _id: order._id }, { $set: updateFields });
             }
+            // The ledger row was created before the rider earning was known (it was 0 then).
+            // Keep riderShare / platformNetProfit in sync with the order.
+            if (earningResolved.distanceKm != null) {
+              const rider = Number(earningResolved.riderEarning ?? 0);
+              await FoodTransaction.updateOne({ orderId: order._id }, [
+                {
+                  $set: {
+                    'amounts.riderShare': rider,
+                    'amounts.platformNetProfit': {
+                      $max: [
+                        0,
+                        {
+                          $subtract: [
+                            {
+                              $add: [
+                                { $ifNull: ['$pricing.platformFee', 0] },
+                                { $ifNull: ['$pricing.deliveryFee', 0] },
+                                { $ifNull: ['$pricing.restaurantCommission', 0] },
+                                { $ifNull: ['$pricing.markupTotal', 0] },
+                              ],
+                            },
+                            rider,
+                          ],
+                        },
+                      ],
+                    },
+                  },
+                },
+              ]);
+            }
             // Backfill restaurant coords when missing
             if (earningResolved.restaurantGeocoded && earningResolved.restaurantPoint) {
               await FoodRestaurant.updateOne(
@@ -966,14 +996,6 @@ export async function createOrder(userId, dto, options = {}) {
 
   await order.save();
 
-  if (razorpayGeocodePromise && applyRazorpayGeocode) {
-    razorpayGeocodePromise
-      .then(applyRazorpayGeocode)
-      .catch((err) => {
-        logger.warn(`Background geocode failed for Razorpay order ${order._id}: ${err?.message || err}`);
-      });
-  }
-
   try {
     await clearFoodCart(userId);
   } catch (cartClearErr) {
@@ -998,6 +1020,16 @@ export async function createOrder(userId, dto, options = {}) {
     pricing: normalizedPricing,
     payment,
   });
+
+  // Online orders: apply the background geocode result (distance / rider earning) only now, after
+  // both the order AND its ledger row exist, so both can be updated.
+  if (razorpayGeocodePromise && applyRazorpayGeocode) {
+    razorpayGeocodePromise
+      .then(applyRazorpayGeocode)
+      .catch((err) => {
+        logger.warn(`Background geocode failed for Razorpay order ${order._id}: ${err?.message || err}`);
+      });
+  }
 
   if (paymentMethod === "razorpay" && payment?.razorpay?.orderId) {
     // Audit can still happen here or via FinanceService events
