@@ -35,6 +35,28 @@ export async function initiateOnlinePaymentController(req, res, next) {
     }
 }
 
+export async function listPaymentRecoveryAdminController(req, res, next) {
+    try {
+        const result = await orderService.listPaymentRecovery({
+            status: req.query.status,
+            page: req.query.page,
+            limit: req.query.limit,
+        });
+        return sendResponse(res, 200, 'Payment recovery records fetched', result);
+    } catch (err) {
+        next(err);
+    }
+}
+
+export async function retryPaymentRecoveryRefundAdminController(req, res, next) {
+    try {
+        const result = await orderService.retryPaymentRecoveryRefund(req.params.id);
+        return sendResponse(res, 200, 'Refund retry completed', result);
+    } catch (err) {
+        next(err);
+    }
+}
+
 export async function createOrderController(req, res, next) {
     try {
         const userId = req.user?.userId;

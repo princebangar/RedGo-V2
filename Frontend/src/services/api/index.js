@@ -634,6 +634,16 @@ export const adminAPI = {
       contextModule: "admin",
       ...config,
     }, { ttlMs: 3000, staleOn429Ms: 60000 }),
+  /** Payment recovery: online payments captured but order missing (auto-refund / retry) */
+  getPaymentRecovery: (params = {}) =>
+    apiClient.get("/food/admin/orders/payment-recovery", {
+      params,
+      contextModule: "admin",
+    }),
+  retryPaymentRecoveryRefund: (id) =>
+    apiClient.post(`/food/admin/orders/payment-recovery/${String(id)}/retry-refund`, {}, {
+      contextModule: "admin",
+    }),
   deleteOrder: (orderId) =>
     apiClient.delete(`/food/admin/orders/${String(orderId)}`, {
       contextModule: "admin",

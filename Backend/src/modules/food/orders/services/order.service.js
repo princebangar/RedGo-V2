@@ -103,20 +103,19 @@ async function claimPendingIntent(rzOrderId) {
   );
 }
 
-async function markPendingIntentCompleted(rzOrderId, rzPaymentId, orderId) {
+// `recovered` = the order was created by the server-side recovery (webhook / reconcile job)
+// because the customer's own request did not complete. Normal orders stay recovered=false.
+async function markPendingIntentCompleted(rzOrderId, rzPaymentId, orderId, recovered = false) {
   try {
-    await PendingOnlinePayment.updateOne(
-      { rzOrderId },
-      {
-        $set: {
-          status: 'completed',
-          lockedAt: null,
-          rzPaymentId: rzPaymentId || '',
-          orderId: orderId || null,
-          lastError: '',
-        },
-      },
-    );
+    const $set = {
+      status: 'completed',
+      lockedAt: null,
+      rzPaymentId: rzPaymentId || '',
+      lastError: '',
+    };
+    if (orderId) $set.orderId = orderId;
+    if (recovered) $set.recovered = true;
+    await PendingOnlinePayment.updateOne({ rzOrderId }, { $set });
   } catch (err) {
     logger.warn(`[PendingPayment] Failed to mark ${rzOrderId} completed: ${err?.message || err}`);
   }
@@ -141,7 +140,7 @@ export async function createOrderFromPendingIntent(rzOrderId, rzPaymentId, rzSig
 
   try {
     const result = await createOrder(String(intent.userId), dto, { serverVerifiedPayment: true });
-    await markPendingIntentCompleted(rzOrderId, rzPaymentId, result?.order?._id);
+    await markPendingIntentCompleted(rzOrderId, rzPaymentId, result?.order?._id, true);
     return result?.order || null;
   } catch (err) {
     logger.error(`[PendingPaymentRecovery] Failed to create order for ${rzOrderId}: ${err?.message || err}`);
@@ -276,6 +275,110 @@ export async function reconcilePendingOnlinePayments() {
   }
 
   return { checked: intents.length, processed };
+}
+
+// ----- Admin: payment recovery (paid online but order missing) -----
+export async function listPaymentRecovery({ status, page = 1, limit = 30 } = {}) {
+  const filter = {};
+  if (status === 'recovered') {
+    filter.status = 'completed';
+    filter.recovered = true;
+  } else if (status && status !== 'all') {
+    filter.status = status;
+  } else {
+    // Hide the normal happy path (orders placed without any problem): show only intents that
+    // needed attention, are still open, or were recovered by the system.
+    filter.$or = [
+      { status: { $in: ['pending', 'processing', 'refunded', 'refund_failed'] } },
+      { status: 'completed', recovered: true },
+    ];
+  }
+  const safeLimit = Math.min(100, Math.max(1, Number(limit) || 30));
+  const safePage = Math.max(1, Number(page) || 1);
+
+  const [rows, total] = await Promise.all([
+    PendingOnlinePayment.find(filter)
+      .sort({ createdAt: -1 })
+      .skip((safePage - 1) * safeLimit)
+      .limit(safeLimit)
+      .lean(),
+    PendingOnlinePayment.countDocuments(filter),
+  ]);
+
+  const users = await FoodUser.find({ _id: { $in: rows.map((r) => r.userId) } })
+    .select('name phone email')
+    .lean();
+  const userMap = new Map(users.map((u) => [String(u._id), u]));
+
+  const orderIds = rows.map((r) => r.orderId).filter(Boolean);
+  const orderDocs = orderIds.length
+    ? await FoodOrder.find({ _id: { $in: orderIds } }).select('orderId').lean()
+    : [];
+  const orderMap = new Map(orderDocs.map((o) => [String(o._id), o.orderId]));
+
+  return {
+    items: rows.map((r) => {
+      const u = userMap.get(String(r.userId)) || {};
+      return {
+        id: String(r._id),
+        rzOrderId: r.rzOrderId,
+        rzPaymentId: r.rzPaymentId || '',
+        amount: Number(r.amountPaise || 0) / 100,
+        status: r.status,
+        refundId: r.refundId || '',
+        lastError: r.lastError || '',
+        orderId: r.orderId ? String(r.orderId) : null,
+        orderNumber: r.orderId ? orderMap.get(String(r.orderId)) || '' : '',
+        recovered: Boolean(r.recovered),
+        customerName: u.name || '',
+        customerPhone: u.phone || '',
+        restaurantName: r.dto?.restaurantName || '',
+        createdAt: r.createdAt,
+        updatedAt: r.updatedAt,
+      };
+    }),
+    pagination: { page: safePage, limit: safeLimit, total },
+  };
+}
+
+export async function retryPaymentRecoveryRefund(id) {
+  const intent = await PendingOnlinePayment.findById(id);
+  if (!intent) throw new NotFoundError('Payment record not found');
+  if (intent.status !== 'refund_failed') {
+    throw new ValidationError('Only refund_failed records can be retried');
+  }
+  if (!intent.rzPaymentId) throw new ValidationError('Razorpay payment id missing on this record');
+  if (await findOrderByRazorpayOrderId(intent.rzOrderId)) {
+    throw new ValidationError('An order already exists for this payment; refund not allowed');
+  }
+
+  // Take the lock so a double-click / second admin can't refund twice.
+  const locked = await PendingOnlinePayment.findOneAndUpdate(
+    { _id: intent._id, status: 'refund_failed' },
+    { $set: { status: 'processing', lockedAt: new Date() } },
+    { new: true },
+  );
+  if (!locked) throw new ValidationError('This record is already being processed');
+
+  const rzPayment = await fetchRazorpayPayment(intent.rzPaymentId);
+  if (String(rzPayment?.status || '').toLowerCase() !== 'captured') {
+    // Already refunded (or not captured) on Razorpay: don't refund again.
+    await PendingOnlinePayment.updateOne(
+      { _id: intent._id },
+      {
+        $set: {
+          status: String(rzPayment?.status).toLowerCase() === 'refunded' ? 'refunded' : 'refund_failed',
+          lockedAt: null,
+          lastError: `Razorpay payment status: ${rzPayment?.status}`,
+        },
+      },
+    );
+    throw new ValidationError(`Razorpay payment status is "${rzPayment?.status}", nothing to refund`);
+  }
+
+  await refundUnfulfilledPayment(locked, rzPayment, locked.lastError || 'Retry by admin');
+  const after = await PendingOnlinePayment.findById(intent._id).lean();
+  return { status: after?.status, refundId: after?.refundId || '', lastError: after?.lastError || '' };
 }
 
 // ----- Initiate online payment (Razorpay) -----

@@ -37,6 +37,7 @@ const STABLE_KEYS_BY_PATH = {
   "/admin/food/orders/payment-failed": "orders",
   "/admin/food/orders/refunded": "orders",
   "/admin/food/orders/offline-payments": "orders",
+  "/admin/food/orders/payment-recovery": "orders",
   "/admin/food/order-detect-delivery": "order_detect_delivery",
   "/admin/food/coupons": "restaurant_coupons_offers",
   "/admin/food/customers": "customers",

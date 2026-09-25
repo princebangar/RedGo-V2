@@ -20,6 +20,8 @@ const pendingOnlinePaymentSchema = new mongoose.Schema(
     },
     lockedAt: { type: Date, default: null },
     orderId: { type: mongoose.Schema.Types.ObjectId, default: null },
+    // true when the order was created by webhook/reconcile recovery instead of the customer's own request
+    recovered: { type: Boolean, default: false },
     rzPaymentId: { type: String, default: '' },
     refundId: { type: String, default: '' },
     lastError: { type: String, default: '' },
