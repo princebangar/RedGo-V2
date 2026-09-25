@@ -113,6 +113,8 @@ const paymentSchema = new mongoose.Schema(
             },
             amount: { type: Number, default: 0 },
             refundId: { type: String, default: '' },
+            attempts: { type: Number, default: 0 },
+            error: { type: String, default: '' },
             processedAt: { type: Date }
         }
     },

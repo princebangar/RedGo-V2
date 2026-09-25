@@ -192,11 +192,16 @@ export async function initiateRazorpayRefund(paymentId, amount, reason = 'Order 
             raw: refund
         };
     } catch (err) {
-        // Log locally but pass the error to the service to handle status update
-        console.error(`Razorpay Refund API Failure [PaymentId: ${paymentId}]:`, err?.message || err);
+        // The Razorpay SDK puts the real reason in err.error.description (err.message is empty),
+        // e.g. "Your account does not have enough balance to carry out the refund operation."
+        const reason = err?.error?.description || err?.message || 'Razorpay refund API error';
+        console.error(
+            `Razorpay Refund API Failure [PaymentId: ${paymentId}] (HTTP ${err?.statusCode || '-'}):`,
+            reason
+        );
         return {
             success: false,
-            error: err?.message || 'Razorpay refund API error',
+            error: reason,
             status: 'failed'
         };
     }

@@ -48,6 +48,18 @@ export async function listPaymentRecoveryAdminController(req, res, next) {
     }
 }
 
+export async function listPendingRefundsAdminController(req, res, next) {
+    try {
+        const result = await orderService.listPendingRefunds({
+            page: req.query.page,
+            limit: req.query.limit,
+        });
+        return sendResponse(res, 200, 'Pending refunds fetched', result);
+    } catch (err) {
+        next(err);
+    }
+}
+
 export async function retryPaymentRecoveryRefundAdminController(req, res, next) {
     try {
         const result = await orderService.retryPaymentRecoveryRefund(req.params.id);

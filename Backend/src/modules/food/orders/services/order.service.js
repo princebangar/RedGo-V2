@@ -341,6 +341,67 @@ export async function listPaymentRecovery({ status, page = 1, limit = 30 } = {})
   };
 }
 
+/**
+ * Admin: cancelled orders where the customer paid online / by wallet but the money was never
+ * returned (refund failed, never started, or stuck mid-way).
+ */
+export async function listPendingRefunds({ page = 1, limit = 50 } = {}) {
+  const STUCK_MS = 15 * 60 * 1000;
+  const filter = {
+    orderStatus: { $regex: /^cancelled/ },
+    'payment.status': 'paid',
+    'payment.method': { $in: ['razorpay', 'wallet'] },
+    $or: [
+      { 'payment.refund.status': { $in: ['failed', 'none'] } },
+      { 'payment.refund.status': { $exists: false } },
+      // claimed by a refund attempt that never finished (e.g. server crashed mid-way)
+      { 'payment.refund.status': 'pending', updatedAt: { $lt: new Date(Date.now() - STUCK_MS) } },
+    ],
+  };
+  const safeLimit = Math.min(100, Math.max(1, Number(limit) || 50));
+  const safePage = Math.max(1, Number(page) || 1);
+
+  const [rows, total] = await Promise.all([
+    FoodOrder.find(filter)
+      .sort({ updatedAt: -1 })
+      .skip((safePage - 1) * safeLimit)
+      .limit(safeLimit)
+      .select('orderId userId orderStatus pricing.total payment createdAt updatedAt statusHistory')
+      .lean(),
+    FoodOrder.countDocuments(filter),
+  ]);
+
+  const users = await FoodUser.find({ _id: { $in: rows.map((r) => r.userId) } })
+    .select('name phone')
+    .lean();
+  const userMap = new Map(users.map((u) => [String(u._id), u]));
+
+  return {
+    items: rows.map((o) => {
+      const u = userMap.get(String(o.userId)) || {};
+      const cancelEntry = [...(o.statusHistory || [])].reverse().find((h) => String(h.to || '').startsWith('cancelled'));
+      const refundStatus = o.payment?.refund?.status || 'none';
+      return {
+        id: String(o._id),
+        orderNumber: o.orderId || '',
+        orderStatus: o.orderStatus,
+        customerName: u.name || '',
+        customerPhone: u.phone || '',
+        amount: Number(o.pricing?.total || 0),
+        method: o.payment?.method || '',
+        rzPaymentId: o.payment?.razorpay?.paymentId || '',
+        refundStatus,
+        attempts: Number(o.payment?.refund?.attempts || 0),
+        error: o.payment?.refund?.error || '',
+        cancelledAt: cancelEntry?.at || o.updatedAt,
+        // "pending" here means stuck: check Razorpay before refunding again (it may have gone through)
+        canRefund: refundStatus !== 'pending',
+      };
+    }),
+    pagination: { page: safePage, limit: safeLimit, total },
+  };
+}
+
 export async function retryPaymentRecoveryRefund(id) {
   const intent = await PendingOnlinePayment.findById(id);
   if (!intent) throw new NotFoundError('Payment record not found');
@@ -1394,13 +1455,17 @@ export async function resyncState(userId, role) {
  *   parallel cancels / a retry can never refund twice.
  * - Persists with updateOne so the outcome can't be lost to a later document-save conflict.
  */
-export async function settleRefundOnCancel(order, { reason = "Order cancelled" } = {}) {
+export async function settleRefundOnCancel(
+  order,
+  { reason = "Order cancelled", amount: amountOverride, allowQr = false, destination: destinationOverride } = {},
+) {
   const method = String(order?.payment?.method || "").toLowerCase();
   const payStatus = String(order?.payment?.status || "").toLowerCase();
-  const amount = Number(order?.pricing?.total || 0);
+  const amount = Number(amountOverride != null && amountOverride !== "" ? amountOverride : order?.pricing?.total || 0);
   const label = order?.orderId || String(order?._id || "");
+  const isGateway = method === "razorpay" || (allowQr && method === "razorpay_qr");
 
-  if (payStatus !== "paid" || (method !== "razorpay" && method !== "wallet") || !(amount > 0)) {
+  if (payStatus !== "paid" || (!isGateway && method !== "wallet") || !(amount > 0)) {
     return { status: "skipped" };
   }
 
@@ -1416,10 +1481,13 @@ export async function settleRefundOnCancel(order, { reason = "Order cancelled" }
   );
   if (!claimed) return { status: "skipped" };
 
-  const destination = method === "wallet" ? "wallet" : "source";
+  // Default: wallet-paid -> wallet, gateway-paid -> original payment method. A customer may also
+  // choose "refund to wallet" for a gateway-paid order (destinationOverride === "wallet").
+  const destination =
+    method === "wallet" || destinationOverride === "wallet" ? "wallet" : "source";
   try {
     let refundId = "";
-    if (method === "wallet") {
+    if (destination === "wallet") {
       await userWalletService.refundWalletBalance(
         order.userId,
         amount,
@@ -1448,7 +1516,8 @@ export async function settleRefundOnCancel(order, { reason = "Order cancelled" }
   } catch (err) {
     const message = err?.message || String(err);
     logger.error(`[Refund] FAILED for order ${label} (Rs ${amount}): ${message}. MANUAL REFUND REQUIRED.`);
-    const refund = { status: "failed", destination, amount, refundId: "" };
+    const attempts = Number(claimed.payment?.refund?.attempts || 0) + 1;
+    const refund = { status: "failed", destination, amount, refundId: "", attempts, error: String(message).slice(0, 300) };
     try {
       await FoodOrder.updateOne({ _id: order._id }, { $set: { "payment.refund": refund } });
       if (order.payment) order.payment.refund = refund;
@@ -1457,6 +1526,34 @@ export async function settleRefundOnCancel(order, { reason = "Order cancelled" }
     }
     return { status: "failed", error: message };
   }
+}
+
+/**
+ * Retry refunds that failed earlier (gateway hiccup, temporary balance issue, ...).
+ * Only touches cancelled orders whose refund.status is "failed"; gives up after 5 attempts
+ * (then it stays "failed" for a manual refund via the admin Refund button).
+ */
+export async function retryFailedRefunds() {
+  const orders = await FoodOrder.find({
+    orderStatus: { $regex: /^cancelled/ },
+    "payment.status": "paid",
+    "payment.method": { $in: ["razorpay", "wallet"] },
+    "payment.refund.status": "failed",
+    $or: [
+      { "payment.refund.attempts": { $exists: false } },
+      { "payment.refund.attempts": { $lt: 5 } },
+    ],
+  }).limit(20);
+
+  let refunded = 0;
+  for (const order of orders) {
+    const res = await settleRefundOnCancel(order, {
+      reason: "Refund for cancelled order (automatic retry)",
+      destination: order.payment?.refund?.destination,
+    });
+    if (res.status === "processed") refunded += 1;
+  }
+  return { checked: orders.length, refunded };
 }
 
 export async function cancelOrder(orderId, userId, reason, refundDestination = "source") {
@@ -1503,80 +1600,7 @@ export async function cancelOrder(orderId, userId, reason, refundDestination = "
   const hasRefundProcessed =
     String(order.payment?.refund?.status || "none").toLowerCase() === "processed";
 
-  // ✅ NEW: Automated Razorpay Refund on User Cancel
-  if (
-    paymentStatus === "paid" &&
-    paymentMethod === "razorpay" &&
-    order.payment?.razorpay?.paymentId &&
-    !hasRefundProcessed
-  ) {
-    try {
-      if (normalizedRefundDestination === "wallet") {
-        await userWalletService.refundWalletBalance(
-          userId,
-          order.pricing.total,
-          `Refund for cancelled order #${order.order_id || order._id}`,
-          { orderId: order._id, source: "order_refund_wallet" },
-        );
-        order.payment.status = "refunded";
-        order.payment.refund = {
-          status: "processed",
-          destination: "wallet",
-          amount: order.pricing.total,
-          refundId: "",
-          processedAt: new Date()
-        };
-      } else {
-        const refundResult = await initiateRazorpayRefund(
-          order.payment.razorpay.paymentId,
-          order.pricing.total
-        );
-
-        if (refundResult.success) {
-          order.payment.status = "refunded";
-          order.payment.refund = {
-            status: "processed",
-            destination: "source",
-            amount: order.pricing.total,
-            refundId: refundResult.refundId,
-            processedAt: new Date()
-          };
-        } else {
-          // Log failure but let order cancellation proceed
-          order.payment.refund = {
-            status: "failed",
-            destination: "source",
-            amount: order.pricing.total
-          };
-        }
-      }
-    } catch (err) {
-      console.error(`Refund processing error for Order ${orderId}:`, err);
-      order.payment.refund = {
-        status: "failed",
-        destination: normalizedRefundDestination,
-        amount: order.pricing.total,
-      };
-    }
-  } else if (
-    paymentStatus === "paid" &&
-    paymentMethod === "wallet" &&
-    !hasRefundProcessed
-  ) {
-    try {
-      await userWalletService.refundWalletBalance(userId, order.pricing.total, `Refund for cancelled order #${order.order_id || order._id}`, { orderId: order._id });
-      order.payment.status = "refunded";
-      order.payment.refund = {
-        status: "processed",
-        destination: "wallet",
-        amount: order.pricing.total,
-        processedAt: new Date()
-      };
-    } catch (err) {
-      console.error(`Wallet refund processing error for Order ${orderId}:`, err);
-      order.payment.refund = { status: "failed", destination: "wallet", amount: order.pricing.total };
-    }
-  }
+  // Refund (online / wallet) is settled right after the order is saved as cancelled - see below.
 
   // Auto COD Blocking logic: If cash payment method, increment cancellation count
   if (paymentMethod === "cash") {
@@ -1594,6 +1618,15 @@ export async function cancelOrder(orderId, userId, reason, refundDestination = "
   }
 
   await order.save();
+
+  // Shared refund logic: race-safe, persists the outcome, logs failures. If the gateway refund
+  // fails the order stays cancelled with refund.status="failed" and retryFailedRefunds() retries it.
+  if (paymentStatus === "paid" && (paymentMethod === "razorpay" || paymentMethod === "wallet")) {
+    await settleRefundOnCancel(order, {
+      reason: "Order cancelled by customer",
+      destination: normalizedRefundDestination,
+    });
+  }
 
   enqueueOrderEvent("order_cancelled_by_user", {
     orderMongoId: order._id?.toString?.(),

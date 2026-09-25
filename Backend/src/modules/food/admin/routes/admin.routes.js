@@ -240,7 +240,9 @@ router.patch('/dining/requests/:id/reject', diningAdminController.rejectDiningRe
 router.get('/orders', orderController.listOrdersAdminController);
 // Must stay above '/orders/:orderId' so "payment-recovery" is not treated as an order id.
 router.get('/orders/payment-recovery', orderController.listPaymentRecoveryAdminController);
+router.get('/orders/pending-refunds', orderController.listPendingRefundsAdminController);
 router.post('/orders/payment-recovery/:id/retry-refund', orderController.retryPaymentRecoveryRefundAdminController);
+router.post('/orders/:orderId/refund', adminController.processRefund);
 router.get('/orders/:orderId', orderController.getOrderByIdAdminController);
 router.delete('/orders/:orderId', orderController.deleteOrderAdminController);
 router.patch('/orders/:orderId/accept', orderController.acceptOrderAdminController);

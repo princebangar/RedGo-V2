@@ -640,6 +640,17 @@ export const adminAPI = {
       params,
       contextModule: "admin",
     }),
+  /** Cancelled orders that were paid online / by wallet but not refunded yet */
+  getPendingRefunds: (params = {}) =>
+    apiClient.get("/food/admin/orders/pending-refunds", {
+      params,
+      contextModule: "admin",
+    }),
+  /** Admin refund of a paid online / wallet order (optional partial amount: { refundAmount }) */
+  processRefund: (orderId, body = {}) =>
+    apiClient.post(`/food/admin/orders/${String(orderId)}/refund`, body ?? {}, {
+      contextModule: "admin",
+    }),
   retryPaymentRecoveryRefund: (id) =>
     apiClient.post(`/food/admin/orders/payment-recovery/${String(id)}/retry-refund`, {}, {
       contextModule: "admin",

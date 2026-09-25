@@ -27,6 +27,20 @@ const STATUS_LABELS = {
   processing: "Processing",
 }
 
+const REFUND_STATUS_LABELS = {
+  failed: "Refund failed",
+  none: "Not refunded",
+  pending: "Stuck / in progress",
+}
+
+const REFUND_STATUS_STYLES = {
+  failed: "bg-red-100 text-red-700",
+  none: "bg-orange-100 text-orange-700",
+  pending: "bg-yellow-100 text-yellow-700",
+}
+
+const METHOD_LABELS = { razorpay: "Razorpay (online)", wallet: "Wallet" }
+
 const formatDate = (value) => {
   if (!value) return "-"
   try {
@@ -41,6 +55,10 @@ export default function PaymentRecovery() {
   const [status, setStatus] = useState("all")
   const [isLoading, setIsLoading] = useState(true)
   const [retryingId, setRetryingId] = useState(null)
+  const [view, setView] = useState("payments") // "payments" | "refunds"
+  const [refunds, setRefunds] = useState([])
+  const [refundsLoading, setRefundsLoading] = useState(true)
+  const [refundingId, setRefundingId] = useState(null)
 
   const load = useCallback(async () => {
     try {
@@ -55,9 +73,45 @@ export default function PaymentRecovery() {
     }
   }, [status])
 
+  const loadRefunds = useCallback(async () => {
+    try {
+      setRefundsLoading(true)
+      const res = await adminAPI.getPendingRefunds({ limit: 100 })
+      setRefunds(res?.data?.data?.items || [])
+    } catch (error) {
+      toast.error(error?.response?.data?.message || "Failed to load pending refunds")
+      setRefunds([])
+    } finally {
+      setRefundsLoading(false)
+    }
+  }, [])
+
   useEffect(() => {
     load()
   }, [load])
+
+  useEffect(() => {
+    loadRefunds()
+  }, [loadRefunds])
+
+  const handleRefund = async (row) => {
+    const where =
+      row.method === "wallet" ? "the customer's wallet" : "the customer's original payment method (Razorpay)"
+    const ok = window.confirm(
+      `Refund Rs ${row.amount} to ${row.customerName || "the customer"} for order ${row.orderNumber}?\n\nMoney will go to ${where}. This moves real money.`,
+    )
+    if (!ok) return
+    try {
+      setRefundingId(row.id)
+      await adminAPI.processRefund(row.id, {})
+      toast.success("Refund processed")
+    } catch (error) {
+      toast.error(error?.response?.data?.message || "Refund failed")
+    } finally {
+      setRefundingId(null)
+      await loadRefunds()
+    }
+  }
 
   const handleRetry = async (row) => {
     const ok = window.confirm(
@@ -87,7 +141,10 @@ export default function PaymentRecovery() {
         <div className="flex items-center justify-between gap-3">
           <h1 className="text-xl font-semibold text-slate-900">Payment Recovery</h1>
           <button
-            onClick={load}
+            onClick={() => {
+              load()
+              loadRefunds()
+            }}
             className="flex items-center gap-2 px-3 py-2 text-sm border rounded-lg hover:bg-slate-50"
           >
             <RefreshCw className="w-4 h-4" /> Refresh
@@ -103,6 +160,111 @@ export default function PaymentRecovery() {
         </p>
       </div>
 
+      <div className="flex gap-2 mb-4 border-b">
+        {[
+          { key: "payments", label: "Payments without order" },
+          { key: "refunds", label: `Refunds pending${refunds.length ? ` (${refunds.length})` : ""}` },
+        ].map((t) => (
+          <button
+            key={t.key}
+            onClick={() => setView(t.key)}
+            className={`px-4 py-2 text-sm font-medium -mb-px border-b-2 ${
+              view === t.key ? "border-slate-900 text-slate-900" : "border-transparent text-slate-500 hover:text-slate-700"
+            }`}
+          >
+            {t.label}
+          </button>
+        ))}
+      </div>
+
+      {view === "refunds" ? (
+        <>
+          <p className="mb-3 text-sm text-slate-500">
+            Cancelled orders where the customer paid online or by wallet but the money has not been returned yet
+            (refund failed, or never started). Use Refund to return the money.
+          </p>
+          <div className="bg-white border rounded-xl overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead className="bg-slate-50 text-slate-600 text-left">
+                <tr>
+                  <th className="px-4 py-3">Cancelled</th>
+                  <th className="px-4 py-3">Order ID</th>
+                  <th className="px-4 py-3">Customer</th>
+                  <th className="px-4 py-3">Amount</th>
+                  <th className="px-4 py-3">Paid via</th>
+                  <th className="px-4 py-3">Refund status</th>
+                  <th className="px-4 py-3">Note</th>
+                  <th className="px-4 py-3">Action</th>
+                </tr>
+              </thead>
+              <tbody>
+                {refundsLoading ? (
+                  <tr>
+                    <td colSpan={8} className="px-4 py-10 text-center text-slate-500">
+                      <Loader2 className="inline w-5 h-5 animate-spin" />
+                    </td>
+                  </tr>
+                ) : refunds.length === 0 ? (
+                  <tr>
+                    <td colSpan={8} className="px-4 py-10 text-center text-slate-500">
+                      No pending refunds. Every cancelled paid order has been refunded.
+                    </td>
+                  </tr>
+                ) : (
+                  refunds.map((row) => (
+                    <tr key={row.id} className="border-t align-top">
+                      <td className="px-4 py-3 whitespace-nowrap">
+                        <div>{formatDate(row.cancelledAt)}</div>
+                        <div className="text-xs text-slate-400">{String(row.orderStatus || "").replace(/_/g, " ")}</div>
+                      </td>
+                      <td className="px-4 py-3 whitespace-nowrap font-medium">{row.orderNumber || "-"}</td>
+                      <td className="px-4 py-3">
+                        <div className="font-medium text-slate-900">{row.customerName || "-"}</div>
+                        <div className="text-slate-500">{row.customerPhone}</div>
+                      </td>
+                      <td className="px-4 py-3 whitespace-nowrap">Rs {row.amount}</td>
+                      <td className="px-4 py-3 text-xs text-slate-600">
+                        <div>{METHOD_LABELS[row.method] || row.method}</div>
+                        {row.rzPaymentId ? <div className="text-slate-400">{row.rzPaymentId}</div> : null}
+                      </td>
+                      <td className="px-4 py-3">
+                        <span
+                          className={`px-2 py-1 text-xs rounded-full ${REFUND_STATUS_STYLES[row.refundStatus] || "bg-slate-100 text-slate-700"}`}
+                        >
+                          {REFUND_STATUS_LABELS[row.refundStatus] || row.refundStatus}
+                        </span>
+                        {row.attempts ? <div className="mt-1 text-xs text-slate-400">{row.attempts} attempt(s)</div> : null}
+                      </td>
+                      <td className="px-4 py-3 max-w-[260px] text-xs text-slate-600 break-words">
+                        {row.error ||
+                          (row.refundStatus === "pending"
+                            ? "Refund started but did not finish. Check the Razorpay dashboard first."
+                            : row.refundStatus === "none"
+                              ? "Refund was never started."
+                              : "-")}
+                      </td>
+                      <td className="px-4 py-3">
+                        {row.canRefund ? (
+                          <button
+                            onClick={() => handleRefund(row)}
+                            disabled={refundingId === row.id}
+                            className="px-3 py-1.5 text-xs text-white bg-red-600 rounded-lg hover:bg-red-700 disabled:opacity-60"
+                          >
+                            {refundingId === row.id ? "Refunding..." : "Refund"}
+                          </button>
+                        ) : (
+                          "-"
+                        )}
+                      </td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
+          </div>
+        </>
+      ) : (
+      <>
       <div className="flex flex-wrap gap-2 mb-4">
         {STATUS_FILTERS.map((f) => (
           <button
@@ -196,6 +358,8 @@ export default function PaymentRecovery() {
           </tbody>
         </table>
       </div>
+      </>
+      )}
     </div>
   )
 }

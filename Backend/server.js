@@ -17,6 +17,7 @@ let server = null;
 let expireOffersInterval = null;
 let fssaiExpiryInterval = null;
 let paymentReconcileInterval = null;
+let refundRetryInterval = null;
 
 const gracefulShutdown = async (signal) => {
     logger.info(`${signal} received, starting graceful shutdown`);
@@ -32,6 +33,7 @@ const gracefulShutdown = async (signal) => {
             if (expireOffersInterval) clearInterval(expireOffersInterval);
             if (fssaiExpiryInterval) clearInterval(fssaiExpiryInterval);
             if (paymentReconcileInterval) clearInterval(paymentReconcileInterval);
+            if (refundRetryInterval) clearInterval(refundRetryInterval);
             logger.info('Graceful shutdown complete');
             process.exit(0);
         } catch (err) {
@@ -121,6 +123,17 @@ const startServer = async () => {
         };
         setTimeout(runPaymentReconcile, 30 * 1000);
         paymentReconcileInterval = setInterval(runPaymentReconcile, 2 * 60 * 1000);
+
+        // Cancelled orders whose refund failed: retry every 10 minutes (max 5 attempts each).
+        const runRefundRetry = async () => {
+            try {
+                const { retryFailedRefunds } = await import('./src/modules/food/orders/services/order.service.js');
+                await retryFailedRefunds();
+            } catch (err) {
+                logger.error(`Refund retry error: ${err.message}`);
+            }
+        };
+        refundRetryInterval = setInterval(runRefundRetry, 10 * 60 * 1000);
 
         process.on('SIGINT', () => gracefulShutdown('SIGINT'));
         process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
