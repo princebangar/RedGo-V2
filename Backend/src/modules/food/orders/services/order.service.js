@@ -1385,6 +1385,80 @@ export async function resyncState(userId, role) {
   return {};
 }
 
+/**
+ * Refund a PAID online (razorpay) / wallet order that was cancelled by the restaurant or admin.
+ *
+ * - Never throws: callers keep going; a failure is stored as refund.status="failed" and logged
+ *   loudly so it can be refunded by hand.
+ * - Idempotent + race-safe: the refund is claimed atomically (refund.status -> "pending"), so two
+ *   parallel cancels / a retry can never refund twice.
+ * - Persists with updateOne so the outcome can't be lost to a later document-save conflict.
+ */
+export async function settleRefundOnCancel(order, { reason = "Order cancelled" } = {}) {
+  const method = String(order?.payment?.method || "").toLowerCase();
+  const payStatus = String(order?.payment?.status || "").toLowerCase();
+  const amount = Number(order?.pricing?.total || 0);
+  const label = order?.orderId || String(order?._id || "");
+
+  if (payStatus !== "paid" || (method !== "razorpay" && method !== "wallet") || !(amount > 0)) {
+    return { status: "skipped" };
+  }
+
+  // Atomic claim: only one caller proceeds (already processed / in progress => skip).
+  const claimed = await FoodOrder.findOneAndUpdate(
+    {
+      _id: order._id,
+      "payment.status": "paid",
+      "payment.refund.status": { $nin: ["processed", "pending"] },
+    },
+    { $set: { "payment.refund.status": "pending" } },
+    { new: true },
+  );
+  if (!claimed) return { status: "skipped" };
+
+  const destination = method === "wallet" ? "wallet" : "source";
+  try {
+    let refundId = "";
+    if (method === "wallet") {
+      await userWalletService.refundWalletBalance(
+        order.userId,
+        amount,
+        `Refund for order #${label} (${reason})`,
+        { orderId: order._id },
+      );
+    } else {
+      const paymentId = claimed.payment?.razorpay?.paymentId;
+      if (!paymentId) throw new Error("Razorpay payment id missing on order");
+      const result = await initiateRazorpayRefund(paymentId, amount, reason);
+      if (!result.success) throw new Error(result.error || "Razorpay refund failed");
+      refundId = result.refundId || "";
+    }
+
+    const refund = { status: "processed", destination, amount, refundId, processedAt: new Date() };
+    await FoodOrder.updateOne(
+      { _id: order._id },
+      { $set: { "payment.status": "refunded", "payment.refund": refund } },
+    );
+    if (order.payment) {
+      order.payment.status = "refunded";
+      order.payment.refund = refund;
+    }
+    logger.info(`[Refund] Order ${label}: refunded Rs ${amount} (${destination}) ${refundId}`);
+    return { status: "processed", refundId };
+  } catch (err) {
+    const message = err?.message || String(err);
+    logger.error(`[Refund] FAILED for order ${label} (Rs ${amount}): ${message}. MANUAL REFUND REQUIRED.`);
+    const refund = { status: "failed", destination, amount, refundId: "" };
+    try {
+      await FoodOrder.updateOne({ _id: order._id }, { $set: { "payment.refund": refund } });
+      if (order.payment) order.payment.refund = refund;
+    } catch (persistErr) {
+      logger.error(`[Refund] Could not persist failure for order ${label}: ${persistErr?.message || persistErr}`);
+    }
+    return { status: "failed", error: message };
+  }
+}
+
 export async function cancelOrder(orderId, userId, reason, refundDestination = "source") {
   const identity = buildOrderIdentityFilter(orderId);
   if (!identity) throw new ValidationError("Order id required");
@@ -1972,62 +2046,10 @@ export async function updateOrderStatusRestaurant(
         to: orderStatus
     });
 
-    // ✅ NEW: Automated Razorpay Refund on Restaurant Cancel
-    // Triggers if the restaurant sets status to a cancelled state (e.g., cancelled_by_restaurant)
-    if (
-      String(orderStatus).includes("cancel") &&
-      order.payment.status === "paid" &&
-      order.payment.method === "razorpay" &&
-      order.payment.razorpay?.paymentId &&
-      (!order.payment.refund || order.payment.refund.status !== "processed")
-    ) {
-      try {
-        const refundResult = await initiateRazorpayRefund(
-          order.payment.razorpay.paymentId,
-          order.pricing.total
-        );
-
-        if (refundResult.success) {
-          order.payment.status = "refunded";
-          order.payment.refund = {
-            status: "processed",
-            amount: order.pricing.total,
-            refundId: refundResult.refundId,
-            processedAt: new Date()
-          };
-        } else {
-          // Record failure so admin knows a manual refund might be needed
-          order.payment.refund = {
-            status: "failed",
-            amount: order.pricing.total
-          };
-        }
-      } catch (err) {
-        console.error(`Automated refund failed for Order ${order._id.toString()} (Restaurant Cancel):`, err);
-        order.payment.refund = { status: "failed", amount: order.pricing.total };
-      }
-      // Re-save order with updated payment status
-      await order.save();
-    } else if (
-      String(orderStatus).includes("cancel") &&
-      order.payment.status === "paid" &&
-      order.payment.method === "wallet" &&
-      (!order.payment.refund || order.payment.refund.status !== "processed")
-    ) {
-      try {
-        await userWalletService.refundWalletBalance(order.userId, order.pricing.total, `Refund for order #${order.order_id || order._id} cancelled by restaurant`, { orderId: order._id });
-        order.payment.status = "refunded";
-        order.payment.refund = {
-          status: "processed",
-          amount: order.pricing.total,
-          processedAt: new Date()
-        };
-      } catch (err) {
-        console.error(`Wallet refund processing error for Order ${order._id.toString()}:`, err);
-        order.payment.refund = { status: "failed", amount: order.pricing.total };
-      }
-      // Re-save order with updated payment status
-      await order.save();
+    // Automated refund when the restaurant cancels a PAID online/wallet order.
+    // (Shared helper: race-safe, never throws, persists the result, logs failures loudly.)
+    if (String(orderStatus).includes("cancel")) {
+      await settleRefundOnCancel(order, { reason: "Order cancelled by restaurant" });
     }
 
     return toRestaurantFacingOrder(order);
@@ -2842,6 +2864,9 @@ export async function rejectOrderAdmin(orderId, reason, adminId) {
 
   await order.save();
 
+  // A paid online/wallet order that is rejected must be refunded to the customer.
+  await settleRefundOnCancel(order, { reason: reason || "Order rejected by admin" });
+
   // Sync transaction status
   try {
     const isOnlinePaid = order.payment.method === "razorpay" && (order.payment.status === "paid" || order.payment.status === "refunded");
@@ -3052,6 +3077,17 @@ export async function updateOrderStatusesAdmin(orderId, adminId, { orderStatus, 
   }
 
   await order.save();
+
+  // Admin moved the order into a cancelled state: refund a paid online/wallet order automatically,
+  // unless the admin also set the payment status by hand in the same request.
+  if (
+    nextOrderStatus &&
+    String(nextOrderStatus).startsWith("cancelled") &&
+    !String(fromOrder || "").startsWith("cancelled") &&
+    !nextPaymentStatus
+  ) {
+    await settleRefundOnCancel(order, { reason: "Order cancelled by admin" });
+  }
 
   // Reset COD Cancellation Count if marked delivered
   if (nextOrderStatus === "delivered" && order.userId) {
