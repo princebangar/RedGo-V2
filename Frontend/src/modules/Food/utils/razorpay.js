@@ -84,31 +84,11 @@ export const initRazorpayPayment = async (options) => {
       }
     };
 
-    // -------------------------------------------------------------------------
-    // visibilitychange listener:
-    // When the user leaves the app for a UPI app (PhonePe / GPay), the page
-    // becomes hidden. When they return (cancel or back in UPI app), the page
-    // becomes visible again. If payment wasn't confirmed, fire onClose so the
-    // user is automatically returned to the cart.
-    // -------------------------------------------------------------------------
-    let leftForUpiApp = false;
-    const handleVisibilityChange = () => {
-      if (document.hidden) {
-        // Page went to background — user probably went to a UPI app
-        leftForUpiApp = true;
-      } else if (leftForUpiApp) {
-        // App came back to foreground — wait briefly for Razorpay success callback
-        leftForUpiApp = false;
-        setTimeout(() => {
-          // If the success handler wasn't called, the user cancelled in UPI app
-          if (!paymentCompleted) {
-            fireClose();
-          }
-        }, 1500);
-      }
-    };
-
-    document.addEventListener('visibilitychange', handleVisibilityChange);
+    // NOTE: we intentionally do NOT treat "app came back from the UPI app" as a cancel.
+    // Razorpay needs a few seconds after the user returns to confirm the payment; closing
+    // early hid the "Placing your order" screen, flashed the cart and showed a false
+    // "payment not completed" message. Real cancels are reported by Razorpay itself via
+    // modal.ondismiss and the payment.failed event below.
 
     const razorpayOptions = {
       key: options.key,
@@ -130,14 +110,12 @@ export const initRazorpayPayment = async (options) => {
       handler: function(response) {
         paymentCompleted = true;
         closeFired = true; // Prevent onClose from also firing after success
-        document.removeEventListener('visibilitychange', handleVisibilityChange);
         if (options.handler) {
           options.handler(response);
         }
       },
       modal: {
         ondismiss: function() {
-          document.removeEventListener('visibilitychange', handleVisibilityChange);
           fireClose();
         },
         escape: true,
@@ -156,7 +134,6 @@ export const initRazorpayPayment = async (options) => {
     // Handle payment failures
     razorpay.on('payment.failed', function(response) {
       console.error('Razorpay payment failed:', response);
-      document.removeEventListener('visibilitychange', handleVisibilityChange);
       if (options.onError) {
         options.onError(response.error || { description: 'Payment failed. Please try again.' });
       }

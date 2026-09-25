@@ -2268,6 +2268,24 @@ export default function Cart() {
         },
         handler: async (response) => {
           paymentHandled = true
+          // Keep the full-screen "Placing Your Order..." overlay up the whole time, so the
+          // cart (with the already-paid item) is never visible after the gateway closes.
+          setIsPlacingOrder(true)
+
+          const goHomeAfterPayment = () => {
+            setRestaurantNote("")
+            setShowRestaurantNoteInput(false)
+            try {
+              window.localStorage.removeItem(CART_ORDER_NOTE_STORAGE_KEY)
+              window.localStorage.removeItem('pendingOrderPayload')
+              window.localStorage.removeItem('pendingOrderSavings')
+            } catch {
+              // ignore
+            }
+            navigate('/food/user', { replace: true })
+            setIsPlacingOrder(false)
+          }
+
           try {
             debugLog("? Payment successful, creating order in DB...", {
               razorpay_order_id: response.razorpay_order_id,
@@ -2282,37 +2300,45 @@ export default function Cart() {
               razorpaySignature: response.razorpay_signature,
             }
 
-            const createResponse = await orderAPI.createOrder(createOrderPayload)
+            // The server de-duplicates by Razorpay order id, so retrying is safe. Retry only
+            // transient failures (no response / 401 right after coming back from the UPI app / 5xx).
+            let createResponse = null
+            let lastError = null
+            const maxAttempts = 4
+            for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+              try {
+                createResponse = await orderAPI.createOrder(createOrderPayload)
+                lastError = null
+                break
+              } catch (err) {
+                lastError = err
+                const status = err?.response?.status
+                const retryable = !status || status === 401 || status === 408 || status === 429 || status >= 500
+                if (!retryable || attempt === maxAttempts) break
+                await new Promise((resolve) => setTimeout(resolve, 1500 * attempt))
+              }
+            }
+            if (lastError) throw lastError
             debugLog("? Order created after payment:", createResponse.data)
 
-            if (createResponse.data?.success) {
-              const { order } = createResponse.data.data
-              setPlacedOrderId(order._id || order.orderId)
-              setPlacedOrderObj(order)
-              setShowOrderSuccess(true)
-              window.dispatchEvent(new CustomEvent('order-placed', { detail: { order } }))
-              clearCart()
-              setRestaurantNote("")
-              setShowRestaurantNoteInput(false)
-              try {
-                window.localStorage.removeItem(CART_ORDER_NOTE_STORAGE_KEY)
-              } catch {
-                // ignore
-              }
-              setIsPlacingOrder(false)
-            } else {
+            if (!createResponse.data?.success) {
               throw new Error(createResponse.data?.message || "Payment verified but order creation failed")
             }
+
+            const { order } = createResponse.data.data
+            window.dispatchEvent(new CustomEvent('order-placed', { detail: { order } }))
+            clearCart()
+            toast.success("Order placed successfully!")
+            goHomeAfterPayment()
           } catch (error) {
             debugError("? Order creation after payment error:", error)
-            const errorMessage =
-              error?.response?.data?.message ||
-              error?.response?.data?.error?.message ||
-              error?.response?.data?.errors?.[0]?.message ||
-              error?.message ||
-              "Payment verification failed. Please contact support."
-            alert(errorMessage)
-            setIsPlacingOrder(false)
+            // The payment was captured. The server keeps the order details and will create the
+            // order itself (or refund the money automatically), so don't show a scary error.
+            toast.info(
+              "Payment received. We're confirming your order - check My Orders in a moment. If it can't be placed, you'll be refunded automatically.",
+              { duration: 8000 },
+            )
+            goHomeAfterPayment()
           }
         },
         onError: async (error) => {

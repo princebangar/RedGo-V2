@@ -464,6 +464,25 @@ export async function initiateOnlinePayment(userId, dto) {
 
 // ----- Create order -----
 export async function createOrder(userId, dto, options = {}) {
+  // Idempotency for online payments: if this Razorpay order already produced an order for this
+  // user (webhook / reconcile / an earlier retry got there first), return it. Otherwise the
+  // re-pricing below fails with "cart is empty" because the server already cleared the cart.
+  const earlyRzOrderId = String(dto?.razorpayOrderId || "").trim();
+  if (earlyRzOrderId && ["razorpay", "card"].includes(dto?.paymentMethod)) {
+    const alreadyPlaced = await FoodOrder.findOne({
+      "payment.razorpay.orderId": earlyRzOrderId,
+      userId: new mongoose.Types.ObjectId(userId),
+    });
+    if (alreadyPlaced) {
+      await markPendingIntentCompleted(
+        earlyRzOrderId,
+        alreadyPlaced.payment?.razorpay?.paymentId,
+        alreadyPlaced._id,
+      );
+      return { order: normalizeOrderForClient(alreadyPlaced), razorpay: null };
+    }
+  }
+
   // SECURITY: load items from DB cart + recompute fees/coupon server-side.
   const priced = await calculateOrderPricing(userId, {
     ...dto,
