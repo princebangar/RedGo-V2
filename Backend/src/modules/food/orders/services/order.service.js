@@ -1853,7 +1853,8 @@ export async function updateOrderStatusRestaurant(
   restaurantId,
   orderStatus,
   note = "",
-  preparationTime = 0
+  preparationTime = 0,
+  { onlyIfPending = false } = {}
 ) {
   const identity = buildOrderIdentityFilter(orderId);
   let order = await FoodOrder.findOne({
@@ -1862,6 +1863,17 @@ export async function updateOrderStatusRestaurant(
   }).select("+deliveryOtp");
   if (!order) throw new NotFoundError("Order not found");
   const from = order.orderStatus;
+
+  // A stale new-order popup (e.g. on another device of the same restaurant) can
+  // fire its timer auto-reject after the order was already accepted. Never let
+  // that cancel an accepted order — return it unchanged instead.
+  if (
+    onlyIfPending &&
+    String(orderStatus).startsWith("cancelled") &&
+    (order.acceptedAt || !["created", "confirmed"].includes(from))
+  ) {
+    return toRestaurantFacingOrder(order);
+  }
   if (!isStatusAdvance(from, orderStatus)) {
     // If order is already at a further-forward status (e.g. 'preparing' when accepting),
     // treat as success — the outcome is already achieved

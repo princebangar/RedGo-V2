@@ -222,7 +222,8 @@ export async function updateOrderStatusRestaurantController(req, res, next) {
             restaurantId,
             dto.orderStatus,
             dto.note,
-            dto.preparationTime
+            dto.preparationTime,
+            { onlyIfPending: dto.onlyIfPending === true }
         );
         return sendResponse(res, 200, 'Order status updated', { order });
     } catch (err) {

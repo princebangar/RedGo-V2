@@ -1775,11 +1775,27 @@ function OrdersMainInner() {
       const payload = event?.detail || {};
       const payloadStatus = payload?.orderStatus || payload?.status;
       const normalizedPayloadStatus = normalizeOrderStatusValue(payloadStatus);
-      // Admin accept moves the order straight to "preparing", so rely on the
-      // acceptedBy flag (any status) rather than a specific status value.
-      const isAdminAccepted = payload?.acceptedBy === "admin";
+      // Accepted by admin (acceptedBy flag) or from another device/tab of this
+      // restaurant: the popup here must close, otherwise its countdown would
+      // later auto-reject the already accepted order.
+      const isAccepted =
+        payload?.acceptedBy === "admin" ||
+        [
+          "preparing",
+          "ready_for_pickup",
+          "reached_pickup",
+          "picked_up",
+          "reached_drop",
+          "delivered",
+        ].includes(normalizedPayloadStatus);
 
-      if (!isAnyCancelledStatus(payloadStatus) && !isAdminAccepted) return;
+      if (!isAnyCancelledStatus(payloadStatus) && !isAccepted) return;
+
+      // Drop it from the waiting queue too, so it never pops up later with an expired timer.
+      const finishedId = payload?.orderMongoId || payload?.orderId || payload?._id || payload?.id;
+      if (finishedId) {
+        setOrderQueue((prev) => prev.filter((o) => resolveOrderActionId(o) !== String(finishedId)));
+      }
 
       const activePopupOrder = popupOrder || newOrder;
       if (!activePopupOrder) return;
@@ -1827,8 +1843,8 @@ function OrdersMainInner() {
 
       const targetId = payload?.orderMongoId || payload?.orderId || payload?._id || payload?.id;
 
-      if (isAdminAccepted) {
-        // Admin already accepted this order — close the popup entirely instead of showing it as cancelled.
+      if (isAccepted) {
+        // Order already accepted — close the popup entirely instead of showing it as cancelled.
         setShowNewOrderPopup(false);
         setPopupOrder(null);
       } else {
@@ -2021,8 +2037,17 @@ function OrdersMainInner() {
           // Remove from queue
           setOrderQueue((prev) => prev.filter((o) => resolveOrderActionId(o) !== orderId));
 
-          restaurantAPI.rejectOrder(orderId, "No response from restaurant (Auto-rejected)")
-            .then(() => {
+          restaurantAPI.rejectOrder(orderId, "No response from restaurant (Auto-rejected)", { onlyIfPending: true })
+            .then((res) => {
+              const savedStatus = res?.data?.data?.order?.orderStatus;
+              if (savedStatus && !isAnyCancelledStatus(savedStatus)) {
+                // Already accepted (e.g. from another device) — backend kept it, just close the popup.
+                setShowNewOrderPopup(false);
+                setPopupOrder(null);
+                clearNewOrder(orderId);
+                requestOrdersRefresh();
+                return;
+              }
               toast.info("Order auto-rejected due to no response");
               requestOrdersRefresh();
               // The 2.5s timer in the other useEffect will close the main popup
@@ -2269,9 +2294,14 @@ function OrdersMainInner() {
     // Reject order via API if we have a real order
     if (orderToReject?.orderMongoId || orderToReject?.orderId) {
       try {
-        await restaurantAPI.rejectOrder(orderId, rejectReason);
-        debugLog("✅ Order rejected:", orderId);
-        toast.info("Order rejected successfully");
+        const res = await restaurantAPI.rejectOrder(orderId, rejectReason, { onlyIfPending: true });
+        const savedStatus = res?.data?.data?.order?.orderStatus;
+        if (savedStatus && !isAnyCancelledStatus(savedStatus)) {
+          toast.info("Order was already accepted, so it was not rejected");
+        } else {
+          debugLog("✅ Order rejected:", orderId);
+          toast.info("Order rejected successfully");
+        }
       } catch (error) {
         debugError("❌ Error rejecting order:", error);
         const errorMessage = error.response?.data?.message || error.message || "";

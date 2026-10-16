@@ -162,7 +162,10 @@ export function validateOrderStatusDto(body) {
             'cancelled_by_restaurant'
         ]),
         note: z.string().optional(),
-        preparationTime: z.number().int().min(0).optional()
+        preparationTime: z.number().int().min(0).optional(),
+        // Set by the new-order popup (manual reject / timer auto-reject): only cancel
+        // if the order is still awaiting acceptance, never one already accepted.
+        onlyIfPending: z.boolean().optional()
     });
     const result = schema.safeParse(body);
     if (!result.success) {
