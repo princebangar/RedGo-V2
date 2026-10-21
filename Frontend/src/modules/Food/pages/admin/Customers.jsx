@@ -1,6 +1,6 @@
 import React, { useState, useMemo, useEffect } from "react"
 import { useSearchParams } from "react-router-dom"
-import { Search, Download, ChevronDown, Eye, FileDown, FileSpreadsheet, FileText, X, Mail, Phone, MapPin, Package, IndianRupee, Calendar as CalendarIcon, User, CheckCircle, XCircle } from "lucide-react"
+import { Search, Download, ChevronDown, Eye, FileDown, FileSpreadsheet, FileText, X, Mail, Phone, MapPin, Package, IndianRupee, Wallet, Calendar as CalendarIcon, User, CheckCircle, XCircle } from "lucide-react"
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from "@food/components/ui/dropdown-menu"
 import { exportCustomersToCSV, exportCustomersToExcel, exportCustomersToPDF } from "@food/components/admin/customers/customersExportUtils"
 import { adminAPI } from "@food/api"
@@ -485,6 +485,7 @@ export default function Customers() {
                   <th className="px-3 py-4 text-left text-[10px] font-bold text-slate-700 uppercase tracking-wider">Contact Info</th>
                   <th className="px-3 py-4 text-left text-[10px] font-bold text-slate-700 uppercase tracking-wider">Total Order</th>
                   <th className="px-3 py-4 text-left text-[10px] font-bold text-slate-700 uppercase tracking-wider">Total Amount</th>
+                  <th className="px-3 py-4 text-left text-[10px] font-bold text-slate-700 uppercase tracking-wider">Wallet</th>
                   <th className="px-3 py-4 text-left text-[10px] font-bold text-slate-700 uppercase tracking-wider">Joining Date</th>
                   <th className="px-3 py-4 text-left text-[10px] font-bold text-slate-700 uppercase tracking-wider">Active/Inactive</th>
                   {globalCodBlockedFeatureEnabled && (
@@ -496,13 +497,13 @@ export default function Customers() {
               <tbody className="bg-white divide-y divide-slate-100">
                 {loading ? (
                   <tr>
-                    <td colSpan={globalCodBlockedFeatureEnabled ? 9 : 8} className="px-6 py-8 text-center">
+                    <td colSpan={globalCodBlockedFeatureEnabled ? 10 : 9} className="px-6 py-8 text-center">
                       <div className="text-sm text-slate-500">Loading customers...</div>
                     </td>
                   </tr>
                 ) : filteredCustomers.length === 0 ? (
                   <tr>
-                    <td colSpan={globalCodBlockedFeatureEnabled ? 9 : 8} className="px-6 py-8 text-center">
+                    <td colSpan={globalCodBlockedFeatureEnabled ? 10 : 9} className="px-6 py-8 text-center">
                       <div className="text-sm text-slate-500">No customers found</div>
                     </td>
                   </tr>
@@ -548,6 +549,9 @@ export default function Customers() {
                       </td>
                       <td className="px-3 py-4 whitespace-nowrap">
                         <span className="text-sm font-medium text-slate-900">{"\u20B9"} {(customer.totalOrderAmount || 0).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                      </td>
+                      <td className="px-3 py-4 whitespace-nowrap">
+                        <span className={`text-sm font-medium ${(customer.walletBalance || 0) > 0 ? "text-emerald-600" : "text-slate-500"}`}>{"₹"} {(customer.walletBalance || 0).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
                       </td>
                       <td className="px-3 py-4 whitespace-nowrap">
                         <span className="text-sm text-slate-700">{formatDateTime(customer.joiningDate)}</span>
@@ -758,6 +762,9 @@ export default function Customers() {
                     <span className="text-xs font-semibold text-slate-700">Total Orders</span>
                   </div>
                   <p className="text-xl font-bold text-blue-600">{userDetails.totalOrders || 0}</p>
+                  <p className="text-[11px] text-slate-500 mt-0.5">
+                    {userDetails.totalDeliveredOrders || 0} delivered · {userDetails.totalCancelledOrders || 0} cancelled
+                  </p>
                 </div>
                 <div className="bg-green-50 rounded-lg p-3">
                   <div className="flex items-center gap-2 mb-1">
@@ -767,13 +774,17 @@ export default function Customers() {
                   <p className="text-xl font-bold text-green-600">
                     {"\u20B9"}{(userDetails.totalOrderAmount || 0).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                   </p>
+                  <p className="text-[11px] text-slate-500 mt-0.5">Delivered &amp; paid orders only</p>
                 </div>
                 <div className="bg-purple-50 rounded-lg p-3">
                   <div className="flex items-center gap-2 mb-1">
-                    <CalendarIcon className="w-4 h-4 text-purple-600" />
-                    <span className="text-xs font-semibold text-slate-700">Member Since</span>
+                    <Wallet className="w-4 h-4 text-purple-600" />
+                    <span className="text-xs font-semibold text-slate-700">Wallet Balance</span>
                   </div>
-                  <p className="text-base font-bold text-purple-600">{formatDateTime(userDetails.joiningDate)}</p>
+                  <p className="text-xl font-bold text-purple-600">
+                    {"₹"}{(userDetails.walletBalance || 0).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                  </p>
+                  <p className="text-[11px] text-slate-500 mt-0.5">Current balance</p>
                 </div>
               </div>
 

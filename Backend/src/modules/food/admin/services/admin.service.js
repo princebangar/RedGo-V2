@@ -29,6 +29,7 @@ import { FoodAddon } from '../../restaurant/models/foodAddon.model.js';
 import { FoodSupportTicket } from '../../user/models/supportTicket.model.js';
 import { FoodRestaurantSupportTicket } from '../../restaurant/models/supportTicket.model.js';
 import { FoodOrder } from '../../orders/models/order.model.js';
+import { FoodUserWallet } from '../../user/models/userWallet.model.js';
 import {
     toStartOfDayInTimeZone,
     toEndOfDayInTimeZone,
@@ -1671,6 +1672,15 @@ export async function getTaxReportDetail(restaurantId, query = {}) {
 }
 
 // ----- Customers / Users (admin) -----
+// Counts only delivered orders whose payment was collected (cash or online) and not refunded.
+const SUCCESSFUL_ORDER_COND = {
+    $and: [
+        { $eq: ['$orderStatus', 'delivered'] },
+        { $ne: ['$payment.status', 'refunded'] },
+        { $not: [{ $in: [{ $ifNull: ['$payment.refund.status', 'none'] }, ['pending', 'processed']] }] }
+    ]
+};
+
 export async function getCustomers(query = {}) {
     const limit = Math.min(Math.max(parseInt(query.limit, 10) || 50, 1), 1000);
     const page = Math.max(parseInt(query.page, 10) || 1, 1);
@@ -1727,18 +1737,24 @@ export async function getCustomers(query = {}) {
     };
 
     const userIds = docs.map((u) => u._id).filter(Boolean);
-    const orderStats = userIds.length > 0
-        ? await FoodOrder.aggregate([
-            { $match: { userId: { $in: userIds } } },
-            {
-                $group: {
-                    _id: '$userId',
-                    totalOrder: { $sum: 1 },
-                    totalOrderAmount: { $sum: { $ifNull: ['$pricing.total', 0] } }
+    const [orderStats, wallets] = userIds.length > 0
+        ? await Promise.all([
+            FoodOrder.aggregate([
+                { $match: { userId: { $in: userIds } } },
+                {
+                    $group: {
+                        _id: '$userId',
+                        totalOrder: { $sum: 1 },
+                        totalOrderAmount: {
+                            $sum: { $cond: [SUCCESSFUL_ORDER_COND, { $ifNull: ['$pricing.total', 0] }, 0] }
+                        }
+                    }
                 }
-            }
+            ]),
+            FoodUserWallet.find({ userId: { $in: userIds } }).select('userId balance').lean()
         ])
-        : [];
+        : [[], []];
+    const walletMap = new Map(wallets.map((w) => [String(w.userId), Number(w.balance || 0)]));
 
     const orderStatsMap = new Map(
         orderStats.map((x) => [
@@ -1766,6 +1782,7 @@ export async function getCustomers(query = {}) {
         isCodBlocked: u.isCodBlocked === true,
         totalOrder: stats.totalOrder,
         totalOrderAmount: stats.totalOrderAmount,
+        walletBalance: walletMap.get(String(u._id)) || 0,
         joiningDate: u.createdAt,
         createdAt: u.createdAt
         });
@@ -1784,13 +1801,16 @@ export async function getCustomerById(id) {
     const u = await FoodUser.findById(id).select('-__v').lean();
     if (!u) return null;
     const customerObjectId = new mongoose.Types.ObjectId(id);
+    const walletPromise = FoodUserWallet.findOne({ userId: customerObjectId }).select('balance').lean();
     const orderStats = await FoodOrder.aggregate([
         { $match: { userId: customerObjectId } },
         {
             $group: {
                 _id: '$userId',
                 totalOrders: { $sum: 1 },
-                totalOrderAmount: { $sum: { $ifNull: ['$pricing.total', 0] } },
+                totalOrderAmount: {
+                    $sum: { $cond: [SUCCESSFUL_ORDER_COND, { $ifNull: ['$pricing.total', 0] }, 0] }
+                },
                 totalDeliveredOrders: {
                     $sum: { $cond: [{ $eq: ['$orderStatus', 'delivered'] }, 1, 0] }
                 },
@@ -1809,6 +1829,7 @@ export async function getCustomerById(id) {
         }
     ]);
     const stats = orderStats?.[0] || {};
+    const wallet = await walletPromise;
     const sanitizeUrl = (s) => {
         if (!s) return '';
         const str = String(s).trim();
@@ -1831,6 +1852,7 @@ export async function getCustomerById(id) {
         totalOrderAmount: Number(stats.totalOrderAmount || 0),
         totalDeliveredOrders: Number(stats.totalDeliveredOrders || 0),
         totalCancelledOrders: Number(stats.totalCancelledOrders || 0),
+        walletBalance: Number(wallet?.balance || 0),
         joiningDate: u.createdAt,
         createdAt: u.createdAt,
         updatedAt: u.updatedAt
