@@ -135,9 +135,14 @@ const normalizeDataMap = (data = {}) => {
     return result;
 };
 
+// Emojis are surrogate pairs in JS strings. A plain character class like /[👤🏪]/ (no `u` flag)
+// matches a single half of ANY emoji, which left a lone surrogate behind — shown as "?" on devices.
+// Match only the exact role-prefix emojis, as whole code points.
+const OWNER_TITLE_EMOJI_PREFIX = /^(?:👤|🏪|🛵|🛡️?)\s*/u;
+
 const stripOwnerTitlePrefix = (title = '') =>
     sanitizeString(title)
-        .replace(/^[👤🏪🛵🛡️]\s*/, '')
+        .replace(OWNER_TITLE_EMOJI_PREFIX, '')
         .replace(/^\[(User|Shop|Rider|Admin)\]\s*/i, '')
         .trim();
 
@@ -151,12 +156,33 @@ const resolveClickLink = (payload = {}, data = {}) => {
     return raw || '/';
 };
 
+// FCM rejects payloads over 4096 BYTES, and title/body are sent twice (notification + data mirror).
+// English = 1 byte/char, Hindi = 3, emoji = 4 — so the cap must be in bytes, not characters.
+// (title + body) * 2 + ~600B of data keys stays under ~3KB even for all-emoji text.
+// Truncate by code point so an emoji/akshar is never split. Inbox keeps the full text.
+const MAX_PUSH_TITLE_BYTES = 200;
+const MAX_PUSH_BODY_BYTES = 1000;
+const ELLIPSIS = '…';
+const truncateUtf8Bytes = (value, maxBytes) => {
+    if (Buffer.byteLength(value) <= maxBytes) return value;
+    const budget = maxBytes - Buffer.byteLength(ELLIPSIS);
+    let used = 0;
+    let out = '';
+    for (const char of value) {
+        used += Buffer.byteLength(char);
+        if (used > budget) break;
+        out += char;
+    }
+    return `${out.trimEnd()}${ELLIPSIS}`;
+};
+
 const buildMessagePayload = (payload = {}, token, { platform } = {}) => {
     const notification = {
-        title:
-            stripOwnerTitlePrefix(payload.title || payload.notification?.title) ||
-            'New notification',
-        body: sanitizeString(payload.body || payload.notification?.body || '')
+        title: truncateUtf8Bytes(
+            stripOwnerTitlePrefix(payload.title || payload.notification?.title) || 'New notification',
+            MAX_PUSH_TITLE_BYTES
+        ),
+        body: truncateUtf8Bytes(sanitizeString(payload.body || payload.notification?.body || ''), MAX_PUSH_BODY_BYTES)
     };
     const clickLink = resolveClickLink(payload, payload.data || {});
     const data = normalizeDataMap({
@@ -283,20 +309,34 @@ const parseFirebaseError = async (response) => {
     }
 };
 
-const shouldRemoveTokenFromError = (errorJson, response) => {
-    const status = response?.status;
-    const message = String(errorJson?.error?.message || '').toUpperCase();
-    return status === 404 || message.includes('UNREGISTERED') || message.includes('INVALID_ARGUMENT');
+const getFcmErrorCode = (errorJson) => {
+    const details = Array.isArray(errorJson?.error?.details) ? errorJson.error.details : [];
+    const fcmDetail = details.find((item) => String(item?.['@type'] || '').includes('FcmError'));
+    return String(fcmDetail?.errorCode || errorJson?.error?.status || '').toUpperCase();
+};
+
+// Only drop a token when FCM says the TOKEN itself is dead. INVALID_ARGUMENT / 404 are also
+// returned for message problems (payload too big, bad field) or a misconfigured project —
+// treating those as dead tokens silently wiped valid devices (e.g. a restaurant's only phone).
+const shouldRemoveTokenFromError = (errorJson) => {
+    const code = getFcmErrorCode(errorJson);
+    const message = String(errorJson?.error?.message || '');
+    if (code === 'UNREGISTERED') return true;
+    return code === 'INVALID_ARGUMENT' && /registration token/i.test(message);
 };
 
 const getOwnerModel = (ownerType) => OWNER_MODELS[String(ownerType || '').toUpperCase()] || null;
 
 const getTokenFieldForPlatform = (platform) => OWNER_TOKEN_FIELDS[platform === 'mobile' ? 'mobile' : 'web'];
 
-const normalizeTokenList = (tokens = []) => {
-    const normalized = [...new Set((Array.isArray(tokens) ? tokens : [tokens]).map(sanitizeString).filter(Boolean))];
-    return normalized.slice(-10);
-};
+const MAX_STORED_TOKENS_PER_FIELD = 10;
+
+const dedupeTokens = (tokens = []) =>
+    [...new Set((Array.isArray(tokens) ? tokens : [tokens]).map(sanitizeString).filter(Boolean))];
+
+// Storage cap only (per field, per owner). Never use this on a send list — broadcasts pass
+// tokens of many owners at once, and capping there dropped 40 of every 50 devices.
+const normalizeTokenList = (tokens = []) => dedupeTokens(tokens).slice(-MAX_STORED_TOKENS_PER_FIELD);
 
 // pickLatestTokenOnly removed as we want to push to all active devices of a user
 
@@ -305,9 +345,9 @@ const readTokensFromDoc = (doc, platform) => {
     if (platform) {
         return normalizeTokenList(doc[getTokenFieldForPlatform(platform)] || []);
     }
-    return normalizeTokenList([
-        ...(Array.isArray(doc.fcmTokens) ? doc.fcmTokens : []),
-        ...(Array.isArray(doc.fcmTokenMobile) ? doc.fcmTokenMobile : [])
+    return dedupeTokens([
+        ...normalizeTokenList(doc.fcmTokens || []),
+        ...normalizeTokenList(doc.fcmTokenMobile || [])
     ]);
 };
 
@@ -336,33 +376,33 @@ export const upsertFirebaseDeviceToken = async ({ ownerType, ownerId, token, pla
             throw new Error(`Invalid owner ID: ${ownerId}`);
         }
 
-        const doc = await model.findById(ownerId);
+        const doc = await model.findById(ownerId).select('fcmTokens fcmTokenMobile').lean();
         if (!doc) {
             throw new Error('Owner profile not found.');
         }
 
         const targetField = getTokenFieldForPlatform(normalizedPlatform);
         const otherField = getTokenFieldForPlatform(normalizedPlatform === 'mobile' ? 'web' : 'mobile');
-
-        let isModified = false;
-
-        // 1. Remove this token from the other platform array to prevent cross-contamination / duplicate notifications
-        const otherTokens = Array.isArray(doc[otherField]) ? doc[otherField] : [];
-        if (otherTokens.includes(normalizedToken)) {
-            doc[otherField] = normalizeTokenList(otherTokens.filter((t) => t !== normalizedToken));
-            isModified = true;
-        }
-
-        // 2. Add to target field if not already present
         const existingTokens = Array.isArray(doc[targetField]) ? doc[targetField] : [];
-        if (!existingTokens.includes(normalizedToken)) {
-            doc[targetField] = normalizeTokenList([...existingTokens, normalizedToken]);
-            isModified = true;
+        const otherTokens = Array.isArray(doc[otherField]) ? doc[otherField] : [];
+
+        if (existingTokens.includes(normalizedToken) && !otherTokens.includes(normalizedToken)) {
+            return { success: true };
         }
 
-        if (isModified) {
-            await doc.save();
-        }
+        // Atomic updates touch only the token arrays. doc.save() re-validated the whole profile,
+        // so any legacy field that no longer matched the schema made token saving fail silently,
+        // and concurrent saves from two devices could overwrite each other's token.
+        // 1. Remove from both arrays (prevents cross-platform duplicates).
+        await model.updateOne(
+            { _id: ownerId },
+            { $pull: { [targetField]: normalizedToken, [otherField]: normalizedToken } }
+        );
+        // 2. Append as newest, keeping only the latest N tokens.
+        await model.updateOne(
+            { _id: ownerId },
+            { $push: { [targetField]: { $each: [normalizedToken], $slice: -MAX_STORED_TOKENS_PER_FIELD } } }
+        );
 
         return { success: true };
     } catch (error) {
@@ -379,29 +419,17 @@ export const removeFirebaseDeviceToken = async ({ ownerType, ownerId, token, pla
     if (!model) {
         throw new Error(`Unsupported owner type: ${ownerType}`);
     }
-    const doc = await model.findById(ownerId);
-    if (!doc) {
-        return { success: false };
-    }
-
-    if (platform) {
-        const field = getTokenFieldForPlatform(platform);
-        doc[field] = normalizeTokenList((Array.isArray(doc[field]) ? doc[field] : []).filter((t) => t !== normalizedToken));
-    } else {
-        doc.fcmTokens = normalizeTokenList((Array.isArray(doc.fcmTokens) ? doc.fcmTokens : []).filter((t) => t !== normalizedToken));
-        doc.fcmTokenMobile = normalizeTokenList(
-            (Array.isArray(doc.fcmTokenMobile) ? doc.fcmTokenMobile : []).filter((t) => t !== normalizedToken)
-        );
-    }
-
-    await doc.save();
-    return { success: true };
+    const pull = platform
+        ? { [getTokenFieldForPlatform(platform)]: normalizedToken }
+        : { fcmTokens: normalizedToken, fcmTokenMobile: normalizedToken };
+    const result = await model.updateOne({ _id: ownerId }, { $pull: pull });
+    return { success: Boolean(result?.matchedCount) };
 };
 
 export const sendPushNotification = async (tokens, payload = {}, { platform } = {}) => {
     const projectId = getFirebaseProjectId();
     const accessToken = await getFirebaseAccessToken();
-    const uniqueTokens = normalizeTokenList(tokens);
+    const uniqueTokens = dedupeTokens(tokens);
 
     if (uniqueTokens.length === 0) {
         return { successCount: 0, failureCount: 0, results: [] };
@@ -425,7 +453,7 @@ export const sendPushNotification = async (tokens, payload = {}, { platform } = 
                     return {
                         token,
                         ok: false,
-                        remove: shouldRemoveTokenFromError(errorJson, response),
+                        remove: shouldRemoveTokenFromError(errorJson),
                         error: errorJson?.error?.message || `FCM send failed (${response.status})`
                     };
                 }
@@ -460,7 +488,7 @@ export const sendNotificationToOwner = async ({ ownerType, ownerId, payload, pla
         const rawTokens = await listOwnerTokens({ ownerType, ownerId, platform });
         
         // Deduplicate token list strictly so no single FCM device token receives duplicate notifications
-        const targetTokens = normalizeTokenList(rawTokens);
+        const targetTokens = dedupeTokens(rawTokens);
 
         if (!targetTokens.length) {
             logger.warn(`[FCM] No device tokens for ${ownerType}:${ownerId} — push skipped`);
@@ -478,15 +506,11 @@ export const sendNotificationToOwner = async ({ ownerType, ownerId, payload, pla
 
         if (invalidTokens.length > 0) {
             const model = getOwnerModel(ownerType);
-            const doc = model ? await model.findById(ownerId) : null;
-            if (doc) {
-                doc.fcmTokens = normalizeTokenList(
-                    (Array.isArray(doc.fcmTokens) ? doc.fcmTokens : []).filter((t) => !invalidTokens.includes(t))
+            if (model) {
+                await model.updateOne(
+                    { _id: ownerId },
+                    { $pull: { fcmTokens: { $in: invalidTokens }, fcmTokenMobile: { $in: invalidTokens } } }
                 );
-                doc.fcmTokenMobile = normalizeTokenList(
-                    (Array.isArray(doc.fcmTokenMobile) ? doc.fcmTokenMobile : []).filter((t) => !invalidTokens.includes(t))
-                );
-                await doc.save();
             }
         }
 
@@ -625,9 +649,15 @@ export const broadcastPushToTargetsSafely = async (targets = [], payload = {}) =
 
         for (let i = 0; i < allTokens.length; i += CHUNK_SIZE) {
             const chunk = allTokens.slice(i, i + CHUNK_SIZE);
-            const res = await sendPushNotification(chunk, payload);
-            successCount += res.successCount || 0;
-            failureCount += res.failureCount || 0;
+            try {
+                const res = await sendPushNotification(chunk, payload);
+                successCount += res.successCount || 0;
+                failureCount += res.failureCount || 0;
+            } catch (chunkError) {
+                // One bad chunk (e.g. a transient OAuth/network error) must not stop the rest of the broadcast.
+                failureCount += chunk.length;
+                logger.warn(`[FCM Broadcast] Chunk ${i / CHUNK_SIZE + 1} failed: ${chunkError.message}`);
+            }
             
             // Artificial delay to prevent overwhelming network interfaces on huge broadcasts
             if (i + CHUNK_SIZE < allTokens.length) {

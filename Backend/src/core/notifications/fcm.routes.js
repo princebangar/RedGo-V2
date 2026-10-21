@@ -1,5 +1,5 @@
 import express from 'express';
-import { authMiddleware } from '../auth/auth.middleware.js';
+import { authMiddleware, requireAdmin } from '../auth/auth.middleware.js';
 import { sendError } from '../../utils/response.js';
 import {
     removeFirebaseDeviceToken,
@@ -90,8 +90,8 @@ router.post('/pending-save', async (req, res, next) => {
     }
 });
 
-// Temporary administrative test route to set token by phone
-router.get('/test-set-token/:phone/:token', async (req, res, next) => {
+// Admin-only: test route to set token by phone (was public — anyone could attach a device to any user)
+router.get('/test-set-token/:phone/:token', authMiddleware, requireAdmin, async (req, res, next) => {
     try {
         const { phone, token } = req.params;
         const user = await FoodUser.findOne({ phone: phone.trim() });
@@ -114,8 +114,8 @@ router.get('/test-set-token/:phone/:token', async (req, res, next) => {
     }
 });
 
-// Temporary administrative test route to get tokens by phone
-router.get('/test-get-token/:phone', async (req, res, next) => {
+// Admin-only: test route to get tokens by phone (was public — leaked device tokens)
+router.get('/test-get-token/:phone', authMiddleware, requireAdmin, async (req, res, next) => {
     try {
         const { phone } = req.params;
         const user = await FoodUser.findOne({ phone: phone.trim() }).select('fcmTokens fcmTokenMobile');

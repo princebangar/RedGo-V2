@@ -204,7 +204,8 @@ async function showOsNotificationFromPayload(payload) {
   const data = normalized.data || {};
   const title =
     String(normalized?.notification?.title || data.title || "New Notification")
-      .replace(/^[👤🏪🛵🛡️]\s*/, "")
+      // `u` flag + alternation: a plain [emoji] class splits surrogate pairs and shows "?".
+      .replace(/^(?:👤|🏪|🛵|🛡️?)\s*/u, "")
       .replace(/^\[(User|Shop|Rider|Admin)\]\s*/i, "")
       .trim() || "New Notification";
   const body = String(
