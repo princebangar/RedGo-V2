@@ -1513,10 +1513,9 @@ export async function settleRefundOnCancel(
   );
   if (!claimed) return { status: "skipped" };
 
-  // Default: wallet-paid -> wallet, gateway-paid -> original payment method. A customer may also
-  // choose "refund to wallet" for a gateway-paid order (destinationOverride === "wallet").
-  const destination =
-    method === "wallet" || destinationOverride === "wallet" ? "wallet" : "source";
+  // Business rule: every cancel/refund is credited to the customer's RedGo wallet (never back to
+  // the bank/card), whatever the original payment method. destinationOverride is ignored.
+  const destination = "wallet";
   try {
     let refundId = "";
     if (destination === "wallet") {
@@ -1690,14 +1689,8 @@ export async function cancelOrder(orderId, userId, reason, refundDestination = "
   const isOnlinePaid =
     finalPaymentMethod === "razorpay" &&
     (finalPaymentStatus === "paid" || finalPaymentStatus === "refunded");
-  const settledRefundDestination =
-    String(order.payment?.refund?.destination || normalizedRefundDestination || "source").toLowerCase() === "wallet"
-      ? "wallet"
-      : "source";
   const refundDetail = isOnlinePaid
-    ? settledRefundDestination === "wallet"
-      ? ` Your refund of ₹${order.pricing.total} has been credited to your wallet.`
-      : ` Your refund of ₹${order.pricing.total} is being processed and will be credited to your original payment method within 5-7 working days.`
+    ? ` Your refund of ₹${order.pricing.total} has been credited to your RedGo wallet.`
     : "";
   
   await notifyOwnersSafely(
@@ -1959,7 +1952,7 @@ export async function updateOrderStatusRestaurant(
     }
   } else if (String(orderStatus).includes("cancel")) {
     const isOnlinePaid = order.payment.method === "razorpay" && (order.payment.status === "paid" || order.payment.status === "refunded");
-    const refundDetail = isOnlinePaid ? ` Your refund of ₹${order.pricing.total} is being processed and will be credited to your original payment method within 5-7 working days.` : "";
+    const refundDetail = isOnlinePaid ? ` Your refund of ₹${order.pricing.total} has been credited to your RedGo wallet.` : "";
     
     title = "Order Cancelled";
     body = `Unfortunately, your order has been cancelled by the restaurant.${refundDetail}`;

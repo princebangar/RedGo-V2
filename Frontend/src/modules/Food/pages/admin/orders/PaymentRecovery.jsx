@@ -95,10 +95,8 @@ export default function PaymentRecovery() {
   }, [loadRefunds])
 
   const handleRefund = async (row) => {
-    const where =
-      row.method === "wallet" ? "the customer's wallet" : "the customer's original payment method (Razorpay)"
     const ok = window.confirm(
-      `Refund Rs ${row.amount} to ${row.customerName || "the customer"} for order ${row.orderNumber}?\n\nMoney will go to ${where}. This moves real money.`,
+      `Refund Rs ${row.amount} to ${row.customerName || "the customer"} for order ${row.orderNumber}?\n\nMoney will go to the customer's RedGo wallet. This moves real money.`,
     )
     if (!ok) return
     try {
