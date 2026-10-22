@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from "react"
 import { adminAPI } from "@food/api"
 import { toast } from "sonner"
 import { Loader2, RefreshCw } from "lucide-react"
+import RefundModal from "@food/components/admin/orders/RefundModal"
 
 const STATUS_FILTERS = [
   { key: "all", label: "All" },
@@ -59,6 +60,7 @@ export default function PaymentRecovery() {
   const [refunds, setRefunds] = useState([])
   const [refundsLoading, setRefundsLoading] = useState(true)
   const [refundingId, setRefundingId] = useState(null)
+  const [refundRow, setRefundRow] = useState(null)
 
   const load = useCallback(async () => {
     try {
@@ -94,19 +96,20 @@ export default function PaymentRecovery() {
     loadRefunds()
   }, [loadRefunds])
 
-  const handleRefund = async (row) => {
-    const ok = window.confirm(
-      `Refund Rs ${row.amount} to ${row.customerName || "the customer"} for order ${row.orderNumber}?\n\nMoney will go to the customer's RedGo wallet. This moves real money.`,
-    )
-    if (!ok) return
+  const handleRefund = (row) => setRefundRow(row)
+
+  const handleRefundConfirm = async (amount, destination) => {
+    const row = refundRow
+    if (!row) return
     try {
       setRefundingId(row.id)
-      await adminAPI.processRefund(row.id, {})
+      await adminAPI.processRefund(row.id, { refundAmount: amount, destination })
       toast.success("Refund processed")
     } catch (error) {
       toast.error(error?.response?.data?.message || "Refund failed")
     } finally {
       setRefundingId(null)
+      setRefundRow(null)
       await loadRefunds()
     }
   }
@@ -135,6 +138,17 @@ export default function PaymentRecovery() {
 
   return (
     <div className="p-4 lg:p-6">
+      <RefundModal
+        isOpen={!!refundRow}
+        onOpenChange={(open) => { if (!open) setRefundRow(null) }}
+        order={refundRow && {
+          orderId: refundRow.orderNumber,
+          totalAmount: Number(refundRow.amount) || 0,
+          payment: { method: refundRow.method },
+        }}
+        onConfirm={handleRefundConfirm}
+        isProcessing={!!refundingId}
+      />
       <div className="flex flex-col w-full gap-1 mb-4">
         <div className="flex items-center justify-between gap-3">
           <h1 className="text-xl font-semibold text-slate-900">Payment Recovery</h1>

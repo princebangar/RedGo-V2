@@ -1840,7 +1840,7 @@ export default function OrderTracking() {
 
       const payload = {
         reason: cancellationReason.trim(),
-        ...(isRazorpayPaid ? { refundDestination: "wallet" } : {}),
+        refundDestination: "wallet",
       }
 
       const response = await orderAPI.cancelOrder(cancelLookupId, payload);

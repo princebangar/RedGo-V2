@@ -39,6 +39,8 @@ import {
     zonedWallTimeToUtc,
 } from '../../../../utils/timezone.js';
 import { FoodTransaction } from '../../orders/models/foodTransaction.model.js';
+import { initiateRazorpayRefund } from '../../orders/helpers/razorpay.helper.js';
+import * as userWalletService from '../../user/services/userWallet.service.js';
 import { FoodRestaurantWithdrawal } from '../../restaurant/models/foodRestaurantWithdrawal.model.js';
 import { FoodDeliveryWithdrawal } from '../../delivery/models/foodDeliveryWithdrawal.model.js';
 import { FoodDeliveryWallet } from '../../delivery/models/deliveryWallet.model.js';
@@ -6480,10 +6482,107 @@ export async function getSidebarBadges() {
 }
 
 /**
+ * Moves an already wallet-refunded Razorpay order's refund to the customer's bank:
+ * debits the same amount from the RedGo wallet, then refunds it on Razorpay. If the wallet
+ * balance is too low, or Razorpay fails, the wallet is left exactly as it was.
+ */
+async function moveWalletRefundToBank(order) {
+    if (String(order.payment?.method || '').toLowerCase() !== 'razorpay') {
+        throw new ValidationError('Bank refund is only possible for orders paid via Razorpay.');
+    }
+    const paymentId = order.payment?.razorpay?.paymentId;
+    if (!paymentId) throw new ValidationError('Razorpay payment id missing on this order');
+    const amount = Number(order.payment?.refund?.amount || 0);
+    if (!(amount > 0)) throw new ValidationError('Invalid refund amount');
+    const label = order.orderId || String(order._id);
+
+    // Atomic claim so two clicks can never move the same refund twice.
+    const claimed = await FoodOrder.findOneAndUpdate(
+        { _id: order._id, 'payment.refund.status': 'processed', 'payment.refund.destination': 'wallet' },
+        { $set: { 'payment.refund.status': 'pending' } },
+        { new: true },
+    );
+    if (!claimed) {
+        throw new ValidationError('A refund is already in progress for this order, or it was already moved to bank.');
+    }
+
+    let debited = false;
+    try {
+        await userWalletService.deductWalletBalance(
+            order.userId,
+            amount,
+            `Refund for order #${label} moved to bank`,
+            { orderId: order._id, source: 'refund_to_bank' },
+        );
+        debited = true;
+
+        const result = await initiateRazorpayRefund(paymentId, amount, 'Refund moved from wallet to bank by admin');
+        if (!result.success) throw new Error(result.error || 'Razorpay refund failed');
+
+        await FoodOrder.updateOne(
+            { _id: order._id },
+            {
+                $set: {
+                    'payment.status': 'refunded',
+                    'payment.refund': {
+                        status: 'processed',
+                        destination: 'source',
+                        amount,
+                        refundId: result.refundId || '',
+                        processedAt: new Date(),
+                    },
+                },
+            },
+        );
+        try {
+            await FoodTransaction.updateOne(
+                { orderId: order._id },
+                {
+                    $push: {
+                        history: {
+                            kind: 'refunded',
+                            amount,
+                            at: new Date(),
+                            note: `Moved wallet refund to bank ${result.refundId || ''}`.trim(),
+                            recordedBy: { role: 'ADMIN' },
+                        },
+                    },
+                },
+            );
+        } catch (err) {
+            logger.warn(`moveWalletRefundToBank ledger sync failed for ${label}: ${err?.message || err}`);
+        }
+        logger.info(`[Refund] Order ${label}: Rs ${amount} moved from wallet to bank ${result.refundId || ''}`);
+    } catch (err) {
+        if (debited) {
+            try {
+                await userWalletService.refundWalletBalance(
+                    order.userId,
+                    amount,
+                    `Reversal: bank refund for order #${label} failed`,
+                    { orderId: order._id, source: 'refund_to_bank_rollback' },
+                );
+            } catch (rollbackErr) {
+                logger.error(`[Refund] Wallet rollback FAILED for order ${label} (Rs ${amount}): ${rollbackErr?.message || rollbackErr}. MANUAL FIX REQUIRED.`);
+            }
+        }
+        await FoodOrder.updateOne({ _id: order._id }, { $set: { 'payment.refund.status': 'processed' } });
+        const message = err?.message || String(err);
+        throw new ValidationError(
+            message === 'Insufficient wallet balance'
+                ? `Customer ke wallet me Rs ${amount} balance nahi bacha (shayad kharch ho gaya). Bank refund nahi ho sakta.`
+                : message,
+        );
+    }
+
+    return (await FoodOrder.findById(order._id)) || order;
+}
+
+/**
  * Admin-triggered Razorpay refund for a paid online order.
  * Status correction + gateway refund — does not re-run cancel automations.
  */
-export async function processRefund(orderId, refundAmount) {
+export async function processRefund(orderId, refundAmount, destination = 'wallet') {
     if (!mongoose.Types.ObjectId.isValid(orderId)) {
         throw new ValidationError('Invalid order id');
     }
@@ -6503,6 +6602,11 @@ export async function processRefund(orderId, refundAmount) {
         throw new ValidationError('Order payment is not in a refundable paid state');
     }
     if (alreadyProcessed || status === 'refunded') {
+        // Refund already credited to the RedGo wallet, customer now wants it in the bank instead.
+        const refundedTo = String(order.payment?.refund?.destination || '').toLowerCase();
+        if (String(destination || '').toLowerCase() === 'source' && refundedTo === 'wallet') {
+            return moveWalletRefundToBank(order);
+        }
         return order;
     }
 
@@ -6515,12 +6619,19 @@ export async function processRefund(orderId, refundAmount) {
         throw new ValidationError('Invalid refund amount');
     }
 
+    const toBank = String(destination || '').toLowerCase() === 'source';
+    if (toBank && method !== 'razorpay') {
+        throw new ValidationError('Bank refund is only possible for orders paid via Razorpay. Use RedGo wallet instead.');
+    }
+
     // Shared, race-safe refund logic (Razorpay or wallet). Imported lazily to avoid a circular import.
     const { settleRefundOnCancel } = await import('../../orders/services/order.service.js');
     const result = await settleRefundOnCancel(order, {
         reason: 'Refund issued by admin',
         amount,
         allowQr: true,
+        destination: toBank ? 'source' : 'wallet',
+        adminChoice: true,
     });
 
     if (result.status === 'failed') {

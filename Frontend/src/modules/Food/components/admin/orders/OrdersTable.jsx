@@ -709,10 +709,8 @@ export default function OrdersTable({
 
                         {/* Refund Block */}
                         {(() => {
-                          const isCancelled = order.orderStatus === "Cancelled by Restaurant" || 
-                                            order.orderStatus === "Cancelled" || 
-                                            order.orderStatus === "Cancelled by User" ||
-                                            (order.status === "cancelled" && (order.cancelledBy === "user" || order.cancelledBy === "restaurant"));
+                          const isCancelled = /cancel/i.test(String(order.orderStatus || "")) ||
+                                            order.status === "cancelled";
                           const paymentMethod = order.payment?.method || order.paymentMethod;
                           const isOnlinePayment = order.paymentType === "Online" ||
                                                 (order.paymentType !== "Cash on Delivery" && 
@@ -724,10 +722,16 @@ export default function OrdersTable({
                                                   order.payment?.method === "razorpay" ||
                                                   order.payment?.method === "online"));
                           const isWalletPayment = order.paymentType === "Wallet" || paymentMethod === "wallet";
-                          return isCancelled && (isOnlinePayment || isWalletPayment) && order.paymentStatus === "Paid";
+                          // Online order already refunded to the RedGo wallet: admin can still move it to bank
+                          const canMoveToBank = isOnlinePayment && !isWalletPayment &&
+                                                order.paymentStatus === "Refunded" &&
+                                                order.refundDestination === "wallet";
+                          return isCancelled && (isOnlinePayment || isWalletPayment) &&
+                                 (order.paymentStatus === "Paid" || canMoveToBank);
                         })() && (
                           <>
-                            {order.refundStatus === 'processed' || order.refundStatus === 'initiated' ? (
+                            {(order.refundStatus === 'processed' || order.refundStatus === 'initiated') &&
+                             !(order.paymentStatus === "Refunded" && order.refundDestination === "wallet" && order.paymentType !== "Wallet") ? (
                               <span className={`px-2.5 py-1.5 rounded-md text-xs font-semibold ${
                                 order.paymentType === "Wallet" || order.payment?.method === "wallet"
                                   ? "bg-purple-100 text-purple-700"
@@ -750,7 +754,7 @@ export default function OrdersTable({
                                   : "Process Refund via Razorpay"}
                               >
                                 <span className="text-sm font-bold">₹</span>
-                                <span>Refund</span>
+                                <span>{order.paymentStatus === "Refunded" ? "Refund to Bank" : "Refund"}</span>
                               </button>
                             ) : null}
                           </>

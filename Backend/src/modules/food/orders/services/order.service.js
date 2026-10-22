@@ -1489,7 +1489,7 @@ export async function resyncState(userId, role) {
  */
 export async function settleRefundOnCancel(
   order,
-  { reason = "Order cancelled", amount: amountOverride, allowQr = false, destination: destinationOverride } = {},
+  { reason = "Order cancelled", amount: amountOverride, allowQr = false, destination: destinationOverride, adminChoice = false } = {},
 ) {
   const method = String(order?.payment?.method || "").toLowerCase();
   const payStatus = String(order?.payment?.status || "").toLowerCase();
@@ -1514,8 +1514,9 @@ export async function settleRefundOnCancel(
   if (!claimed) return { status: "skipped" };
 
   // Business rule: every cancel/refund is credited to the customer's RedGo wallet (never back to
-  // the bank/card), whatever the original payment method. destinationOverride is ignored.
-  const destination = "wallet";
+  // the bank/card). The only exception is an explicit admin choice ("source" = original payment
+  // method via Razorpay) from the admin Refund button; destinationOverride is ignored otherwise.
+  const destination = adminChoice && destinationOverride === "source" ? "source" : "wallet";
   try {
     let refundId = "";
     if (destination === "wallet") {
@@ -1587,7 +1588,7 @@ export async function retryFailedRefunds() {
   return { checked: orders.length, refunded };
 }
 
-export async function cancelOrder(orderId, userId, reason, refundDestination = "source") {
+export async function cancelOrder(orderId, userId, reason, refundDestination = "wallet") {
   const identity = buildOrderIdentityFilter(orderId);
   if (!identity) throw new ValidationError("Order id required");
 

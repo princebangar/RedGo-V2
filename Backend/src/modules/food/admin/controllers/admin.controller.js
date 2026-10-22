@@ -1478,12 +1478,12 @@ export async function deleteZone(req, res, next) {
 export async function processRefund(req, res, next) {
     try {
         const { orderId } = req.params;
-        const { refundAmount } = req.body;
+        const { refundAmount, destination } = req.body;
         if (!orderId || !mongoose.Types.ObjectId.isValid(orderId)) {
             return res.status(400).json({ success: false, message: 'Invalid order id' });
         }
-        
-        const updated = await adminService.processRefund(orderId, refundAmount);
+
+        const updated = await adminService.processRefund(orderId, refundAmount, destination);
 
         // Tell the customer - best effort only. The refund itself is already done at this point,
         // so a notification problem must never turn a successful refund into an error response.
