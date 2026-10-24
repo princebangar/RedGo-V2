@@ -1444,6 +1444,24 @@ function RestaurantDetailsContent() {
       }
     }
 
+    // addToCart is async: roll back the optimistic quantity if the cart rejected the item
+    // (e.g. cart started in another tab, or items from another restaurant).
+    const addOrRollback = (onAdded) =>
+      Promise.resolve(addToCart(cartItem, sourcePosition)).then((result) => {
+        if (result?.ok === false) {
+          setQuantities((prev) => ({
+            ...prev,
+            [lineItemId]: getCartItem(lineItemId)?.quantity || 0,
+          }))
+          // Cart-mode conflicts already show their own toast from CartContext.
+          if (result.code !== "ORDER_TYPE_MISMATCH") {
+            toast.error(result.error || 'Cannot add item from different restaurant. Please clear cart first.')
+          }
+          return
+        }
+        onAdded?.()
+      })
+
     // Update cart context
     if (newQuantity <= 0) {
       // Pass sourcePosition and product info for removal animation
@@ -1465,14 +1483,11 @@ function RestaurantDetailsContent() {
 
         // If incrementing quantity, trigger add animation with sourcePosition
         if (newQuantity > existingCartItem.quantity && sourcePosition) {
-          const result = addToCart(cartItem, sourcePosition)
-          if (result?.ok === false) {
-            toast.error(result.error || 'Cannot add item from different restaurant. Please clear cart first.')
-            return
-          }
-          if (newQuantity > existingCartItem.quantity + 1) {
-            updateQuantity(lineItemId, newQuantity)
-          }
+          addOrRollback(() => {
+            if (newQuantity > existingCartItem.quantity + 1) {
+              updateQuantity(lineItemId, newQuantity)
+            }
+          })
         }
         // If decreasing quantity, trigger removal animation with sourcePosition
         else if (newQuantity < existingCartItem.quantity && sourcePosition) {
@@ -1485,14 +1500,11 @@ function RestaurantDetailsContent() {
       } else {
         // Add to cart first (adds with quantity 1), then update to desired quantity
         // Pass sourcePosition when adding a new item
-        const result = addToCart(cartItem, sourcePosition)
-        if (result?.ok === false) {
-          toast.error(result.error || 'Cannot add item from different restaurant. Please clear cart first.')
-          return
-        }
-        if (newQuantity > 1) {
-          updateQuantity(lineItemId, newQuantity)
-        }
+        addOrRollback(() => {
+          if (newQuantity > 1) {
+            updateQuantity(lineItemId, newQuantity)
+          }
+        })
       }
     }
   }

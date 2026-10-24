@@ -467,6 +467,7 @@ export default function OrdersTable({
                   <td className="px-6 py-4 whitespace-nowrap text-left">
                     <span className="text-sm font-medium text-slate-700">
                       {(() => {
+                        if (order.orderType === "takeaway") return "Takeaway"
                         const deliveryCharge = Number(order.deliveryCharge ?? 0)
                         return `₹${deliveryCharge.toLocaleString(undefined, {
                           minimumFractionDigits: 2,
@@ -722,24 +723,24 @@ export default function OrdersTable({
                                                   order.payment?.method === "razorpay" ||
                                                   order.payment?.method === "online"));
                           const isWalletPayment = order.paymentType === "Wallet" || paymentMethod === "wallet";
-                          // Online order already refunded to the RedGo wallet: admin can still move it to bank
-                          const canMoveToBank = isOnlinePayment && !isWalletPayment &&
-                                                order.paymentStatus === "Refunded" &&
-                                                order.refundDestination === "wallet";
+                          const isRefunded = order.paymentStatus === "Refunded" &&
+                                             (order.refundStatus === "processed" || order.refundStatus === "initiated");
                           return isCancelled && (isOnlinePayment || isWalletPayment) &&
-                                 (order.paymentStatus === "Paid" || canMoveToBank);
+                                 (order.paymentStatus === "Paid" || isRefunded);
                         })() && (
                           <>
-                            {(order.refundStatus === 'processed' || order.refundStatus === 'initiated') &&
-                             !(order.paymentStatus === "Refunded" && order.refundDestination === "wallet" && order.paymentType !== "Wallet") ? (
+                            {/* Moving a wallet refund to bank lives in the View Order dialog (Admin Controls) */}
+                            {order.refundStatus === 'processed' || order.refundStatus === 'initiated' ? (
                               <span className={`px-2.5 py-1.5 rounded-md text-xs font-semibold ${
-                                order.paymentType === "Wallet" || order.payment?.method === "wallet"
+                                order.paymentType === "Wallet" || order.payment?.method === "wallet" || order.refundDestination === "wallet"
                                   ? "bg-purple-100 text-purple-700"
                                   : "bg-emerald-100 text-emerald-700"
                               }`}>
-                                {order.paymentType === "Wallet" || order.payment?.method === "wallet" 
-                                  ? "Wallet Refunded" 
-                                  : "Refunded"}
+                                {order.paymentType === "Wallet" || order.payment?.method === "wallet"
+                                  ? "Wallet Refunded"
+                                  : order.refundDestination === "wallet"
+                                    ? "Refunded to Wallet"
+                                    : "Refunded"}
                               </span>
                             ) : onRefund ? (
                               <button 
@@ -754,7 +755,7 @@ export default function OrdersTable({
                                   : "Process Refund via Razorpay"}
                               >
                                 <span className="text-sm font-bold">₹</span>
-                                <span>{order.paymentStatus === "Refunded" ? "Refund to Bank" : "Refund"}</span>
+                                <span>Refund</span>
                               </button>
                             ) : null}
                           </>

@@ -170,8 +170,10 @@ export function useOrdersManagement(orders, statusKey, title, options = {}) {
     }
 
     if (filters.deliveryType) {
+      // Filter keys are snake_case ("take_away") while rows carry labels ("Takeaway").
+      const normalizeType = (value) => String(value || "").toLowerCase().replace(/[^a-z]/g, "")
       result = result.filter(
-        (order) => String(order.deliveryType || "").toLowerCase() === filters.deliveryType.toLowerCase(),
+        (order) => normalizeType(order.deliveryType) === normalizeType(filters.deliveryType),
       )
     }
 

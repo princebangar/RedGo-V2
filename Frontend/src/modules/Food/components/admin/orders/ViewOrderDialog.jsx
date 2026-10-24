@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react"
-import { Eye, MapPin, Package, User, Phone, Mail, Calendar, Clock, Truck, CreditCard, Receipt, CheckCircle2, FileText, Loader2, CheckCircle, XCircle } from "lucide-react"
+import { Eye, MapPin, Package, User, Phone, Mail, Calendar, Clock, Truck, CreditCard, Receipt, CheckCircle2, FileText, Loader2, CheckCircle, XCircle, Landmark } from "lucide-react"
 import {
   Dialog,
   DialogContent,
@@ -123,7 +123,7 @@ const resolveDisplayPaymentStatus = (order) => {
   return "Pending"
 }
 
-export default function ViewOrderDialog({ isOpen, onOpenChange, order, onOrderUpdated }) {
+export default function ViewOrderDialog({ isOpen, onOpenChange, order, onOrderUpdated, onRefundToBank }) {
   const [customerTotalOrders, setCustomerTotalOrders] = useState(undefined)
   const [customerDeliveredOrders, setCustomerDeliveredOrders] = useState(undefined)
   const [customerCancelledOrders, setCustomerCancelledOrders] = useState(undefined)
@@ -212,6 +212,17 @@ export default function ViewOrderDialog({ isOpen, onOpenChange, order, onOrderUp
 
   const displayOrderStatus = resolveDisplayOrderStatus(order)
   const displayPaymentStatus = resolveDisplayPaymentStatus(order)
+
+  // Online order already refunded to the RedGo wallet: admin can still move it to the bank.
+  const isWalletPaidOrder = order.paymentType === "Wallet" || order.payment?.method === "wallet"
+  const refundDestination = order.refundDestination || order.payment?.refund?.destination || null
+  const canMoveRefundToBank =
+    !isWalletPaidOrder &&
+    String(order.payment?.status || order.paymentStatus || "").toLowerCase() === "refunded" &&
+    refundDestination === "wallet"
+  const walletRefundAmount = Number(
+    order.payment?.refund?.amount ?? order.totalAmount ?? order.total ?? 0,
+  ) || 0
 
   const handleAdminStatusUpdate = async () => {
     if (!hasAdminStatusChanges || updatingStatuses) return
@@ -602,6 +613,26 @@ export default function ViewOrderDialog({ isOpen, onOpenChange, order, onOrderUp
                     )}
                   </button>
                 </div>
+
+                {canMoveRefundToBank && onRefundToBank && (
+                  <div className="mt-4 flex flex-col gap-3 rounded-lg border border-purple-200 bg-purple-50 p-3 sm:flex-row sm:items-center sm:justify-between">
+                    <div className="flex items-start gap-2">
+                      <Landmark className="mt-0.5 h-4 w-4 shrink-0 text-purple-600" />
+                      <p className="text-xs text-purple-900">
+                        ₹{walletRefundAmount.toFixed(2)} was refunded to the customer's RedGo wallet.
+                        Move it to their bank/original payment method via Razorpay.
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => onRefundToBank(order)}
+                      className="inline-flex shrink-0 items-center justify-center gap-1.5 rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-blue-700"
+                    >
+                      <span className="font-bold">₹</span>
+                      Refund to Bank
+                    </button>
+                  </div>
+                )}
               </div>
 
               {order.deliveryType && (
@@ -941,7 +972,13 @@ export default function ViewOrderDialog({ isOpen, onOpenChange, order, onOrderUp
                 <div className="flex justify-between text-sm">
                   <span className="text-slate-600">Delivery Charge</span>
                   <span className="font-medium text-slate-900">
-                    {order.deliveryCharge > 0 ? `₹${order.deliveryCharge.toFixed(2)}` : <span className="text-emerald-600">Free delivery</span>}
+                    {order.orderType === "takeaway" ? (
+                      <span className="text-slate-500">Not applicable (Takeaway)</span>
+                    ) : order.deliveryCharge > 0 ? (
+                      `₹${order.deliveryCharge.toFixed(2)}`
+                    ) : (
+                      <span className="text-emerald-600">Free delivery</span>
+                    )}
                   </span>
                 </div>
               )}

@@ -8,13 +8,39 @@ import {
   useRef,
   useState,
 } from "react"
+import { toast } from "sonner"
 import { foodCartAPI } from "@food/api"
+import { useProfile } from "@food/context/ProfileContext"
 import { buildCartLineId } from "@food/utils/foodVariants"
 
 const debugWarn = (...args) => {}
 const debugError = (...args) => {}
 
 const GUEST_CART_KEY = "cart"
+// The server keeps a single cart per user, so remember which tab (delivery/takeaway)
+// it was started from. Pricing differs per mode, so the cart is only shown in that tab.
+const CART_MODE_KEY = "food_cart_mode"
+
+const toCartMode = (orderType) => (orderType === "takeaway" ? "takeaway" : "delivery")
+const cartModeLabel = (mode) => (mode === "takeaway" ? "Takeaway" : "Delivery")
+
+const readCartMode = () => {
+  try {
+    const saved = localStorage.getItem(CART_MODE_KEY)
+    return saved === "takeaway" || saved === "delivery" ? saved : null
+  } catch {
+    return null
+  }
+}
+
+const writeCartMode = (mode) => {
+  try {
+    if (mode) localStorage.setItem(CART_MODE_KEY, mode)
+    else localStorage.removeItem(CART_MODE_KEY)
+  } catch {
+    // ignore
+  }
+}
 
 const defaultCartContext = {
   _isProvider: false,
@@ -299,6 +325,14 @@ export function CartProvider({ children }) {
   const [cartReady, setCartReady] = useState(false)
   const [lastAddEvent, setLastAddEvent] = useState(null)
   const [lastRemoveEvent, setLastRemoveEvent] = useState(null)
+  const [cartMode, setCartModeState] = useState(readCartMode)
+  const { orderType } = useProfile()
+  const currentMode = toCartMode(orderType)
+
+  const setCartMode = useCallback((mode) => {
+    writeCartMode(mode)
+    setCartModeState(mode)
+  }, [])
 
   const authRef = useRef(isUserAuthenticated())
   const loadSeqRef = useRef(0)
@@ -390,6 +424,24 @@ export function CartProvider({ children }) {
 
   const normalizedCart = useMemo(() => normalizeCartData(cart), [cart])
 
+  // Empty cart frees the mode; a cart with no recorded mode (older build / other device)
+  // is adopted by the tab the user is currently on.
+  useEffect(() => {
+    if (!cartReady) return
+    if (normalizedCart.length === 0) {
+      if (cartMode) setCartMode(null)
+    } else if (!cartMode) {
+      setCartMode(currentMode)
+    }
+  }, [cartReady, normalizedCart.length, cartMode, currentMode, setCartMode])
+
+  const isCartModeMismatch = Boolean(cartMode) && cartMode !== currentMode
+  // What the current tab sees: the cart of the other mode stays hidden.
+  const visibleCart = useMemo(
+    () => (isCartModeMismatch ? [] : normalizedCart),
+    [isCartModeMismatch, normalizedCart],
+  )
+
   const triggerAddAnimation = (item, sourcePosition) => {
     if (!sourcePosition) return
     setLastAddEvent({
@@ -420,9 +472,52 @@ export function CartProvider({ children }) {
     setTimeout(() => setLastRemoveEvent(null), 1500)
   }
 
+  const clearCart = useCallback(async () => {
+    if (!isUserAuthenticated()) {
+      setCart([])
+      clearGuestCartStorage()
+      return { ok: true }
+    }
+    const seq = ++mutationSeqRef.current
+    try {
+      const response = await foodCartAPI.clearCart()
+      if (seq !== mutationSeqRef.current) return { ok: true }
+      applyServerCart(extractCartPayload(response))
+      return { ok: true }
+    } catch (err) {
+      debugError("clearCart failed", err)
+      return { ok: false, error: apiErrorMessage(err) }
+    }
+  }, [applyServerCart])
+
   const addToCart = useCallback(
     async (item, sourcePosition = null) => {
       if (!item) return { ok: false, error: "Invalid item" }
+
+      if (normalizedCart.length > 0 && isCartModeMismatch) {
+        const error = `Your ${cartModeLabel(cartMode)} cart already has items. Clear it to start a ${cartModeLabel(currentMode)} order.`
+        toast.error(error, {
+          id: "cart-mode-mismatch",
+          action: {
+            label: "Clear cart",
+            onClick: () => clearCart(),
+          },
+          actionButtonStyle: {
+            background: "linear-gradient(135deg, #ef4444 0%, #b91c1c 100%)",
+            color: "#ffffff",
+            fontWeight: 700,
+            fontSize: "12px",
+            padding: "6px 14px",
+            height: "auto",
+            borderRadius: "9999px",
+            border: "none",
+            boxShadow: "0 4px 10px rgba(220, 38, 38, 0.35)",
+            whiteSpace: "nowrap",
+          },
+        })
+        return { ok: false, error, code: "ORDER_TYPE_MISMATCH" }
+      }
+      if (normalizedCart.length === 0) setCartMode(currentMode)
 
       const authed = isUserAuthenticated()
       if (!authed) {
@@ -514,7 +609,7 @@ export function CartProvider({ children }) {
         return { ok: false, error: message }
       }
     },
-    [applyServerCart, normalizedCart],
+    [applyServerCart, normalizedCart, isCartModeMismatch, cartMode, currentMode, setCartMode, clearCart],
   )
 
   const removeFromCart = useCallback(
@@ -608,43 +703,25 @@ export function CartProvider({ children }) {
   )
 
   const getCartCount = useCallback(
-    () => normalizedCart.reduce((total, item) => total + (item.quantity || 0), 0),
-    [normalizedCart],
+    () => visibleCart.reduce((total, item) => total + (item.quantity || 0), 0),
+    [visibleCart],
   )
 
   const isInCart = useCallback(
     (itemId, variantId = "") => {
-      const resolvedItemId = resolveCartEntryId(normalizedCart, itemId, variantId)
-      return normalizedCart.some((i) => i.id === resolvedItemId)
+      const resolvedItemId = resolveCartEntryId(visibleCart, itemId, variantId)
+      return visibleCart.some((i) => i.id === resolvedItemId)
     },
-    [normalizedCart],
+    [visibleCart],
   )
 
   const getCartItem = useCallback(
     (itemId, variantId = "") => {
-      const resolvedItemId = resolveCartEntryId(normalizedCart, itemId, variantId)
-      return normalizedCart.find((i) => i.id === resolvedItemId) || null
+      const resolvedItemId = resolveCartEntryId(visibleCart, itemId, variantId)
+      return visibleCart.find((i) => i.id === resolvedItemId) || null
     },
-    [normalizedCart],
+    [visibleCart],
   )
-
-  const clearCart = useCallback(async () => {
-    if (!isUserAuthenticated()) {
-      setCart([])
-      clearGuestCartStorage()
-      return { ok: true }
-    }
-    const seq = ++mutationSeqRef.current
-    try {
-      const response = await foodCartAPI.clearCart()
-      if (seq !== mutationSeqRef.current) return { ok: true }
-      applyServerCart(extractCartPayload(response))
-      return { ok: true }
-    } catch (err) {
-      debugError("clearCart failed", err)
-      return { ok: false, error: apiErrorMessage(err) }
-    }
-  }, [applyServerCart])
 
   const replaceCart = useCallback(
     async (items) => {
@@ -744,12 +821,12 @@ export function CartProvider({ children }) {
   )
 
   const refreshCart = useCallback(async () => {
-    if (!isUserAuthenticated()) return normalizedCart
+    if (!isUserAuthenticated()) return visibleCart
     return loadDbCart()
-  }, [loadDbCart, normalizedCart])
+  }, [loadDbCart, visibleCart])
 
   const cartForAnimation = useMemo(() => {
-    const items = normalizedCart.map((item) => ({
+    const items = visibleCart.map((item) => ({
       product: {
         id: item.id,
         name: item.name,
@@ -757,28 +834,30 @@ export function CartProvider({ children }) {
       },
       quantity: item.quantity || 1,
     }))
-    const itemCount = normalizedCart.reduce((total, item) => total + (item.quantity || 0), 0)
-    const total = normalizedCart.reduce(
+    const itemCount = visibleCart.reduce((total, item) => total + (item.quantity || 0), 0)
+    const total = visibleCart.reduce(
       (sum, item) => sum + (item.price || 0) * (item.quantity || 0),
       0,
     )
     return { items, itemCount, total }
-  }, [normalizedCart])
+  }, [visibleCart])
 
   const value = useMemo(
     () => ({
       _isProvider: true,
-      cart: normalizedCart,
-      // Redgo compatibility: delivery/takeaway share the same server cart when logged in.
-      deliveryCart: normalizedCart,
-      takeawayCart: normalizedCart,
+      cart: visibleCart,
+      // Redgo compatibility: delivery/takeaway share the same server cart when logged in;
+      // it is exposed only to the tab it was started from (see cartMode).
+      deliveryCart: cartMode === "takeaway" ? [] : normalizedCart,
+      takeawayCart: cartMode === "takeaway" ? normalizedCart : [],
+      cartMode,
       items: cartForAnimation.items,
       itemCount: cartForAnimation.itemCount,
       total: cartForAnimation.total,
       cartReady,
-      couponCode,
-      restaurantId,
-      restaurantName,
+      couponCode: isCartModeMismatch ? "" : couponCode,
+      restaurantId: isCartModeMismatch ? null : restaurantId,
+      restaurantName: isCartModeMismatch ? "" : restaurantName,
       lastAddEvent,
       lastRemoveEvent,
       addToCart,
@@ -794,7 +873,10 @@ export function CartProvider({ children }) {
       refreshCart,
     }),
     [
+      visibleCart,
       normalizedCart,
+      cartMode,
+      isCartModeMismatch,
       cartForAnimation,
       cartReady,
       couponCode,

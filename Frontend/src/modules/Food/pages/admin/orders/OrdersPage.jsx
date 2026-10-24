@@ -552,7 +552,12 @@ export default function OrdersPage({ statusKey = "all" }) {
         orderStatus: displayStatus,
         deliveryPartnerName,
         deliveryPartnerPhone,
-        deliveryType: order.deliveryType || "Home Delivery",
+        deliveryType:
+          order.orderType === "takeaway"
+            ? "Takeaway"
+            : order.orderType === "dining"
+              ? "Dine In"
+              : "Home Delivery",
         orderOtp: order.deliveryOtp,
         address: order.address || order.customerAddress || order.deliveryAddress,
         refundStatus: order.payment?.refund?.status || (order.payment?.status === 'refunded' ? 'processed' : null),
@@ -1146,6 +1151,11 @@ export default function OrdersPage({ statusKey = "all" }) {
                 })
               })
               fetchOrders({ silent: true, withRingCheck: false })
+            }}
+            onRefundToBank={(order) => {
+              // Close the details popup first so the refund modal isn't stacked under it.
+              setIsViewOrderOpen(false)
+              handleRefund(order)
             }}
           />
           <RefundModal
