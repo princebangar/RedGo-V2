@@ -1,0 +1,2 @@
+# Shell scripts must keep LF endings, otherwise bash on the server fails with "command not found" on every line.
+*.sh text eol=lf
