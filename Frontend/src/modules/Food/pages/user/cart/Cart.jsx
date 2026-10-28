@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef, useMemo, Fragment } from "react"
+import { getNetworkErrorMessage } from "@/shared/utils/networkError"
 import { createPortal } from "react-dom"
 import { Link, useNavigate, useLocation } from "react-router-dom"
 import { Plus, Minus, ArrowLeft, ChevronRight, Clock, MapPin, Phone, FileText, Utensils, Tag, Percent, Share2, Share, ChevronUp, ChevronDown, X, Check, Settings, CreditCard, Wallet, Building2, Sparkles, Banknote, Zap, CheckCircle2, MessageCircle, Send, Mail, Copy, ShoppingBag, AlertTriangle } from "lucide-react"
@@ -23,7 +24,7 @@ import { useCompanyName } from "@food/hooks/useCompanyName"
 import { getRestaurantAvailabilityStatus } from "@food/utils/restaurantAvailability"
 import useAppBackNavigation from "@food/hooks/useAppBackNavigation"
 import { filterPublicOffers, mapPublicOfferToCartCoupon } from "@food/utils/offerUtils"
-import dishFallbackImage from "@food/assets/dish_fallback.webp"
+import dishFallbackImage from "@food/assets/placeholders/dish_fallback.webp"
 const zoopSound = "/zomato_sms.mp3"
 const debugLog = (...args) => { }
 const debugWarn = (...args) => { }
@@ -1452,6 +1453,7 @@ export default function Cart() {
     }
 
     const shared = await tryNativeShare(payload)
+    if (shared === "cancelled") return
     if (shared) {
       toast.success("Link shared successfully")
       return
@@ -1471,7 +1473,7 @@ export default function Cart() {
       await navigator.share(payload)
       return true
     } catch (error) {
-      if (error?.name === "AbortError") return true
+      if (error?.name === "AbortError") return "cancelled" // closed the share sheet: not shared
       return false
     }
   }
@@ -1540,6 +1542,7 @@ export default function Cart() {
   const handleSystemShareFromModal = async () => {
     if (!sharePayload) return
     const shared = await tryNativeShare(sharePayload)
+    if (shared === "cancelled") return
     if (shared) {
       setShowShareModal(false)
       toast.success("Shared successfully")
@@ -2376,14 +2379,7 @@ export default function Cart() {
       // Handle network errors
       if (error.code === 'ERR_NETWORK' || error.message === 'Network Error') {
         const backendUrl = API_BASE_URL.replace('/api', '');
-        errorMessage = `Network Error: Cannot connect to backend server.\n\n` +
-          `Expected backend URL: ${backendUrl}\n\n` +
-          `Please check:\n` +
-          `1. Backend server is running\n` +
-          `2. Backend is accessible at ${backendUrl}\n` +
-          `3. Check browser console (F12) for more details\n\n` +
-          `If backend is not running, start it with:\n` +
-          `cd appzetofood/backend && npm start`
+        errorMessage = getNetworkErrorMessage()
 
         debugError("?? Network Error Details:", {
           code: error.code,
@@ -2739,6 +2735,8 @@ export default function Cart() {
 
                                 addToCart({
                                   id: addon.id,
+                                  itemId: addon.id,
+                                  itemType: "addon",
                                   name: addon.name,
                                   price: addon.price,
                                   image: addon.image || (addon.images && addon.images[0]) || "",
@@ -3028,15 +3026,21 @@ export default function Cart() {
                                   onClick={(e) => {
                                     e.preventDefault()
                                     e.stopPropagation()
-                                    handleSelectAddressByLabel(label)
+                                    if (addressExists) {
+                                      handleSelectAddressByLabel(label)
+                                    } else {
+                                      // No saved address with this label yet: open the add form for it
+                                      navigate("/food/user/address-selector", {
+                                        state: { addLabel: label, from: "/food/user/cart" },
+                                      })
+                                    }
                                   }}
-                                  disabled={!addressExists}
                                   className={`text-xs px-4 py-1.5 rounded-full font-semibold transition-all ${addressExists
                                     ? 'bg-slate-100 text-slate-700 hover:bg-slate-200 dark:bg-gray-800 dark:text-gray-300'
-                                    : 'bg-gray-50 text-gray-400 border border-gray-100 cursor-not-allowed dark:bg-gray-900'
+                                    : 'bg-white text-[#DC2626] border border-dashed border-[#DC2626]/40 hover:bg-red-50 dark:bg-gray-900'
                                     }`}
                                 >
-                                  {label}
+                                  {addressExists ? label : `+ ${label}`}
                                 </button>
                               )
                             })}
@@ -3154,7 +3158,7 @@ export default function Cart() {
                       />
                     </div>
                     <p className="text-[11px] text-gray-500 dark:text-gray-400">
-                      Agar aap kisi aur ke liye order kar rahe ho, to yahan uska naam aur phone save kar do.
+                      Ordering for someone else? Save their name and phone number here.
                     </p>
                   </div>
                 )}

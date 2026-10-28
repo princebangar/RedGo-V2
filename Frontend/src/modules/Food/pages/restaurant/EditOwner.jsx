@@ -1342,10 +1342,6 @@ export default function EditOwner() {
                               toast.error("Opening time and closing time cannot be same")
                               return
                             }
-                            if (closingMinutes < openingMinutes) {
-                              toast.error("Closing time cannot be less than opening time")
-                              return
-                            }
                           }
                           handleInputChange("openingTime", nextOpening)
                         }}
@@ -1390,10 +1386,6 @@ export default function EditOwner() {
                           if (openingMinutes !== null && closingMinutes !== null) {
                             if (openingMinutes === closingMinutes) {
                               toast.error("Opening time and closing time cannot be same")
-                              return
-                            }
-                            if (closingMinutes < openingMinutes) {
-                              toast.error("Closing time cannot be less than opening time")
                               return
                             }
                           }

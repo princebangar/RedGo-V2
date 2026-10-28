@@ -162,9 +162,10 @@ export default function Orders() {
       return [...firstPageOrders, ...remainingOrders]
     }
 
-    const fetchOrders = async () => {
+    // silent = background poll: no loader, keep the current list on errors
+    const fetchOrders = async ({ silent = false } = {}) => {
       try {
-        setLoading(true)
+        if (!silent) setLoading(true)
         const ordersData = await fetchAllOrders()
 
         if (ordersData.length > 0) {
@@ -286,10 +287,12 @@ export default function Orders() {
         } else if (error?.response?.data?.message) {
           errorMessage = error.response.data.message
         }
-        toast.error(errorMessage)
-        setOrders([])
+        if (!silent) {
+          toast.error(errorMessage)
+          setOrders([])
+        }
       } finally {
-        setLoading(false)
+        if (!silent) setLoading(false)
       }
     }
 
@@ -298,7 +301,8 @@ export default function Orders() {
     // Poll for order updates every 20 seconds to detect delivered orders
     // This ensures rating popup shows quickly when order is delivered
     const pollInterval = setInterval(() => {
-      fetchOrders()
+      if (typeof document !== "undefined" && document.hidden) return
+      fetchOrders({ silent: true })
     }, 20000) // Poll every 20 seconds
 
     return () => clearInterval(pollInterval)
@@ -390,7 +394,7 @@ export default function Orders() {
       await navigator.share(payload)
       return true
     } catch (error) {
-      if (error?.name === "AbortError") return true
+      if (error?.name === "AbortError") return "cancelled" // closed the share sheet: not shared
       return false
     }
   }
@@ -459,6 +463,7 @@ export default function Orders() {
   const handleSystemShareFromModal = async () => {
     if (!sharePayload) return
     const shared = await tryNativeShare(sharePayload)
+    if (shared === "cancelled") return
     if (shared) {
       setShowShareModal(false)
       toast.success("Shared successfully")
@@ -487,6 +492,7 @@ Order again from this restaurant in the ${companyName} app.`
 
     try {
       const shared = await tryNativeShare(payload)
+      if (shared === "cancelled") return
       if (shared) {
         toast.success("Restaurant shared successfully")
         return
@@ -915,7 +921,15 @@ Order again from this restaurant in the ${companyName} app.`
                         </span>
                       ) : (
                         <span className="px-3 py-1 rounded-full text-[10px] font-black bg-amber-50 text-amber-700 border border-amber-200 dark:bg-amber-950/40 dark:text-amber-300 dark:border-amber-900/50 uppercase tracking-wider animate-pulse">
-                          {order.status === 'preparing' ? 'Preparing' : order.status === 'outForDelivery' ? 'Out for Delivery' : order.status === 'placed' ? 'Order Placed' : 'Confirmed'}
+                          {['preparing'].includes(order.status)
+                            ? 'Preparing'
+                            : ['ready', 'ready_for_pickup'].includes(order.status)
+                              ? 'Ready'
+                              : ['outForDelivery', 'out_for_delivery', 'picked_up', 'reached_drop', 'on_the_way'].includes(order.status)
+                                ? 'Out for Delivery'
+                                : ['placed', 'created', 'pending'].includes(order.status)
+                                  ? 'Order Placed'
+                                  : 'Confirmed'}
                         </span>
                       )}
                     </div>

@@ -42,7 +42,7 @@ export default function EmailTemplate() {
         linkedin: true,
         pinterest: true
       },
-      copyrightContent: "© 2023 StackFood. All rights reserved."
+      copyrightContent: "Â© 2023 StackFood. All rights reserved."
     },
     "new-restaurant": {
       icon: null,
@@ -62,7 +62,7 @@ export default function EmailTemplate() {
         linkedin: true,
         pinterest: true
       },
-      copyrightContent: "© 2023 StackFood. All rights reserved."
+      copyrightContent: "Â© 2023 StackFood. All rights reserved."
     },
     "new-deliveryman": {
       icon: null,
@@ -82,7 +82,7 @@ export default function EmailTemplate() {
         linkedin: true,
         pinterest: true
       },
-      copyrightContent: "© 2023 StackFood. All rights reserved."
+      copyrightContent: "Â© 2023 StackFood. All rights reserved."
     },
     "withdraw-request": {
       icon: null,
@@ -102,7 +102,7 @@ export default function EmailTemplate() {
         linkedin: true,
         pinterest: true
       },
-      copyrightContent: "© 2023 StackFood. All rights reserved."
+      copyrightContent: "Â© 2023 StackFood. All rights reserved."
     },
     "campaign-join": {
       icon: null,
@@ -122,7 +122,7 @@ export default function EmailTemplate() {
         linkedin: true,
         pinterest: true
       },
-      copyrightContent: "© 2023 StackFood. All rights reserved."
+      copyrightContent: "Â© 2023 StackFood. All rights reserved."
     },
     "refund-request": {
       icon: null,
@@ -142,7 +142,7 @@ export default function EmailTemplate() {
         linkedin: true,
         pinterest: true
       },
-      copyrightContent: "© 2023 StackFood. All rights reserved."
+      copyrightContent: "Â© 2023 StackFood. All rights reserved."
     },
     "new-advertisement": {
       icon: null,
@@ -162,7 +162,7 @@ export default function EmailTemplate() {
         linkedin: true,
         pinterest: true
       },
-      copyrightContent: "© 2023 StackFood. All rights reserved."
+      copyrightContent: "Â© 2023 StackFood. All rights reserved."
     }
   }
   
@@ -183,7 +183,7 @@ export default function EmailTemplate() {
     { id: "en", label: "English(EN)" },
     { id: "bn", label: "Bengali - à¦¬à¦¾à¦‚à¦²à¦¾ (BN)" },
     { id: "ar", label: "Arabic - Ø§Ù„Ø¹Ø±Ø¨ÙŠØ© (AR)" },
-    { id: "es", label: "Spanish - español (ES)" }
+    { id: "es", label: "Spanish - espaÃ±ol (ES)" }
   ]
 
   const handleInputChange = (field, value) => {
@@ -238,7 +238,7 @@ export default function EmailTemplate() {
     // Replace placeholders with sample data
     return content
       .replace(/{userName}/g, "John Doe")
-      .replace(/{restaurantName}/g, "Café Monarch")
+      .replace(/{restaurantName}/g, "CafÃ© Monarch")
       .replace(/{ownerName}/g, "Jane Smith")
       .replace(/{email}/g, "owner@example.com")
       .replace(/{phone}/g, "+1234567890")
@@ -348,16 +348,16 @@ export default function EmailTemplate() {
                 formData.pageLinks.contactUs) && (
                 <div className="flex flex-wrap gap-2 mb-4 text-xs text-slate-600">
                   {formData.pageLinks.privacyPolicy && (
-                    <span>• Privacy Policy</span>
+                    <span>â€¢ Privacy Policy</span>
                   )}
                   {formData.pageLinks.refundPolicy && (
-                    <span>• Refund Policy</span>
+                    <span>â€¢ Refund Policy</span>
                   )}
                   {formData.pageLinks.cancellationPolicy && (
-                    <span>• Cancelation Policy</span>
+                    <span>â€¢ Cancelation Policy</span>
                   )}
                   {formData.pageLinks.contactUs && (
-                    <span>• Contact us</span>
+                    <span>â€¢ Contact us</span>
                   )}
                 </div>
               )}

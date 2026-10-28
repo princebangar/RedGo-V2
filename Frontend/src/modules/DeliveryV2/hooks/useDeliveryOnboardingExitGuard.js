@@ -12,7 +12,7 @@ export default function useDeliveryOnboardingExitGuard(step, hasUnsavedProgress)
   }, [navigate])
 
   const onPreviousStep = useCallback(() => {
-    navigate("/food/delivery/signup/details")
+    navigate("/food/delivery/signup/details", { replace: true })
   }, [navigate])
 
   return useOnboardingExitGuard({

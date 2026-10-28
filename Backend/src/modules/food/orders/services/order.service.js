@@ -762,6 +762,7 @@ export async function createOrder(userId, dto, options = {}) {
   };
 
   let distanceKm = null;
+  let distanceMode = null;
   let riderEarning = 0;
 
   // For Razorpay (online) orders, run geocoding non-blocking so the Razorpay
@@ -793,6 +794,7 @@ export async function createOrder(userId, dto, options = {}) {
             const updateFields = {};
             if (earningResolved.distanceKm != null) {
               updateFields['distanceKm'] = earningResolved.distanceKm;
+              updateFields['distanceMode'] = earningResolved.distanceMode || null;
               updateFields['riderEarning'] = earningResolved.riderEarning ?? 0;
               updateFields['pricing.platformProfit'] = Math.max(
                 0,
@@ -879,6 +881,7 @@ export async function createOrder(userId, dto, options = {}) {
         zoneId: restaurant?.zoneId || dto.zoneId || null,
       });
       distanceKm = earningResolved.distanceKm;
+      distanceMode = earningResolved.distanceMode || null;
       riderEarning = earningResolved.riderEarning;
 
       // Persist geocoded delivery coords so later map/dispatch don't miss them again
@@ -990,6 +993,8 @@ export async function createOrder(userId, dto, options = {}) {
     scheduledAt: dto.scheduledAt ? new Date(dto.scheduledAt) : null,
     riderEarning,
     platformProfit,
+    distanceKm,
+    distanceMode,
   });
 
   let razorpayPayload = null;
@@ -2040,7 +2045,7 @@ export async function updateOrderStatusRestaurant(
         {
           title: riderTitle,
           body: riderBody,
-          image: "https://i.ibb.co/3m2Yh7r/Appzeto-Brand-Image.png",
+          image: undefined,
           data: {
             type: "order_status_update",
             orderId: displayOrderId,
@@ -3188,8 +3193,40 @@ export async function updateOrderStatusesAdmin(orderId, adminId, { orderStatus, 
       if (order.userId) {
         io.to(rooms.user(order.userId)).emit("order_status_update", payload);
       }
+      // The assigned rider was never told, so a rider kept driving to an order the admin cancelled.
+      if (order.dispatch?.deliveryPartnerId) {
+        const isCancelled = String(order.orderStatus || "").startsWith("cancelled");
+        io.to(rooms.delivery(order.dispatch.deliveryPartnerId)).emit("order_status_update", {
+          ...payload,
+          ...(isCancelled ? { status: "cancelled" } : {}),
+        });
+      }
     }
   } catch (_) {}
+
+  const assignedRiderId = order.dispatch?.deliveryPartnerId;
+  if (
+    assignedRiderId &&
+    nextOrderStatus &&
+    nextOrderStatus !== fromOrder &&
+    String(nextOrderStatus).startsWith("cancelled")
+  ) {
+    const displayOrderId = order.order_id || order.orderId || order._id.toString();
+    await notifyOwnerSafely(
+      { ownerType: "DELIVERY_PARTNER", ownerId: assignedRiderId },
+      {
+        title: "Order Cancelled ❌",
+        body: `Order #${displayOrderId} has been cancelled. Please stop your current task.`,
+        data: {
+          type: "order_status_update",
+          orderId: displayOrderId,
+          orderMongoId: order._id.toString(),
+          orderStatus: String(order.orderStatus || ""),
+          link: "/food/delivery",
+        },
+      },
+    );
+  }
 
   return normalizeOrderForClient(order);
 }

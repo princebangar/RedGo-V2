@@ -67,6 +67,7 @@ const Refund = lazy(() => import("@food/pages/user/profile/Refund"))
 const Shipping = lazy(() => import("@food/pages/user/profile/Shipping"))
 const Cancellation = lazy(() => import("@food/pages/user/profile/Cancellation"))
 const ReportSafetyEmergency = lazy(() => import("@food/pages/user/profile/ReportSafetyEmergency"))
+const DeliverySafety = lazy(() => import("@food/pages/user/profile/DeliverySafety"))
 const Accessibility = lazy(() => import("@food/pages/user/profile/Accessibility"))
 const Logout = lazy(() => import("@food/pages/user/profile/Logout"))
 const ReferEarn = lazy(() => import("@food/pages/user/profile/ReferEarn"))
@@ -74,7 +75,6 @@ const UserCMSHelpSupportPage = lazy(() => import("@food/pages/user/profile/UserC
 const Settings = lazy(() => import("@food/pages/user/profile/Settings"))
 
 // Auth
-const SignIn = lazy(() => import("@food/pages/user/auth/SignIn"))
 const OTP = lazy(() => import("@food/pages/user/auth/OTP"))
 const AuthCallback = lazy(() => import("@food/pages/user/auth/AuthCallback"))
 
@@ -247,6 +247,7 @@ export default function UserRouter() {
             <Route path="profile/coupons" element={<Coupons />} />
             <Route path="profile/about" element={<About />} />
             <Route path="profile/report-safety-emergency" element={<ReportSafetyEmergency />} />
+            <Route path="profile/delivery-safety" element={<DeliverySafety />} />
             <Route path="profile/accessibility" element={<Accessibility />} />
             <Route path="profile/logout" element={<Logout />} />
             <Route path="profile/refer-earn" element={<ReferEarn />} />

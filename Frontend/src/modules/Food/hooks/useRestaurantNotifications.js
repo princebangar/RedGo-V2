@@ -274,11 +274,12 @@ const playGlobalNotificationSound = async (orderData = {}) => {
     }
 
     if (!globalAudio && typeof window !== 'undefined') {
-      globalAudio = new Audio();
+      // Start with the real file so the very first ring has a source (the blob is only a cache)
+      globalAudio = new Audio(resolveAudioSource(alertSound));
       globalAudio.preload = 'auto';
       globalAudio.volume = 1;
       preloadAudio().then(src => {
-        if (globalAudio) {
+        if (globalAudio && globalAudio.paused && globalAudio.src !== src) {
           globalAudio.src = src;
         }
       });

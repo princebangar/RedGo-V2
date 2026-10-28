@@ -1,4 +1,5 @@
 import mongoose from 'mongoose';
+import { ValidationError } from '../../../../core/auth/errors.js';
 import { FoodDiningBooking } from '../models/diningBooking.model.js';
 import { FoodRestaurant } from '../../restaurant/models/restaurant.model.js';
 import { FoodUser } from '../../../../core/users/user.model.js';
@@ -93,6 +94,19 @@ export async function createBooking(userId, payload) {
         throw new Error('Restaurant not found');
     }
 
+    const guests = Math.max(1, Number(payload.guests) || 1);
+    const date = new Date(payload.date);
+    const timeSlot = String(payload.timeSlot || '').trim();
+
+    // Seats are counted per restaurant + day + time slot against the restaurant's guest limit.
+    const capacity = Math.max(0, Number(restaurant.diningSettings?.maxGuests) || 0);
+    if (capacity > 0 && timeSlot && !Number.isNaN(date.getTime())) {
+        const taken = await getBookedSeatsForSlot(restaurantId, date, timeSlot);
+        const left = Math.max(0, capacity - taken);
+        if (left <= 0) throw new ValidationError('This time slot is full. Please choose another slot.');
+        if (guests > left) throw new ValidationError(`Only ${left} seat${left === 1 ? '' : 's'} left in this time slot.`);
+    }
+
     // Generate unique display-friendly booking ID: TB + 8 digits
     const uniqueDigits = Math.floor(10000000 + Math.random() * 90000000);
     const bookingId = `TB${uniqueDigits}`;
@@ -101,9 +115,9 @@ export async function createBooking(userId, payload) {
         bookingId,
         restaurantId,
         userId,
-        guests: Math.max(1, Number(payload.guests) || 1),
-        date: new Date(payload.date),
-        timeSlot: String(payload.timeSlot || '').trim(),
+        guests,
+        date,
+        timeSlot,
         specialRequest: String(payload.specialRequest || '').trim(),
         status: 'pending'
     });
@@ -115,7 +129,69 @@ export async function createBooking(userId, payload) {
         .populate('restaurantId')
         .populate('userId');
 
-    return formatBooking(populated);
+    const formatted = formatBooking(populated);
+    void notifyRestaurantAboutBooking(restaurantId, formatted);
+    return formatted;
+}
+
+/** "07:00 PM", "7:00 pm" and "19:00" are the same slot: compare minutes since midnight. */
+const slotMinutes = (value) => {
+    const m = String(value || '').trim().match(/^(\d{1,2})(?::(\d{2}))?\s*([ap]\.?m\.?)?/i);
+    if (!m) return null;
+    let h = Number(m[1]) % 24;
+    const min = Number(m[2] || 0);
+    const ap = (m[3] || '').toLowerCase().replace(/\./g, '');
+    if (ap === 'pm' && h < 12) h += 12;
+    if (ap === 'am' && h === 12) h = 0;
+    return h * 60 + min;
+};
+
+/** Guests already booked (pending/confirmed) for one restaurant, day and time slot. */
+export async function getBookedSeatsForSlot(restaurantId, date, timeSlot) {
+    const day = new Date(date);
+    const start = new Date(day.getFullYear(), day.getMonth(), day.getDate());
+    const end = new Date(start.getTime() + 24 * 60 * 60 * 1000);
+    const wanted = slotMinutes(timeSlot);
+    const bookings = await FoodDiningBooking.find({
+        restaurantId,
+        date: { $gte: start, $lt: end },
+        status: { $in: ['pending', 'accepted', 'confirmed', 'checked-in'] }
+    }).select('guests timeSlot').lean();
+    return bookings
+        .filter((b) => (wanted === null ? b.timeSlot === timeSlot : slotMinutes(b.timeSlot) === wanted))
+        .reduce((sum, b) => sum + (Number(b.guests) || 0), 0);
+}
+
+/** New table request: live popup + ring in the restaurant app, a push, and an inbox message. */
+async function notifyRestaurantAboutBooking(restaurantId, booking) {
+    const title = 'New Table Request';
+    const body = `${booking?.user?.name || 'A guest'} booked a table for ${booking?.guests || 1} at ${booking?.timeSlot || ''}`.trim();
+    try {
+        const { getIO, rooms } = await import('../../../../config/socket.js');
+        getIO()?.to(rooms.restaurant(restaurantId)).emit('new_dining_booking', booking);
+    } catch (err) {
+        console.warn('Dining booking socket emit failed:', err?.message || err);
+    }
+    try {
+        const { notifyOwnerSafely } = await import('../../../../core/notifications/firebase.service.js');
+        await notifyOwnerSafely(
+            { ownerType: 'RESTAURANT', ownerId: restaurantId },
+            { title, body, data: { type: 'new_dining_booking', bookingId: String(booking?.bookingId || ''), link: '/food/restaurant/reservations' } }
+        );
+    } catch (err) {
+        console.warn('Dining booking push failed:', err?.message || err);
+    }
+    try {
+        const { createInboxNotifications } = await import('../../../../core/notifications/notification.service.js');
+        await createInboxNotifications({
+            notifications: [{
+                ownerType: 'RESTAURANT', ownerId: String(restaurantId), title, message: body,
+                category: 'dining', source: 'ORDER_UPDATE', link: '/food/restaurant/reservations'
+            }]
+        });
+    } catch (err) {
+        console.warn('Dining booking inbox message failed:', err?.message || err);
+    }
 }
 
 export async function listUserBookings(userId) {

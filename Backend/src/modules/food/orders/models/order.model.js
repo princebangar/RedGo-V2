@@ -313,6 +313,17 @@ const orderSchema = new mongoose.Schema(
         scheduledAt: { type: Date, default: null },
         riderEarning: { type: Number, default: 0, min: 0 },
         platformProfit: { type: Number, default: 0, min: 0 },
+        /** Restaurant → customer distance the rider earning was calculated from. */
+        distanceKm: { type: Number, default: null, min: 0 },
+        /**
+         * Where that distance came from: 'driving' = Google road distance (normal),
+         * 'air_fallback' = straight line (Google failed), 'base_fallback' = no distance, base payout.
+         */
+        distanceMode: {
+            type: String,
+            enum: ['driving', 'air_fallback', 'base_fallback', null],
+            default: null,
+        },
         /** Plain 4-digit OTP for handover; cleared after successful verify (never expose to partner in API responses). */
         deliveryOtp: { type: String, default: '', select: false },
         deliveryVerification: {

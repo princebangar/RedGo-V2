@@ -42,6 +42,29 @@ function getFixedCurrentCycleWindow(now = new Date()) {
     };
 }
 
+/**
+ * Restaurant money for one order, always from the order's own pricing:
+ * food = item total without admin markup, earning = food + packaging - commission.
+ * (The ledger copy could be stale, e.g. old orders charged a hidden default commission.)
+ */
+function orderMoney(order = {}, tx = {}) {
+    const p = order?.pricing || {};
+    const round = (n) => Math.round((Number(n) || 0) * 100) / 100;
+    const food = Math.max(
+        0,
+        Number(p.baseSubtotal ?? (Number(p.subtotal ?? 0) - Number(p.markupTotal ?? 0))) || 0
+    );
+    const packaging = Math.max(0, Number(p.packagingFee) || 0);
+    const commission = Math.max(0, Number(p.restaurantCommission ?? tx?.amounts?.restaurantCommission) || 0);
+    return {
+        food: round(food),
+        commission: round(commission),
+        earning: round(Math.max(0, food + packaging - commission)),
+        customerPaid: round(p.total ?? tx?.amounts?.totalCustomerPaid ?? 0),
+        tax: round(p.tax ?? 0),
+    };
+}
+
 function parseISODateParam(v) {
     if (!v) return null;
     const s = String(v).trim();
@@ -95,22 +118,17 @@ export async function getRestaurantFinance(restaurantId, query = {}) {
         const order = tx.orderId || {};
         const items = Array.isArray(order.items) ? order.items : [];
         const foodNames = items.map((it) => it?.name).filter(Boolean).join(', ');
-        const orderTotalExclTax = Math.max(
-            0,
-            Number(
-              order?.pricing?.baseSubtotal ??
-                (Number(order?.pricing?.subtotal ?? 0) - Number(order?.pricing?.markupTotal ?? 0))
-            ) || 0
-        );
+        const money = orderMoney(order, tx);
         return {
             orderId: order?.order_id || tx.orderReadableId,
             createdAt: tx.createdAt,
             items,
             foodNames,
-            orderTotal: orderTotalExclTax,
-            totalAmount: tx.amounts?.totalCustomerPaid || 0,
-            payout: tx.amounts?.restaurantShare || 0,
-            commission: tx.amounts?.restaurantCommission || 0,
+            orderTotal: money.food,
+            totalAmount: money.customerPaid,
+            payout: money.earning,
+            commission: money.commission,
+            tax: money.tax,
             paymentMethod: tx.paymentMethod || order?.payment?.method,
             orderStatus: order?.orderStatus || order?.deliveryState?.currentPhase || order?.deliveryState?.status,
             status: tx.status
@@ -127,12 +145,12 @@ export async function getRestaurantFinance(restaurantId, query = {}) {
         restaurantId: rid,
         status: { $in: ['captured', 'authorized'] },
         'settlement.isRestaurantSettled': { $ne: true }
-    }).populate({ path: 'orderId', select: 'orderStatus' }).lean();
+    }).populate({ path: 'orderId', select: 'orderStatus pricing' }).lean();
 
     const globalEstimatedPayout = allUnsettledTransactions
         .filter((tx) => tx.orderId && ['delivered', 'completed'].includes(tx.orderId.orderStatus))
         .reduce(
-            (sum, tx) => sum + (Number(tx.amounts?.restaurantShare) || 0),
+            (sum, tx) => sum + orderMoney(tx.orderId, tx).earning,
             0
         );
 
@@ -170,8 +188,10 @@ export async function getRestaurantFinance(restaurantId, query = {}) {
     const invoiceSummary = {
         count: currentCycleOrders.length,
         subtotal: currentCycleOrders.reduce((sum, o) => sum + (Number(o.orderTotal) || 0), 0),
-        taxes: currentCycleOrders.reduce((sum, o) => sum + Math.max(0, (Number(o.totalAmount) || 0) - (Number(o.orderTotal) || 0)), 0),
-        gross: currentCycleOrders.reduce((sum, o) => sum + (Number(o.totalAmount) || 0), 0)
+        taxes: currentCycleOrders.reduce((sum, o) => sum + (Number(o.tax) || 0), 0),
+        gross: currentCycleOrders.reduce((sum, o) => sum + (Number(o.orderTotal) || 0), 0),
+        commission: currentCycleOrders.reduce((sum, o) => sum + (Number(o.commission) || 0), 0),
+        earnings: currentCycleOrders.reduce((sum, o) => sum + (Number(o.payout) || 0), 0)
     };
 
     // Past cycles: build from provided startDate/endDate query.
@@ -195,20 +215,18 @@ export async function getRestaurantFinance(restaurantId, query = {}) {
             const order = tx.orderId || {};
             const items = Array.isArray(order.items) ? order.items : [];
             const foodNames = items.map((it) => it?.name).filter(Boolean).join(', ');
-            const orderTotalExclTax = Math.max(
-                0,
-                Number(order?.pricing?.total ?? 0) - Number(order?.pricing?.tax ?? 0) || 0
-            );
+            const money = orderMoney(order, tx);
 
             return {
                 orderId: order?.order_id || tx.orderReadableId,
                 createdAt: tx.createdAt,
                 items,
                 foodNames,
-                orderTotal: orderTotalExclTax,
-                totalAmount: tx.amounts?.totalCustomerPaid || 0,
-                payout: tx.amounts?.restaurantShare || 0,
-                commission: tx.amounts?.restaurantCommission || 0,
+                orderTotal: money.food,
+                totalAmount: money.customerPaid,
+                payout: money.earning,
+                commission: money.commission,
+                tax: money.tax,
                 paymentMethod: tx.paymentMethod || order?.payment?.method,
                 orderStatus: order?.orderStatus || order?.deliveryState?.currentPhase || order?.deliveryState?.status,
                 status: tx.status

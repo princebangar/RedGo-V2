@@ -911,6 +911,35 @@ export default function ViewOrderDialog({ isOpen, onOpenChange, order, onOrderUp
             </div>
           )}
 
+          {/* Rider earning + where its distance came from (Google road distance or a fallback) */}
+          {order.distanceMode && (
+            <div className="border-t border-slate-200 pt-4">
+              <h3 className="text-sm font-semibold text-slate-700 mb-4">Rider Earning</h3>
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div className="space-y-1">
+                  <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Earning</p>
+                  <p className="text-sm font-medium text-slate-900">₹{Number(order.riderEarning || 0).toFixed(2)}</p>
+                </div>
+                <div className="space-y-1">
+                  <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Distance</p>
+                  <p className="text-sm font-medium text-slate-900">
+                    {order.distanceKm != null ? `${Number(order.distanceKm).toFixed(2)} km` : "—"}
+                  </p>
+                </div>
+                <div className="space-y-1">
+                  <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Distance source</p>
+                  {order.distanceMode === "driving" ? (
+                    <p className="text-sm font-medium text-emerald-700">Google road distance</p>
+                  ) : order.distanceMode === "air_fallback" ? (
+                    <p className="text-sm font-medium text-amber-700">Fallback: straight line (Google failed)</p>
+                  ) : (
+                    <p className="text-sm font-medium text-red-700">Fallback: base payout (no distance)</p>
+                  )}
+                </div>
+              </div>
+            </div>
+          )}
+
           {/* Pricing Breakdown */}
           <div className="border-t border-slate-200 pt-4">
             <h3 className="text-sm font-semibold text-slate-700 mb-4">Pricing Breakdown</h3>

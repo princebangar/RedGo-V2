@@ -2,7 +2,7 @@ import { toast } from "sonner";
 import { showNotificationToast } from "@/shared/utils/customToasts";
 import { userAPI, restaurantAPI, deliveryAPI, adminAPI } from "@food/api";
 import { initializeApp, getApp, getApps } from "firebase/app";
-const fallbackNotificationSound = "/alert.mp3";
+const fallbackNotificationSound = "/restaurant_alert.mp3";
 
 const pushNotificationSoundPath = "/zomato_sms.mp3";
 const restaurantAlertSoundPath = "/restaurant_alert.mp3";
@@ -1257,7 +1257,7 @@ function showForegroundNotification(payload = {}) {
           if (registration) {
             registration.showNotification(title, {
               body,
-              icon: "/favicon.ico",
+              icon: "/favicon.webp",
               image,
               tag: notificationKey || undefined,
               renotify: false,
@@ -1268,7 +1268,7 @@ function showForegroundNotification(payload = {}) {
           } else {
             new Notification(title, {
               body,
-              icon: "/favicon.ico",
+              icon: "/favicon.webp",
               image,
               tag: notificationKey || undefined,
               requireInteraction: true,
@@ -1277,7 +1277,7 @@ function showForegroundNotification(payload = {}) {
         }).catch(() => {
           new Notification(title, {
             body,
-            icon: "/favicon.ico",
+            icon: "/favicon.webp",
             image,
             tag: notificationKey || undefined,
           });
@@ -1285,7 +1285,7 @@ function showForegroundNotification(payload = {}) {
       } else {
         new Notification(title, {
           body,
-          icon: "/favicon.ico",
+          icon: "/favicon.webp",
           image,
           tag: notificationKey || undefined,
         });

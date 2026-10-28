@@ -14,7 +14,7 @@ import {
 
 // Import shared food images - prevents duplication
 import { foodImages } from "@food/constants/images"
-import dishFallbackImage from "@food/assets/dish_fallback.webp"
+import dishFallbackImage from "@food/assets/placeholders/dish_fallback.webp"
 import api from "@food/api"
 import { restaurantAPI, adminAPI, searchAPI } from "@food/api"
 import { API_BASE_URL } from "@food/api/config"

@@ -42,7 +42,7 @@ import DeliveryTrackingMap from "@food/components/user/DeliveryTrackingMap"
 import { orderAPI, restaurantAPI } from "@food/api"
 import { useCompanyName } from "@food/hooks/useCompanyName"
 import { RESTAURANT_PIN_SVG, CUSTOMER_PIN_SVG, RIDER_BIKE_SVG } from "@food/constants/mapIcons"
-import burgerImg from "@food/assets/takeaway_burger.png"
+import burgerImg from "@food/assets/illustrations/takeaway_burger.png"
 
 
 // Fallback definitions in case imports fail at runtime or are shadowed
@@ -1686,6 +1686,10 @@ export default function OrderTracking() {
 
     return () => {
       isSubscribed = false;
+      // This run's first fetch is discarded on cleanup, so let the next run fetch again
+      // (otherwise the page stayed on "Loading order details..." forever).
+      isInitialPollRequestedRef.current = null;
+      lastPollExecutionRef.current = 0;
     };
   }, [orderId, fetchOrderDetailsWithFallback, resolveOrderFromList]);
 
@@ -2146,7 +2150,7 @@ export default function OrderTracking() {
                 transition={{ delay: 2.0 }}
                 className="mt-12 pt-8 border-t border-gray-100 dark:border-gray-800"
               >
-                <div className="flex items-center justify-center gap-2 text-[#DC2626] dark:text-orange-400 font-medium cursor-pointer hover:opacity-80 transition-opacity" onClick={() => navigate('/user/profile/report-safety-emergency', { state: { returnTo: location.pathname } })}>
+                <div className="flex items-center justify-center gap-2 text-[#DC2626] dark:text-orange-400 font-medium cursor-pointer hover:opacity-80 transition-opacity" onClick={() => navigate('/user/profile/delivery-safety', { state: { returnTo: location.pathname } })}>
                   <Shield className="w-4 h-4" />
                   <span className="text-sm">Learn about delivery partner safety</span>
                 </div>
@@ -2565,7 +2569,7 @@ export default function OrderTracking() {
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: 0.6 }}
             whileTap={{ scale: 0.99 }}
-            onClick={() => navigate('/user/profile/report-safety-emergency', { state: { returnTo: location.pathname } })}
+            onClick={() => navigate('/user/profile/delivery-safety', { state: { returnTo: location.pathname } })}
           >
             <Shield className="w-6 h-6 text-gray-600 dark:text-gray-400" />
             <span className="flex-1 text-left font-medium text-gray-900 dark:text-gray-100">
@@ -3039,11 +3043,11 @@ export default function OrderTracking() {
           <div className="space-y-6 py-2">
             {/* Restaurant Rating */}
             <div className="space-y-3">
-              <div className="flex items-center justify-between">
-                <p className="font-semibold text-gray-800 dark:text-gray-200">How was the food?</p>
+              <div className="flex items-center justify-between gap-2">
+                <p className="font-semibold text-gray-800 dark:text-gray-200 min-w-0">How was the food?</p>
                 <span className="text-xs px-2 py-0.5 bg-orange-50 text-orange-600 dark:bg-orange-950/30 dark:text-orange-400 rounded-full font-medium">Restaurant</span>
               </div>
-              <div className="flex justify-center gap-3">
+              <div className="flex justify-center gap-1 sm:gap-3">
                 {[1, 2, 3, 4, 5].map((star) => (
                   <motion.button
                     key={`res-star-${star}`}
@@ -3053,7 +3057,7 @@ export default function OrderTracking() {
                     className="p-1"
                   >
                     <Star
-                      className={`w-10 h-10 transition-all duration-300 ${
+                      className={`w-8 h-8 sm:w-10 sm:h-10 transition-all duration-300 ${
                         star <= selectedRestaurantRating
                           ? "text-yellow-400 fill-yellow-400 drop-shadow-sm"
                           : "text-gray-200 dark:text-gray-800"
@@ -3073,11 +3077,11 @@ export default function OrderTracking() {
             {/* Delivery Rating */}
             {hasDeliveryPartner && (
               <div className="space-y-3 pt-4 border-t border-gray-100 dark:border-gray-800">
-                <div className="flex items-center justify-between">
-                  <p className="font-semibold text-gray-800 dark:text-gray-200">How was the delivery?</p>
+                <div className="flex items-center justify-between gap-2">
+                  <p className="font-semibold text-gray-800 dark:text-gray-200 min-w-0">How was the delivery?</p>
                   <span className="text-xs px-2 py-0.5 bg-blue-50 text-blue-600 dark:bg-blue-950/30 dark:text-blue-400 rounded-full font-medium">Delivery</span>
                 </div>
-                <div className="flex justify-center gap-3">
+                <div className="flex justify-center gap-1 sm:gap-3">
                   {[1, 2, 3, 4, 5].map((star) => (
                     <motion.button
                       key={`del-star-${star}`}
@@ -3087,7 +3091,7 @@ export default function OrderTracking() {
                       className="p-1"
                     >
                       <Star
-                        className={`w-10 h-10 transition-all duration-300 ${
+                        className={`w-8 h-8 sm:w-10 sm:h-10 transition-all duration-300 ${
                           star <= selectedDeliveryRating
                             ? "text-yellow-400 fill-yellow-400 drop-shadow-sm"
                             : "text-gray-200 dark:text-gray-800"

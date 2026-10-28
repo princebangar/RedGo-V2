@@ -3,6 +3,7 @@ import { useNavigate, useLocation } from "react-router-dom"
 import { Search, Menu, ChevronRight, MapPin, X, Bell, HelpCircle } from "lucide-react"
 import { restaurantAPI } from "@food/api"
 import { formatRestaurantDisplayAddress } from "@food/utils/restaurantLocation"
+import { getRestaurantAvailabilityStatus } from "@food/utils/restaurantAvailability"
 import { getCachedSettings, loadBusinessSettings } from "@food/utils/businessSettings"
 import useNotificationInbox from "@food/hooks/useNotificationInbox"
 import { useRestaurantNotifications } from "@food/hooks/useRestaurantNotifications"
@@ -219,6 +220,39 @@ export default function RestaurantNavbar({
     }
   }, [restaurantData])
 
+  // "Online" only means orders are switched on; outside today's outlet timings (or on a closed
+  // day) customers can't order, so show "Closed" then.
+  const [outletTimings, setOutletTimings] = useState(null)
+  const [withinTimings, setWithinTimings] = useState(true)
+  useEffect(() => {
+    if (!restaurantData || !showOfflineOnlineTag) return
+    let cancelled = false
+    restaurantAPI
+      .getOutletTimings()
+      .then((res) => {
+        if (!cancelled) setOutletTimings(res?.data?.data?.outletTimings || null)
+      })
+      .catch(() => {})
+    return () => {
+      cancelled = true
+    }
+  }, [restaurantData, showOfflineOnlineTag])
+  useEffect(() => {
+    if (!restaurantData) return
+    const check = () => {
+      const availability = getRestaurantAvailabilityStatus(
+        { ...restaurantData, ...(outletTimings ? { outletTimings } : {}) },
+        new Date(),
+        { ignoreOperationalStatus: true },
+      )
+      setWithinTimings(availability.isOpen !== false)
+    }
+    check()
+    const id = setInterval(check, 60000)
+    return () => clearInterval(id)
+  }, [restaurantData, outletTimings])
+  const shownStatus = status === "Online" && !withinTimings ? "Closed" : status
+
   const handleStatusClick = () => {
     navigate("/food/restaurant/status", { state: { from: routerLocation.pathname } })
   }
@@ -275,21 +309,21 @@ export default function RestaurantNavbar({
               <button
                 onClick={handleStatusClick}
                 className={`flex items-center gap-1 px-2 py-1 rounded-full transition-all duration-300 backdrop-blur-md border ${
-                  status === "Online" 
-                    ? "bg-white/15 border-white/20 text-white" 
+                  shownStatus === "Online"
+                    ? "bg-white/15 border-white/20 text-white"
                     : "bg-gradient-to-br from-[#B80B3D] to-[#66001D]/20 border-white/10 text-white/70"
                 } active:scale-95 shadow-sm hover:bg-white/25`}
               >
                 <div className="relative flex items-center justify-center">
                   <span className={`w-1.5 h-1.5 rounded-full ${
-                    status === "Online" ? "bg-emerald-400" : "bg-white/30"
+                    shownStatus === "Online" ? "bg-emerald-400" : shownStatus === "Closed" ? "bg-amber-300" : "bg-white/30"
                   }`}></span>
-                  {status === "Online" && (
+                  {shownStatus === "Online" && (
                     <span className="absolute w-1.5 h-1.5 rounded-full bg-emerald-400 animate-ping opacity-60"></span>
                   )}
                 </div>
                 <span className="text-[11px] font-bold tracking-tight px-0.5">
-                  {status}
+                  {shownStatus}
                 </span>
               </button>
             )}

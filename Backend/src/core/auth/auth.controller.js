@@ -17,6 +17,7 @@ import {
   resetAdminPasswordWithOtp,
   deleteAccount,
   checkAccountBalance,
+  getPendingApprovalStatus,
 } from "./auth.service.js";
 import { validateUserOtpRequestDto } from "../../dtos/auth/userOtpRequest.dto.js";
 import { validateUserOtpVerifyDto } from "../../dtos/auth/userOtpVerify.dto.js";
@@ -256,6 +257,15 @@ export const checkAccountBalanceController = async (req, res, next) => {
     const { userId, role } = req.user;
     const result = await checkAccountBalance(userId, role);
     return sendResponse(res, 200, "Balance checked successfully", result);
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const pendingApprovalStatusController = async (req, res, next) => {
+  try {
+    const result = await getPendingApprovalStatus(req.body?.pendingToken);
+    return sendResponse(res, 200, "Status fetched", result);
   } catch (error) {
     next(error);
   }

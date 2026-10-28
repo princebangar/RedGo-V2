@@ -21,10 +21,13 @@ export const ImageSourcePicker = ({
   title = "Update photo",
   description = "Choose how you want to upload your photo.",
   fileNamePrefix = "upload",
-  galleryInputRef = null
+  galleryInputRef = null,
+  // Optional: pick several images at once from the gallery (called once with all files)
+  onFilesSelect = null,
 }) => {
   const internalInputRef = useRef(null)
-  
+  const allowMultiple = typeof onFilesSelect === "function"
+
   const handleOpenCamera = async () => {
     try {
       onClose()
@@ -43,6 +46,8 @@ export const ImageSourcePicker = ({
       onClose()
       await openGallery({
         onSelectFile: onFileSelect,
+        onSelectFiles: allowMultiple ? onFilesSelect : undefined,
+        multiple: allowMultiple,
         fileNamePrefix,
         fallbackInputRef: galleryInputRef || internalInputRef,
       })
@@ -57,23 +62,25 @@ export const ImageSourcePicker = ({
 
   return (
     <>
-      <input 
-        type="file" 
-        ref={internalInputRef} 
-        style={{ display: 'none' }} 
-        accept="image/*" 
+      <input
+        type="file"
+        ref={internalInputRef}
+        style={{ display: 'none' }}
+        accept="image/*"
+        multiple={allowMultiple}
         onChange={async (e) => {
-          const file = e.target.files?.[0]
-          if (file && onFileSelect) {
-            try {
-              const compressedFile = await compressImageForUpload(file)
-              onFileSelect(compressedFile)
-            } catch {
-              onFileSelect(file)
-            }
-          }
+          const picked = Array.from(e.target.files || [])
           e.target.value = ""
-        }} 
+          if (!picked.length) return
+          const compressed = await Promise.all(
+            picked.map((file) => compressImageForUpload(file).catch(() => file)),
+          )
+          if (allowMultiple) {
+            onFilesSelect(compressed)
+          } else if (onFileSelect) {
+            onFileSelect(compressed[0])
+          }
+        }}
       />
       <Dialog open={isOpen} onOpenChange={onClose}>
       <DialogContent className="max-w-sm w-[calc(100%-2rem)] rounded-2xl p-0 overflow-hidden">

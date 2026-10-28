@@ -13,7 +13,6 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@food/components/ui/select"
-import loginBg from "@food/assets/loginbanner.png"
 import { useCompanyName } from "@food/hooks/useCompanyName"
 
 const countryCodes = [
@@ -138,19 +137,14 @@ export default function RestaurantSignup() {
   return (
     <div className="h-screen w-full flex bg-white overflow-hidden">
       {/* Left image section */}
-      <div className="hidden lg:flex lg:w-1/2 relative">
-        <img
-          src={loginBg}
-          alt="Restaurant background"
-          className="w-full h-full object-cover"
-        />
+      <div className="hidden lg:flex lg:w-1/2 relative bg-gradient-to-br from-[#FFF1F4] to-[#FFE0E8]">
         {/* Orange half-circle text block attached to the left with animation */}
         <div className="absolute inset-0 flex items-center text-white pointer-events-none">
           <div
             className="bg-gradient-to-br from-[#B80B3D] to-[#66001D]/80 rounded-r-full py-10 xl:py-20 pl-10 xl:pl-14 pr-10 xl:pr-20 max-w-[70%] shadow-xl backdrop-blur-[1px]"
             style={{ animation: "slideInLeft 0.8s ease-out both" }}
           >
-            <h1 className="text-[#B80B3D]xl xl:text-4xl font-extrabold mb-4 tracking-wide leading-tight">
+            <h1 className="text-3xl xl:text-4xl font-extrabold mb-4 tracking-wide leading-tight">
               JOIN AS
               <br />
               RESTAURANT PARTNER
@@ -194,7 +188,7 @@ export default function RestaurantSignup() {
         >
           {/* Title */}
           <div className="mb-8 text-center">
-            <h2 className="text-2xl sm:text-[#B80B3D]xl font-semibold text-gray-900 mb-2">
+            <h2 className="text-2xl sm:text-3xl font-semibold text-gray-900 mb-2">
               Register Your Restaurant
             </h2>
             <p className="text-sm text-gray-500">

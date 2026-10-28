@@ -110,10 +110,7 @@ const getMealPeriod = (slot) => {
   return "dinner"
 }
 
-const getOfferLabel = (slot) => {
-  const period = getMealPeriod(slot)
-  return period === "lunch" ? "Lunch" : "Carnival"
-}
+const ACTIVE_BOOKING_STATUSES = ["pending", "accepted", "confirmed", "checked-in"]
 
 export default function TableBooking() {
   const { slug } = useParams()
@@ -194,28 +191,20 @@ export default function TableBooking() {
     fetchRestaurant()
   }, [location.state?.restaurant, slug])
 
-  const occupiedSeats = useMemo(() => {
-    const now = new Date()
-    const THIRTY_MINUTES = 30 * 60 * 1000
-
+  // Seats are counted per day + time slot (same rule as the server); "7:00 pm" equals "07:00 PM"
+  const seatsTakenFor = (slot) => {
+    const wanted = parseTimeToMinutes(slot)
+    if (wanted === null) return 0
     return currentBookings
-        .filter(b => {
-            const isApproved = b.status === "approved" || b.status === "accepted" || b.status === "confirmed"
-            const isPending = b.status === "pending"
-            
-            if (isApproved) return true
-            if (isPending) {
-                const createdAt = new Date(b.createdAt || b.date)
-                const ageMs = now - createdAt
-                return ageMs < THIRTY_MINUTES
-            }
-            return false
-        })
-        .reduce((sum, b) => sum + (Number(b.guests) || 0), 0)
-  }, [currentBookings])
+      .filter((b) => ACTIVE_BOOKING_STATUSES.includes(String(b.status || "").toLowerCase()))
+      .filter((b) => new Date(b.date).toDateString() === selectedDate.toDateString())
+      .filter((b) => parseTimeToMinutes(b.timeSlot) === wanted)
+      .reduce((sum, b) => sum + (Number(b.guests) || 0), 0)
+  }
 
   const maxCapacity = restaurant?.diningSettings?.maxGuests || 10
-  const remainingSeats = Math.max(0, maxCapacity - occupiedSeats)
+  const seatsLeftFor = (slot) => Math.max(0, maxCapacity - seatsTakenFor(slot))
+  const remainingSeats = selectedSlot ? seatsLeftFor(selectedSlot) : maxCapacity
 
   const dates = useMemo(() => buildDates(7), [])
   const selectedDayTiming = useMemo(() => {
@@ -278,7 +267,9 @@ export default function TableBooking() {
   if (!restaurant) return <div className="p-6 text-center">Restaurant not found</div>
 
   const isDiningEnabled = restaurant?.diningSettings?.isEnabled !== false
-  const canProceed = Boolean(isDiningEnabled && restaurant && selectedSlot && selectedDate && selectedGuests)
+  const canProceed = Boolean(
+    isDiningEnabled && restaurant && selectedSlot && selectedDate && selectedGuests && selectedGuests <= remainingSeats
+  )
 
   const handleProceed = () => {
     if (!isDiningEnabled) {
@@ -354,8 +345,8 @@ export default function TableBooking() {
           <div className="grid grid-cols-5 gap-2">
             {Array.from({ length: maxCapacity }, (_, index) => {
               const count = index + 1
-              const isBooked = count <= occupiedSeats
-              const isTooLarge = count > remainingSeats && !isBooked
+              const isBooked = false
+              const isTooLarge = count > remainingSeats
 
               return (
                 <button
@@ -440,19 +431,24 @@ export default function TableBooking() {
             ) : (
               filteredSlots.map((slot) => {
                 const active = selectedSlot === slot
+                const left = seatsLeftFor(slot)
+                const full = left <= 0
                 return (
                   <button
                     key={slot}
+                    disabled={full}
                     onClick={() => setSelectedSlot(slot)}
                     className={`rounded-[16px] border px-3 py-4 text-center transition-colors ${
-                      active
-                        ? "border-[#ef8f98] bg-[#fffaf9] dark:bg-[#2a1519]"
-                        : "border-[#ececf2] dark:border-white/10 bg-white dark:bg-[#242424]"
+                      full
+                        ? "border-[#ececf2] dark:border-white/10 bg-[#f3f4f6] dark:bg-[#1f1f1f] opacity-60 cursor-not-allowed"
+                        : active
+                          ? "border-[#ef8f98] bg-[#fffaf9] dark:bg-[#2a1519]"
+                          : "border-[#ececf2] dark:border-white/10 bg-white dark:bg-[#242424]"
                     }`}
                   >
                     <span className="block text-sm font-medium text-[#334155] dark:text-gray-200">{slot}</span>
-                    <span className="mt-1 block text-xs font-medium text-[#2d5ea8] dark:text-blue-400">
-                      {getOfferLabel(slot)}
+                    <span className={`mt-1 block text-xs font-medium ${full ? "text-[#DC2626]" : "text-[#2d5ea8] dark:text-blue-400"}`}>
+                      {full ? "Full" : `${left} seat${left === 1 ? "" : "s"} left`}
                     </span>
                   </button>
                 )

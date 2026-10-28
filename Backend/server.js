@@ -3,6 +3,7 @@ import app from './src/app.js';
 import { config } from './src/config/env.js';
 import { validateConfig } from './src/config/validateEnv.js';
 import { connectDB, disconnectDB } from './src/config/db.js';
+import { repairNotificationIndexes } from './src/core/notifications/models/notification.model.js';
 import { connectRedis, closeRedis } from './src/config/redis.js';
 import { initSocket } from './src/config/socket.js';
 import { initializeQueues, closeBullMQConnection } from './src/queues/index.js';
@@ -18,6 +19,7 @@ let expireOffersInterval = null;
 let fssaiExpiryInterval = null;
 let paymentReconcileInterval = null;
 let refundRetryInterval = null;
+let dispatchSweepInterval = null;
 
 const gracefulShutdown = async (signal) => {
     logger.info(`${signal} received, starting graceful shutdown`);
@@ -34,6 +36,7 @@ const gracefulShutdown = async (signal) => {
             if (fssaiExpiryInterval) clearInterval(fssaiExpiryInterval);
             if (paymentReconcileInterval) clearInterval(paymentReconcileInterval);
             if (refundRetryInterval) clearInterval(refundRetryInterval);
+            if (dispatchSweepInterval) clearInterval(dispatchSweepInterval);
             logger.info('Graceful shutdown complete');
             process.exit(0);
         } catch (err) {
@@ -54,6 +57,8 @@ const startServer = async () => {
 
         // 1. Connect to Database (MongoDB)
         await connectDB();
+        // Old sparse unique index on food_notifications dropped inbox messages; replace it once.
+        void repairNotificationIndexes();
 
         // 2. Create HTTP server from Express app
         const httpServer = http.createServer(app);
@@ -134,6 +139,18 @@ const startServer = async () => {
             }
         };
         refundRetryInterval = setInterval(runRefundRetry, 10 * 60 * 1000);
+
+        // Delivery orders whose rider-search retry was lost (Redis/worker down, deploy): restart the hunt.
+        const runDispatchSweep = async () => {
+            try {
+                const { resumeStalledDispatches } = await import('./src/modules/food/orders/services/order-dispatch.service.js');
+                const count = await resumeStalledDispatches();
+                if (count > 0) logger.info(`Dispatch sweep: restarted rider search for ${count} order(s)`);
+            } catch (err) {
+                logger.error(`Dispatch sweep error: ${err.message}`);
+            }
+        };
+        dispatchSweepInterval = setInterval(runDispatchSweep, 60 * 1000);
 
         process.on('SIGINT', () => gracefulShutdown('SIGINT'));
         process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));

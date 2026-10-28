@@ -58,19 +58,22 @@ export async function getRiderEarning(distanceKm, zoneId) {
   const baseRule = sorted.find((r) => Number(r.minDistance || 0) === 0) || null;
   if (!baseRule) return 0;
 
+  // Base payout + the flat amount of the ONE slab the distance falls in (e.g. 8.5 km → base ₹28 +
+  // 8-9 km slab ₹48 = ₹76). Lower slabs are not added up, and the amount is not multiplied by km.
+  // Beyond the last slab, the last slab's amount applies.
   let earning = Number(baseRule.basePayout || 0);
-
-  for (const r of sorted) {
-    const perKm = Number(r.commissionPerKm || 0);
-    if (!Number.isFinite(perKm) || perKm <= 0) continue;
+  const inSlab = (r) => {
     const min = Number(r.minDistance || 0);
     const max = r.maxDistance == null ? null : Number(r.maxDistance);
-    if (d <= min) continue;
-    const upper = max == null ? d : Math.min(d, max);
-    const kmInSlab = Math.max(0, upper - min);
-    if (kmInSlab > 0) {
-      earning += kmInSlab * perKm;
-    }
+    return (min === 0 ? d >= 0 : d > min) && (max == null || d <= max);
+  };
+  const slab =
+    sorted.find(inSlab) ||
+    [...sorted].reverse().find((r) => d > Number(r.minDistance || 0)) ||
+    null;
+  const slabAmount = Number(slab?.commissionPerKm || 0);
+  if (Number.isFinite(slabAmount) && slabAmount > 0) {
+    earning += slabAmount;
   }
 
   if (!Number.isFinite(earning) || earning <= 0) return 0;
@@ -123,7 +126,9 @@ export async function resolveRiderEarningForDelivery({
   return {
     riderEarning,
     distanceKm: resolved.distanceKm,
-    distanceMode: resolved.distanceMode || null,
+    // 'driving' | 'air_fallback' from the distance lookup; 'base_fallback' when no distance was
+    // found and the base payout was used.
+    distanceMode: resolved.distanceMode || (riderEarning > 0 ? 'base_fallback' : null),
     deliveryPoint: resolved.deliveryPoint,
     restaurantPoint: resolved.restaurantPoint,
     restaurantGeocoded: resolved.restaurantGeocoded,
@@ -167,6 +172,8 @@ export async function ensureRiderEarningOnOrder(order) {
 
   order.riderEarning = earningResolved.riderEarning;
   order.markModified?.('riderEarning');
+  order.distanceKm = earningResolved.distanceKm ?? null;
+  order.distanceMode = earningResolved.distanceMode || null;
 
   if (earningResolved.deliveryGeocoded && earningResolved.deliveryPoint) {
     const geo = toGeoJsonPoint(earningResolved.deliveryPoint);

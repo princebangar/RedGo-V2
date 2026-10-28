@@ -101,8 +101,15 @@ export const convertBase64ToFile = (
   }
 }
 
+const getFlutterResultList = (result) => {
+  if (Array.isArray(result)) return result
+  const list = result?.files || result?.images || result?.data?.files || result?.data?.images
+  return Array.isArray(list) ? list : null
+}
+
 const isSuccessfulFlutterImageResult = (result) =>
   result?.success === true ||
+  Boolean(getFlutterResultList(result)?.length) ||
   Boolean(result?.base64 || result?.base64String || result?.data?.base64 || result?.file)
 
 export const notifySelectedFile = async (
@@ -146,6 +153,21 @@ const fileFromFlutterImageResult = (result, fileNamePrefix) => {
   }
 
   return null
+}
+
+/** Every image in a bridge result (a multi-select returns a list, a single pick one item). */
+const filesFromFlutterImageResult = (result, fileNamePrefix) => {
+  const list = getFlutterResultList(result)
+  const items = list || [result]
+  return items
+    .map((item) => {
+      try {
+        return fileFromFlutterImageResult(item, fileNamePrefix)
+      } catch {
+        return null
+      }
+    })
+    .filter((file) => file && String(file.type || "").startsWith("image/"))
 }
 
 const openBrowserGalleryFallback = (onSelectFile, fallbackInputRef = null, options = {}) => {
@@ -220,12 +242,13 @@ const isFlutterImageSelectionCancelled = (result) => {
   return false
 }
 
-const buildFlutterImageHandlerArgs = (handlerName, { isCamera, quality }) => {
+const buildFlutterImageHandlerArgs = (handlerName, { isCamera, quality, multiple = false }) => {
   const source = isCamera ? "camera" : "gallery"
+  const allowMultiple = !isCamera && multiple
   const baseArgs = {
     source,
     accept: "image/*",
-    multiple: false,
+    multiple: allowMultiple,
     quality,
     type: "image",
   }
@@ -243,16 +266,30 @@ const buildFlutterImageHandlerArgs = (handlerName, { isCamera, quality }) => {
       source,
       quality,
       mediaType: "photo",
-      allowMultiple: false,
+      allowMultiple,
     }
   }
 
   return baseArgs
 }
 
+const compressSelectedFiles = (files, compressOptions, shouldCompress) =>
+  Promise.all(
+    files.map(async (file) => {
+      if (!shouldCompress) return file
+      try {
+        return await compressImageForUpload(file, compressOptions)
+      } catch {
+        return file
+      }
+    }),
+  )
+
 const invokeFlutterImageHandlers = async ({
   isCamera,
   onSelectFile,
+  onSelectFiles,
+  multiple = false,
   fileNamePrefix,
   quality = 0.8,
   onCancel,
@@ -264,7 +301,7 @@ const invokeFlutterImageHandlers = async ({
 
   for (const handlerName of handlerNames) {
     try {
-      const handlerArgs = buildFlutterImageHandlerArgs(handlerName, { isCamera, quality })
+      const handlerArgs = buildFlutterImageHandlerArgs(handlerName, { isCamera, quality, multiple })
       const result = await window.flutter_inappwebview.callHandler(handlerName, handlerArgs)
 
       if (isFlutterImageSelectionCancelled(result)) {
@@ -279,13 +316,17 @@ const invokeFlutterImageHandlers = async ({
         continue
       }
 
-      const selectedFile = fileFromFlutterImageResult(result, fileNamePrefix)
-      if (!selectedFile || !String(selectedFile.type || "").startsWith("image/")) {
+      const selectedFiles = filesFromFlutterImageResult(result, fileNamePrefix)
+      if (!selectedFiles.length) {
         lastError = new Error(`Handler "${handlerName}" returned invalid image data`)
         continue
       }
 
-      await notifySelectedFile(selectedFile, onSelectFile, compressOptions, shouldCompress)
+      if (multiple && typeof onSelectFiles === "function") {
+        onSelectFiles(await compressSelectedFiles(selectedFiles, compressOptions, shouldCompress))
+      } else {
+        await notifySelectedFile(selectedFiles[0], onSelectFile, compressOptions, shouldCompress)
+      }
       return { status: "success", handlerName }
     } catch (error) {
       lastError = error
@@ -300,7 +341,9 @@ const invokeFlutterImageHandlers = async ({
  */
 export const handleImageUpload = async ({
   source = "gallery",
-  onSelectFile,
+  onSelectFile: onSelectFileProp,
+  onSelectFiles,
+  multiple = false,
   fallbackInputRef = null,
   fileNamePrefix = "upload",
   quality = 0.8,
@@ -308,7 +351,13 @@ export const handleImageUpload = async ({
   compress = true,
   compressOptions = undefined,
 }) => {
-  if (!onSelectFile || typeof onSelectFile !== "function") {
+  const onSelectFile =
+    typeof onSelectFileProp === "function"
+      ? onSelectFileProp
+      : typeof onSelectFiles === "function"
+        ? (file) => onSelectFiles(file ? [file] : [])
+        : null
+  if (!onSelectFile) {
     console.warn("handleImageUpload: onSelectFile callback not provided")
     return
   }
@@ -324,6 +373,8 @@ export const handleImageUpload = async ({
     const outcome = await invokeFlutterImageHandlers({
       isCamera,
       onSelectFile,
+      onSelectFiles,
+      multiple,
       fileNamePrefix,
       quality,
       onCancel,
@@ -385,6 +436,8 @@ export const openCamera = async ({
  */
 export const openGallery = async ({
   onSelectFile,
+  onSelectFiles,
+  multiple = false,
   fileNamePrefix = "gallery-photo",
   fallbackInputRef = null,
   onCancel,
@@ -394,6 +447,8 @@ export const openGallery = async ({
   return handleImageUpload({
     source: "gallery",
     onSelectFile,
+    onSelectFiles,
+    multiple,
     fallbackInputRef,
     fileNamePrefix,
     onCancel,

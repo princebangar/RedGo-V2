@@ -326,6 +326,7 @@ export default function DeliverySignIn() {
         sessionStorage.removeItem(getResendKey(phoneVal))
         const digits = String(phoneVal || "").replace(/\D/g, "").slice(-10)
         const rejected = Boolean(data.isRejected)
+        if (data.pendingToken) localStorage.setItem("delivery_pendingToken", data.pendingToken)
         setLoading(false)
         finalizeDeliveryPendingSubmission(
           navigate,
@@ -675,25 +676,6 @@ export default function DeliverySignIn() {
 
   return (
     <div className="min-h-[100dvh] bg-white dark:bg-[#0a0a0a] flex flex-col relative overflow-hidden font-['Poppins']">
-      <style>
-        {`
-          @keyframes floatDish1 {
-            0%, 100% { transform: translateX(0vw) translateY(0px) rotate(0deg); }
-            50% { transform: translateX(25vw) translateY(-15px) rotate(8deg); }
-          }
-          @keyframes floatDish2 {
-            0%, 100% { transform: translateX(0vw) translateY(0px) rotate(0deg); }
-            50% { transform: translateX(-25vw) translateY(-15px) rotate(-8deg); }
-          }
-          .animate-float-dish-1 {
-            animation: floatDish1 12s ease-in-out infinite;
-          }
-          .animate-float-dish-2 {
-            animation: floatDish2 12s ease-in-out infinite;
-          }
-        `}
-      </style>
-
       {/* Top Wave */}
       <div className="absolute top-0 left-0 w-full h-[40vh] pointer-events-none z-0 transform scale-[1.05] origin-center">
         <svg viewBox="0 0 1440 320" className="w-full h-full block" preserveAspectRatio="none" overflow="visible">
@@ -705,11 +687,6 @@ export default function DeliverySignIn() {
           </defs>
           <path fill="url(#topBlueGrad)" d="M -50,-50 L -50,280 C 200,100 800,100 1490,100 L 1490,-50 Z" filter="drop-shadow(0px 5px 15px rgba(0,0,0,0.15))" />
         </svg>
-        <img
-          src="/Driver_logo_1.png"
-          alt="Delivery Partner"
-          className="absolute top-[8%] left-[5%] w-[14vh] h-[14vh] md:w-[120px] md:h-[120px] object-contain animate-float-dish-1 drop-shadow-xl"
-        />
       </div>
 
       {/* Bottom Wave */}
@@ -723,11 +700,6 @@ export default function DeliverySignIn() {
           </defs>
           <path fill="url(#botBlueGrad)" d="M -50,370 L -50,220 C 640,220 1240,220 1490,40 L 1490,370 Z" filter="drop-shadow(0px -5px 15px rgba(0,0,0,0.15))" />
         </svg>
-        <img
-          src="/Driver_logo_2.png"
-          alt="Delivery Rider"
-          className="absolute bottom-[8%] right-[5%] w-[18vh] h-[18vh] md:w-[150px] md:h-[150px] object-contain animate-float-dish-2 drop-shadow-2xl"
-        />
       </div>
 
       {/* Hidden keyboard-keeper: focused on the "Log in" tap so iOS keeps the

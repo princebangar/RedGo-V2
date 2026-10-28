@@ -88,6 +88,38 @@ function RouteSyncHandler() {
   return null
 }
 
+// Phone status bar colour follows the page: brand red on the home page (Home sets the festival colour
+// itself once its settings load), white (dark grey in dark mode) on the other user pages.
+function StatusBarColorHandler() {
+  const location = useLocation()
+
+  useEffect(() => {
+    const path = location.pathname.replace(/\/+$/, "")
+    const isHome = path === "/food/user" || path === "/food"
+    let color = "#FFFFFF"
+    if (isHome) {
+      let festColor = ""
+      try {
+        if (localStorage.getItem("CACHED_FEST_BANNER")) festColor = localStorage.getItem("CACHED_FEST_BANNER_COLOR") || ""
+      } catch {}
+      color = festColor || "#D91F3A"
+    } else if (document.documentElement.classList.contains("dark")) {
+      color = "#0a0a0a"
+    }
+    try {
+      let meta = document.querySelector('meta[name="theme-color"]')
+      if (!meta) {
+        meta = document.createElement("meta")
+        meta.name = "theme-color"
+        document.head.appendChild(meta)
+      }
+      meta.setAttribute("content", color)
+    } catch {}
+  }, [location.pathname])
+
+  return null
+}
+
 // Create SearchOverlay context with default value
 const SearchOverlayContext = createContext({
   isSearchOpen: false,
@@ -514,6 +546,7 @@ function UserLayoutContent() {
   return (
     <>
       <RouteSyncHandler />
+      <StatusBarColorHandler />
       
       {/* Location Fetching Loader - Only shown on main pages after login */}
       {showGlobalLoader && !isInitialChecking && !location.pathname.includes('/search') && (

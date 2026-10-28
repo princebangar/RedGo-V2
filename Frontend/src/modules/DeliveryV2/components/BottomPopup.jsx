@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react"
 import { motion, AnimatePresence } from "framer-motion"
 import { X, ChevronDown } from "lucide-react"
+import useCloseOnBack from "../hooks/useCloseOnBack"
 const debugLog = (...args) => {}
 const debugWarn = (...args) => {}
 const debugError = (...args) => {}
@@ -35,8 +36,13 @@ export default function BottomPopup({
   collapsedContent = null, // Content to show when collapsed (e.g., Reached pickup button)
   showBackdrop = true, // Show backdrop overlay
   backdropBlocksInteraction = true, // Whether backdrop blocks pointer events
-  closeOnHandleClick = false // Close instead of collapse when handle is clicked
+  closeOnHandleClick = false, // Close instead of collapse when handle is clicked
+  closeOnBack = false, // Device/browser Back closes the sheet instead of leaving the page
+  swipeAnywhere = false // Swiping down anywhere on the sheet (content scrolled to top) closes it
 }) {
+  useCloseOnBack(isOpen && closeOnBack, onClose)
+  const contentRef = useRef(null)
+  const swipeStartX = useRef(0)
   const popupRef = useRef(null)
   const handleRef = useRef(null)
   const swipeStartY = useRef(0)
@@ -75,7 +81,7 @@ export default function BottomPopup({
     const isHandle = handleRef.current?.contains(target)
 
     // If clicking on handle, don't start swipe - handle will toggle collapse
-    if (isHandle) {
+    if (isHandle && !swipeAnywhere) {
       return
     }
 
@@ -85,13 +91,16 @@ export default function BottomPopup({
 
     const touchY = e.touches[0].clientY
     const handleArea = rect.top + 80 // Top 80px is swipeable area
+    const contentAtTop = !contentRef.current || contentRef.current.scrollTop <= 0
 
-    // Allow swipe if touching top area (but not handle)
-    if (touchY <= handleArea) {
+    // Allow swipe if touching top area (or anywhere when the content is scrolled to the top)
+    if (touchY <= handleArea || (swipeAnywhere && contentAtTop)) {
       e.stopPropagation()
       swipeStartY.current = touchY
+      swipeStartX.current = e.touches[0].clientX
       isSwiping.current = true
-      setIsDragging(true)
+      // With swipeAnywhere the sheet only follows the finger once the move is clearly vertical.
+      if (!swipeAnywhere) setIsDragging(true)
     }
   }
 
@@ -102,6 +111,12 @@ export default function BottomPopup({
 
     const currentY = e.touches[0].clientY
     const deltaY = currentY - swipeStartY.current
+
+    if (swipeAnywhere && !isDragging) {
+      const deltaX = Math.abs(e.touches[0].clientX - swipeStartX.current)
+      if (deltaY > 10 && deltaY > deltaX) setIsDragging(true)
+      return
+    }
 
     // Only allow downward swipe (positive deltaY)
     // Don't call preventDefault - CSS touch-action: none handles scrolling prevention
@@ -297,7 +312,7 @@ export default function BottomPopup({
             className="fixed bottom-0 left-0 right-0 bg-white rounded-t-3xl shadow-2xl z-110 overflow-hidden flex flex-col"
             style={{
               maxHeight: isCollapsed ? "120px" : maxHeight,
-              touchAction: disableSwipeToClose ? 'auto' : 'none'
+              touchAction: disableSwipeToClose ? 'auto' : (swipeAnywhere ? 'pan-y' : 'none')
             }}
           >
             {/* Top Drag Handle Bar - Always visible for dragging */}
@@ -317,15 +332,17 @@ export default function BottomPopup({
                   }
                 }}
                 onTouchStart={(e) => {
-                  // Store touch start for click detection
-                  e.stopPropagation()
+                  // With swipeAnywhere the sheet's own handler tracks a swipe that starts on the handle.
+                  if (!swipeAnywhere) e.stopPropagation()
                 }}
                 onTouchEnd={(e) => {
-                  // Handle touch end for mobile collapse toggle
+                  // A drag that started on the handle is finished by the sheet; only a tap toggles/closes.
+                  if (swipeAnywhere && isDragging) return
                   debugLog('?? Handle touched, current collapsed:', isCollapsed)
                   e.stopPropagation()
                   e.preventDefault()
-                  handleCollapseToggle(e)
+                  if (closeOnHandleClick) handleClose()
+                  else handleCollapseToggle(e)
                 }}
                 onMouseDown={(e) => {
                   // Prevent drag when clicking handle
@@ -339,9 +356,6 @@ export default function BottomPopup({
                   background: 'transparent'
                 }}
               >
-                <ChevronDown
-                  className="w-6 h-6 text-gray-400 mb-1 pointer-events-none"
-                />
                 <div
                   className="w-12 h-1.5 bg-gray-300 rounded-full pointer-events-none"
                 />
@@ -370,7 +384,7 @@ export default function BottomPopup({
 
             {/* Content */}
             {!isCollapsed ? (
-              <div className="flex-1 overflow-y-auto px-3 sm:px-4 py-3 sm:py-4">
+              <div ref={contentRef} className="flex-1 overflow-y-auto overscroll-contain px-3 sm:px-4 py-3 sm:py-4">
                 {children}
               </div>
             ) : (

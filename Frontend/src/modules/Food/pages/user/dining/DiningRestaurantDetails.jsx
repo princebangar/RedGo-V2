@@ -23,13 +23,26 @@ import {
 import { Button } from "@food/components/ui/button"
 import { toast } from "sonner"
 
-const formatAddress = (restaurant) =>
-  restaurant?.location?.addressLine1 ||
-  restaurant?.location?.formattedAddress ||
-  restaurant?.location?.address ||
-  [restaurant?.location?.area || restaurant?.area, restaurant?.location?.city || restaurant?.city]
+const formatAddress = (restaurant) => {
+  const loc = restaurant?.location || {}
+  // The full picked address first; otherwise build it from the parts the restaurant entered.
+  const full = loc.formattedAddress || loc.address
+  if (full) return full
+  return [loc.addressLine1, loc.addressLine2, loc.area || restaurant?.area, loc.city || restaurant?.city, loc.state, loc.pincode]
     .filter(Boolean)
     .join(", ")
+}
+
+const getMapsUrl = (restaurant) => {
+  const loc = restaurant?.location || {}
+  const lat = Number(loc.latitude ?? loc.lat ?? (Array.isArray(loc.coordinates) ? loc.coordinates[1] : NaN))
+  const lng = Number(loc.longitude ?? loc.lng ?? (Array.isArray(loc.coordinates) ? loc.coordinates[0] : NaN))
+  if (Number.isFinite(lat) && Number.isFinite(lng) && !(lat === 0 && lng === 0)) {
+    return `https://www.google.com/maps/search/?api=1&query=${lat},${lng}`
+  }
+  const text = formatAddress(restaurant)
+  return text ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(text)}` : ""
+}
 
 const buildImageList = (restaurant) => {
   const candidates = [
@@ -47,18 +60,17 @@ const buildImageList = (restaurant) => {
 }
 
 const buildFacilities = (restaurant) => {
-  const facilities = []
+  const facilities = Array.isArray(restaurant?.facilities) ? restaurant.facilities.filter(Boolean) : []
+  const dining = restaurant?.diningSettings || {}
+  const has = (label) => facilities.some((f) => String(f).toLowerCase() === label.toLowerCase())
 
-  if (restaurant?.diningSettings?.tableBookingEnabled !== false) facilities.push("Dinner")
-  if (restaurant?.isAcceptingOrders !== false) facilities.push("Lunch")
-  if (restaurant?.diningSettings?.homeDeliveryAvailable || restaurant?.homeDeliveryAvailable) facilities.push("Home delivery")
-  if (restaurant?.diningSettings?.takeawayAvailable || restaurant?.takeawayAvailable) facilities.push("Takeaway available")
-  if (restaurant?.diningSettings?.vegOnly || restaurant?.vegOnly) facilities.push("Vegetarian only")
-  if (restaurant?.diningSettings?.lessNoisy || restaurant?.ambience === "quiet") facilities.push("Less noisy")
+  if ((restaurant?.takeawaySettings?.isEnabled || dining.takeawayAvailable || restaurant?.takeawayAvailable) && !has("Takeaway available")) facilities.push("Takeaway available")
+  if ((dining.homeDeliveryAvailable || restaurant?.homeDeliveryAvailable) && !has("Home delivery")) facilities.push("Home delivery")
+  if ((dining.pureVegRestaurant || dining.vegOnly || restaurant?.vegOnly || restaurant?.pureVegRestaurant) && !has("Vegetarian only")) facilities.push("Vegetarian only")
+  if ((dining.lessNoisy || restaurant?.ambience === "quiet") && !has("Less noisy")) facilities.push("Less noisy")
+  if (Number(dining.maxGuests) > 0) facilities.push(`Table booking up to ${Number(dining.maxGuests)} guests`)
 
-  return facilities.length > 0
-    ? facilities
-    : ["Dinner", "Lunch", "Home delivery", "Takeaway available", "Vegetarian only", "Less noisy"]
+  return facilities
 }
 
 const buildFeaturedSections = (menuSections, vegMode = false) =>
@@ -199,7 +211,10 @@ export default function DiningRestaurantDetails() {
         return
       }
 
-      setRestaurant(resolvedRestaurant)
+      setRestaurant({
+        ...resolvedRestaurant,
+        categories: resolvedRestaurant?.categories?.length ? resolvedRestaurant.categories : (routeRestaurant?.categories || []),
+      })
       
       const restaurantId = resolvedRestaurant?._id || resolvedRestaurant?.id || slug
       
@@ -303,15 +318,19 @@ export default function DiningRestaurantDetails() {
   const cuisines =
     Array.isArray(restaurant?.cuisines) && restaurant.cuisines.length > 0
       ? restaurant.cuisines.join(", ")
-      : "Asian, Italian, Continental, Chinese, North Indian, Desserts, Beverages, Coffee"
-  const costForTwo = restaurant?.costForTwo ? `${"\u20B9"}${restaurant.costForTwo} for two` : `${"\u20B9"}1900 for two`
+      : ""
+  const costForTwo = restaurant?.costForTwo ? `${"\u20B9"}${restaurant.costForTwo} for two` : ""
+  const categoryNames = (Array.isArray(restaurant?.categories) ? restaurant.categories : [])
+    .map((c) => (typeof c === "string" ? c : c?.name))
+    .filter(Boolean)
+  const mapsUrl = getMapsUrl(restaurant)
   const facilities = buildFacilities(restaurant)
   const rating = Number(restaurant?.rating || restaurant?.avgRating || 0).toFixed(1)
   const reviewCount = restaurant?.totalRatings || restaurant?.reviewCount || restaurant?.reviewsCount || 0
   const todayName = new Date().toLocaleDateString("en-US", { weekday: "long" })
   const todayTiming = outletTimings?.[todayName] || null
-  const rawOpeningTime = todayTiming?.openingTime || restaurant?.openingTime || restaurant?.diningSettings?.openingTime || "12:00"
-  const rawClosingTime = todayTiming?.closingTime || restaurant?.closingTime || restaurant?.diningSettings?.closingTime || "23:59"
+  const rawOpeningTime = todayTiming?.openingTime || restaurant?.openingTime || restaurant?.diningSettings?.openingTime || ""
+  const rawClosingTime = todayTiming?.closingTime || restaurant?.closingTime || restaurant?.diningSettings?.closingTime || ""
   const openingTime = formatTimeLabel(rawOpeningTime)
   const closingTime = formatTimeLabel(rawClosingTime)
 
@@ -461,11 +480,20 @@ export default function DiningRestaurantDetails() {
               <div className="min-w-0 flex-1">
                 <h1 className="text-[36px] font-black leading-none tracking-[-0.03em]">{restaurantName}</h1>
                 <p className="mt-2 max-w-[94%] text-[14px] leading-5 text-white/92">{address}</p>
-                <p className="mt-2 text-[14px] text-white/90">
-                  {costForTwo}
-                  <span className="mx-1.5 text-white/65">•</span>
-                  {cuisines}
-                </p>
+                {(costForTwo || cuisines) && (
+                  <p className="mt-2 text-[14px] text-white/90">
+                    {costForTwo}
+                    {costForTwo && cuisines ? <span className="mx-1.5 text-white/65">•</span> : null}
+                    {cuisines}
+                  </p>
+                )}
+                {categoryNames.length > 0 && (
+                  <div className="mt-2 flex flex-wrap gap-1.5">
+                    {categoryNames.map((name) => (
+                      <span key={name} className="rounded-full bg-white/20 px-2.5 py-0.5 text-[12px] font-medium backdrop-blur-sm">{name}</span>
+                    ))}
+                  </div>
+                )}
                 <div className="mt-2 inline-flex items-center gap-1.5 rounded-full bg-black/28 px-2.5 py-1 text-[13px] font-medium backdrop-blur-sm">
                   {isOpenNow ? (
                     <CheckCircle2 className="h-4 w-4 text-[#48d597]" />
@@ -546,20 +574,16 @@ export default function DiningRestaurantDetails() {
           <div className="flex items-end justify-between gap-3">
             <div>
               <h2 className="text-[28px] font-black leading-none text-[#23180f] dark:text-slate-100">Menu</h2>
-              <p className="mt-2 text-[13px] text-[#e19135] dark:text-orange-400">Last updated a month ago</p>
             </div>
-            <div className="rounded-full bg-[#fff3e6] dark:bg-orange-950/30 px-3 py-1 text-xs font-semibold text-[#e58a2c] dark:text-orange-300">
-              {featuredSections.length || 2} dishes
-            </div>
+            {featuredSections.length > 0 && (
+              <div className="rounded-full bg-[#fff3e6] dark:bg-orange-950/30 px-3 py-1 text-xs font-semibold text-[#e58a2c] dark:text-orange-300">
+                {featuredSections.reduce((sum, section) => sum + section.pages, 0)} dishes
+              </div>
+            )}
           </div>
 
           <div className="mt-4 grid grid-cols-2 gap-3">
-            {(featuredSections.length > 0
-              ? featuredSections
-              : [
-                  { id: "food", title: "Food", pages: 16 },
-                  { id: "beverages", title: "Beverages", pages: 10 },
-                ]).map((section, index) => (
+            {featuredSections.map((section, index) => (
               <div key={section.id} className="overflow-hidden rounded-[18px] border border-[#ede8dd] dark:border-slate-800 bg-white dark:bg-slate-900">
                 <div className="aspect-[0.88] bg-[#f7f1e7] dark:bg-slate-800">
                   {menuPreviewImages[index] ? (
@@ -572,7 +596,7 @@ export default function DiningRestaurantDetails() {
                 </div>
                 <div className="px-2 pb-3 pt-2 text-center">
                   <p className="text-[16px] font-medium leading-tight text-[#2b2218] dark:text-slate-100">{section.title}</p>
-                  <p className="mt-1 text-[12px] text-[#7f7a73] dark:text-slate-400">{section.pages} pages</p>
+                  <p className="mt-1 text-[12px] text-[#7f7a73] dark:text-slate-400">{section.pages} {section.pages === 1 ? "dish" : "dishes"}</p>
                 </div>
               </div>
             ))}
@@ -603,38 +627,52 @@ export default function DiningRestaurantDetails() {
           <h2 className="text-[28px] font-black leading-none text-[#23180f] dark:text-slate-100">About the restaurant</h2>
           <div className="mt-4 rounded-[18px] border border-[#ececf4] dark:border-slate-800 bg-[#fafbff] dark:bg-slate-900 p-4 transition-colors">
             <div className="space-y-4 text-[14px] text-[#5f6474] dark:text-slate-400">
-              <div className="flex items-start gap-3">
-                <IndianRupee className="mt-0.5 h-4 w-4 shrink-0 text-[#f0b500]" />
-                <p>{costForTwo}</p>
-              </div>
+              {costForTwo && (
+                <div className="flex items-start gap-3">
+                  <IndianRupee className="mt-0.5 h-4 w-4 shrink-0 text-[#f0b500]" />
+                  <p>{costForTwo}</p>
+                </div>
+              )}
 
-              <div className="flex items-start gap-3">
-                <div className="mt-[7px] h-2 w-2 shrink-0 rounded-full bg-[#8a8f9d]" />
-                <p>{cuisines}</p>
-              </div>
+              {cuisines && (
+                <div className="flex items-start gap-3">
+                  <div className="mt-[7px] h-2 w-2 shrink-0 rounded-full bg-[#8a8f9d]" />
+                  <p>{cuisines}</p>
+                </div>
+              )}
 
               <div className="flex items-start gap-3">
                 <MapPin className="mt-0.5 h-4 w-4 shrink-0 text-[#DC2626]" />
-                <p>{address}</p>
-              </div>
-            </div>
-
-            <div className="mt-5 border-t border-[#e8e8ef] dark:border-slate-800 pt-4">
-              <h3 className="text-[20px] font-semibold text-[#23180f] dark:text-slate-100">Featured In</h3>
-              <div className="mt-3 overflow-hidden rounded-[16px] bg-white dark:bg-slate-800 shadow-sm">
-                <div className="aspect-[1.2] bg-[#efe8df] dark:bg-slate-700">
-                  {heroImage ? (
-                    <img src={heroImage} alt={restaurantName} className="h-full w-full object-cover" />
-                  ) : (
-                    <div className="flex h-full items-center justify-center text-sm text-[#a28868] dark:text-slate-400">Featured image</div>
+                <div>
+                  <p>{address}</p>
+                  {mapsUrl && (
+                    <a
+                      href={mapsUrl}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="mt-1 inline-block text-[13px] font-semibold text-[#DC2626] underline"
+                    >
+                      Open in Maps
+                    </a>
                   )}
                 </div>
-                <div className="-mt-14 bg-[linear-gradient(180deg,rgba(0,0,0,0),rgba(0,0,0,0.72))] p-3 pt-10 text-sm font-medium text-white">
-                  Pan-Asian Restaurants
-                </div>
               </div>
             </div>
 
+            {categoryNames.length > 0 && (
+              <div className="mt-5 border-t border-[#e8e8ef] dark:border-slate-800 pt-4">
+                <h3 className="text-[20px] font-semibold text-[#23180f] dark:text-slate-100">Dining categories</h3>
+                <div className="mt-3 flex flex-wrap gap-2">
+                  {categoryNames.map((name) => (
+                    <span key={name} className="rounded-full border border-[#ececf4] dark:border-slate-700 bg-white dark:bg-slate-800 px-3 py-1.5 text-[13px] font-medium text-[#5f6474] dark:text-slate-300">
+                      {name}
+                    </span>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {facilities.length > 0 && (
             <div className="mt-5 border-t border-[#e8e8ef] dark:border-slate-800 pt-4">
               <h3 className="text-[20px] font-semibold text-[#23180f] dark:text-slate-100">Facilities</h3>
               <div className="mt-3 grid grid-cols-2 gap-x-4 gap-y-3">
@@ -646,6 +684,7 @@ export default function DiningRestaurantDetails() {
                 ))}
               </div>
             </div>
+            )}
           </div>
         </section>
       </div>

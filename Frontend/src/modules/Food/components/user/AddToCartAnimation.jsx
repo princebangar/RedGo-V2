@@ -4,7 +4,7 @@ import { useCart } from "@food/context/CartContext";
 import { useProfile } from "@food/context/ProfileContext";
 import { useEffect, useRef, useState } from 'react';
 import { gsap } from 'gsap';
-import dishFallbackImage from "@food/assets/dish_fallback.webp";
+import dishFallbackImage from "@food/assets/placeholders/dish_fallback.webp";
 const debugLog = (...args) => {}
 const debugWarn = (...args) => {}
 const debugError = (...args) => {}

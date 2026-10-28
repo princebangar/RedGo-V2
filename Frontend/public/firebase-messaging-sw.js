@@ -223,8 +223,8 @@ async function showOsNotificationFromPayload(payload) {
 
   await self.registration.showNotification(title, {
     body,
-    icon: "/favicon.ico",
-    badge: "/favicon.ico",
+    icon: "/logo.png",
+    badge: "/logo.png",
     image,
     tag: notificationKey || `redgo-${Date.now()}`,
     renotify: data.type === "admin_broadcast",

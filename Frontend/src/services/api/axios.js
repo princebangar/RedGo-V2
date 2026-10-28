@@ -178,7 +178,10 @@ apiClient.interceptors.response.use(
     const module = original.contextModule || getModuleFromUrl(original.url);
     const refreshToken = getRefreshToken(module);
     if (!refreshToken) {
-      clearModuleAuth(module);
+      // A rider with no session left kept seeing the Feed as "online" while every call failed
+      // silently, so no orders came; send them to login. Other modules keep the old behaviour.
+      if (module === "delivery") onRefreshFailed(module);
+      else clearModuleAuth(module);
       return Promise.reject(err);
     }
 

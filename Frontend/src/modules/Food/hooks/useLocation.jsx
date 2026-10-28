@@ -1245,7 +1245,7 @@ export function useLocation() {
               })
 
               // Validate coordinates are in India range BEFORE attempting geocoding
-              // India: Latitude 6.5� to 37.1� N, Longitude 68.7� to 97.4� E
+              // India: Latitude 6.5° to 37.1° N, Longitude 68.7° to 97.4° E
               let finalLat = latitude
               let finalLng = longitude
               const isInIndiaRange = latitude >= 6.5 && latitude <= 37.1 && longitude >= 68.7 && longitude <= 97.4 && longitude > 0
@@ -1554,7 +1554,7 @@ export function useLocation() {
             retryCount = 0
 
             // Validate coordinates are in India range BEFORE attempting geocoding
-            // India: Latitude 6.5� to 37.1� N, Longitude 68.7� to 97.4� E
+            // India: Latitude 6.5° to 37.1° N, Longitude 68.7° to 97.4° E
             const isInIndiaRange = latitude >= 6.5 && latitude <= 37.1 && longitude >= 68.7 && longitude <= 97.4 && longitude > 0
 
             // "Geocode once" mode:

@@ -197,7 +197,7 @@ export default function DeliverymanBonus() {
                           {formatCurrency(tx.amount ?? tx.bonus)}
                         </td>
                         <td className="px-6 py-4 text-sm text-slate-700 max-w-xs truncate" title={tx.reference}>
-                          {tx.reference || "—"}
+                          {tx.reference || "â€”"}
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap text-sm text-slate-700">
                           {formatDate(tx.createdAt)}

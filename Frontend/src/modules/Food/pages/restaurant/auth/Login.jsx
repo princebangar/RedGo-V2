@@ -68,14 +68,15 @@ export default function RestaurantLogin() {
   const focusKeeperRef = useRef(null)
   const keyboardPrimedRef = useRef(false)
 
-  const clearPersistedLoginPhone = () => {
+  // Keep the typed number when the user opens Terms / Privacy / Support and comes back.
+  const persistLoginPhone = () => {
     try {
-      sessionStorage.removeItem("restaurantLoginPhone")
-      sessionStorage.setItem("restaurantClearLoginPhone", "1")
+      sessionStorage.removeItem("restaurantClearLoginPhone")
+      if (phone) sessionStorage.setItem("restaurantLoginPhone", phone)
+      else sessionStorage.removeItem("restaurantLoginPhone")
     } catch {
       // ignore
     }
-    setPhone("")
   }
 
   const getBlockKey = (phoneStr) => {
@@ -318,6 +319,7 @@ export default function RestaurantLogin() {
         const statusVal = isRejected ? "rejected" : "pending"
         localStorage.setItem("restaurant_pendingStatus", statusVal)
         localStorage.setItem("restaurant_pendingMessage", data.message || "")
+        if (data.pendingToken) localStorage.setItem("restaurant_pendingToken", data.pendingToken)
         setShowRestorePopup(false)
         setLoading(false)
         navigate("/food/restaurant/pending-verification", {
@@ -459,6 +461,11 @@ export default function RestaurantLogin() {
     try {
       const purpose = authData.isSignUp ? "register" : "login"
       await restaurantAPI.sendOTP(authData.phone, purpose, authData.email)
+      // The old code is no longer valid, so clear what was typed
+      setOtp(["", "", "", ""])
+      setOtpError("")
+      hasSubmittedRef.current = false
+      setTimeout(() => inputRefs.current[0]?.focus(), 50)
       setResendTimer(59)
       sessionStorage.setItem(getResendKey(authData.phone), (Date.now() + (59 * 1000)).toString())
       toast.success("OTP resent successfully.")
@@ -560,25 +567,6 @@ export default function RestaurantLogin() {
 
   return (
     <div className="min-h-[100dvh] bg-white dark:bg-[#0a0a0a] flex flex-col relative overflow-hidden font-['Poppins']">
-      <style>
-        {`
-          @keyframes floatDish1 {
-            0%, 100% { transform: translateX(0vw) translateY(0px) rotate(0deg); }
-            50% { transform: translateX(25vw) translateY(-15px) rotate(8deg); }
-          }
-          @keyframes floatDish2 {
-            0%, 100% { transform: translateX(0vw) translateY(0px) rotate(0deg); }
-            50% { transform: translateX(-25vw) translateY(-15px) rotate(-8deg); }
-          }
-          .animate-float-dish-1 {
-            animation: floatDish1 12s ease-in-out infinite;
-          }
-          .animate-float-dish-2 {
-            animation: floatDish2 12s ease-in-out infinite;
-          }
-        `}
-      </style>
-
       {/* Top Wave */}
       <div className="absolute top-0 left-0 w-full h-[40vh] pointer-events-none z-0 transform scale-[1.05] origin-center">
         <svg viewBox="0 0 1440 320" className="w-full h-full block" preserveAspectRatio="none" overflow="visible">
@@ -590,11 +578,6 @@ export default function RestaurantLogin() {
           </defs>
           <path fill="url(#topRedGrad)" d="M -50,-50 L -50,280 C 200,100 800,100 1490,100 L 1490,-50 Z" filter="drop-shadow(0px 5px 15px rgba(0,0,0,0.15))" />
         </svg>
-        <img
-          src="/Restaurant_logo_2.png"
-          alt="Restaurant Partner"
-          className="absolute top-[8%] left-[5%] w-[14vh] h-[14vh] md:w-[120px] md:h-[120px] object-contain animate-float-dish-1 drop-shadow-xl"
-        />
       </div>
 
       {/* Bottom Wave */}
@@ -608,11 +591,6 @@ export default function RestaurantLogin() {
           </defs>
           <path fill="url(#botRedGrad)" d="M -50,370 L -50,220 C 640,220 1240,220 1490,40 L 1490,370 Z" filter="drop-shadow(0px -5px 15px rgba(0,0,0,0.15))" />
         </svg>
-        <img
-          src="/Restaurant_logo_1.png"
-          alt="Restaurant Partner"
-          className="absolute bottom-[13%] right-[5%] w-[18vh] h-[18vh] md:w-[150px] md:h-[150px] object-contain animate-float-dish-2 drop-shadow-2xl"
-        />
       </div>
 
       {/* Hidden keyboard-keeper: focused on the "Log in" tap so iOS keeps the
@@ -799,7 +777,7 @@ export default function RestaurantLogin() {
                 <Link
                   to="/food/restaurant/terms"
                   state={{ from: "/food/restaurant/login" }}
-                  onClick={clearPersistedLoginPhone}
+                  onClick={persistLoginPhone}
                   className="text-gray-400 hover:text-[#B80B3D] transition-colors uppercase tracking-wider font-semibold"
                 >
                   TERMS
@@ -808,7 +786,7 @@ export default function RestaurantLogin() {
                 <Link
                   to="/food/restaurant/privacy"
                   state={{ from: "/food/restaurant/login" }}
-                  onClick={clearPersistedLoginPhone}
+                  onClick={persistLoginPhone}
                   className="text-gray-400 hover:text-[#B80B3D] transition-colors uppercase tracking-wider font-semibold"
                 >
                   PRIVACY
@@ -817,7 +795,7 @@ export default function RestaurantLogin() {
                 <Link
                   to="/food/restaurant/help-content"
                   state={{ from: "/food/restaurant/login" }}
-                  onClick={clearPersistedLoginPhone}
+                  onClick={persistLoginPhone}
                   className="text-gray-400 hover:text-[#B80B3D] transition-colors uppercase tracking-wider font-semibold"
                 >
                   SUPPORT

@@ -1,5 +1,6 @@
 import mongoose from 'mongoose';
 import { FoodItem } from '../../admin/models/food.model.js';
+import { FoodAddon } from '../../restaurant/models/foodAddon.model.js';
 import { ValidationError } from '../../../../core/auth/errors.js';
 import {
   applyOtherPriceToFood,
@@ -13,9 +14,39 @@ import {
  * Force each food line's charged price from live FoodItem + admin pricing rules.
  * Admin markup lives in price (selling) + basePrice + markupAmount — not otherPrice.
  */
+/** Cart add-on lines: live price + availability from the approved (published) add-on. */
+async function enforceAddonLinePrices(addonItems = [], restaurantId = null) {
+  if (!addonItems.length) return;
+  const ids = addonItems.map((i) => String(i.itemId || '')).filter((id) => mongoose.isValidObjectId(id));
+  const docs = await FoodAddon.find({ _id: { $in: ids }, isDeleted: { $ne: true } }).lean();
+  const map = new Map(docs.map((d) => [String(d._id), d]));
+  for (const item of addonItems) {
+    const doc = map.get(String(item.itemId || ''));
+    const label = item.name || 'This add-on';
+    if (!doc || !doc.published || doc.isAvailable === false) {
+      throw new ValidationError(`"${label}" is no longer available. Please refresh your cart.`);
+    }
+    if (restaurantId && String(doc.restaurantId) !== String(restaurantId)) {
+      throw new ValidationError(`"${label}" does not belong to the selected restaurant.`);
+    }
+    const price = Math.max(0, Number(doc.published.price) || 0);
+    item.name = doc.published.name || item.name;
+    item.price = price;
+    item.basePrice = price;
+    item.variantPrice = price;
+    item.otherPrice = 0;
+    item.markupAmount = 0;
+    item.pricingScope = null;
+    if (item.isVeg == null) item.isVeg = true;
+  }
+}
+
 export async function enforceMinimumFoodItemPrices(items = [], restaurantId = null) {
-  const foodItems = Array.isArray(items) ? items : [];
-  if (!foodItems.length) return foodItems;
+  const allItems = Array.isArray(items) ? items : [];
+  if (!allItems.length) return allItems;
+  await enforceAddonLinePrices(allItems.filter((i) => i?.itemType === 'addon'), restaurantId);
+  const foodItems = allItems.filter((i) => i?.itemType !== 'addon');
+  if (!foodItems.length) return allItems;
 
   const validIds = [
     ...new Set(
@@ -177,7 +208,7 @@ export async function enforceMinimumFoodItemPrices(items = [], restaurantId = nu
     }
   }
 
-  return foodItems;
+  return allItems;
 }
 
 /**

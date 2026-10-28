@@ -4,10 +4,13 @@ import { adminAPI } from "@food/api"
 import { Button } from "@food/components/ui/button"
 import { Badge } from "@food/components/ui/badge"
 import { toast } from "sonner"
+import { useNavigate } from "react-router-dom"
+import { refreshSidebarBadges } from "@food/components/admin/AdminSidebar"
 
 const debugError = (...args) => {}
 
 export default function DiningRequests() {
+    const navigate = useNavigate()
     const [requests, setRequests] = useState([])
     const [loading, setLoading] = useState(true)
     const [processingId, setProcessingId] = useState(null)
@@ -46,6 +49,7 @@ export default function DiningRequests() {
             if (response.data.success) {
                 toast.success("Request approved successfully")
                 setRequests(requests.filter(r => r._id !== requestId))
+                refreshSidebarBadges()
             }
         } catch (err) {
             toast.error(err.response?.data?.message || "Failed to approve request")
@@ -64,6 +68,7 @@ export default function DiningRequests() {
             if (response.data.success) {
                 toast.success("Request rejected")
                 setRequests(requests.filter(r => r._id !== requestId))
+                refreshSidebarBadges()
             }
         } catch (err) {
             toast.error(err.response?.data?.message || "Failed to reject request")
@@ -175,6 +180,15 @@ export default function DiningRequests() {
                                             Requested on: {new Date(request.createdAt).toLocaleString()}
                                         </div>
                                         <div className="flex items-center gap-3">
+                                            {request.restaurant?._id && (
+                                                <Button
+                                                    variant="outline"
+                                                    onClick={() => navigate(`/admin/food/restaurants?restaurantId=${request.restaurant._id}`)}
+                                                    className="border-slate-200 font-semibold"
+                                                >
+                                                    View restaurant
+                                                </Button>
+                                            )}
                                             <Button 
                                                 variant="outline" 
                                                 onClick={() => handleReject(request._id)}

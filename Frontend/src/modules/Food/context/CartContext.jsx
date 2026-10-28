@@ -592,6 +592,7 @@ export function CartProvider({ children }) {
           itemId: item.itemId || item.productId || item.foodId || item.id,
           variantId: item.variantId || "",
           quantity: Number(item.quantity) || 1,
+          ...(item.itemType === "addon" ? { itemType: "addon" } : {}),
         })
         if (seq !== mutationSeqRef.current) {
           return { ok: true }

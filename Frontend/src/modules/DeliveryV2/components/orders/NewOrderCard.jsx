@@ -61,11 +61,8 @@ export default function NewOrderCard({
 
   if (!order) return null;
 
-  const earnings =
-    order.earnings ||
-    order.riderEarning ||
-    order.pricing?.total ||
-    (order.orderAmount ? order.orderAmount * 0.1 : 0);
+  // Rider earning only — never the customer's bill (that was shown as "earning" before)
+  const earnings = order.earnings ?? order.riderEarning ?? 0;
   const displayId = order?.orderId || order?.displayOrderId || order?._id;
   const restaurantName =
     order.restaurantName ||
@@ -190,7 +187,7 @@ export default function NewOrderCard({
                 metrics.isReady ? 'text-blue-600' : 'text-gray-500'
               }`}
             >
-              ₹{Number(earnings || 0).toFixed(2)} · {routeSummary}
+              Earning ₹{Number(earnings || 0).toFixed(2)} · {routeSummary}
             </p>
           </div>
         </button>

@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
+import useCloseOnBack from '../../hooks/useCloseOnBack';
 import { ArrowLeft, Eye, Edit2, Loader2, Camera, X, Plus, FileText, Image as ImageIcon } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { deliveryAPI } from '@food/api';
@@ -16,6 +17,8 @@ export const ProfileDocsV2 = () => {
   const [loading, setLoading] = useState(true);
   const [isUpdating, setIsUpdating] = useState(false);
   const [showViewer, setShowViewer] = useState(null); // { title: string, url: string }
+  // Back closes the opened document first instead of leaving the page.
+  useCloseOnBack(Boolean(showViewer), () => setShowViewer(null));
   const [uploadField, setUploadField] = useState(null)
   const fileInputRef = useRef(null);
 

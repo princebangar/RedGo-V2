@@ -61,8 +61,17 @@ const FoodAppWrapper = () => {
 
   const isOnboarding = location.pathname.startsWith('/food/restaurant/onboarding');
 
+  // Restaurant / delivery / admin apps must not flash the customer home skeleton while loading
+  const fallback = isOnboarding
+    ? <OnboardingSkeleton />
+    : isPolicyPage
+      ? <PageLoader />
+      : isNonUserModulePath
+        ? <div className="fixed inset-0 bg-white dark:bg-[#0a0a0a]" />
+        : <AppShellSkeleton />;
+
   return (
-    <Suspense fallback={isOnboarding ? <OnboardingSkeleton /> : (isPolicyPage ? <PageLoader /> : <AppShellSkeleton />)}>
+    <Suspense fallback={fallback}>
       <FoodApp />
     </Suspense>
   )

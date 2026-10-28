@@ -24,12 +24,10 @@ let firebaseRealtimeDb = null;
  */
 function initializeBaseApp() {
   if (app) return app;
-  const existingApps = getApps();
-  if (existingApps.length > 0) {
-    app = existingApps[0];
-  } else {
-    app = initializeApp(firebaseConfig);
-  }
+  // Use the [DEFAULT] app only: the push-messaging app is created under its own name without a
+  // databaseURL, and picking it made live tracking use the wrong (default-region) database.
+  const existingDefault = getApps().find((a) => a.name === '[DEFAULT]');
+  app = existingDefault || initializeApp(firebaseConfig);
   return app;
 }
 

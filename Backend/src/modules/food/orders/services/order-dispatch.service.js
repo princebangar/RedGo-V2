@@ -25,6 +25,31 @@ import {
 /** Never offer a job farther than this, even inside a large/misdrawn zone. */
 const HARD_MAX_OFFER_DISTANCE_KM = 40;
 
+/**
+ * Push "new order" to every offered rider. The socket event only reaches a rider whose app is
+ * open; a rider with the app in the background or closed only learns about the order by push.
+ */
+async function pushNewOrderToPartners(partners = [], order) {
+  const targets = (partners || [])
+    .map((p) => p?.partnerId || p?._id)
+    .filter(Boolean)
+    .map((id) => ({ ownerType: 'DELIVERY_PARTNER', ownerId: id }));
+  if (!targets.length) return;
+  try {
+    await notifyOwnersSafely(targets, {
+      title: 'New order assigned!',
+      body: `You have 60 seconds to accept Order #${order.order_id || order.orderId || order._id}.`,
+      data: {
+        type: 'new_order',
+        orderId: order.order_id || order._id.toString(),
+        orderMongoId: order._id.toString(),
+      },
+    });
+  } catch (err) {
+    logger.warn(`Push notification failed for order ${order._id}: ${err.message}`);
+  }
+}
+
 async function filterPartnersByCashLimit(partners = [], options = {}) {
   if (!Array.isArray(partners) || partners.length === 0) return [];
   const requiredAmount = Math.max(0, Number(options.requiredAmount || 0));
@@ -178,6 +203,11 @@ async function listNearbyOnlineDeliveryPartners(
   const allowedStatuses =
     process.env.NODE_ENV === 'production' ? ['approved'] : ['approved', 'pending'];
   const STALE_GPS_MS = 10 * 60 * 1000;
+  // The rider app stops sending GPS while it is in the background or off the Feed screen, so an
+  // online rider can look "stale" while still waiting for orders. Such riders are still offered
+  // the order, after the riders with fresh GPS. Leaving them out entirely meant a free rider got
+  // nothing whenever another rider in the zone had fresher GPS.
+  const FALLBACK_GPS_MS = 60 * 60 * 1000;
   const offerRadiusKm = Math.min(
     Math.max(Number(maxKm) || 15, 1),
     HARD_MAX_OFFER_DISTANCE_KM,
@@ -191,26 +221,33 @@ async function listNearbyOnlineDeliveryPartners(
     .lean();
 
   // Zone-first: only partners currently inside the order/restaurant zone.
-  const inZonePartners = (allOnline || []).filter((p) => {
+  const inZoneWithin = (maxAgeMs) => (allOnline || []).filter((p) => {
     if (p.lastLat == null || p.lastLng == null || !p.lastLocationAt) return false;
     const ageMs = Date.now() - new Date(p.lastLocationAt).getTime();
-    if (!Number.isFinite(ageMs) || ageMs > STALE_GPS_MS) return false;
+    if (!Number.isFinite(ageMs) || ageMs > maxAgeMs) return false;
     return isPartnerInsideZone(p, zoneDoc);
   });
+  const freshPartners = inZoneWithin(STALE_GPS_MS);
+  const freshIds = new Set(freshPartners.map((p) => String(p._id)));
+  const stalePartners = inZoneWithin(FALLBACK_GPS_MS).filter((p) => !freshIds.has(String(p._id)));
+  if (stalePartners.length > 0) {
+    logger.info(
+      `listNearbyOnlineDeliveryPartners: zone ${resolvedZoneId} has ${freshPartners.length} rider(s) with fresh GPS and ${stalePartners.length} with GPS up to 60 min old`,
+    );
+  }
 
-  if (inZonePartners.length === 0) {
+  if (freshPartners.length === 0 && stalePartners.length === 0) {
     return { restaurant: restaurant || null, partners: [] };
   }
 
   let scored = [];
   if (rLat != null && rLng != null) {
-    for (const p of inZonePartners) {
-      const d = haversineKm(rLat, rLng, p.lastLat, p.lastLng);
-      if (Number.isFinite(d) && d <= offerRadiusKm) {
-        scored.push({ partnerId: p._id, distanceKm: d, status: p.status });
-      }
-    }
-    scored.sort((a, b) => a.distanceKm - b.distanceKm);
+    const scoreList = (list) => list
+      .map((p) => ({ partnerId: p._id, distanceKm: haversineKm(rLat, rLng, p.lastLat, p.lastLng), status: p.status }))
+      .filter((p) => Number.isFinite(p.distanceKm) && p.distanceKm <= offerRadiusKm)
+      .sort((a, b) => a.distanceKm - b.distanceKm);
+    // Fresh GPS first (nearest first), then riders whose last GPS is older.
+    scored = [...scoreList(freshPartners), ...scoreList(stalePartners)];
   } else {
     // No restaurant GPS — refuse dispatch rather than guessing city-wide.
     logger.warn(
@@ -274,7 +311,14 @@ export async function tryAutoAssign(orderId, options = {}) {
           'dispatch.assignedAt': { $lt: new Date(Date.now() - lockTimeout) }
         }
       ],
-      'dispatch.dispatchingAt': { $exists: false }
+      // A lock older than 2 minutes was left by a crash/restart mid-dispatch; without this the
+      // order would never be offered again.
+      $and: [{
+        $or: [
+          { 'dispatch.dispatchingAt': { $exists: false } },
+          { 'dispatch.dispatchingAt': { $lt: new Date(Date.now() - 2 * 60 * 1000) } },
+        ],
+      }],
     },
     {
       $set: { 'dispatch.dispatchingAt': new Date() }
@@ -388,6 +432,10 @@ export async function tryAutoAssign(orderId, options = {}) {
           io.to(roomName).emit('new_order_available', eventPayload);
         }
       }
+      // Remind by push too, but only every 4th retry (~2 min) so riders are not spammed.
+      if (partners.length > 0 && attempt % 4 === 0) {
+        await pushNewOrderToPartners(partners, order);
+      }
 
       // Re-queue itself to keep trying
       await addOrderJob({
@@ -416,6 +464,7 @@ export async function tryAutoAssign(orderId, options = {}) {
           io.to(roomName).emit('new_order_available', eventPayload);
         }
       }
+      await pushNewOrderToPartners(eligible, order);
     } else {
       // PHASE 1: Offer to top few nearby riders (avoid single-partner bottleneck).
       const lead = phase1Batch[0];
@@ -432,24 +481,9 @@ export async function tryAutoAssign(orderId, options = {}) {
         }
       }
 
-      if (lead) {
-        try {
-          await notifyOwnerSafely(
-            { ownerType: 'DELIVERY_PARTNER', ownerId: lead.partnerId },
-            {
-              title: 'New order assigned!',
-              body: `You have 60 seconds to accept Order #${order.order_id || order._id}.`,
-              data: {
-                type: 'new_order',
-                orderId: order.order_id || order._id.toString(),
-                orderMongoId: order._id.toString(),
-              },
-            },
-          );
-        } catch (err) {
-          logger.warn(`Push notification failed for partner ${lead.partnerId}: ${err.message}`);
-        }
-      }
+      // Every rider in the batch gets the offer, so every one of them needs the push (it went to
+      // the lead only, so the other riders missed the order whenever their app was in background).
+      await pushNewOrderToPartners(phase1Batch, order);
     }
 
     const partnersToRecord = isPhase2 ? eligible : phase1Batch;
@@ -511,6 +545,37 @@ export async function processDispatchTimeout(orderId, partnerId) {
   }
 }
 
+
+/**
+ * Safety net for the BullMQ retry chain: if a retry job is lost (Redis restart, worker down or
+ * deploy), the order stayed without a rider for good. Restarts the hunt for delivery orders that
+ * still have no rider and had no dispatch activity for 2 minutes. A live retry chain touches the
+ * order every 30-60 s, so this never doubles up with it.
+ */
+export async function resumeStalledDispatches() {
+  const staleBefore = new Date(Date.now() - 2 * 60 * 1000);
+  const stalled = await FoodOrder.find({
+    orderType: 'delivery',
+    orderStatus: { $in: ['preparing', 'ready_for_pickup'] },
+    'dispatch.status': 'unassigned',
+    'dispatch.acceptedAt': { $exists: false },
+    updatedAt: { $lt: staleBefore },
+    createdAt: { $gt: new Date(Date.now() - 6 * 60 * 60 * 1000) },
+  })
+    .select('_id dispatch.offeredTo')
+    .limit(50)
+    .lean();
+
+  for (const order of stalled) {
+    try {
+      const attempt = (order.dispatch?.offeredTo?.length || 0) + 1;
+      await tryAutoAssign(order._id, { attempt });
+    } catch (err) {
+      logger.warn(`resumeStalledDispatches: order ${order._id} failed: ${err?.message || err}`);
+    }
+  }
+  return stalled.length;
+}
 
 export async function resendDeliveryNotificationRestaurant(orderId, restaurantId) {
   const identity = buildOrderIdentityFilter(orderId);

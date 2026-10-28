@@ -1,102 +1,125 @@
 import { useEffect, useState, useRef } from "react"
 import { MapPin, X } from "lucide-react"
-import { useNavigate } from "react-router-dom"
-import { useLocation, hasValidStoredUserLocation, isLocationPermissionGranted, isLocationPermissionDenied } from "@food/hooks/useLocation"
+import { useNavigate, useLocation as useRouterLocation } from "react-router-dom"
+import { useLocation, isLocationPermissionGranted } from "@food/hooks/useLocation"
+
+// Location permission is mandatory: the prompt comes back on every screen until it is granted.
+// Closing it only hides it for the current screen. Header location buttons open it on demand.
+export const OPEN_LOCATION_PROMPT_EVENT = "food:open-location-prompt"
+
+/** Opens the prompt when location permission is not granted. Returns true if it was opened. */
+export const openLocationPromptIfNeeded = () => {
+  if (isLocationPermissionGranted()) return false
+  window.dispatchEvent(new CustomEvent(OPEN_LOCATION_PROMPT_EVENT))
+  return true
+}
+
+const queryBrowserPermission = async () => {
+  try {
+    if (!navigator.permissions?.query) return null
+    const result = await navigator.permissions.query({ name: "geolocation" })
+    return result.state
+  } catch {
+    return null
+  }
+}
 
 export default function LocationPrompt() {
   const navigate = useNavigate()
-  const { location, loading, permissionGranted, requestLocation } = useLocation()
+  const { pathname } = useRouterLocation()
+  const { loading, requestLocation } = useLocation()
   const [showPrompt, setShowPrompt] = useState(false)
   const [isRequesting, setIsRequesting] = useState(false)
+  const [blocked, setBlocked] = useState(false)
   const cardRef = useRef(null)
 
+  const isAddressSelector = pathname.includes("/address-selector")
+
+  const open = () => {
+    setShowPrompt(true)
+    document.body.style.overflow = "hidden"
+  }
+
+  const close = () => {
+    setShowPrompt(false)
+    document.body.style.overflow = ""
+  }
+
+  // Re-check on every screen: show the prompt again while permission is not granted.
   useEffect(() => {
-    const promptDismissed = localStorage.getItem("locationPromptDismissed")
-    if (
-      hasValidStoredUserLocation() ||
-      promptDismissed ||
-      isLocationPermissionGranted() ||
-      isLocationPermissionDenied()
-    ) {
+    if (isAddressSelector) {
+      close()
       return
     }
-
-    // Sync with browser permission state (Android/iOS remember grant across app restarts).
-    if (navigator.permissions?.query) {
-      navigator.permissions
-        .query({ name: "geolocation" })
-        .then((result) => {
-          if (result.state === "granted") {
-            localStorage.setItem("locationPermissionGranted", "true")
-            localStorage.setItem("locationPromptDismissed", "true")
-          } else if (result.state === "denied") {
-            localStorage.setItem("locationPermissionGranted", "denied")
-          }
-        })
-        .catch(() => {})
-    }
-
-    const timer = setTimeout(() => {
-      if (
-        !hasValidStoredUserLocation() &&
-        !permissionGranted &&
-        !isLocationPermissionGranted() &&
-        !isLocationPermissionDenied()
-      ) {
-        setShowPrompt(true)
-        document.body.style.overflow = "hidden"
-        if (cardRef.current) {
-          cardRef.current.style.opacity = "0"
-          cardRef.current.style.transform = "translateY(20px)"
-          requestAnimationFrame(() => {
-            if (cardRef.current) {
-              cardRef.current.style.opacity = "1"
-              cardRef.current.style.transform = "translateY(0)"
-            }
-          })
-        }
+    let cancelled = false
+    const timer = setTimeout(async () => {
+      const state = await queryBrowserPermission()
+      if (cancelled) return
+      if (state === "granted") {
+        localStorage.setItem("locationPermissionGranted", "true")
+        close()
+        return
       }
+      if (state === "denied") {
+        localStorage.setItem("locationPermissionGranted", "denied")
+      } else if (state === "prompt" && isLocationPermissionGranted()) {
+        // Permission was reset in browser/app settings.
+        localStorage.removeItem("locationPermissionGranted")
+      }
+      if (state === null && isLocationPermissionGranted()) return
+      setBlocked(state === "denied")
+      open()
     }, 400)
 
     return () => {
+      cancelled = true
       clearTimeout(timer)
-      document.body.style.overflow = ""
     }
-  }, [permissionGranted])
+  }, [pathname, isAddressSelector])
 
   useEffect(() => {
-    if (hasValidStoredUserLocation() && showPrompt) {
-      setShowPrompt(false)
-      document.body.style.overflow = ""
+    const handleOpen = () => {
+      if (!isLocationPermissionGranted()) open()
     }
-  }, [location, showPrompt])
+    window.addEventListener(OPEN_LOCATION_PROMPT_EVENT, handleOpen)
+    return () => window.removeEventListener(OPEN_LOCATION_PROMPT_EVENT, handleOpen)
+  }, [])
+
+  useEffect(() => {
+    if (!showPrompt || !cardRef.current) return
+    cardRef.current.style.opacity = "0"
+    cardRef.current.style.transform = "translateY(20px)"
+    requestAnimationFrame(() => {
+      if (cardRef.current) {
+        cardRef.current.style.opacity = "1"
+        cardRef.current.style.transform = "translateY(0)"
+      }
+    })
+  }, [showPrompt])
 
   const handleAllow = async () => {
     setIsRequesting(true)
     try {
       await requestLocation()
       localStorage.setItem("locationPermissionGranted", "true")
-      localStorage.setItem("locationPromptDismissed", "true")
-      setShowPrompt(false)
-      document.body.style.overflow = ""
+      setBlocked(false)
+      close()
     } catch {
       // Keep prompt open so user can try again or pick manually.
+      const state = await queryBrowserPermission()
+      if (state === "denied") setBlocked(true)
     } finally {
       setIsRequesting(false)
     }
   }
 
   const handleSelectManually = () => {
-    setShowPrompt(false)
-    document.body.style.overflow = ""
-    localStorage.setItem("locationPromptDismissed", "true")
-    navigate("/food/user/address-selector")
+    close()
+    navigate("/food/user/address-selector", { state: { from: pathname } })
   }
 
   const handleDismiss = () => {
-    setShowPrompt(false)
-    document.body.style.overflow = ""
-    localStorage.setItem("locationPromptDismissed", "true")
+    close()
   }
 
   useEffect(() => {
@@ -137,6 +160,12 @@ export default function LocationPrompt() {
         <p className="text-sm text-zinc-500 dark:text-zinc-400 text-center mt-3 leading-relaxed px-1">
           Allow location access to discover great local restaurants near you, view accurate delivery times, and explore exclusive offers in your area.
         </p>
+
+        {blocked && (
+          <p className="text-xs font-semibold text-[#DC2626] text-center mt-3 px-1">
+            Location access is blocked. Turn it on in your phone or browser settings, then tap Allow.
+          </p>
+        )}
 
         <div className="flex flex-col gap-2.5 mt-6 w-full">
           <button

@@ -188,12 +188,12 @@ export default function Navbar() {
                 >
                   <Avatar className="h-10 w-10">
                     <AvatarImage 
-                      src={userProfile?.profileImage || "/profile_avatar.webp"} 
+                      src={userProfile?.profileImage || "/images/profile-avatar.webp"} 
                       alt="Profile" 
                       className="object-cover"
                     />
                     <AvatarFallback className="bg-primary text-white text-xs">
-                      <img src="/profile_avatar.webp" alt="Profile" className="object-cover w-full h-full" />
+                      <img src="/images/profile-avatar.webp" alt="Profile" className="object-cover w-full h-full" />
                     </AvatarFallback>
                   </Avatar>
                 </Button>

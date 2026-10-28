@@ -3,7 +3,7 @@ import { MapPin, ChevronDown, Wallet } from 'lucide-react';
 import { Link, useLocation } from 'react-router-dom';
 import { useProfile } from "@food/context/ProfileContext";
 
-import outOfZoneBg from '@food/assets/Outofzone_bg.jpg';
+import outOfZoneBg from '@food/assets/illustrations/out-of-zone-bg.jpg';
 
 const OutOfZoneScreen = ({ location, handleLocationClick }) => {
   const { userProfile } = useProfile();

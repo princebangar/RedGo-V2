@@ -706,11 +706,11 @@ availableCashLimit: deliveryman.availableCashLimit || 0,
                                 onClick={() => handleView(dm)}
                               >
                                 <img
-                                  src={dm.profileImage?.url ?? dm.profilePhoto ?? "/profile_avatar.webp"}
+                                  src={dm.profileImage?.url ?? dm.profilePhoto ?? "/images/profile-avatar.webp"}
                                   alt={dm.name}
                                   className="w-full h-full object-cover"
                                   style={{ mixBlendMode: 'multiply' }}
-                                  onError={(e) => { e.currentTarget.src = "/profile_avatar.webp" }}
+                                  onError={(e) => { e.currentTarget.src = "/images/profile-avatar.webp" }}
                                 />
                               </div>
                               <span
@@ -902,11 +902,11 @@ availableCashLimit: deliveryman.availableCashLimit || 0,
                         src={viewDetails.profileImage.url} 
                         alt={viewDetails.name}
                         className="w-24 h-24 rounded-full object-cover border-2 border-slate-200"
-                        onError={(e) => { e.currentTarget.src = "/profile_avatar.webp" }}
+                        onError={(e) => { e.currentTarget.src = "/images/profile-avatar.webp" }}
                       />
                     ) : (
                       <img
-                        src="/profile_avatar.webp"
+                        src="/images/profile-avatar.webp"
                         alt={viewDetails.name}
                         className="w-24 h-24 rounded-full object-cover border-2 border-slate-200"
                       />

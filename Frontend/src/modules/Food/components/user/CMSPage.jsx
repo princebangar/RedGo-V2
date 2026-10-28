@@ -1,11 +1,13 @@
 import { useNavigate } from "react-router-dom"
 import { useState, useEffect } from "react"
-import { ArrowLeft, Lock, Loader2, Mail, Phone, MessageSquare, Clock, ShieldCheck } from "lucide-react"
+import { ArrowLeft, Lock, Loader2, Mail, Phone, MessageSquare, Clock, ShieldCheck, TicketCheck, ChevronRight } from "lucide-react"
 import { motion } from "framer-motion"
+import { toast } from "sonner"
 import AnimatedPage from "@food/components/user/AnimatedPage"
 import { Button } from "@food/components/ui/button"
 import api from "@food/api"
 import useAppBackNavigation from "@food/hooks/useAppBackNavigation"
+import { isModuleAuthenticated } from "@food/utils/auth"
 
 /**
  * Shared CMS display component for Help & Support (and other legal pages).
@@ -15,6 +17,8 @@ import useAppBackNavigation from "@food/hooks/useAppBackNavigation"
  *   module      - "USER" | "RESTAURANT" | "DELIVERY" (default: "USER")
  *   goBack      - Optional override for back navigation (for restaurant/delivery portals)
  *   fallbackPath - Where to navigate when there's no history (default: "/user")
+ *   ticketPath  - Optional page where the user can raise a support ticket (shown on support pages)
+ *   loginPath   - Where to send a logged-out user who wants to raise a ticket
  */
 export default function CMSPage({
   endpoint,
@@ -22,6 +26,8 @@ export default function CMSPage({
   module = "USER",
   goBack: externalGoBack,
   fallbackPath = "/user",
+  ticketPath,
+  loginPath = "/user/auth/login",
 }) {
   const navigate = useNavigate()
   const appGoBack = useAppBackNavigation()
@@ -161,6 +167,34 @@ export default function CMSPage({
                 </a>
               </div>
             </div>
+          )}
+
+          {isSupport && ticketPath && (
+            <button
+              type="button"
+              onClick={() => {
+                if (isModuleAuthenticated(module.toLowerCase())) {
+                  navigate(ticketPath)
+                } else {
+                  toast.info("Please log in to raise a support ticket")
+                  navigate(loginPath)
+                }
+              }}
+              className={`w-full flex items-center gap-4 p-5 rounded-3xl bg-[#CB202D]/5 border border-[#CB202D]/20 text-left transition-all hover:border-[#CB202D]/40 active:scale-[0.99] ${hasActualContent ? "mb-10" : "mt-4"}`}
+            >
+              <div className="w-12 h-12 bg-white dark:bg-gray-800 rounded-2xl flex items-center justify-center shadow-sm shrink-0">
+                <TicketCheck className="w-6 h-6 text-[#CB202D]" />
+              </div>
+              <div className="flex-1 min-w-0">
+                <h3 className="text-sm font-black text-gray-900 dark:text-white uppercase tracking-wider">
+                  Raise a support ticket
+                </h3>
+                <p className="text-xs text-gray-500 dark:text-gray-400 font-medium mt-1">
+                  Tell us about a problem with an order or the app and track our reply.
+                </p>
+              </div>
+              <ChevronRight className="w-5 h-5 text-[#CB202D] shrink-0" />
+            </button>
           )}
 
           {/* Main Content */}

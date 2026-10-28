@@ -1,6 +1,6 @@
 // Export utility functions for commission rules
 export const exportCommissionToCSV = (commissions, filename = "delivery-boy-commission") => {
-  const headers = ["SI", "Name", "Min Distance (km)", "Max Distance (km)", "Commission Per Km (₹)", "Base Payout (₹)", "Status"]
+  const headers = ["SI", "Name", "Min Distance (km)", "Max Distance (km)", "Extra Amount (₹)", "Base Payout (₹)", "Status"]
   const rows = commissions.map((commission) => [
     commission.sl,
     commission.name,
@@ -28,7 +28,7 @@ export const exportCommissionToCSV = (commissions, filename = "delivery-boy-comm
 }
 
 export const exportCommissionToExcel = (commissions, filename = "delivery-boy-commission") => {
-  const headers = ["SI", "Name", "Min Distance (km)", "Max Distance (km)", "Commission Per Km (₹)", "Base Payout (₹)", "Status"]
+  const headers = ["SI", "Name", "Min Distance (km)", "Max Distance (km)", "Extra Amount (₹)", "Base Payout (₹)", "Status"]
   const rows = commissions.map((commission) => [
     commission.sl,
     commission.name,
@@ -56,7 +56,7 @@ export const exportCommissionToExcel = (commissions, filename = "delivery-boy-co
 }
 
 export const exportCommissionToPDF = (commissions, filename = "delivery-boy-commission") => {
-  const headers = ["SI", "Name", "Min Distance (km)", "Max Distance (km)", "Commission Per Km (₹)", "Base Payout (₹)", "Status"]
+  const headers = ["SI", "Name", "Min Distance (km)", "Max Distance (km)", "Extra Amount (₹)", "Base Payout (₹)", "Status"]
   
   let htmlContent = `
     <!DOCTYPE html>

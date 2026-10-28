@@ -6,12 +6,14 @@ import { DeliveryBonusTransaction } from '../../admin/models/deliveryBonusTransa
 import { validateDeliveryRegisterDto, validateDeliveryProfileUpdateDto, validateDeliveryBankDetailsDto } from '../validators/delivery.validator.js';
 import { sendResponse } from '../../../../utils/response.js';
 import { getDeliveryReferralStats } from '../services/deliveryReferral.service.js';
+import { signPendingApprovalToken } from '../../../../core/auth/auth.service.js';
 
 export const registerDeliveryPartnerController = async (req, res, next) => {
     try {
         const validated = validateDeliveryRegisterDto(req.body);
         const partner = await registerDeliveryPartner(validated, req.files);
-        return sendResponse(res, 201, 'Delivery partner registered successfully', partner);
+        const pendingToken = partner?.status === 'approved' ? undefined : signPendingApprovalToken('DELIVERY_PARTNER', partner._id);
+        return sendResponse(res, 201, 'Delivery partner registered successfully', { ...partner, pendingToken });
     } catch (error) {
         next(error);
     }

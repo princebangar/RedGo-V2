@@ -64,21 +64,19 @@ export const createInboxNotifications = async ({ notifications = [] } = {}) => {
             payload.broadcastId = new mongoose.Types.ObjectId(String(item.broadcastId));
         }
 
+        // Every non-broadcast message is a new inbox row (a repeated "Dining request approved"
+        // must show up as new, not be merged into an older, already-read row).
+        if (!payload.broadcastId) {
+            return { insertOne: { document: { ...payload, isRead: false, readAt: null, dismissedAt: null } } };
+        }
+
         return {
             updateOne: {
-                filter: payload.broadcastId
-                    ? {
-                        broadcastId: payload.broadcastId,
-                        ownerType: payload.ownerType,
-                        ownerId: payload.ownerId
-                    }
-                    : {
-                        ownerType: payload.ownerType,
-                        ownerId: payload.ownerId,
-                        title: payload.title,
-                        message: payload.message,
-                        source: payload.source
-                    },
+                filter: {
+                    broadcastId: payload.broadcastId,
+                    ownerType: payload.ownerType,
+                    ownerId: payload.ownerId
+                },
                 update: {
                     $set: {
                         ...payload,

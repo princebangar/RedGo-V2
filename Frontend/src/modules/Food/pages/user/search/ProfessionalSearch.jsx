@@ -16,6 +16,7 @@ import OptimizedImage from "@food/components/OptimizedImage"
 import { useVoiceSearch } from "@food/hooks/useVoiceSearch"
 // Force HMR reload
 import { RestaurantGridSkeleton } from "@food/components/ui/loading-skeletons"
+import dishFallback from "@food/assets/placeholders/dish_fallback.webp"
 import { Suspense, lazy } from "react"
 import { useProfile } from "@food/context/ProfileContext"
 import {
@@ -393,7 +394,7 @@ export default function ProfessionalSearch() {
                            <OptimizedImage 
                             src={getMediaUrl(r.matchedDishImage || r.profileImage || r.image || (Array.isArray(r.images) && r.images[0]))} 
                             className="w-full h-full object-cover group-hover:scale-115 transition-transform duration-500"
-                            fallback="/placeholder-dish.jpg"
+                            fallback={dishFallback}
                           />
                           {r.pureVegRestaurant && (
                             <div className="absolute top-1.5 left-1.5 w-4 h-4 border border-green-600 p-[1.5px] bg-white rounded-sm shadow-sm">
@@ -440,7 +441,7 @@ export default function ProfessionalSearch() {
                          <OptimizedImage 
                           src={getMediaUrl(r.profileImage || r.image || (Array.isArray(r.images) && r.images[0]))} 
                           className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-700"
-                          fallback="/placeholder-restaurant.jpg"
+                          fallback={dishFallback}
                         />
                         <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/20 to-transparent opacity-80" />
                         <div className="absolute bottom-4 left-5 right-5 flex justify-between items-end">

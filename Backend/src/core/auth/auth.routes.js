@@ -17,7 +17,8 @@ import {
     requestAdminForgotPasswordOtpController,
     resetAdminPasswordWithOtpController,
     deleteAccountController,
-    checkAccountBalanceController
+    checkAccountBalanceController,
+    pendingApprovalStatusController
 } from './auth.controller.js';
 import { authMiddleware, requireAdmin } from './auth.middleware.js';
 import { authRateLimiter } from '../../middleware/rateLimit.js';
@@ -34,6 +35,8 @@ router.post('/restaurant/reapply', authRateLimiter, reapplyRestaurantController)
 
 router.post('/delivery/request-otp', authRateLimiter, requestDeliveryOtpController);
 router.post('/delivery/verify-otp', authRateLimiter, verifyDeliveryOtpController);
+
+router.post('/pending-approval/status', pendingApprovalStatusController);
 
 router.post('/admin/login', authRateLimiter, adminLoginController);
 

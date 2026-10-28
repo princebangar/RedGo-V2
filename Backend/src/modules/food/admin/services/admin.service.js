@@ -45,6 +45,7 @@ import { FoodRestaurantWithdrawal } from '../../restaurant/models/foodRestaurant
 import { FoodDeliveryWithdrawal } from '../../delivery/models/foodDeliveryWithdrawal.model.js';
 import { FoodDeliveryWallet } from '../../delivery/models/deliveryWallet.model.js';
 import { FoodDeliveryCashDeposit } from '../../delivery/models/foodDeliveryCashDeposit.model.js';
+import { FoodDiningRequest } from '../../dining/models/diningRequest.model.js';
 import {
     backfillLegacyCategoryWorkflow,
     categoryAllowsFoodType,
@@ -131,9 +132,6 @@ const validateOpeningClosingTimes = (openingTime, closingTime) => {
     if (open === null || close === null) return;
     if (open === close) {
         throw new ValidationError('Opening time and closing time cannot be same');
-    }
-    if (close < open) {
-        throw new ValidationError('Closing time cannot be less than opening time');
     }
 };
 
@@ -255,7 +253,7 @@ export async function globalSearch(query = '') {
         id: i._id,
         type: 'Product',
         title: i.name,
-        description: `Price: â‚¹${i.price}`,
+        description: `Price: ₹${i.price}`,
         path: `/admin/food/foods?productId=${i._id}`
     }));
 
@@ -271,7 +269,7 @@ export async function globalSearch(query = '') {
         id: a._id,
         type: 'Addon',
         title: a.name,
-        description: `Price: â‚¹${a.price}`,
+        description: `Price: ₹${a.price}`,
         path: `/admin/food/addons`
     }));
 
@@ -783,8 +781,9 @@ export async function getDashboardStats(query = {}) {
         FoodAddon.countDocuments({ approvalStatus: 'approved', isDeleted: { $ne: true }, ...zoneScopedRestaurantMatch }),
         // Total Customers is always the count of all registered users. A customer is
         // not tied to a zone (they can order from anywhere), so the zone filter does
-        // not apply here — it stays the same across all zones.
-        FoodUser.countDocuments({}),
+        // not apply here — it stays the same across all zones. Only finished sign-ups
+        // (with a name) count, same as the Customers list.
+        FoodUser.countDocuments({ role: 'USER', name: { $regex: /\S/ } }),
         FoodRestaurant.find({ ...restaurantMatch, status: 'pending' }).sort({ createdAt: -1 }).limit(5).select('restaurantName createdAt').lean(),
         FoodDeliveryPartner.find({ status: 'pending' }).sort({ createdAt: -1 }).limit(5).select('name createdAt').lean(),
         FoodOrder.find({ 
@@ -825,7 +824,7 @@ export async function getDashboardStats(query = {}) {
                     }
                 }
             ])
-            : FoodUser.find({}).sort({ createdAt: -1 }).limit(5).select('name createdAt').lean()
+            : FoodUser.find({ role: 'USER', name: { $regex: /\S/ } }).sort({ createdAt: -1 }).limit(5).select('name createdAt').lean()
     ]);
 
     const liveSignals = [];
@@ -1688,7 +1687,8 @@ export async function getCustomers(query = {}) {
     const page = Math.max(parseInt(query.page, 10) || 1, 1);
     const skip = (page - 1) * limit;
 
-    const filter = { role: 'USER' };
+    // Only customers who finished sign-up (entered a name) are listed.
+    const filter = { role: 'USER', name: { $regex: /\S/ } };
 
     if (query.status) {
         if (String(query.status) === 'active') filter.isActive = true;
@@ -3735,7 +3735,7 @@ export async function approveRestaurantAddon(addonId) {
                 {
                     title: 'Addon Approved! ✅',
                     body: `Your addon "${updated.published?.name || 'New Addon'}" has been approved and is now live.`,
-                    image: 'https://i.ibb.co/3m2Yh7r/Appzeto-Brand-Image.png',
+                    image: undefined,
                     sendToAllDevices: true,
                     data: {
                         type: 'addon_approved',
@@ -3781,7 +3781,7 @@ export async function rejectRestaurantAddon(addonId, reason) {
                 {
                     title: 'Addon Rejected ❌',
                     body: `Your addon request for "${updated.draft?.name || 'New Addon'}" was rejected. Reason: ${rejectionReason}`,
-                    image: 'https://i.ibb.co/3m2Yh7r/Appzeto-Brand-Image.png',
+                    image: undefined,
                     sendToAllDevices: true,
                     data: {
                         type: 'addon_rejected',
@@ -4125,7 +4125,7 @@ export async function createRestaurantByAdmin(body) {
             ? {
                 isEnabled: Boolean(body.diningSettings.isEnabled),
                 maxGuests: Math.max(1, parseInt(body.diningSettings.maxGuests, 10) || 6),
-                diningType: toStr(body.diningSettings.diningType) || 'family-dining'
+                diningType: toStr(body.diningSettings.diningType) || ''
             }
             : undefined,
         status: 'approved',
@@ -4166,6 +4166,22 @@ export async function createRestaurantByAdmin(body) {
     }
     if (!doc.ownerPhone && !doc.primaryContactNumber) {
         throw new ValidationError('Owner phone or primary contact number is required');
+    }
+
+    // A phone number can belong to one restaurant only (owner login is by phone).
+    for (const [label, value] of [['Owner phone number', doc.ownerPhone], ['Primary contact number', doc.primaryContactNumber]]) {
+        const last10 = String(value || '').replace(/\D/g, '').slice(-10);
+        if (last10.length !== 10) continue;
+        const used = await FoodRestaurant.findOne({
+            status: { $ne: 'deleted' },
+            $or: [
+                { ownerPhone: { $regex: `${last10}$` } },
+                { primaryContactNumber: { $regex: `${last10}$` } },
+            ],
+        }).select('restaurantName').lean();
+        if (used) {
+            throw new ValidationError(`${label} is already used by another restaurant (${used.restaurantName || 'existing restaurant'})`);
+        }
     }
 
     const restaurant = await FoodRestaurant.create(doc);
@@ -4215,7 +4231,7 @@ async function sendRestaurantApprovalNotifications(restaurant, existing = {}, is
             {
                 title: pushTitle,
                 body: pushBody,
-                image: restaurant.profileImage || 'https://i.ibb.co/3m2Yh7r/Appzeto-Brand-Image.png',
+                image: restaurant.profileImage || undefined,
                 sendToAllDevices: true,
                 data: {
                     type: isChangesApproval ? 'restaurant_changes_approved' : 'restaurant_approved',
@@ -4293,7 +4309,7 @@ async function sendDeliveryApprovalNotifications(partner, existing = {}, isChang
                 {
                     title: pushTitle,
                     body: pushBody,
-                    image: 'https://i.ibb.co/3m2Yh7r/Appzeto-Brand-Image.png',
+                    image: undefined,
                     sendToAllDevices: true,
                     data: {
                         type: isChangesApproval ? 'delivery_changes_approved' : 'onboarding_approved',
@@ -4404,7 +4420,7 @@ export async function rejectRestaurant(id, reason) {
                 {
                     title: rejectTitle,
                     body: rejectBody,
-                    image: 'https://i.ibb.co/3m2Yh7r/Appzeto-Brand-Image.png',
+                    image: undefined,
                     sendToAllDevices: true,
                     data: {
                         type: isChangesRejection ? 'restaurant_changes_rejected' : 'restaurant_rejected',
@@ -4577,9 +4593,9 @@ export async function createAdminOffer(body) {
             await notifyOwnersSafely(
                 [{ ownerType: 'RESTAURANT', ownerId: doc.restaurantId }],
                 {
-                    title: 'New Campaign Invitation! Ã°Å¸â€œÂ¢',
+                    title: 'New Campaign Invitation! 📢',
                     body: `You have been invited to join a new campaign: "${doc.couponCode}". Check it out now!`,
-                    image: 'https://i.ibb.co/3m2Yh7r/Appzeto-Brand-Image.png',
+                    image: undefined,
                     data: {
                         type: 'campaign_invitation',
                         offerId: String(doc._id),
@@ -5014,9 +5030,9 @@ export async function addDeliveryPartnerBonus(body, adminUser) {
         await notifyOwnerSafely(
             { ownerType: 'DELIVERY_PARTNER', ownerId: body.deliveryPartnerId },
             {
-                title: 'Bonus Credited! Ã°Å¸Å½Å ',
+                title: 'Bonus Credited! 🎊',
                 body: `You have received a bonus of \u20B9${body.amount}. ${body.reference || 'Great job!'}`,
-                image: 'https://i.ibb.co/3m2Yh7r/Appzeto-Brand-Image.png',
+                image: undefined,
                 data: {
                     type: 'bonus_credited',
                     amount: String(body.amount),
@@ -5388,9 +5404,9 @@ export async function creditEarningAddonHistory(historyId, notes) {
         await notifyOwnerSafely(
             { ownerType: 'DELIVERY_PARTNER', ownerId: doc.deliveryPartnerId },
             {
-                title: 'Incentive Credited! Ã°Å¸Å½Â¯',
+                title: 'Incentive Credited! 🎯',
                 body: `Your incentive for "${doc.offerId?.title || 'Earning Addon'}" has been approved and moved to your pocket.`,
-                image: 'https://i.ibb.co/3m2Yh7r/Appzeto-Brand-Image.png',
+                image: undefined,
                 data: {
                     type: 'incentive_credited',
                     historyId: String(doc._id),
@@ -5420,9 +5436,9 @@ export async function cancelEarningAddonHistory(historyId, reason) {
         await notifyOwnerSafely(
             { ownerType: 'DELIVERY_PARTNER', ownerId: doc.deliveryPartnerId },
             {
-                title: 'Incentive Update Ã°Å¸â€œâ€¹',
+                title: 'Incentive Update 📋',
                 body: `Your incentive request for "${doc.offerId?.title || 'Earning Addon'}" was not approved. Reason: ${doc.cancelReason || 'Ineligible'}`,
-                image: 'https://i.ibb.co/3m2Yh7r/Appzeto-Brand-Image.png',
+                image: undefined,
                 data: {
                     type: 'incentive_rejected',
                     historyId: String(doc._id),
@@ -5746,7 +5762,7 @@ export async function rejectDeliveryPartner(id, reason) {
                 {
                     title: rejectTitle,
                     body: rejectBody,
-                    image: 'https://i.ibb.co/3m2Yh7r/Appzeto-Brand-Image.png',
+                    image: undefined,
                     sendToAllDevices: true,
                     data: {
                         type: isChangesRejection ? 'delivery_changes_rejected' : 'onboarding_rejected',
@@ -5987,7 +6003,7 @@ export async function getDeliveryWithdrawals(query = {}) {
         id: w._id,
         deliveryName: w.deliveryPartnerId?.name || 'N/A',
         deliveryPhone: w.deliveryPartnerId?.phone || 'N/A',
-        deliveryIdString: w.deliveryPartnerId?.profilePartnerId || 'N/A',
+        deliveryIdString: w.deliveryPartnerId?.profilePartnerId || (w.deliveryPartnerId?._id ? `DEL${String(w.deliveryPartnerId._id).slice(-6).toUpperCase()}` : 'N/A'),
         status: w.status.charAt(0).toUpperCase() + w.status.slice(1)
     }));
 
@@ -6434,6 +6450,7 @@ export async function getSidebarBadges() {
             pendingEmergencyHelp,
             pendingRestaurantComplaints,
             pendingCashConfirmations,
+            pendingDiningRequests,
         ] = await Promise.all([
             FoodRestaurant.countDocuments({ status: 'pending' }),
             FoodDeliveryPartner.countDocuments({ status: 'pending' }),
@@ -6456,6 +6473,7 @@ export async function getSidebarBadges() {
             FoodDeliveryEmergencyHelp.countDocuments({ status: 'pending' }),
             FoodSupportTicket.countDocuments({ type: 'order', status: 'pending' }),
             countPendingCashConfirmations(),
+            FoodDiningRequest.countDocuments({ status: 'pending' }),
         ]);
 
         return {
@@ -6473,7 +6491,8 @@ export async function getSidebarBadges() {
             earningAddons: pendingEarningAddons,
             safetyReports: pendingSafetyReports,
             emergencyHelp: pendingEmergencyHelp,
-            restaurantComplaints: pendingRestaurantComplaints
+            restaurantComplaints: pendingRestaurantComplaints,
+            diningRequests: pendingDiningRequests
         };
     } catch (error) {
         console.error('Error fetching sidebar badges:', error);

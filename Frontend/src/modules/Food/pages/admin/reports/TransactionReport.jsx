@@ -9,11 +9,11 @@ import { Skeleton } from "@food/components/ui/skeleton"
 import AdminListPagination from "@food/components/admin/AdminListPagination"
 
 // Import icons from Transaction-report-icons
-import completedIcon from "@food/assets/Transaction-report-icons/trx1.svg"
-import refundedIcon from "@food/assets/Transaction-report-icons/trx3.svg"
-import adminEarningIcon from "@food/assets/Transaction-report-icons/admin-earning.svg"
-import restaurantEarningIcon from "@food/assets/Transaction-report-icons/store-earning.svg"
-import deliverymanEarningIcon from "@food/assets/Transaction-report-icons/deliveryman-earning.svg"
+import completedIcon from "@food/assets/admin/transaction-icons/trx1.svg"
+import refundedIcon from "@food/assets/admin/transaction-icons/trx3.svg"
+import adminEarningIcon from "@food/assets/admin/transaction-icons/admin-earning.svg"
+import restaurantEarningIcon from "@food/assets/admin/transaction-icons/store-earning.svg"
+import deliverymanEarningIcon from "@food/assets/admin/transaction-icons/deliveryman-earning.svg"
 
 // Import search and export icons from Dashboard-icons
 import searchIcon from "@food/assets/Dashboard-icons/image8.png"

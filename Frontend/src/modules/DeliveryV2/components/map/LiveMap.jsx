@@ -257,7 +257,7 @@ export const LiveMap = ({ onMapClick, onMapLoad, onPathReceived, onPolylineRecei
     })();
   }, []);
 
-  const restaurantMarkerUrl = '/cutlery_icon.webp';
+  const restaurantMarkerUrl = '/images/map/restaurant-marker.webp';
 
   const customerMarkerUrl = useMemo(
     () => `data:image/svg+xml;charset=UTF-8,${encodeURIComponent(CUSTOMER_PIN_SVG)}`,
@@ -423,7 +423,7 @@ export const LiveMap = ({ onMapClick, onMapLoad, onPathReceived, onPolylineRecei
               }}
               className="relative w-[72px] h-[72px]"
             >
-              <img src="/MapRider.png" alt="Rider" className="w-full h-full object-contain drop-shadow-md" />
+              <img src="/images/map/rider.png" alt="Rider" className="w-full h-full object-contain drop-shadow-md" />
             </div>
           </OverlayView>
         )}

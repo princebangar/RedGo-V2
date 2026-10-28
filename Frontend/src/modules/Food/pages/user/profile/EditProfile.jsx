@@ -540,7 +540,7 @@ export default function EditProfile() {
                   />
                 ) : (
                   <img
-                    src="/profile_avatar.webp"
+                    src="/images/profile-avatar.webp"
                     alt={formData.name || 'User'}
                     className="w-full h-full object-cover rounded-full"
                   />

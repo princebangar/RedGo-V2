@@ -292,7 +292,7 @@ export default function MenuOverlay({ showMenu, setShowMenu }) {
               
               <div className="bg-gray-50 rounded-2xl p-4 mb-5 text-center">
                 <p className="text-[10px] text-gray-500 uppercase font-black tracking-widest mb-1">{balanceData.type}</p>
-                <p className="text-[#B80B3D]xl font-black text-black">₹{balanceData.balance.toLocaleString('en-IN')}</p>
+                <p className="text-3xl font-black text-black">₹{balanceData.balance.toLocaleString('en-IN')}</p>
               </div>
 
               <p className="text-sm text-gray-500 mb-6 leading-relaxed">

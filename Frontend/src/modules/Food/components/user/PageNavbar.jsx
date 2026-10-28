@@ -5,9 +5,10 @@ import { Button } from "@food/components/ui/button"
 import { useLocation } from "@food/hooks/useLocation"
 import { useCart } from "@food/context/CartContext"
 import { useLocationSelector } from "./UserLayout"
+import { openLocationPromptIfNeeded } from "./LocationPrompt"
 import { FaLocationDot } from "react-icons/fa6"
 import { getCachedSettings, loadBusinessSettings } from "@food/utils/businessSettings"
-import quickSpicyLogo from "@food/assets/quicky-spicy-logo.png"
+import { brandLogo } from "@food/constants/brand"
 import { Avatar, AvatarFallback, AvatarImage } from "@food/components/ui/avatar"
 import { useProfile } from "@food/context/ProfileContext"
 import { isModuleAuthenticated } from "@food/utils/auth"
@@ -1002,7 +1003,8 @@ export default function PageNavbar({
   const displayCity = ""
 
   const handleLocationClick = () => {
-    // Open location selector overlay
+    // Location permission is mandatory: ask for it first, otherwise open the selector overlay
+    if (openLocationPromptIfNeeded()) return
     openLocationSelector()
   }
 
@@ -1045,7 +1047,7 @@ export default function PageNavbar({
               </span>
             ) : (
               <img
-                src={quickSpicyLogo}
+                src={brandLogo}
                 alt="Logo"
                 className="h-9 w-auto sm:h-12 md:h-14 object-contain scale-[1.6] sm:scale-[1.8] origin-left"
               />
@@ -1142,12 +1144,12 @@ export default function PageNavbar({
             >
               <Avatar className="h-9 w-9 rounded-full border border-white transition-all active:scale-95 shadow-none overflow-hidden cursor-pointer transform-gpu translate-z-0">
                 <AvatarImage 
-                  src={userProfile?.profileImage?.url || userProfile?.profileImage || "/profile_avatar.webp"} 
+                  src={userProfile?.profileImage?.url || userProfile?.profileImage || "/images/profile-avatar.webp"} 
                   alt="Profile" 
                   className="object-cover"
                 />
                 <AvatarFallback className="bg-gradient-to-br from-[#DC2626] to-[#991B1B] text-white font-bold text-sm uppercase">
-                  <img src="/profile_avatar.webp" alt="Profile" className="object-cover w-full h-full" />
+                  <img src="/images/profile-avatar.webp" alt="Profile" className="object-cover w-full h-full" />
                 </AvatarFallback>
               </Avatar>
             </Link>

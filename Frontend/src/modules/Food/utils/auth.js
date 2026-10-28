@@ -244,6 +244,7 @@ export function clearRestaurantSessionCache() {
     "restaurant_pendingPhone",
     "restaurant_pendingStatus",
     "restaurant_pendingMessage",
+    "restaurant_pendingToken",
   ];
 
   keys.forEach((key) => localStorage.removeItem(key));

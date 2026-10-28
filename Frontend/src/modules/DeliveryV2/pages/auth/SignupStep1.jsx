@@ -236,7 +236,7 @@ export default function SignupStep1() {
   return (
     <div className="min-h-screen bg-gray-100">
       {/* Header */}
-      <div className="bg-white px-4 py-3 flex items-center gap-4 border-b border-gray-200">
+      <div className="sticky top-0 z-30 bg-white px-4 py-3 flex items-center gap-4 border-b border-gray-200">
         <button
           onClick={handleBack}
           className="p-2 hover:bg-gray-100 rounded-full transition-colors"

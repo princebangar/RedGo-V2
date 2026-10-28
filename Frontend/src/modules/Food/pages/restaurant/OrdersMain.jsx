@@ -134,6 +134,7 @@ const transformOrderForList = (order) => {
     photoUrl: order.items?.[0]?.image || null,
     photoAlt: order.items?.[0]?.name || "Order",
     paymentMethod: order.paymentMethod || order.payment?.method || null,
+    amount: order.pricing?.total || order.total || 0,
     deliveryPartnerId: order.deliveryPartnerId || null,
     dispatchStatus: order.dispatch?.status || null,
     preparingTimestamp: order.tracking?.preparing?.timestamp
@@ -1363,7 +1364,8 @@ function OrdersMainInner() {
             deliveryAcceptOrderTimeoutSecondsRef.current,
             takeawayAcceptOrderTimeoutSecondsRef.current,
           );
-          if (!activeTimeout || activeTimeout <= 0) return;
+          // Without an admin "accept order time" the popup still opens (and rings) but has no
+          // countdown / auto-reject. Before, it never opened and the ring was stopped at once.
           setPopupOrder(nextOrder);
           setShowNewOrderPopup(true);
           setCountdown(getInitialCountdown(nextOrder, activeTimeout));
@@ -3561,7 +3563,9 @@ function OrdersMainInner() {
                             <span className="relative z-10 text-xs sm:text-sm font-semibold text-white text-center leading-tight">
                               {isAcceptingOrder
                                 ? "Accepting order..."
-                                : `Slide to accept (${formatTime(countdown)})`}
+                                : popupTimeoutSeconds > 0
+                                  ? `Slide to accept (${formatTime(countdown)})`
+                                  : "Slide to accept"}
                             </span>
                           </div>
                           <motion.button
@@ -3876,6 +3880,21 @@ function OrdersMainInner() {
                 </div>
               </div>
 
+              {/* Payment to collect */}
+              {(() => {
+                const isCash = ["cash", "cod"].includes(String(verifyingOrder.paymentMethod || "").toLowerCase());
+                return (
+                  <div className={`mx-5 mt-4 rounded-2xl px-4 py-3 flex items-center justify-between border ${isCash ? "bg-amber-50 border-amber-200" : "bg-green-50 border-green-200"}`}>
+                    <span className={`text-xs font-black uppercase tracking-wider ${isCash ? "text-amber-700" : "text-green-700"}`}>
+                      {isCash ? "Collect cash from customer" : "Paid online"}
+                    </span>
+                    {isCash && (
+                      <span className="text-lg font-black text-amber-800">₹{Number(verifyingOrder.amount || 0).toFixed(2)}</span>
+                    )}
+                  </div>
+                );
+              })()}
+
               {/* OTP Section */}
               <div className="px-5 pt-5 pb-2">
                 <label className="block text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest mb-3 text-center">
@@ -4113,7 +4132,8 @@ const OrderCard = memo(function OrderCard({
   restaurantNote = null,
   onVerifyTakeaway,
   acceptedAt = null,
-  adminStatusNote
+  adminStatusNote,
+  amount = 0
 }) {
   const normalizedStatus = String(status || "").toLowerCase();
   const normalizedType = String(type || "").toLowerCase();
@@ -4235,6 +4255,16 @@ const OrderCard = memo(function OrderCard({
               ))}
           </div>
 
+          {normalizedType === "takeaway" &&
+            ["cash", "cod"].includes(String(paymentMethod || "").toLowerCase()) &&
+            !["delivered", "completed", "cancelled"].includes(normalizedStatus) && (
+              <div className="mb-1.5 inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-amber-50 border border-amber-200">
+                <span className="text-[10px] font-black text-amber-700">
+                  Collect cash: ₹{Number(amount || 0).toFixed(2)}
+                </span>
+              </div>
+            )}
+
           {/* Time Placed */}
           <div className="text-[9px] text-slate-400 font-bold uppercase tracking-tight mb-1">
             {timePlaced}
@@ -4308,7 +4338,7 @@ const OrderCard = memo(function OrderCard({
                         type="button"
                         onClick={(e) => {
                           e.stopPropagation();
-                          onVerifyTakeaway({ orderId, mongoId, customerName, photoUrl, photoAlt, type, itemsSummary });
+                          onVerifyTakeaway({ orderId, mongoId, customerName, photoUrl, photoAlt, type, itemsSummary, paymentMethod, amount });
                         }}
                         className="px-3 py-1.5 rounded-lg text-[9px] font-black text-white shadow-sm transition-transform active:scale-95 hover:brightness-110"
                         style={{ backgroundColor: brandColor }}>
@@ -4387,6 +4417,7 @@ function PreparingOrders({
               ),
               initialETA, // Store initial ETA in minutes
               preparingTimestamp, // Store when order started preparing
+              amount: order.pricing?.total || order.total || 0,
               itemsSummary:
                 order.items
                   ?.map((item) => `${item.quantity}x ${item.name}${item.variantName ? ` (${item.variantName})` : ''}`)
@@ -4636,6 +4667,7 @@ function PreparingOrders({
                 photoUrl={order.photoUrl}
                 photoAlt={order.photoAlt}
                 paymentMethod={order.paymentMethod}
+                amount={order.amount}
                 deliveryPartnerId={order.deliveryPartnerId}
                 dispatchStatus={order.dispatchStatus}
                 onSelect={onSelectOrder}

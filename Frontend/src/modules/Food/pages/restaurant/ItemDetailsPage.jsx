@@ -25,7 +25,7 @@ import { toast } from "sonner"
 import { ImageSourcePicker } from "@food/components/ImageSourcePicker"
 import { isFlutterBridgeAvailable } from "@food/utils/imageUploadUtils"
 import { getFoodVariants } from "@food/utils/foodVariants"
-import dishFallbackImage from "@food/assets/dish_fallback.webp"
+import dishFallbackImage from "@food/assets/placeholders/dish_fallback.webp"
 const debugLog = (...args) => {}
 const debugWarn = (...args) => {}
 const debugError = (...args) => {}
@@ -55,6 +55,9 @@ const createVariantDraft = (variant = {}) => {
   };
 }
 
+// Kept in memory while the user leaves this page to add a category (SPA navigation keeps it)
+let itemFormDraft = null
+
 export default function ItemDetailsPage() {
   const navigate = useNavigate()
   const goBack = useRestaurantBackNavigation()
@@ -65,6 +68,10 @@ export default function ItemDetailsPage() {
   const defaultCategory = location.state?.category || "Select category"
   const defaultCategoryId = location.state?.categoryId || ""
   const fileInputRef = useRef(null)
+  // Form typed before going to "Add category" (restored when the user comes back)
+  const restoredDraftRef = useRef(
+    itemFormDraft && itemFormDraft.path === location.pathname ? itemFormDraft : null,
+  )
 
   // Initialize state with empty values - will be populated from API
   const [itemData, setItemData] = useState(null) // Store the full item data for saving
@@ -260,9 +267,39 @@ export default function ItemDetailsPage() {
     fetchRestaurantDietType()
   }, [])
 
+  // Coming back from "Add category": put back everything that was typed / picked (incl. images)
+  useEffect(() => {
+    const draft = restoredDraftRef.current
+    if (!draft) return
+    itemFormDraft = null
+    const f = draft.fields
+    setItemData(f.itemData); setItemName(f.itemName); setCategory(f.category)
+    setSelectedCategoryId(f.selectedCategoryId); setSubCategory(f.subCategory); setServesInfo(f.servesInfo)
+    setItemSizeQuantity(f.itemSizeQuantity); setItemSizeUnit(f.itemSizeUnit); setItemDescription(f.itemDescription)
+    setFoodType(f.foodType); setBasePrice(f.basePrice); setVariants(f.variants); setPreparationTime(f.preparationTime)
+    setGst(f.gst); setIsRecommended(f.isRecommended); setIsInStock(f.isInStock); setWeightPerServing(f.weightPerServing)
+    setCalorieCount(f.calorieCount); setProteinCount(f.proteinCount); setCarbohydrates(f.carbohydrates)
+    setFatCount(f.fatCount); setFibreCount(f.fibreCount); setAllergens(f.allergens); setSelectedTags(f.selectedTags)
+    setImages(f.images); setImageFiles(f.imageFiles)
+  }, [])
+
+  const saveFormDraft = () => {
+    itemFormDraft = {
+      path: location.pathname,
+      fields: {
+        itemData, itemName, category, selectedCategoryId, subCategory, servesInfo, itemSizeQuantity, itemSizeUnit,
+        itemDescription, foodType, basePrice, variants, preparationTime, gst, isRecommended, isInStock,
+        weightPerServing, calorieCount, proteinCount, carbohydrates, fatCount, fibreCount, allergens, selectedTags,
+        images, imageFiles,
+      },
+    }
+  }
+
   // Fetch item data from menu API when editing
   useEffect(() => {
     const fetchItemData = async () => {
+      // A restored draft already holds the user's edits; don't overwrite it with server data
+      if (restoredDraftRef.current) return
       if (location.state?.item) {
         populateFormFromItem(location.state.item)
       }
@@ -390,18 +427,26 @@ export default function ItemDetailsPage() {
       const isFormField = target.matches?.('input, textarea, select, [contenteditable="true"]')
       if (!isFormField) return
 
-      window.setTimeout(() => {
-        target.scrollIntoView({ behavior: "smooth", block: "center", inline: "nearest" })
-      }, 120)
+      // The keyboard finishes opening after the focus event, so scroll again once it is up
+      ;[120, 450].forEach((delay) =>
+        window.setTimeout(() => {
+          if (document.activeElement === target) {
+            target.scrollIntoView({ behavior: "smooth", block: "center", inline: "nearest" })
+          }
+        }, delay),
+      )
     }
 
     const handleFocusIn = (event) => {
       ensureFieldVisible(event.target)
     }
+    const handleViewportResize = () => ensureFieldVisible(document.activeElement)
 
     document.addEventListener("focusin", handleFocusIn, true)
+    window.visualViewport?.addEventListener("resize", handleViewportResize)
     return () => {
       document.removeEventListener("focusin", handleFocusIn, true)
+      window.visualViewport?.removeEventListener("resize", handleViewportResize)
     }
   }, [])
 
@@ -1315,6 +1360,7 @@ export default function ItemDetailsPage() {
                   <button
                     onClick={() => {
                       setIsCategoryPopupOpen(false)
+                      saveFormDraft()
                       navigate('/restaurant/menu-categories', {
                         state: { backTo: location.pathname, openCategoryPopup: true }
                       })
@@ -1367,6 +1413,7 @@ export default function ItemDetailsPage() {
                     <button
                       onClick={() => {
                         setIsCategoryPopupOpen(false)
+                        saveFormDraft()
                         navigate('/restaurant/menu-categories', {
                           state: { backTo: location.pathname, openCategoryPopup: true }
                         })

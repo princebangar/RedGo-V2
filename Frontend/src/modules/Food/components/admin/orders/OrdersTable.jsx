@@ -328,7 +328,7 @@ export default function OrdersTable({
               )}
             </tr>
           </thead>
-          <tbody className="bg-white divide-y divide-slate-100">
+          <tbody className="bg-white divide-y divide-slate-100 [&>tr>td]:align-top">
             {paginatedOrders.map((order, index) => (
               <tr 
                 key={order.orderId} 

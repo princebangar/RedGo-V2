@@ -40,9 +40,14 @@ export default function useOnboardingExitGuard({
 
   useEffect(() => {
     window.history.pushState(null, "", window.location.href)
+    const mountedAt = Date.now()
 
     const handlePopState = () => {
       window.history.pushState(null, "", window.location.href)
+
+      // Coming back from the next step can fire a second back event right away (WebView hardware back);
+      // that must not open the exit popup.
+      if (isFirstStep && Date.now() - mountedAt < 600) return
 
       if (isFirstStep) {
         requestExit()

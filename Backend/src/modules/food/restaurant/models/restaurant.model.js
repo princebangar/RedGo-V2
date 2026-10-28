@@ -108,6 +108,15 @@ const restaurantSchema = new mongoose.Schema(
       type: [String],
       default: [],
     },
+    // Average cost for two people (shown on the dining pages) and the facilities the restaurant offers.
+    costForTwo: {
+      type: Number,
+      min: 0,
+    },
+    facilities: {
+      type: [String],
+      default: [],
+    },
     openingTime: {
       type: String,
     },
@@ -233,7 +242,7 @@ const restaurantSchema = new mongoose.Schema(
     diningSettings: {
       isEnabled: { type: Boolean, default: false },
       maxGuests: { type: Number, default: 6 },
-      diningType: { type: [String], default: ["family-dining"] },
+      diningType: { type: [String], default: [] },
     },
     takeawaySettings: {
       isEnabled: { type: Boolean, default: false },

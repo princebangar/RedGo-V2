@@ -18,6 +18,8 @@ const ONBOARDING_SESSION_KEYS = [
 const DELIVERY_FILES_DB = "DeliveryOnboardingFiles"
 const DELIVERY_FILES_STORE = "files"
 const IDB_OPERATION_TIMEOUT_MS = 3000
+// Saving a photo must not be dropped just because the phone is slow (it would vanish on refresh).
+const IDB_WRITE_TIMEOUT_MS = 15000
 
 let deliveryFilesDbPromise = null
 
@@ -210,8 +212,8 @@ export const saveSignupDocumentToDB = async (docType, file) => {
   const prepared = toSignupFile(file, `${docType}.jpg`)
   signupDocumentMemory[docType] = prepared
 
-  try {
-    await withTimeout(
+  const writeOnce = () =>
+    withTimeout(
       (async () => {
         const db = await openDeliveryFilesDB()
         const tx = db.transaction(DELIVERY_FILES_STORE, "readwrite")
@@ -222,13 +224,21 @@ export const saveSignupDocumentToDB = async (docType, file) => {
           tx.onabort = () => reject(tx.error || new Error("IndexedDB write aborted"))
         })
       })(),
-      IDB_OPERATION_TIMEOUT_MS,
+      IDB_WRITE_TIMEOUT_MS,
       () => {
         throw new Error("IndexedDB write timeout")
       },
     )
+
+  try {
+    await writeOnce()
   } catch {
-    // Session memory still holds the file for preview + submit.
+    deliveryFilesDbPromise = null
+    try {
+      await writeOnce()
+    } catch {
+      // Session memory still holds the file for preview + submit.
+    }
   }
 }
 

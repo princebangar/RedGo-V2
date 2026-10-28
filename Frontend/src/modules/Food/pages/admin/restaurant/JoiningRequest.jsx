@@ -24,6 +24,14 @@ const formatTime12Hour = (timeStr) => {
 }
 
 
+// Short readable id: REST + last 6 characters (full id on hover)
+const formatShortRestaurantId = (r) => {
+  const custom = String(r?.restaurantId || "").trim()
+  if (custom && custom.length <= 12) return custom
+  const id = String(r?._id || r?.id || "")
+  return id ? `REST${id.slice(-6).toUpperCase()}` : "N/A"
+}
+
 export default function JoiningRequest() {
   const [searchQuery, setSearchQuery] = useState("")
   const [debouncedSearch, setDebouncedSearch] = useState("")
@@ -378,7 +386,7 @@ export default function JoiningRequest() {
               <div className="relative flex-1 sm:flex-initial min-w-[250px]">
                 <input
                   type="text"
-                  placeholder="Ex: Search by restaurant na"
+                  placeholder="Search name, owner, phone"
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
                   className="pl-10 pr-4 py-2.5 w-full text-sm rounded-lg border border-slate-300 bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
@@ -858,7 +866,7 @@ export default function JoiningRequest() {
                         )}
                         <div className="flex items-center gap-1 text-slate-600">
                           <Building2 className="w-4 h-4" />
-                          <span className="text-sm">{r?.restaurantId || r?._id || "N/A"}</span>
+                          <span className="text-sm" title={String(r?._id || "")}>{formatShortRestaurantId(r)}</span>
                         </div>
                         <span className={`px-3 py-1 rounded-full text-xs font-medium ${
                           approvalStatus === "approved" ? "bg-green-100 text-green-700" : approvalStatus === "rejected" ? "bg-red-100 text-red-700" : "bg-amber-100 text-amber-700"
@@ -905,13 +913,25 @@ export default function JoiningRequest() {
                       <h4 className="text-lg font-semibold text-slate-900 mb-4">Location & Contact</h4>
                       <div className="space-y-3">
                         {(() => {
-                          const fullAddress = getRestaurantDisplayAddress(r) || r?.zone || null
+                          const fullAddress = getRestaurantDisplayAddress(r) || null
                           return fullAddress ? (
                             <div className="flex items-start gap-3">
                               <MapPin className="w-5 h-5 text-slate-400 mt-0.5 shrink-0" />
                               <div>
                                 <p className="text-xs text-slate-500">Address</p>
                                 <p className="text-sm font-medium text-slate-900">{fullAddress}</p>
+                              </div>
+                            </div>
+                          ) : null
+                        })()}
+                        {(() => {
+                          const zoneName = r?.zoneId?.zoneName || r?.zoneId?.name || r?.zone || selectedRequest?.zone
+                          return zoneName ? (
+                            <div className="flex items-center gap-3">
+                              <MapPin className="w-5 h-5 text-slate-400" />
+                              <div>
+                                <p className="text-xs text-slate-500">Zone</p>
+                                <p className="text-sm font-medium text-slate-900">{zoneName}</p>
                               </div>
                             </div>
                           ) : null

@@ -71,6 +71,9 @@ const getBookerPhone = (booking) =>
     ).trim()
 
 
+const CUISINE_OPTIONS = ["North Indian", "South Indian", "Chinese", "Pizza", "Burgers", "Bakery", "Cafe"]
+const FACILITY_OPTIONS = ["Home delivery", "Takeaway available", "Vegetarian only", "Less noisy", "Outdoor seating", "Air conditioned", "Parking available", "Live music"]
+
 export default function DiningReservations() {
     const navigate = useNavigate()
     const goBack = useRestaurantBackNavigation()
@@ -99,6 +102,10 @@ export default function DiningReservations() {
     const [availableCategories, setAvailableCategories] = useState([])
     const [pendingRequest, setPendingRequest] = useState(null)
     const [fetchingRequest, setFetchingRequest] = useState(true)
+    const [profileCuisines, setProfileCuisines] = useState([])
+    const [profileCostForTwo, setProfileCostForTwo] = useState("")
+    const [profileFacilities, setProfileFacilities] = useState([])
+    const [savingProfileDetails, setSavingProfileDetails] = useState(false)
 
     const syncRestaurantMediaState = (restaurantData) => {
         setRestaurant(restaurantData || null)
@@ -107,6 +114,9 @@ export default function DiningReservations() {
         setRestaurantPhotos(coverImages)
         setRestaurantPhoto(coverImages[0]?.url || profileImage)
         setMenuPhotos(getMenuImages(restaurantData))
+        setProfileCuisines(Array.isArray(restaurantData?.cuisines) ? restaurantData.cuisines : [])
+        setProfileCostForTwo(restaurantData?.costForTwo ? String(restaurantData.costForTwo) : "")
+        setProfileFacilities(Array.isArray(restaurantData?.facilities) ? restaurantData.facilities : [])
         setDiningEnabled(Boolean(restaurantData?.diningSettings?.isEnabled))
         setMaxGuestsLimit(Math.max(1, parseInt(restaurantData?.diningSettings?.maxGuests, 10) || 6))
         
@@ -300,6 +310,29 @@ export default function DiningReservations() {
             setUploadError(error?.response?.data?.message || "Failed to remove menu photo.")
         } finally {
             setRemovingMenuPhoto(false)
+        }
+    }
+
+    const handleSaveProfileDetails = async () => {
+        if (savingProfileDetails) return
+        if (profileCuisines.length === 0) {
+            toast.error("Select at least one cuisine")
+            return
+        }
+        setSavingProfileDetails(true)
+        try {
+            const response = await restaurantAPI.updateProfile({
+                cuisines: profileCuisines,
+                costForTwo: profileCostForTwo === "" ? null : Number(profileCostForTwo),
+                facilities: profileFacilities,
+            })
+            if (response?.data?.success) {
+                toast.success("Restaurant details saved")
+            }
+        } catch (error) {
+            toast.error(error?.response?.data?.message || "Failed to save restaurant details")
+        } finally {
+            setSavingProfileDetails(false)
         }
     }
 
@@ -499,7 +532,7 @@ export default function DiningReservations() {
                             </div>
                             <div>
                                 <p className="text-slate-500 text-sm font-semibold uppercase tracking-wider">Total Bookings</p>
-                                <p className="text-[#B80B3D]xl font-black text-slate-900 leading-none mt-1">{bookings.length}</p>
+                                <p className="text-3xl font-black text-slate-900 leading-none mt-1">{bookings.length}</p>
                             </div>
                         </div>
                     </motion.div>
@@ -517,7 +550,7 @@ export default function DiningReservations() {
                             </div>
                             <div>
                                 <p className="text-slate-500 text-sm font-semibold uppercase tracking-wider">Active</p>
-                                <p className="text-[#B80B3D]xl font-black text-slate-900 leading-none mt-1">
+                                <p className="text-3xl font-black text-slate-900 leading-none mt-1">
                                     {bookings.filter(b => ['pending', 'confirmed', 'accepted', 'checked-in'].includes(String(b.status || '').toLowerCase())).length}
                                 </p>
                             </div>
@@ -537,7 +570,7 @@ export default function DiningReservations() {
                             </div>
                             <div>
                                 <p className="text-slate-500 text-sm font-semibold uppercase tracking-wider">Today's Bookings</p>
-                                <p className="text-[#B80B3D]xl font-black text-slate-900 leading-none mt-1">
+                                <p className="text-3xl font-black text-slate-900 leading-none mt-1">
                                     {bookings.filter(b => new Date(b.date).toDateString() === new Date().toDateString()).length}
                                 </p>
                             </div>
@@ -699,6 +732,84 @@ export default function DiningReservations() {
                         )}
                     </div>
                 </div>
+                )}
+
+                {activeSection === "reservations" && (
+                    <div className="mb-6 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+                        <p className="text-xs font-bold uppercase tracking-[0.22em] text-slate-400">Restaurant details</p>
+                        <h2 className="mt-1 text-lg font-black text-slate-900">What guests see on your dining page</h2>
+
+                        <div className="mt-5">
+                            <p className="text-sm font-bold text-slate-900 mb-2">Cuisines (up to 3)</p>
+                            <div className="flex flex-wrap gap-2">
+                                {CUISINE_OPTIONS.map((cuisine) => {
+                                    const active = profileCuisines.includes(cuisine)
+                                    return (
+                                        <button
+                                            key={cuisine}
+                                            type="button"
+                                            onClick={() =>
+                                                setProfileCuisines((prev) => {
+                                                    if (prev.includes(cuisine)) return prev.filter((c) => c !== cuisine)
+                                                    if (prev.length >= 3) return prev
+                                                    return [...prev, cuisine]
+                                                })
+                                            }
+                                            className={`rounded-full border px-3 py-1.5 text-xs font-semibold transition-colors ${active ? "border-slate-900 bg-slate-900 text-white" : "border-slate-200 bg-white text-slate-700"}`}
+                                        >
+                                            {cuisine}
+                                        </button>
+                                    )
+                                })}
+                            </div>
+                        </div>
+
+                        <div className="mt-5 max-w-xs">
+                            <label className="block text-sm font-bold text-slate-900 mb-2" htmlFor="cost-for-two">Price for two (Rs)</label>
+                            <input
+                                id="cost-for-two"
+                                type="number"
+                                min="0"
+                                inputMode="numeric"
+                                value={profileCostForTwo}
+                                onChange={(e) => setProfileCostForTwo(e.target.value.replace(/[^0-9]/g, "").slice(0, 6))}
+                                placeholder="e.g. 800"
+                                className="w-full rounded-xl border border-slate-200 px-3 py-2 text-sm text-slate-900"
+                            />
+                        </div>
+
+                        <div className="mt-5">
+                            <p className="text-sm font-bold text-slate-900 mb-2">Facilities</p>
+                            <div className="flex flex-wrap gap-2">
+                                {FACILITY_OPTIONS.map((facility) => {
+                                    const active = profileFacilities.includes(facility)
+                                    return (
+                                        <button
+                                            key={facility}
+                                            type="button"
+                                            onClick={() =>
+                                                setProfileFacilities((prev) =>
+                                                    prev.includes(facility) ? prev.filter((f) => f !== facility) : [...prev, facility],
+                                                )
+                                            }
+                                            className={`rounded-full border px-3 py-1.5 text-xs font-semibold transition-colors ${active ? "border-emerald-600 bg-emerald-50 text-emerald-700" : "border-slate-200 bg-white text-slate-700"}`}
+                                        >
+                                            {facility}
+                                        </button>
+                                    )
+                                })}
+                            </div>
+                        </div>
+
+                        <button
+                            type="button"
+                            onClick={handleSaveProfileDetails}
+                            disabled={savingProfileDetails}
+                            className="mt-6 rounded-full bg-slate-900 px-6 py-2.5 text-sm font-bold text-white disabled:opacity-60"
+                        >
+                            {savingProfileDetails ? "Saving..." : "Save details"}
+                        </button>
+                    </div>
                 )}
 
                 {activeSection === "reservations" && (

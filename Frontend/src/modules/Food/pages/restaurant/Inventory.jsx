@@ -23,7 +23,7 @@ import { useNavigate } from "react-router-dom"
 import { restaurantAPI, uploadAPI } from "@food/api"
 import { toast } from "sonner"
 import { openGallery } from "@food/utils/imageUploadUtils"
-import dishFallbackImage from "@food/assets/dish_fallback.webp"
+import dishFallbackImage from "@food/assets/placeholders/dish_fallback.webp"
 const debugLog = (...args) => {}
 const debugWarn = (...args) => {}
 const debugError = (...args) => {}
@@ -798,6 +798,7 @@ export default function Inventory() {
   const touchEndX = useRef(0)
   const touchStartY = useRef(0)
   const isSwiping = useRef(false)
+  const ignoreSwipeRef = useRef(false) // touch started on a horizontally scrollable list
   const mouseStartX = useRef(0)
   const mouseEndX = useRef(0)
   const isMouseDown = useRef(false)
@@ -1187,6 +1188,19 @@ export default function Inventory() {
     const target = e.target
     // Don't handle swipe if starting on topbar
     if (tabBarRef.current?.contains(target)) return
+    // Swiping a horizontal list (e.g. the filter chips) scrolls that list; it must not flip
+    // the page between All items and Add-ons
+    for (let el = target; el && el !== e.currentTarget; el = el.parentElement) {
+      const overflowX = window.getComputedStyle(el).overflowX
+      if ((overflowX === "auto" || overflowX === "scroll") && el.scrollWidth > el.clientWidth) {
+        isSwiping.current = false
+        touchStartX.current = 0
+        touchEndX.current = 0
+        ignoreSwipeRef.current = true
+        return
+      }
+    }
+    ignoreSwipeRef.current = false
 
     touchStartX.current = e.touches[0].clientX
     touchStartY.current = e.touches[0].clientY
@@ -1195,6 +1209,7 @@ export default function Inventory() {
   }
 
   const handleTouchMove = (e) => {
+    if (ignoreSwipeRef.current) return
     if (!isSwiping.current) {
       const deltaX = Math.abs(e.touches[0].clientX - touchStartX.current)
       const deltaY = Math.abs(e.touches[0].clientY - touchStartY.current)
@@ -2283,19 +2298,32 @@ export default function Inventory() {
                       </div>
                       
                       <div className="flex flex-wrap items-center gap-3 mt-4">
-                        {category.inStock ? (
+                        {(() => {
+                          const underReview = categoryItems.filter((it) => it.approvalStatus === "pending").length
+                          const rejected = categoryItems.filter((it) => it.approvalStatus === "rejected").length
+                          if (!underReview && !rejected) return null
+                          return (
+                            <div className="flex items-center gap-1.5 px-3 py-1.5 bg-amber-50/60 rounded-xl border border-amber-100/60">
+                              <div className="w-1.5 h-1.5 rounded-full bg-amber-500" />
+                              <p className="text-[10px] font-bold text-amber-700">
+                                {[underReview ? `${underReview} under review` : "", rejected ? `${rejected} rejected` : ""].filter(Boolean).join(" · ")}
+                              </p>
+                            </div>
+                          )
+                        })()}
+                        {category.inStock && categoryItems.every((it) => it.approvalStatus === "approved") ? (
                           <div className="flex items-center gap-1.5 px-3 py-1.5 bg-green-50/50 rounded-xl border border-green-100/50">
                             <div className="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse" />
                             <p className="text-[10px] font-bold text-green-700">All items live</p>
                           </div>
-                        ) : (
+                        ) : getOutOfStockCount(category) > 0 ? (
                           <div className="flex items-center gap-1.5 px-3 py-1.5 bg-rose-50/50 rounded-xl border border-rose-100/50">
                             <div className="w-1.5 h-1.5 rounded-full bg-rose-500" />
                             <p className="text-[10px] font-bold text-rose-700">
                               {getOutOfStockCount(category)} Items paused
                             </p>
                           </div>
-                        )}
+                        ) : null}
                         <div className="flex items-center gap-1.5 px-3 py-1.5 bg-blue-50/50 rounded-xl border border-blue-100/50">
                           <p className="text-[10px] font-bold text-blue-700">
                             {(categoryItems.filter((item) => item.isRecommended).length)} Recommended
@@ -2390,9 +2418,16 @@ export default function Inventory() {
                                   
                                   <div className="flex items-center gap-3 sm:gap-4 mt-1">
                                     <p className={`text-[9px] sm:text-[10px] font-black uppercase tracking-widest ${
-                                      item.inStock ? "text-green-500" : "text-rose-500"
+                                      item.approvalStatus !== "approved"
+                                        ? "text-amber-500"
+                                        : item.inStock ? "text-green-500" : "text-rose-500"
                                     }`}>
-                                      {item.inStock ? "● Live" : `● ${getRuleStatusLabel(item.stockRule)}`}
+                                      {/* Only an approved dish can be live */}
+                                      {item.approvalStatus === "pending"
+                                        ? "● Under review"
+                                        : item.approvalStatus === "rejected"
+                                          ? "● Not live"
+                                          : item.inStock ? "● Live" : `● ${getRuleStatusLabel(item.stockRule)}`}
                                     </p>
                                     <button
                                       type="button"
@@ -2430,11 +2465,12 @@ export default function Inventory() {
                                   className="scale-100 sm:scale-125 origin-right"
                                 >
                                   <Switch
-                                    checked={item.inStock}
+                                    checked={item.approvalStatus === "approved" && item.inStock}
+                                    disabled={item.approvalStatus !== "approved"}
                                     onCheckedChange={(checked) =>
                                       handleToggleChange("item", category.id, item.id, checked)
                                     }
-                                    className="data-[state=checked]:bg-green-500 scale-90 sm:scale-100"
+                                    className="data-[state=checked]:bg-green-500 scale-90 sm:scale-100 disabled:opacity-50"
                                   />
                                 </div>
                               </div>

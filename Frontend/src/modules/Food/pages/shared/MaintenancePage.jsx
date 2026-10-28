@@ -1,6 +1,6 @@
 import { useEffect } from "react";
 import { MAINTENANCE_CONTENT } from "@food/constants/maintenanceContent";
-import maintenanceHero from "@food/assets/maintenance/maintenance-hero.png";
+import maintenanceHero from "@food/assets/illustrations/maintenance-hero.png";
 
 /**
  * Full-screen Under Maintenance UI.

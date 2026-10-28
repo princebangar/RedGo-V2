@@ -15,7 +15,7 @@ import { useOrdersManagement } from "@food/components/admin/orders/useOrdersMana
 import { Loader2 } from "lucide-react"
 import { OrdersDashboardSkeleton, TableSkeleton } from "@food/components/ui/loading-skeletons"
 import { refreshSidebarBadges } from "@food/components/admin/AdminSidebar"
-const alertSound = "/alert.mp3"
+const alertSound = "/restaurant_alert.mp3"
 const originalSound = "/original.mp3"
 const debugLog = (...args) => {}
 const debugWarn = (...args) => {}
@@ -225,7 +225,7 @@ export default function OrdersPage({ statusKey = "all" }) {
         requireInteraction: true,
         silent: false,
         vibrate: [200, 100, 200, 100, 300],
-        icon: "/favicon.ico",
+        icon: "/favicon.webp",
         data: { targetUrl: "/admin/orders/all" },
       }
 
@@ -552,6 +552,9 @@ export default function OrdersPage({ statusKey = "all" }) {
         orderStatus: displayStatus,
         deliveryPartnerName,
         deliveryPartnerPhone,
+        riderEarning: Number(order.riderEarning || 0),
+        distanceKm: order.distanceKm ?? null,
+        distanceMode: order.distanceMode || null,
         deliveryType:
           order.orderType === "takeaway"
             ? "Takeaway"

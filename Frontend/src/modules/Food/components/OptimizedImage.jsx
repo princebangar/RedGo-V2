@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react'
 import { motion } from 'framer-motion'
-import dishFallbackImage from '@food/assets/dish_fallback.webp'
+import dishFallbackImage from '@food/assets/placeholders/dish_fallback.webp'
 
 /**
  * OptimizedImage Component

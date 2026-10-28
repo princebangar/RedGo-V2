@@ -1,4 +1,5 @@
 import { useState, useMemo, useEffect } from "react"
+import { getNetworkErrorMessage } from "@/shared/utils/networkError"
 import { 
   Search, Plus, Edit, Trash2, ArrowUpDown, 
   Loader2, X, Building2, AlertTriangle
@@ -88,7 +89,7 @@ export default function RestaurantCommission() {
     } catch (error) {
       debugError('Error fetching bootstrap:', error)
       if (error.code === 'ERR_NETWORK' || error.message === 'Network Error') {
-        toast.error(`Cannot connect to backend server. Please ensure the backend is running on ${API_BASE_URL.replace('/api', '')}`)
+        toast.error(getNetworkErrorMessage())
       } else {
         toast.error(error.response?.data?.message || 'Failed to fetch commissions')
       }
@@ -123,7 +124,7 @@ export default function RestaurantCommission() {
       
       // Handle network errors
       if (error.code === 'ERR_NETWORK' || error.message === 'Network Error') {
-        toast.error(`Cannot connect to backend server. Please ensure the backend is running on ${API_BASE_URL.replace('/api', '')}`)
+        toast.error(getNetworkErrorMessage())
         debugError('?? Backend connection issue. Check:')
         debugError('   1. Is backend server running? (npm start in backend folder)')
         debugError(`   2. Is backend running on ${API_BASE_URL.replace('/api', '')}?`)

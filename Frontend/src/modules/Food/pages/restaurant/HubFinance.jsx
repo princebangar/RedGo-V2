@@ -191,7 +191,8 @@ export default function HubFinance() {
   const invoiceSummary = useMemo(() => {
     const earnings = invoiceOrders.reduce((sum, order) => sum + (order.payout || order.restaurantEarning || 0), 0)
     const commission = invoiceOrders.reduce((sum, order) => sum + (order.commission || 0), 0)
-    const gross = invoiceOrders.reduce((sum, order) => sum + (order.totalAmount || order.orderTotal || 0), 0)
+    // Gross = total food amount of the orders (not what the customer paid incl. delivery fee)
+    const gross = invoiceOrders.reduce((sum, order) => sum + (order.orderTotal ?? order.totalAmount ?? 0), 0)
     return { earnings, commission, gross, count: invoiceOrders.length }
   }, [invoiceOrders])
 

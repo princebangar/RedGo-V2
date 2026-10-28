@@ -4,7 +4,7 @@ import OptimizedImage from "@food/components/OptimizedImage";
 import { useProfile } from "@food/context/ProfileContext";
 import { isVegMenuItem } from "@food/utils/vegMode";
 import { saveBrowseScroll, saveCategoryBrowseClick } from "@food/utils/browseScrollMemory";
-import dishFallbackImage from "@food/assets/dish_fallback.webp";
+import dishFallbackImage from "@food/assets/placeholders/dish_fallback.webp";
 import { toFoodUserPath, getRestaurantRouteId } from "@food/utils/mainTabRoutes";
 
 const WEBVIEW_SESSION_CACHE_BUSTER = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;

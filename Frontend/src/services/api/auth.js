@@ -332,3 +332,12 @@ export function verifyDeliveryOtp(phone, otp, fcmToken = null, platform = "web",
     ...(confirmAction ? { confirmAction } : {}),
   });
 }
+
+/**
+ * Poll the approval status of a partner whose account is under review.
+ * Resolves to { status: 'pending' | 'approved' | 'rejected' | 'banned', ... }; when approved it also carries the login tokens.
+ */
+export async function getPendingApprovalStatus(pendingToken) {
+  const response = await apiClient.post("/food/auth/pending-approval/status", { pendingToken });
+  return response?.data?.data || response?.data || {};
+}

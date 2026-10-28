@@ -58,7 +58,7 @@ import { filterSidebarMenuByPermissions } from "@food/utils/subAdminPermissions"
 import { getCurrentUser } from "@food/utils/auth"
 import { adminAPI } from "@food/api"
 import { dispatchAdminNotificationsUpdated } from "@food/hooks/useAdminNotifications"
-import quickSpicyLogo from "@food/assets/quicky-spicy-logo.png"
+import { brandLogo } from "@food/constants/brand"
 const debugLog = (...args) => {}
 const debugWarn = (...args) => {}
 const debugError = (...args) => {}
@@ -270,6 +270,7 @@ export default function AdminSidebar({ isOpen = false, onClose, onCollapseChange
     if (p.includes("safety-emergency-reports")) return badges.safetyReports ?? 0
     if (p.includes("delivery-partners/join-request")) return badges.deliveryPartners ?? 0
     if (p.includes("contact-messages")) return badges.contactMessages ?? 0
+    if (p.includes("dining-requests")) return badges.diningRequests ?? 0
 
     // Label-based (expandable parents without paths)
     if (l.includes("food approval")) return badges.foodApprovals ?? 0
@@ -283,6 +284,7 @@ export default function AdminSidebar({ isOpen = false, onClose, onCollapseChange
     if (l.includes("safety emergency reports")) return badges.safetyReports ?? 0
     if (l === "deliveryman" || l.includes("join request") || l.includes("join-request")) return badges.deliveryPartners ?? 0
     if (l === "user feedback") return badges.contactMessages ?? 0
+    if (l.includes("dining category request")) return badges.diningRequests ?? 0
     if (l === "orders") return badges.orders ?? 0
 
     return 0
@@ -950,13 +952,13 @@ export default function AdminSidebar({ isOpen = false, onClose, onCollapseChange
                 <div className="w-24 h-12 rounded-lg flex items-center justify-center shadow-black/20">
                   {logoUrl ? (
                     <img
-                      src={logoUrl || quickSpicyLogo}
+                      src={logoUrl || brandLogo}
                       alt={companyName || "Company"}
                       className="w-24 h-10 object-contain"
                       loading="lazy"
                       onError={(e) => {
-                        if (e.target.src !== quickSpicyLogo) {
-                          e.target.src = quickSpicyLogo
+                        if (e.target.src !== brandLogo) {
+                          e.target.src = brandLogo
                         }
                       }}
                     />
@@ -965,7 +967,7 @@ export default function AdminSidebar({ isOpen = false, onClose, onCollapseChange
                       {companyName}
                     </span>
                   ) : (
-                    <img src={quickSpicyLogo} alt="Company" className="w-24 h-10 object-contain" loading="lazy" />
+                    <img src={brandLogo} alt="Company" className="w-24 h-10 object-contain" loading="lazy" />
                   )}
                 </div>
               </div>
@@ -975,18 +977,18 @@ export default function AdminSidebar({ isOpen = false, onClose, onCollapseChange
                 <div className="w-10 h-10 rounded-lg bg-white/5 flex items-center justify-center shadow-lg shadow-black/20 ring-1 ring-white/10">
                   {logoUrl || companyName ? (
                     <img
-                      src={logoUrl || quickSpicyLogo}
+                      src={logoUrl || brandLogo}
                       alt={companyName || "Company"}
                       className="w-10 h-10 object-contain"
                       loading="lazy"
                       onError={(e) => {
-                        if (e.target.src !== quickSpicyLogo) {
-                          e.target.src = quickSpicyLogo
+                        if (e.target.src !== brandLogo) {
+                          e.target.src = brandLogo
                         }
                       }}
                     />
                   ) : (
-                    <img src={quickSpicyLogo} alt="Company" className="w-10 h-10 object-contain" loading="lazy" />
+                    <img src={brandLogo} alt="Company" className="w-10 h-10 object-contain" loading="lazy" />
                   )}
                 </div>
               </div>

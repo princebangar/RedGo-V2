@@ -14,6 +14,7 @@ import { prepareUploadFile } from "@/shared/utils/imageCompressor"
 import { deliveryAPI } from "@food/api"
 import { motion, AnimatePresence } from "framer-motion"
 import useDeliveryBackNavigation from "../../hooks/useDeliveryBackNavigation"
+import useCloseOnBack from "../../hooks/useCloseOnBack"
 
 const debugLog = (...args) => {}
 const debugWarn = (...args) => {}
@@ -58,6 +59,8 @@ export const ProfileDetailsV2 = () => {
   const [showDeletePopup, setShowDeletePopup] = useState(false)
   const [isDeletingImage, setIsDeletingImage] = useState(false)
   const [activePicker, setActivePicker] = useState(null) // { target: 'profilePhoto' | 'upiQrCode', ref: any, title: string }
+  // Back closes the open document viewer first (sheets do the same through BottomPopup closeOnBack).
+  useCloseOnBack(showDocumentModal, () => setShowDocumentModal(false))
   const drivingLicenseInputRef = useRef(null)
   const upiQrCameraInputRef = useRef(null)
 
@@ -473,7 +476,7 @@ export const ProfileDetailsV2 = () => {
               {profileImageUrl ? (
                 <img src={profileImageUrl} alt="Avatar" className="w-full h-full object-cover transition-transform group-hover:scale-110" />
               ) : (
-                <img src="/profile_avatar.webp" alt="Avatar" className="w-full h-full object-cover transition-transform group-hover:scale-110" />
+                <img src="/images/profile-avatar.webp" alt="Avatar" className="w-full h-full object-cover transition-transform group-hover:scale-110" />
               )}
               {isUploadingImage && (
                 <div className="absolute inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center">
@@ -738,7 +741,7 @@ export const ProfileDetailsV2 = () => {
       </BottomPopup>
 
       {/* Vehicle Popup */}
-      <BottomPopup isOpen={showVehiclePopup} onClose={() => setShowVehiclePopup(false)} title="Vehicle Info" closeOnHandleClick={true} showCloseButton={false}>
+      <BottomPopup isOpen={showVehiclePopup} onClose={() => setShowVehiclePopup(false)} title="Vehicle Info" closeOnHandleClick={true} closeOnBack={true} swipeAnywhere={true} showCloseButton={false}>
          <div className="space-y-4 pb-10">
             <div className="bg-gray-50 p-6 rounded-3xl border border-gray-100 flex flex-col gap-4">
                 {/* Type Selection */}
@@ -847,6 +850,8 @@ export const ProfileDetailsV2 = () => {
         title="Bank & Payments"
         maxHeight="85vh"
         closeOnHandleClick={true}
+        closeOnBack={true}
+        swipeAnywhere={true}
         showCloseButton={false}
       >
         <div className="space-y-5 pb-10">

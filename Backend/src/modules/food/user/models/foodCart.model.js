@@ -9,6 +9,8 @@ const foodCartItemSchema = new mongoose.Schema(
       index: true,
     },
     variantId: { type: String, default: '', trim: true },
+    /** 'food' = FoodItem, 'addon' = FoodAddon of the same restaurant (cart add-ons). */
+    itemType: { type: String, enum: ['food', 'addon'], default: 'food' },
     quantity: { type: Number, required: true, min: 1, default: 1 },
     /** Snapshot of pricing when line was added/updated — stays stable until cart refresh. */
     basePrice: { type: Number, default: null, min: 0 },

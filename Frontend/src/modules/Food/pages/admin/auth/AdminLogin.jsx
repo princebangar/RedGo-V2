@@ -211,7 +211,7 @@ export default function AdminLogin() {
       {/* LEFT SECTION (54% desktop, hidden on mobile) */}
       <div className="hidden md:flex w-full md:w-[54%] h-[45vh] md:h-full bg-white relative items-center justify-center overflow-hidden shrink-0 z-0">
         <img
-          src="/adminloginpagedesign.webp"
+          src="/images/admin-login-bg.webp"
           alt="Login Illustration"
           className="w-full h-full object-contain scale-[0.86] md:-translate-x-10"
         />

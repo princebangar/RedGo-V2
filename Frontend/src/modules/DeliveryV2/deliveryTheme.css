@@ -210,6 +210,13 @@
   box-shadow: 0 0 0 4px rgb(21 73 139 / 0.15) !important;
 }
 
+/* Invalid input (e.g. wrong handover code) must still turn red under the theme */
+.delivery-v2-theme input[aria-invalid="true"] {
+  border-color: #dc2626 !important;
+  background-color: #fef2f2 !important;
+  color: #b91c1c !important;
+}
+
 @media (max-width: 900px) {
   .delivery-v2-theme main {
     max-width: calc(100% - 1.25rem);

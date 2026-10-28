@@ -8,6 +8,7 @@ import useNotificationInbox from "@food/hooks/useNotificationInbox";
 import VoiceSearchOverlay from "@food/components/user/VoiceSearchOverlay";
 import { useVoiceSearch } from "@food/hooks/useVoiceSearch";
 import { isModuleAuthenticated } from "@food/utils/auth";
+import { openLocationPromptIfNeeded } from "@food/components/user/LocationPrompt";
 
 // Images for banner - exactly as in FestBanner.jsx
 const bannerImages = {
@@ -137,6 +138,9 @@ export default function HomeHeader({
           <Link
             to="/food/user/address-selector"
             state={{ from: window.location.pathname }}
+            onClick={(e) => {
+              if (openLocationPromptIfNeeded()) e.preventDefault();
+            }}
             className="flex items-center gap-2 cursor-pointer group min-w-0 flex-1 relative z-50 text-left no-underline"
           >
             <div className="bg-white/10 p-1.5 rounded-xl group-active:scale-95 transition-all">
@@ -248,12 +252,12 @@ export default function HomeHeader({
               >
                 <Avatar className="h-full w-full bg-[#FFF5E6]">
                   <AvatarImage 
-                    src={userProfile?.profileImage || "/profile_avatar.webp"} 
+                    src={userProfile?.profileImage || "/images/profile-avatar.webp"} 
                     alt="Profile" 
                     className="object-cover"
                   />
                   <AvatarFallback className="bg-[#FFF5E6] text-[20px] font-black text-[#DC2626] leading-none tracking-tighter antialiased">
-                    <img src="/profile_avatar.webp" alt="Profile" className="object-cover w-full h-full" />
+                    <img src="/images/profile-avatar.webp" alt="Profile" className="object-cover w-full h-full" />
                   </AvatarFallback>
                 </Avatar>
               </Link>

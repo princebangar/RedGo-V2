@@ -57,6 +57,9 @@ export default function AcceptedOrderCard({ order, focused = false, onSelect }) 
             <p className="text-[11px] font-semibold !text-[#15498b] mt-0.5">
               {phaseLabel(order, session)}
             </p>
+            <p className="text-[11px] font-bold text-emerald-700 mt-0.5">
+              Earning ₹{Number(order?.earnings ?? order?.riderEarning ?? 0).toFixed(2)}
+            </p>
           </div>
         </div>
         <ChevronRight

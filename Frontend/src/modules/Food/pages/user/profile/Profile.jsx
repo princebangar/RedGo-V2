@@ -526,7 +526,7 @@ export default function Profile() {
                     />
                   ) : (
                     <img
-                      src="/profile_avatar.webp"
+                      src="/images/profile-avatar.webp"
                       alt={displayName}
                       className="w-full h-full object-cover rounded-full"
                     />

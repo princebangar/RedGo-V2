@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useState } from "react"
 import { useLocation, useNavigate } from "react-router-dom"
 import { Clock3, ShieldCheck, AlertTriangle, X } from "lucide-react"
-import { clearModuleAuth } from "@food/utils/auth"
+import { clearModuleAuth, setAuthData as storeAuthData } from "@food/utils/auth"
+import { getPendingApprovalStatus } from "@/services/api/auth.js"
 import {
   enablePendingVerificationPush,
   getWebNotificationPermission,
@@ -22,15 +23,20 @@ export default function VerificationPending() {
   const navigate = useNavigate()
   const location = useLocation()
 
+  const [liveStatus, setLiveStatus] = useState(null)
+  const [liveReason, setLiveReason] = useState("")
+
   const localStatus = useMemo(() => {
+    if (liveStatus) return liveStatus
     if (location.state?.isRejected) return "rejected"
     return sessionStorage.getItem("delivery_pendingStatus") || "pending"
-  }, [location.state?.isRejected])
+  }, [liveStatus, location.state?.isRejected])
 
   const localMessage = useMemo(() => {
+    if (liveStatus === "rejected") return ""
     if (location.state?.message) return location.state.message
     return sessionStorage.getItem("delivery_pendingMessage") || ""
-  }, [location.state?.message])
+  }, [liveStatus, location.state?.message])
 
   const pendingPhone = useMemo(() => {
     return (
@@ -42,6 +48,7 @@ export default function VerificationPending() {
 
   const rejectionReason = useMemo(() => {
     return (
+      liveReason ||
       location.state?.rejectionReason ||
       sessionStorage.getItem("delivery_pendingRejectionReason") ||
       ""
@@ -63,6 +70,47 @@ export default function VerificationPending() {
 
     return { text: localMessage, reason: rejectionReason || "" }
   }, [localMessage, rejectionReason])
+
+  // Check the approval status every few seconds so the page moves on by itself once admin decides.
+  useEffect(() => {
+    let cancelled = false
+
+    const check = async () => {
+      const pendingToken = localStorage.getItem("delivery_pendingToken")
+      if (!pendingToken || document.visibilityState === "hidden") return
+      try {
+        const result = await getPendingApprovalStatus(pendingToken)
+        if (cancelled) return
+        if (result?.status === "approved" && result.accessToken) {
+          storeAuthData("delivery", result.accessToken, result.user, result.refreshToken || null)
+          window.dispatchEvent(new Event("deliveryAuthChanged"))
+          localStorage.removeItem("delivery_pendingToken")
+          ;[
+            "delivery_pendingPhone",
+            "delivery_pendingStatus",
+            "delivery_pendingMessage",
+            "delivery_pendingRejectionReason",
+          ].forEach((key) => sessionStorage.removeItem(key))
+          navigate("/food/delivery", { replace: true })
+        } else if (result?.status === "rejected") {
+          setLiveStatus("rejected")
+          setLiveReason(result.rejectionReason || "")
+          sessionStorage.setItem("delivery_pendingStatus", "rejected")
+        }
+      } catch {
+        // keep the pending screen as it is
+      }
+    }
+
+    void check()
+    const pollId = window.setInterval(check, 10000)
+    window.addEventListener("focus", check)
+    return () => {
+      cancelled = true
+      window.clearInterval(pollId)
+      window.removeEventListener("focus", check)
+    }
+  }, [navigate])
 
   const isRejected = localStatus === "rejected"
   const [pushPermission, setPushPermission] = useState(() => getWebNotificationPermission())
@@ -118,6 +166,7 @@ export default function VerificationPending() {
     sessionStorage.removeItem("delivery_pendingStatus")
     sessionStorage.removeItem("delivery_pendingMessage")
     sessionStorage.removeItem("delivery_pendingRejectionReason")
+    localStorage.removeItem("delivery_pendingToken")
     sessionStorage.removeItem("deliverySignupDetails")
     sessionStorage.removeItem("deliveryNeedsRegistration")
   }

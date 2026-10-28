@@ -72,8 +72,25 @@ const notificationSchema = new mongoose.Schema(
 
 notificationSchema.index({ ownerType: 1, ownerId: 1, createdAt: -1 });
 notificationSchema.index({ ownerType: 1, ownerId: 1, isRead: 1, dismissedAt: 1 });
-notificationSchema.index({ broadcastId: 1, ownerType: 1, ownerId: 1 }, { unique: true, sparse: true });
+// Unique only for admin broadcasts. A sparse compound index would also cover rows with broadcastId null,
+// so a 2nd non-broadcast message for the same owner failed with a duplicate-key error and was lost.
+notificationSchema.index(
+    { broadcastId: 1, ownerType: 1, ownerId: 1 },
+    { unique: true, partialFilterExpression: { broadcastId: { $type: 'objectId' } }, name: 'broadcast_owner_unique' }
+);
 // TTL Index: Auto-delete notifications older than 3 days (259,200 seconds) for 512MB Free DB Tier safety
 notificationSchema.index({ createdAt: 1 }, { expireAfterSeconds: 3 * 24 * 60 * 60 });
 
 export const FoodNotification = mongoose.model('FoodNotification', notificationSchema);
+
+/** Replace the old sparse unique index (broadcastId_1_ownerType_1_ownerId_1) with the partial one. */
+export const repairNotificationIndexes = async () => {
+    try {
+        const indexes = await FoodNotification.collection.indexes();
+        const old = indexes.find((i) => i.name === 'broadcastId_1_ownerType_1_ownerId_1');
+        if (old) await FoodNotification.collection.dropIndex(old.name);
+        await FoodNotification.syncIndexes();
+    } catch (err) {
+        console.error('Notification index repair failed:', err?.message || err);
+    }
+};

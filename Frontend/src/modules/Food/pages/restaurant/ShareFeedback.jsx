@@ -166,7 +166,8 @@ export default function ShareFeedback() {
             exit={{ opacity: 0 }}
             onClick={() => {
               setShowThanks(false)
-              goBack()
+              // Feedback is opened from Explore: always return there (not to Orders)
+              navigate("/food/restaurant/explore", { replace: true })
             }}
           >
             <motion.div
@@ -192,7 +193,8 @@ export default function ShareFeedback() {
                   className="w-full py-2.5 rounded-full bg-gradient-to-br from-[#B80B3D] to-[#66001D] text-white text-sm font-medium"
                   onClick={() => {
                     setShowThanks(false)
-                    goBack()
+                    // Feedback is opened from Explore: always return there (not to Orders)
+                    navigate("/food/restaurant/explore", { replace: true })
                   }}
                 >
                   Done

@@ -7,6 +7,7 @@ import AnimatedPage from "@food/components/user/AnimatedPage"
 import { useLocationSelector } from "@food/components/user/UserLayout"
 import useAppBackNavigation from "@food/hooks/useAppBackNavigation"
 import { useLocation as useLocationHook } from "@food/hooks/useLocation"
+import { useZone } from "@food/hooks/useZone"
 import { useProfile } from "@food/context/ProfileContext"
 import { FaLocationDot } from "react-icons/fa6"
 import { diningAPI } from "@food/api"
@@ -55,6 +56,7 @@ export default function DiningCategory() {
   const goBack = useAppBackNavigation()
   const { openLocationSelector } = useLocationSelector()
   const { location } = useLocationHook()
+  const { zoneId, loading: zoneLoading } = useZone(location)
   const { addFavorite, removeFavorite, isFavorite, vegMode, vegModeOption } = useProfile()
 
   const [restaurants, setRestaurants] = useState([])
@@ -62,14 +64,22 @@ export default function DiningCategory() {
   const [error, setError] = useState(null)
 
   useEffect(() => {
+    // The server lists dining restaurants per service zone; without the zone it returns nothing.
+    if (zoneLoading) return
+    if (!zoneId) {
+      setRestaurants([])
+      setIsLoading(false)
+      return
+    }
+
     const fetchRestaurants = async () => {
       try {
         setIsLoading(true)
-        const response = await diningAPI.getRestaurants(
-          category
-            ? (location?.city ? { category, city: location.city } : { category })
-            : (location?.city ? { city: location.city } : {})
-        )
+        const response = await diningAPI.getRestaurants({
+          zoneId,
+          ...(category ? { category } : {}),
+          ...(location?.city ? { city: location.city } : {}),
+        })
 
         if (response?.data?.success) {
           const mapped = (Array.isArray(response.data.data) ? response.data.data : []).map((restaurant) => {
@@ -88,11 +98,14 @@ export default function DiningCategory() {
               cuisine:
                 Array.isArray(restaurant.cuisines) && restaurant.cuisines.length > 0
                   ? restaurant.cuisines.join(" • ")
-                  : "Multi-cuisine",
-              price: restaurant.costForTwo ? `Rs ${restaurant.costForTwo} for two` : "Price on request",
+                  : "",
+              categories: (Array.isArray(restaurant.categories) ? restaurant.categories : [])
+                .map((c) => c?.name)
+                .filter(Boolean),
+              price: restaurant.costForTwo ? `Rs ${restaurant.costForTwo} for two` : "",
               rating: Number(restaurant.rating || restaurant.avgRating || 0).toFixed(1),
-              offer: restaurant.offer || "Pre-book tables and dining offers",
-              featuredDish: restaurant.featuredDish || "Chef's special",
+              offer: restaurant.offer || "",
+              featuredDish: restaurant.featuredDish || "",
               pureVegRestaurant:
                 restaurant.pureVegRestaurant === true ||
                 restaurant.diningSettings?.pureVegRestaurant === true,
@@ -116,7 +129,7 @@ export default function DiningCategory() {
     }
 
     fetchRestaurants()
-  }, [category, location?.city])
+  }, [category, location?.city, zoneId, zoneLoading])
 
   const cityName = location?.city || "Select location"
   const heading = useMemo(() => formatCategoryHeading(category), [category])
@@ -225,10 +238,12 @@ export default function DiningCategory() {
                       <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/20 to-transparent" />
 
                       <div className="absolute left-4 right-4 top-4 flex items-start justify-between gap-3">
-                        <div className="rounded-full bg-black/60 px-3 py-1.5 text-xs font-semibold text-white backdrop-blur-sm">
-                          {restaurant.featuredDish}
-                          {restaurant.featuredPrice ? ` • ${"\u20B9"}${restaurant.featuredPrice}` : ""}
-                        </div>
+                        {restaurant.featuredDish ? (
+                          <div className="rounded-full bg-black/60 px-3 py-1.5 text-xs font-semibold text-white backdrop-blur-sm">
+                            {restaurant.featuredDish}
+                            {restaurant.featuredPrice ? ` • ${"\u20B9"}${restaurant.featuredPrice}` : ""}
+                          </div>
+                        ) : <span />}
                         <Button
                           variant="ghost"
                           size="icon"
@@ -241,7 +256,9 @@ export default function DiningCategory() {
 
                       <div className="absolute bottom-4 left-4 right-4">
                         <p className="mb-2 text-[11px] font-semibold uppercase tracking-[0.32em] text-white/80">Reserve Your Table</p>
-                        <p className="max-w-[85%] text-2xl font-black leading-tight text-white">{restaurant.offer}</p>
+                        {restaurant.offer ? (
+                          <p className="max-w-[85%] text-2xl font-black leading-tight text-white">{restaurant.offer}</p>
+                        ) : null}
                       </div>
                     </div>
 
@@ -257,10 +274,21 @@ export default function DiningCategory() {
                         </div>
                       </div>
 
-                      <div className="flex items-center gap-2 text-sm text-[#5f4c39] dark:text-gray-300">
-                        <UtensilsCrossed className="h-4 w-4 text-[#DC2626]" />
-                        <span className="line-clamp-1">{restaurant.cuisine}</span>
-                      </div>
+                      {restaurant.cuisine ? (
+                        <div className="flex items-center gap-2 text-sm text-[#5f4c39] dark:text-gray-300">
+                          <UtensilsCrossed className="h-4 w-4 text-[#DC2626]" />
+                          <span className="line-clamp-1">{restaurant.cuisine}</span>
+                        </div>
+                      ) : null}
+                      {restaurant.categories?.length ? (
+                        <div className="flex flex-wrap gap-1.5">
+                          {restaurant.categories.map((name) => (
+                            <span key={name} className="rounded-full border border-[#ead7c0] px-2.5 py-1 text-[11px] font-semibold text-[#6b5641] dark:border-gray-700 dark:text-gray-300">
+                              {name}
+                            </span>
+                          ))}
+                        </div>
+                      ) : null}
 
                       <div className="flex flex-wrap gap-2">
                         <div className={`inline-flex items-center gap-2 rounded-full px-3 py-1.5 text-xs font-semibold ${restaurant.availability?.isOpen ? "bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300" : "bg-rose-50 text-rose-700 dark:bg-rose-950/40 dark:text-rose-300"}`}>
@@ -273,7 +301,7 @@ export default function DiningCategory() {
                       </div>
 
                       <div className="flex items-center justify-between border-t border-dashed border-[#ead7c0] pt-4 dark:border-gray-700">
-                        <div className="text-sm font-semibold text-[#4c3b2c] dark:text-gray-200">{restaurant.price}</div>
+                        <div className="text-sm font-semibold text-[#4c3b2c] dark:text-gray-200">{restaurant.price || " "}</div>
                         <div className="inline-flex items-center gap-2 text-sm font-bold text-[#DC2626]">
                           <BadgePercent className="h-4 w-4" />
                           <span>Menu & booking</span>

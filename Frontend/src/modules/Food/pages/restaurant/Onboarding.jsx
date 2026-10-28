@@ -15,6 +15,12 @@ import {
   SelectValue,
 } from "@food/components/ui/select"
 import { restaurantAPI, zoneAPI, uploadAPI, api } from "@food/api"
+import { findZoneForPoint, getZoneId, getZoneLabel, getZonesBounds } from "@food/utils/zoneGeometry"
+
+const CUISINE_OPTIONS = ["North Indian", "South Indian", "Chinese", "Pizza", "Burgers", "Bakery", "Cafe"]
+const MAX_CUISINES = 3
+
+const OUTSIDE_ZONE_MESSAGE = "This location is outside our service zones. Please choose a location inside a service zone."
 import { MobileTimePicker } from "@mui/x-date-pickers/MobileTimePicker"
 import { LocalizationProvider } from "@mui/x-date-pickers/LocalizationProvider"
 import { AdapterDateFns } from "@mui/x-date-pickers/AdapterDateFns"
@@ -715,6 +721,9 @@ export default function RestaurantOnboarding() {
   const [locationSuggestions, setLocationSuggestions] = useState([])
   const [isSearchingLocation, setIsSearchingLocation] = useState(false)
   const [isLocationSearchFocused, setIsLocationSearchFocused] = useState(false)
+  // Text that was filled in by picking a suggestion (so it is not searched again)
+  const pickedLocationTextRef = useRef("")
+  const [zoneError, setZoneError] = useState("")
 
   const getPreviewImageUrl = (value) => {
     if (!value) return null
@@ -737,11 +746,12 @@ export default function RestaurantOnboarding() {
     return null
   }
 
-  const openImageSourcePicker = ({ title, onSelectFile, fileNamePrefix, fallbackInputRef }) => {
+  const openImageSourcePicker = ({ title, onSelectFile, onSelectFiles, fileNamePrefix, fallbackInputRef }) => {
     setSourcePicker({
       isOpen: true,
       title: title || "Select image source",
       onSelectFile,
+      onSelectFiles: onSelectFiles || null,
       fileNamePrefix: fileNamePrefix || "camera-image",
       fallbackInputRef: fallbackInputRef || null,
     })
@@ -753,12 +763,11 @@ export default function RestaurantOnboarding() {
 
   const handleMenuImagesSelected = (files = []) => {
     if (!files.length) return
-    const nextMenuImages = [...(step2.menuImages || []), ...files]
+    // Functional update: several picks in a row must all be kept (IndexedDB is synced by the save effect)
     setStep2((prev) => ({
       ...prev,
-      menuImages: nextMenuImages,
+      menuImages: [...(prev.menuImages || []), ...files],
     }))
-    void persistMenuImagesToDB(nextMenuImages)
   }
 
 
@@ -1121,14 +1130,13 @@ export default function RestaurantOnboarding() {
       } else if (!step2.profileImage) {
         await deleteFileFromDB("profileImage")
       }
-      if (step3.panImage && isUploadableFile(step3.panImage)) {
-        await saveFileToDB("panImage", step3.panImage)
-      }
-      if (step3.gstImage && isUploadableFile(step3.gstImage)) {
-        await saveFileToDB("gstImage", step3.gstImage)
-      }
-      if (step3.fssaiImage && isUploadableFile(step3.fssaiImage)) {
-        await saveFileToDB("fssaiImage", step3.fssaiImage)
+      // A removed document must also leave IndexedDB, or it comes back after a refresh
+      for (const key of ["panImage", "gstImage", "fssaiImage"]) {
+        if (step3[key] && isUploadableFile(step3[key])) {
+          await saveFileToDB(key, step3[key])
+        } else if (!step3[key]) {
+          await deleteFileFromDB(key)
+        }
       }
       
       await persistMenuImagesToDB(step2.menuImages || [])
@@ -1213,8 +1221,10 @@ export default function RestaurantOnboarding() {
     } else if (!/^\d{10}$/.test(normalizePhoneDigits(step1.primaryContactNumber))) {
        errors.push("Primary contact number must be exactly 10 digits")
     }
-    if (!step1.zoneId?.trim()) {
-      errors.push("Service zone is required")
+    if (zoneError) {
+      errors.push(zoneError)
+    } else if (!step1.zoneId?.trim()) {
+      errors.push("Please pick the restaurant location from the search suggestions to detect its service zone")
     }
     if (!step1.location?.area?.trim()) {
       errors.push("Area/Sector/Locality is required")
@@ -1265,6 +1275,10 @@ export default function RestaurantOnboarding() {
       }
     }
 
+    if (!Array.isArray(step2.cuisines) || step2.cuisines.length === 0) {
+      errors.push("Please select at least one cuisine")
+    }
+
     if (!step2.openingTime?.trim()) {
       errors.push("Opening time is required")
     }
@@ -1276,8 +1290,6 @@ export default function RestaurantOnboarding() {
     if (openingMinutes !== null && closingMinutes !== null) {
       if (openingMinutes === closingMinutes) {
         errors.push("Opening time and closing time cannot be same")
-      } else if (closingMinutes < openingMinutes) {
-        errors.push("Closing time cannot be less than opening time")
       }
     }
     if (!step2.openDays || step2.openDays.length === 0) {
@@ -1764,29 +1776,6 @@ export default function RestaurantOnboarding() {
           <p className="text-sm text-gray-700">
             Add your restaurant's location for order pick-up.
           </p>
-          <div>
-            <Label className="text-xs text-gray-700">Service zone*</Label>
-            <select
-              value={step1.zoneId || ""}
-              onChange={(e) => setStep1({ ...step1, zoneId: e.target.value })}
-              className="mt-1 w-full h-9 rounded-md border border-input bg-white px-3 text-sm"
-              disabled={zonesLoading || !isEditing}
-            >
-              <option value="">{zonesLoading ? "Loading zones..." : "Select a zone"}</option>
-              {zones.map((z) => {
-                const id = String(z?._id || z?.id || "")
-                const label = z?.name || z?.zoneName || z?.serviceLocation || id
-                return (
-                  <option key={id} value={id}>
-                    {label}
-                  </option>
-                )
-              })}
-            </select>
-            <p className="text-[11px] text-gray-500 mt-1">
-              Choose the service zone where your restaurant will be available.
-            </p>
-          </div>
           <div ref={locationSearchContainerRef} className="relative">
             <Label className="text-xs text-gray-700">Search location</Label>
             <div className="relative">
@@ -1835,6 +1824,7 @@ export default function RestaurantOnboarding() {
                           longitude: lng,
                         },
                       }))
+                      pickedLocationTextRef.current = display
                       setLocationSearchValue(display)
                       setLocationSuggestions([])
                     }}
@@ -1853,6 +1843,22 @@ export default function RestaurantOnboarding() {
             
             <p className="text-[11px] text-gray-500 mt-1">
               Select a suggestion to auto-fill area/city/state/pincode and coordinates.
+            </p>
+          </div>
+          <div>
+            <Label className="text-xs text-gray-700">Service zone*</Label>
+            <div
+              className={`mt-1 w-full h-9 rounded-md border px-3 text-sm flex items-center ${
+                zoneError ? "border-red-300 bg-red-50 text-red-700" : "border-input bg-gray-50 text-gray-800"
+              }`}
+            >
+              {zonesLoading
+                ? "Loading zones..."
+                : getZoneLabel(zones.find((z) => getZoneId(z) === String(step1.zoneId || ""))) ||
+                  (zoneError ? "Outside service zones" : "Pick a location to detect the zone")}
+            </div>
+            <p className={`text-[11px] mt-1 ${zoneError ? "text-red-600 font-medium" : "text-gray-500"}`}>
+              {zoneError || "Filled automatically from the restaurant location."}
             </p>
           </div>
           <Input
@@ -2069,19 +2075,14 @@ export default function RestaurantOnboarding() {
           types: ["geocode", "establishment"]
         }
 
-        // Apply strict bounds filtering if zone is selected
-        const selectedZone = zones.find(z => String(z?._id || z?.id) === String(step1.zoneId))
-        if (selectedZone && Array.isArray(selectedZone.coordinates) && selectedZone.coordinates.length > 0) {
-          const bounds = new window.google.maps.LatLngBounds()
-          selectedZone.coordinates.forEach(coord => {
-            const lat = parseFloat(coord.latitude || coord.lat)
-            const lng = parseFloat(coord.longitude || coord.lng)
-            if (Number.isFinite(lat) && Number.isFinite(lng)) {
-              bounds.extend({ lat, lng })
-            }
-          })
-          autocompleteOptions.bounds = bounds
-          autocompleteOptions.strictBounds = true
+        // Prefer results inside the service zones (the zone itself is detected from the picked place)
+        const zonesBounds = getZonesBounds(zones)
+        if (zonesBounds) {
+          autocompleteOptions.bounds = new window.google.maps.LatLngBounds(
+            { lat: zonesBounds.south, lng: zonesBounds.west },
+            { lat: zonesBounds.north, lng: zonesBounds.east },
+          )
+          autocompleteOptions.strictBounds = false
         }
 
         autocomplete = new window.google.maps.places.Autocomplete(inputElement, autocompleteOptions)
@@ -2109,7 +2110,9 @@ export default function RestaurantOnboarding() {
             },
           }))
           
+          pickedLocationTextRef.current = parsed.formattedAddress
           setLocationSearchValue(parsed.formattedAddress)
+          setLocationSuggestions([])
           inputElement.blur()
         })
 
@@ -2154,7 +2157,7 @@ export default function RestaurantOnboarding() {
       }
       placesAutocompleteRef.current = null
     }
-  }, [step, step1.zoneId, zones])
+  }, [step, zones])
 
   // Hybrid Search Fallback (Nominatim)
   useEffect(() => {
@@ -2170,20 +2173,24 @@ export default function RestaurantOnboarding() {
       })
     }
 
-    if (q.length < 3) {
+    // The text was just filled in from a picked suggestion: do not search (and reopen the list) again
+    if (q.length < 3 || q === pickedLocationTextRef.current) {
       setLocationSuggestions([])
       setIsSearchingLocation(false)
       return
     }
+    pickedLocationTextRef.current = ""
 
-    const selectedZone = zones.find(z => String(z?._id || z?.id) === String(step1.zoneId))
-    const zoneName = selectedZone?.name || selectedZone?.zoneName || selectedZone?.serviceLocation || ""
+    const zonesBounds = getZonesBounds(zones)
 
     const t = setTimeout(async () => {
       try {
         setIsSearchingLocation(true)
-        const queryWithZone = zoneName ? `${q}, ${zoneName}` : q
-        const url = `https://nominatim.openstreetmap.org/search?format=json&addressdetails=1&limit=10&q=${encodeURIComponent(queryWithZone)}&countrycodes=in`
+        // Prefer places inside the service zones (viewbox biases results, it does not exclude others)
+        const viewbox = zonesBounds
+          ? `&viewbox=${zonesBounds.west},${zonesBounds.north},${zonesBounds.east},${zonesBounds.south}`
+          : ""
+        const url = `https://nominatim.openstreetmap.org/search?format=json&addressdetails=1&limit=10&q=${encodeURIComponent(q)}&countrycodes=in${viewbox}`
         const res = await fetch(url, { headers: { Accept: "application/json" } })
         const json = await res.json()
         const mapped = (Array.isArray(json) ? json : []).map(r => ({
@@ -2202,7 +2209,24 @@ export default function RestaurantOnboarding() {
     }, 400)
 
     return () => clearTimeout(t)
-  }, [locationSearchValue, step, step1.zoneId, zones])
+  }, [locationSearchValue, step, zones])
+
+  // Service zone always follows the picked location (point-in-polygon); outside every zone -> error
+  useEffect(() => {
+    if (step !== 1 || zonesLoading || zones.length === 0) return
+    const lat = step1.location?.latitude
+    const lng = step1.location?.longitude
+    if (lat === "" || lat == null || lng === "" || lng == null) {
+      setZoneError("")
+      return
+    }
+    const zone = findZoneForPoint(zones, lat, lng)
+    const id = zone ? getZoneId(zone) : ""
+    setZoneError(zone ? "" : OUTSIDE_ZONE_MESSAGE)
+    if (String(step1.zoneId || "") !== id) {
+      setStep1((prev) => ({ ...prev, zoneId: id }))
+    }
+  }, [step, zones, zonesLoading, step1.location?.latitude, step1.location?.longitude, step1.zoneId])
 
   // Click outside to close location search suggestions dropdown
   useEffect(() => {
@@ -2283,6 +2307,7 @@ export default function RestaurantOnboarding() {
                   fileNamePrefix: "menu-image",
                   fallbackInputRef: menuImagesInputRef,
                   onSelectFile: (file) => handleMenuImagesSelected(file ? [file] : []),
+                  onSelectFiles: handleMenuImagesSelected,
                 })
               }
             >
@@ -2455,6 +2480,35 @@ export default function RestaurantOnboarding() {
 
       {/* Operational details */}
       <section className="bg-white p-4 sm:p-6 rounded-md space-y-5">
+        {/* Cuisines (shown to customers, used in dining filters) */}
+        <div className="space-y-2">
+          <Label className="text-xs text-gray-700">Select cuisines (up to {MAX_CUISINES})*</Label>
+          <div className="flex flex-wrap gap-2">
+            {CUISINE_OPTIONS.map((cuisine) => {
+              const active = (step2.cuisines || []).includes(cuisine)
+              return (
+                <button
+                  key={cuisine}
+                  type="button"
+                  onClick={() =>
+                    setStep2((prev) => {
+                      const current = Array.isArray(prev.cuisines) ? prev.cuisines : []
+                      if (current.includes(cuisine)) return { ...prev, cuisines: current.filter((c) => c !== cuisine) }
+                      if (current.length >= MAX_CUISINES) return prev
+                      return { ...prev, cuisines: [...current, cuisine] }
+                    })
+                  }
+                  className={`px-3 py-1.5 text-xs rounded-full border transition-colors ${
+                    active ? "bg-black text-white border-black" : "bg-white text-gray-700 border-gray-300"
+                  }`}
+                >
+                  {cuisine}
+                </button>
+              )
+            })}
+          </div>
+        </div>
+
         {/* Timings with popover time selectors */}
         <div className="space-y-3">
           <Label className="text-xs text-gray-700">Outlet timings</Label>
@@ -2471,10 +2525,6 @@ export default function RestaurantOnboarding() {
                     setError("Opening time and closing time cannot be same")
                     return
                   }
-                  if (closingMinutes < openingMinutes) {
-                    setError("Closing time cannot be less than opening time")
-                    return
-                  }
                 }
                 setStep2((prev) => ({ ...prev, openingTime: nextOpening }))
               }}
@@ -2489,10 +2539,6 @@ export default function RestaurantOnboarding() {
                 if (openingMinutes !== null && closingMinutes !== null) {
                   if (openingMinutes === closingMinutes) {
                     setError("Opening time and closing time cannot be same")
-                    return
-                  }
-                  if (closingMinutes < openingMinutes) {
-                    setError("Closing time cannot be less than opening time")
                     return
                   }
                 }
@@ -3099,6 +3145,7 @@ export default function RestaurantOnboarding() {
           title={sourcePicker.title}
           fileNamePrefix={sourcePicker.fileNamePrefix}
           galleryInputRef={sourcePicker.fallbackInputRef}
+          onFilesSelect={sourcePicker.onSelectFiles}
         />
 
         <OnboardingExitModal

@@ -64,9 +64,9 @@ import {
 import { RestaurantDetailSkeleton } from "@food/components/ui/loading-skeletons"
 import OptimizedImage from "@food/components/OptimizedImage"
 import { isVegMenuItem } from "@food/utils/vegMode"
-import dishFallbackImage from "@food/assets/dish_fallback.webp"
+import dishFallbackImage from "@food/assets/placeholders/dish_fallback.webp"
 
-const fssaiLogo = "/fssai.png?v=3"
+const fssaiLogo = "/images/fssai.png?v=3"
 
 
 
@@ -573,6 +573,26 @@ function RestaurantDetailsContent() {
             if (response?.data?.success && response?.data?.data) {
               apiRestaurant = response.data.data
               debugLog('? Found restaurant in dining API:', apiRestaurant)
+              // The dining lookup has no customer location, so it returns no distance:
+              // load the same restaurant by id with the location to get the real distance.
+              const diningId = apiRestaurant?._id || apiRestaurant?.id || apiRestaurant?.restaurant?._id
+              if (
+                diningId &&
+                Number.isFinite(Number(distanceOrigin?.latitude)) &&
+                Number.isFinite(Number(distanceOrigin?.longitude))
+              ) {
+                try {
+                  const withDistance = await restaurantAPI.getRestaurantById(diningId, {
+                    params: { lat: Number(distanceOrigin.latitude), lng: Number(distanceOrigin.longitude) },
+                  })
+                  if (withDistance?.data?.success && withDistance?.data?.data) {
+                    response = withDistance
+                    apiRestaurant = withDistance.data.data
+                  }
+                } catch {
+                  // keep the dining data
+                }
+              }
             } else {
               debugLog('? Dining API returned no restaurant, falling back to restaurant API...')
             }
@@ -890,7 +910,7 @@ function RestaurantDetailsContent() {
             rating: actualRestaurant?.rating || apiRestaurant?.rating || actualRestaurant?.averageRating || apiRestaurant?.averageRating || 0,
             reviews: actualRestaurant?.totalRatings || apiRestaurant?.totalRatings || actualRestaurant?.reviewCount || apiRestaurant?.reviewCount || actualRestaurant?.reviews?.length || apiRestaurant?.reviews?.length || 0,
             deliveryTime: actualRestaurant?.estimatedDeliveryTime || apiRestaurant?.estimatedDeliveryTime || actualRestaurant?.deliveryTime || apiRestaurant?.deliveryTime || actualRestaurant?.avgDeliveryTime || apiRestaurant?.avgDeliveryTime || "25-30 mins",
-            distance: calculatedDistance || actualRestaurant?.distance || apiRestaurant?.distance || actualRestaurant?.distanceFromUser || apiRestaurant?.distanceFromUser || "1.2 km",
+            distance: calculatedDistance || actualRestaurant?.distance || apiRestaurant?.distance || actualRestaurant?.distanceFromUser || apiRestaurant?.distanceFromUser || "",
             distanceInKm: Number.isFinite(apiDistanceInKm) ? apiDistanceInKm : (actualRestaurant?.distanceInKm ?? apiRestaurant?.distanceInKm ?? null),
             distanceMode: actualRestaurant?.distanceMode || apiRestaurant?.distanceMode || null,
             distanceOriginKey:
@@ -1734,6 +1754,7 @@ function RestaurantDetailsContent() {
     }
 
     const shared = await tryNativeShare(payload)
+    if (shared === "cancelled") return
     if (shared) {
       toast.success("Restaurant shared successfully")
       setShowMenuOptionsSheet(false)
@@ -1767,6 +1788,7 @@ function RestaurantDetailsContent() {
     }
 
     const shared = await tryNativeShare(payload)
+    if (shared === "cancelled") return
     if (shared) {
       toast.success("Dish shared successfully")
       return
@@ -1818,7 +1840,7 @@ function RestaurantDetailsContent() {
       await navigator.share(payload)
       return true
     } catch (error) {
-      if (error?.name === "AbortError") return true
+      if (error?.name === "AbortError") return "cancelled" // closed the share sheet: not shared
       return false
     }
   }
@@ -1856,6 +1878,7 @@ function RestaurantDetailsContent() {
   const handleSystemShareFromModal = async () => {
     if (!sharePayload) return
     const shared = await tryNativeShare(sharePayload)
+    if (shared === "cancelled") return
     if (shared) {
       setShowShareModal(false)
       toast.success("Shared successfully")
@@ -2610,7 +2633,7 @@ function RestaurantDetailsContent() {
                 >
                   <MapPin className="h-4 w-4" />
                   <span className="truncate">
-                    {restaurant?.distance || "1.2 km"} | {restaurant?.location || "Location"}
+                    {restaurant?.distance ? `${restaurant.distance} | ` : ""}{restaurant?.location || "Location"}
                   </span>
                   <ChevronDown className="h-4 w-4 text-gray-500" />
                 </button>
@@ -3138,7 +3161,12 @@ function RestaurantDetailsContent() {
                                       onClick={(e) => {
                                         e.stopPropagation()
                                         if (!shouldShowGrayscale) {
-                                          updateItemQuantity(item, 1, e, getDefaultFoodVariant(item))
+                                          // Dish with options: show its description + variant picker instead of silently adding the default
+                                          if (getFoodVariants(item).length > 0) {
+                                            handleItemClick(item, e)
+                                          } else {
+                                            updateItemQuantity(item, 1, e, getDefaultFoodVariant(item))
+                                          }
                                         }
                                       }}
                                       disabled={shouldShowGrayscale}
@@ -3374,7 +3402,12 @@ function RestaurantDetailsContent() {
                                               onClick={(e) => {
                                                 e.stopPropagation()
                                                 if (!shouldShowGrayscale) {
-                                                  updateItemQuantity(item, 1, e, getDefaultFoodVariant(item))
+                                                  // Dish with options: show its description + variant picker instead of silently adding the default
+                                                  if (getFoodVariants(item).length > 0) {
+                                                    handleItemClick(item, e)
+                                                  } else {
+                                                    updateItemQuantity(item, 1, e, getDefaultFoodVariant(item))
+                                                  }
                                                 }
                                               }}
                                               disabled={shouldShowGrayscale}
@@ -3810,7 +3843,7 @@ function RestaurantDetailsContent() {
                                 </div>
                                 <div className="flex items-center gap-1">
                                   <MapPin className="h-3.5 w-3.5" />
-                                  <span>{outlet?.distance || "1.2 km"}</span>
+                                  {outlet?.distance ? <span>{outlet.distance}</span> : null}
                                 </div>
                               </div>
                               <div className="flex flex-col items-end gap-0.5">
@@ -3933,7 +3966,7 @@ function RestaurantDetailsContent() {
                           )}
                         </div>
                         <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
-                          {getDishFavorites().length} dishes � {getFavorites().length} restaurant
+                          {getDishFavorites().length} dishes • {getFavorites().length} restaurant
                         </p>
                       </div>
                     </button>

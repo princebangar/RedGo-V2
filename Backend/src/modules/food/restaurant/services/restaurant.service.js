@@ -13,6 +13,7 @@ import { FoodRestaurantOutletTimings } from '../models/outletTimings.model.js';
 import { seedOutletTimingsForRestaurant } from './outletTimings.service.js';
 import { logger } from '../../../../utils/logger.js';
 import { fetchDrivingDistancesKmBatch, fetchDrivingDistanceKm } from '../../orders/utils/googleMaps.js';
+import { resolveRestaurantZone } from '../../utils/zoneGeo.js';
 
 const normalizeName = (value) =>
     String(value || '')
@@ -238,7 +239,7 @@ const toRestaurantProfile = (doc) => {
         diningSettings: {
             isEnabled: doc.diningSettings?.isEnabled !== false,
             maxGuests: Math.max(1, parseInt(doc.diningSettings?.maxGuests, 10) || 6),
-            diningType: String(doc.diningSettings?.diningType || 'family-dining').trim() || 'family-dining'
+            diningType: String(doc.diningSettings?.diningType || '').trim()
         },
         takeawaySettings: {
             isEnabled: doc.takeawaySettings?.isEnabled === true
@@ -401,16 +402,17 @@ export const registerRestaurant = async (payload, files) => {
     const normalizedClosingTime = normalizeRestaurantTime(closingTime);
     const openingMinutes = timeToMinutes(normalizedOpeningTime);
     const closingMinutes = timeToMinutes(normalizedClosingTime);
-    if (openingMinutes !== null && closingMinutes !== null) {
-        if (openingMinutes === closingMinutes) {
-            throw new ValidationError('Opening time and closing time cannot be same');
-        }
-        if (closingMinutes < openingMinutes) {
-            throw new ValidationError('Closing time cannot be less than opening time');
-        }
+    // A closing time before the opening time means the restaurant closes after midnight.
+    if (openingMinutes !== null && closingMinutes !== null && openingMinutes === closingMinutes) {
+        throw new ValidationError('Opening time and closing time cannot be same');
     }
     const estimatedDeliveryTimeText = String(estimatedDeliveryTime || '').trim();
     const estimatedDeliveryTimeMinutes = parseEstimatedDeliveryMinutes(estimatedDeliveryTimeText);
+
+    const { zoneId: resolvedZoneId, error: zoneError } = await resolveRestaurantZone(latitude, longitude, zoneId);
+    if (zoneError) {
+        throw new ValidationError(zoneError);
+    }
 
     try {
         const latNum = toFiniteNumber(latitude);
@@ -426,8 +428,8 @@ export const registerRestaurant = async (payload, files) => {
             ownerPhoneLast10,
             primaryContactNumber,
             pureVegRestaurant: pureVegRestaurant === true,
-            zoneId: zoneId && mongoose.Types.ObjectId.isValid(String(zoneId).trim())
-                ? new mongoose.Types.ObjectId(String(zoneId).trim())
+            zoneId: resolvedZoneId && mongoose.Types.ObjectId.isValid(resolvedZoneId)
+                ? new mongoose.Types.ObjectId(resolvedZoneId)
                 : undefined,
             // Store unified location object (geo + address).
             location: latNum !== null && lngNum !== null ? {
@@ -542,6 +544,8 @@ export const getCurrentRestaurantProfile = async (restaurantId) => {
                 'restaurantId',
                 'zoneId',
                 'cuisines',
+                'costForTwo',
+                'facilities',
                 'location',
                 'addressLine1',
                 'addressLine2',
@@ -609,6 +613,8 @@ export const updateRestaurantAcceptingOrders = async (restaurantId, isAcceptingO
             projection: [
                 'restaurantName',
                 'cuisines',
+                'costForTwo',
+                'facilities',
                 'location',
                 'addressLine1',
                 'addressLine2',
@@ -677,8 +683,7 @@ export const updateCurrentRestaurantDiningSettings = async (restaurantId, body =
         parseInt(body.maxGuests ?? currentDiningSettings.maxGuests ?? 6, 10) || 6
     );
     const diningType =
-        String(body.diningType ?? currentDiningSettings.diningType ?? 'family-dining').trim() ||
-        'family-dining';
+        String(body.diningType ?? currentDiningSettings.diningType ?? '').trim();
 
     const isEnabled = parseBoolean(body.isEnabled, currentDiningSettings.isEnabled);
     
@@ -711,6 +716,8 @@ export const updateCurrentRestaurantDiningSettings = async (restaurantId, body =
             projection: [
                 'restaurantName',
                 'cuisines',
+                'costForTwo',
+                'facilities',
                 'location',
                 'addressLine1',
                 'addressLine2',
@@ -792,6 +799,8 @@ export const updateCurrentRestaurantTakeawaySettings = async (restaurantId, body
             projection: [
                 'restaurantName',
                 'cuisines',
+                'costForTwo',
+                'facilities',
                 'location',
                 'addressLine1',
                 'addressLine2',
@@ -985,6 +994,28 @@ export const updateRestaurantProfile = async (restaurantId, body = {}) => {
         update.cuisines = cuisines;
     }
 
+    if (body.costForTwo !== undefined) {
+        const raw = body.costForTwo;
+        if (raw === null || raw === '') {
+            update.costForTwo = null;
+        } else {
+            const cost = Number(raw);
+            if (!Number.isFinite(cost) || cost < 0 || cost > 100000) {
+                throw new ValidationError('Price for two must be a number between 0 and 100000');
+            }
+            update.costForTwo = Math.round(cost);
+        }
+    }
+
+    if (body.facilities !== undefined) {
+        if (!Array.isArray(body.facilities)) {
+            throw new ValidationError('Facilities must be an array of strings');
+        }
+        update.facilities = [...new Set(
+            body.facilities.map((f) => String(f || '').trim()).filter(Boolean),
+        )].slice(0, 30);
+    }
+
     if (body.location !== undefined) {
         const loc = body.location && typeof body.location === 'object' ? body.location : null;
         if (!loc) {
@@ -1048,12 +1079,26 @@ export const updateRestaurantProfile = async (restaurantId, body = {}) => {
 
     const openingMinutes = body.openingTime !== undefined ? timeToMinutes(update.openingTime) : null;
     const closingMinutes = body.closingTime !== undefined ? timeToMinutes(update.closingTime) : null;
-    if (openingMinutes !== null && closingMinutes !== null) {
-        if (openingMinutes === closingMinutes) {
-            throw new ValidationError('Opening time and closing time cannot be same');
+    // A closing time before the opening time means the restaurant closes after midnight.
+    if (openingMinutes !== null && closingMinutes !== null && openingMinutes === closingMinutes) {
+        throw new ValidationError('Opening time and closing time cannot be same');
+    }
+
+    // A new location must lie inside a service zone; the zone follows the location.
+    if (update.location && body.location !== undefined) {
+        const requestedZone = body.zoneId !== undefined
+            ? String(body.zoneId || '').trim()
+            : (currentRestaurant.zoneId ? String(currentRestaurant.zoneId) : '');
+        const { zoneId: resolvedZoneId, error: zoneError } = await resolveRestaurantZone(
+            update.location.latitude,
+            update.location.longitude,
+            requestedZone
+        );
+        if (zoneError) {
+            throw new ValidationError(zoneError);
         }
-        if (closingMinutes < openingMinutes) {
-            throw new ValidationError('Closing time cannot be less than opening time');
+        if (resolvedZoneId && mongoose.Types.ObjectId.isValid(resolvedZoneId)) {
+            update.zoneId = new mongoose.Types.ObjectId(resolvedZoneId);
         }
     }
 
@@ -1144,9 +1189,14 @@ export const updateRestaurantProfile = async (restaurantId, body = {}) => {
         return getCurrentRestaurantProfile(restaurantId);
     }
 
-    update.status = 'pending';
-    if (currentRestaurant.status !== 'pending') {
-        update.pendingApprovalType = 'changes';
+    // An approved restaurant stays approved (and listed) when it edits its profile; only a
+    // restaurant that is not approved yet (onboarding / rejected resubmission) goes to review.
+    const sendToReview = currentRestaurant.status !== 'approved';
+    if (sendToReview) {
+        update.status = 'pending';
+        if (currentRestaurant.status !== 'pending') {
+            update.pendingApprovalType = 'changes';
+        }
     }
 
     try {
@@ -1154,11 +1204,9 @@ export const updateRestaurantProfile = async (restaurantId, body = {}) => {
             restaurantId,
             {
                 $set: update,
-                $unset: {
-                    approvedAt: 1,
-                    rejectedAt: 1,
-                    rejectionReason: 1
-                }
+                ...(sendToReview
+                    ? { $unset: { approvedAt: 1, rejectedAt: 1, rejectionReason: 1 } }
+                    : {})
             },
             {
                 new: true,
@@ -1166,6 +1214,8 @@ export const updateRestaurantProfile = async (restaurantId, body = {}) => {
                 projection: [
                     'restaurantName',
                     'cuisines',
+                    'costForTwo',
+                    'facilities',
                     'location',
                     'addressLine1',
                     'addressLine2',
@@ -1212,7 +1262,7 @@ export const updateRestaurantProfile = async (restaurantId, body = {}) => {
             }
         ).lean();
 
-        if (currentRestaurant.status !== 'pending') {
+        if (sendToReview && currentRestaurant.status !== 'pending') {
             const restaurantNameForNotification =
                 update.restaurantName || currentRestaurant.restaurantName || doc?.restaurantName;
             void notifyAdminsAboutRestaurantProfileReview(restaurantId, restaurantNameForNotification);
@@ -1238,28 +1288,25 @@ export const uploadRestaurantProfileImage = async (restaurantId, file) => {
 
     const url = await uploadImageBuffer(file.buffer, 'food/restaurants/profile');
     const profileUpdate = {
-        profileImage: url,
-        status: 'pending'
+        profileImage: url
     };
-    if (currentRestaurant.status !== 'pending') {
-        profileUpdate.pendingApprovalType = 'changes';
+    const sendToReview = currentRestaurant.status !== 'approved'; // approved stays approved
+    if (sendToReview) {
+        profileUpdate.status = 'pending';
+        if (currentRestaurant.status !== 'pending') profileUpdate.pendingApprovalType = 'changes';
     }
     const doc = await FoodRestaurant.findByIdAndUpdate(
         restaurantId,
         {
             $set: profileUpdate,
-            $unset: {
-                approvedAt: 1,
-                rejectedAt: 1,
-                rejectionReason: 1
-            }
+            ...(sendToReview ? { $unset: { approvedAt: 1, rejectedAt: 1, rejectionReason: 1 } } : {})
         },
         { new: true, projection: 'profileImage coverImages restaurantName cuisines location menuImages addressLine1 addressLine2 area city state pincode landmark ownerName ownerEmail ownerPhone primaryContactNumber pureVegRestaurant openingTime closingTime openDays status createdAt updatedAt' }
     ).lean();
 
     if (!doc) throw new ValidationError('Restaurant not found');
 
-    if (currentRestaurant.status !== 'pending') {
+    if (sendToReview && currentRestaurant.status !== 'pending') {
         void notifyAdminsAboutRestaurantProfileReview(restaurantId, currentRestaurant.restaurantName || doc.restaurantName);
     }
 
@@ -1301,11 +1348,12 @@ export const uploadRestaurantCoverImages = async (restaurantId, files = []) => {
     });
 
     const update = {
-        coverImages: nextCoverImages.slice(0, 20),
-        status: 'pending'
+        coverImages: nextCoverImages.slice(0, 20)
     };
-    if (currentRestaurant.status !== 'pending') {
-        update.pendingApprovalType = 'changes';
+    const sendToReview = currentRestaurant.status !== 'approved'; // approved stays approved
+    if (sendToReview) {
+        update.status = 'pending';
+        if (currentRestaurant.status !== 'pending') update.pendingApprovalType = 'changes';
     }
 
     if (!toUrl(currentRestaurant.profileImage) && uploadedUrls[0]) {
@@ -1316,16 +1364,12 @@ export const uploadRestaurantCoverImages = async (restaurantId, files = []) => {
         restaurantId,
         {
             $set: update,
-            $unset: {
-                approvedAt: 1,
-                rejectedAt: 1,
-                rejectionReason: 1
-            }
+            ...(sendToReview ? { $unset: { approvedAt: 1, rejectedAt: 1, rejectionReason: 1 } } : {})
         },
         { new: true }
     ).lean();
 
-    if (currentRestaurant.status !== 'pending') {
+    if (sendToReview && currentRestaurant.status !== 'pending') {
         void notifyAdminsAboutRestaurantProfileReview(restaurantId, currentRestaurant.restaurantName || '');
     }
 
@@ -1364,27 +1408,24 @@ export const uploadRestaurantMenuImages = async (restaurantId, files = []) => {
     });
 
     const menuUpdate = {
-        menuImages: nextMenuImages.slice(0, 20),
-        status: 'pending'
+        menuImages: nextMenuImages.slice(0, 20)
     };
-    if (currentRestaurant.status !== 'pending') {
-        menuUpdate.pendingApprovalType = 'changes';
+    const sendToReview = currentRestaurant.status !== 'approved'; // approved stays approved
+    if (sendToReview) {
+        menuUpdate.status = 'pending';
+        if (currentRestaurant.status !== 'pending') menuUpdate.pendingApprovalType = 'changes';
     }
 
     await FoodRestaurant.findByIdAndUpdate(
         restaurantId,
         {
             $set: menuUpdate,
-            $unset: {
-                approvedAt: 1,
-                rejectedAt: 1,
-                rejectionReason: 1
-            }
+            ...(sendToReview ? { $unset: { approvedAt: 1, rejectedAt: 1, rejectionReason: 1 } } : {})
         },
         { new: true }
     ).lean();
 
-    if (currentRestaurant.status !== 'pending') {
+    if (sendToReview && currentRestaurant.status !== 'pending') {
         void notifyAdminsAboutRestaurantProfileReview(restaurantId, currentRestaurant.restaurantName || '');
     }
 
@@ -1464,9 +1505,20 @@ export const listApprovedRestaurants = async (query = {}) => {
         if (zoneDoc && zoneDoc.isActive) {
             const polygon = zoneToPolygon(zoneDoc);
             if (polygon) {
-                filter.$or.push({ location: { $geoWithin: { $geometry: polygon } } });
+                // The restaurant's location must be inside the zone; a zoneId alone is not enough
+                // (a restaurant outside the zone area was listed before).
+                filter.$or = [{ location: { $geoWithin: { $geometry: polygon } } }];
             }
         }
+    }
+
+    // Restaurants without any approved, available dish are not listed for ordering.
+    if (query.orderType !== 'dining') {
+        const withDishes = await FoodItem.distinct('restaurantId', {
+            approvalStatus: 'approved',
+            isAvailable: { $ne: false },
+        });
+        filter._id = { ...(filter._id || {}), $in: withDishes };
     }
 
     const lat = toFiniteNumber(query.lat);
@@ -1786,6 +1838,18 @@ export const getApprovedRestaurantByIdOrSlug = async (idOrSlug, userId = null, c
             logger.warn(
                 `Driving distance for restaurant ${doc._id} failed: ${err?.message || err}`,
             );
+        }
+        // Same fallback as the restaurant list: straight-line distance when road distance is unavailable
+        if (!result.distanceMode) {
+            const toRad = (d) => (d * Math.PI) / 180;
+            const dLat = toRad(userLat - restaurantPoint.lat);
+            const dLng = toRad(userLng - restaurantPoint.lng);
+            const a = Math.sin(dLat / 2) ** 2 +
+                Math.cos(toRad(restaurantPoint.lat)) * Math.cos(toRad(userLat)) * Math.sin(dLng / 2) ** 2;
+            const airKm = 6371 * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+            result.distanceInKm = Math.round(airKm * 100) / 100;
+            result.distance = formatRestaurantDistanceLabel(result.distanceInKm);
+            result.distanceMode = 'air';
         }
     }
 

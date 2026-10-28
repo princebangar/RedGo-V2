@@ -1,6 +1,6 @@
 import { useMemo, useState, useEffect, useRef, useCallback } from "react"
 import { createPortal } from "react-dom"
-import { useNavigate } from "react-router-dom"
+import { useNavigate, useLocation as useRouterLocation } from "react-router-dom"
 import { ChevronLeft, ChevronRight, Plus, MapPin, Navigation, Home, Building2, Briefcase, X, Crosshair, Search, Pencil, Trash2 } from "lucide-react"
 import { Button } from "@food/components/ui/button"
 import { Input } from "@food/components/ui/input"
@@ -106,6 +106,7 @@ const showAddressRemovedBrandedToast = () => {
 
 export default function AddressSelectorPage() {
   const navigate = useNavigate()
+  const routerLocation = useRouterLocation()
   const goBack = useAppBackNavigation()
   const { location, loading, requestLocation, requestLocationFast } = useGeoLocation()
   const { addresses = [], addAddress, updateAddress, deleteAddress, setDefaultAddress, userProfile, isAuthenticated, loading: profileLoading } = useProfile()
@@ -703,7 +704,21 @@ export default function AddressSelectorPage() {
     setKeywordAddressSuggestions([])
     setEditingAddressId(null)
     setShowAddressForm(false)
+    // Opened straight from a cart "+ Home / Work / Other" chip: Back returns to the cart
+    if (routerLocation.state?.addLabel && routerLocation.state?.from) {
+      navigate(routerLocation.state.from, { replace: true })
+    }
   }
+
+  // Cart chip for a label without a saved address opens the add form with that label
+  const openedFromChipRef = useRef(false)
+  useEffect(() => {
+    const addLabel = routerLocation.state?.addLabel
+    if (!addLabel || openedFromChipRef.current || profileLoading) return
+    openedFromChipRef.current = true
+    handleAddAddressClick()
+    setAddressFormData((prev) => ({ ...prev, label: addLabel }))
+  }, [routerLocation.state?.addLabel, profileLoading])
 
   const scrollFieldIntoView = useCallback((fieldName) => {
     const el = manualFieldRefs.current?.[fieldName]

@@ -48,7 +48,7 @@ export const OrderSummaryModal = ({ order, onDone }) => {
           </button>
 
           <p className="text-white/60 text-[10px] font-medium tracking-wide mt-6 sm:mt-8 bg-white/10 rounded-lg px-3 py-1.5 border border-white/20 inline-block">
-            Order Ref: <span className="font-bold text-white/80 text-xs">{order?.orderId || order?.displayOrderId || 'FOD-1234'}</span>
+            Order Ref: <span className="font-bold text-white/80 text-xs">{[order?.displayOrderId, order?.orderId, order?.orderNumber].find((v) => /^FOD-/i.test(String(v || ''))) || order?.displayOrderId || order?.orderId || '—'}</span>
           </p>
         </motion.div>
       </div>

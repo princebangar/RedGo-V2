@@ -99,7 +99,7 @@ export default function Restaurants() {
             deliveryTime: (orderType === "takeaway")
               ? (restaurant.preparationTime || "20-25 mins")
               : restaurant?.estimatedDeliveryTime || (restaurant?.estimatedDeliveryTimeMinutes ? `${restaurant.estimatedDeliveryTimeMinutes} mins` : "25-30 mins"),
-            distance: restaurant?.distance ? (typeof restaurant.distance === 'number' ? `${restaurant.distance.toFixed(1)} km` : restaurant.distance) : "1.2 km",
+            distance: restaurant?.distance ? (typeof restaurant.distance === 'number' ? `${restaurant.distance.toFixed(1)} km` : restaurant.distance) : "",
             priceRange: restaurant?.priceRange || "$$",
             image: pickRestaurantImage(restaurant),
           }

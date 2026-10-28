@@ -1,6 +1,7 @@
 import mongoose from 'mongoose';
 import { ValidationError } from '../../../../core/auth/errors.js';
 import { FoodRestaurant } from '../../restaurant/models/restaurant.model.js';
+import { logger } from '../../../../utils/logger.js';
 import { FoodZone } from '../../admin/models/zone.model.js';
 import { FoodDiningCategory } from '../models/diningCategory.model.js';
 import { FoodDiningRestaurant } from '../models/diningRestaurant.model.js';
@@ -64,7 +65,7 @@ async function syncRestaurantDiningSettings(restaurantId, diningDoc) {
                 diningSettings: {
                     isEnabled: Boolean(diningDoc?.isEnabled),
                     maxGuests: Math.max(1, Number(diningDoc?.maxGuests) || 6),
-                    diningType: Array.isArray(diningDoc?.diningType) ? diningDoc.diningType : (primaryCategory?.slug ? [primaryCategory.slug] : ['family-dining'])
+                    diningType: Array.isArray(diningDoc?.diningType) ? diningDoc.diningType : (primaryCategory?.slug ? [primaryCategory.slug] : [])
                 }
             }
         },
@@ -414,7 +415,7 @@ export async function listDiningRestaurantsPublic(query = {}) {
     const diningDocs = await FoodDiningRestaurant.find(filter)
         .populate({
             path: 'restaurantId',
-            select: 'restaurantName restaurantNameNormalized ownerName ownerPhone profileImage coverImages menuImages cuisines location area city zoneId status rating diningSettings estimatedDeliveryTime estimatedDeliveryTimeMinutes featuredDish featuredPrice offer openingTime closingTime openDays isAcceptingOrders costForTwo pureVegRestaurant',
+            select: 'restaurantName restaurantNameNormalized ownerName ownerPhone profileImage coverImages menuImages cuisines location area city zoneId status rating diningSettings estimatedDeliveryTime estimatedDeliveryTimeMinutes featuredDish featuredPrice offer openingTime closingTime openDays isAcceptingOrders costForTwo facilities pureVegRestaurant',
             match: restaurantMatch
         })
         .populate('categoryIds', 'name slug imageUrl')
@@ -484,7 +485,7 @@ export async function createDiningRequest(restaurantId, settings = {}) {
         diningType = [...new Set(diningType)]
     }
 
-    if (diningType.length === 0) diningType = ['family-dining']
+    if (diningType.length === 0) throw new ValidationError('Please choose at least one dining category')
 
     const created = await FoodDiningRequest.create({
         restaurantId,
@@ -494,6 +495,24 @@ export async function createDiningRequest(restaurantId, settings = {}) {
             diningType: diningType
         }
     });
+
+    // Tell the admins there is a new category request waiting (push + sidebar count)
+    try {
+        const restaurant = await FoodRestaurant.findById(restaurantId).select('restaurantName').lean();
+        const { notifyAdminsSafely } = await import('../../../../core/notifications/firebase.service.js');
+        void notifyAdminsSafely({
+            title: 'New Dining Category Request 🍽️',
+            body: `"${restaurant?.restaurantName || 'A restaurant'}" requested dining category approval.`,
+            data: {
+                type: 'dining_request',
+                restaurantId: String(restaurantId),
+                targetUrl: '/admin/food/dining-requests',
+                link: '/admin/food/dining-requests'
+            }
+        });
+    } catch (e) {
+        logger.warn(`[Dining] Failed to notify admins of dining request: ${e?.message || e}`);
+    }
 
     return created.toObject();
 }

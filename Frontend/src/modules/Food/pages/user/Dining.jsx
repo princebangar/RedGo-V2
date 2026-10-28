@@ -162,6 +162,28 @@ export default function Dining({ isTabActive = true }) {
   const { zoneId, loading: zoneLoading } = useZone(location)
   const { addFavorite, removeFavorite, isFavorite, vegMode, vegModeOption, userProfile } = useProfile()
 
+  // Cuisine filter options come from what the dining restaurants actually serve
+  const availableCuisines = useMemo(() => {
+    const seen = new Map()
+    ;(Array.isArray(restaurantList) ? restaurantList : []).forEach((restaurant) => {
+      ;(Array.isArray(restaurant?.cuisines) ? restaurant.cuisines : []).forEach((value) => {
+        const name = String(value || "").trim()
+        if (name && !seen.has(name.toLowerCase())) seen.set(name.toLowerCase(), name)
+      })
+    })
+    return [...seen.values()].sort((a, b) => a.localeCompare(b))
+  }, [restaurantList])
+
+  // The page behind the filter sheet must not scroll
+  useEffect(() => {
+    if (!isFilterOpen) return undefined
+    const previous = document.body.style.overflow
+    document.body.style.overflow = "hidden"
+    return () => {
+      document.body.style.overflow = previous
+    }
+  }, [isFilterOpen])
+
   const initials = useMemo(() => {
     if (!userProfile) return "";
     const name = userProfile.firstName || userProfile.name || "";
@@ -394,7 +416,7 @@ export default function Dining({ isTabActive = true }) {
             }
             
             const uniqueTypes = Array.from(new Set(types.map(t => slugifyValue(t)).filter(Boolean)))
-            return uniqueTypes[0] || "family-dining"
+            return uniqueTypes[0] || ""
           })(),
           isEnabled: restaurant?.diningSettings?.isEnabled === true,
         }
@@ -691,12 +713,12 @@ export default function Dining({ isTabActive = true }) {
               >
                 <Avatar className="h-full w-full bg-[#FFF5E6]">
                   <AvatarImage 
-                    src={userProfile?.profileImage || "/profile_avatar.webp"} 
+                    src={userProfile?.profileImage || "/images/profile-avatar.webp"} 
                     alt="Profile" 
                     className="object-cover"
                   />
                   <AvatarFallback className="bg-[#FFF5E6] text-[20px] font-black text-[#DC2626] leading-none tracking-tighter antialiased">
-                    <img src="/profile_avatar.webp" alt="Profile" className="object-cover w-full h-full" />
+                    <img src="/images/profile-avatar.webp" alt="Profile" className="object-cover w-full h-full" />
                   </AvatarFallback>
                 </Avatar>
               </Link>
@@ -1512,10 +1534,10 @@ export default function Dining({ isTabActive = true }) {
 
       {/* Filter Modal */}
       {isFilterOpen && (
-        <div className="fixed inset-0 z-[100]" style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0 }}>
-          {/* Backdrop */}
+        <div className="fixed inset-0 z-[100] overscroll-contain" style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0 }}>
+          {/* Backdrop (touch-none: dragging on it must not scroll the page behind) */}
           <div
-            className="absolute inset-0 bg-black/50"
+            className="absolute inset-0 bg-black/50 touch-none"
             onClick={() => setIsFilterOpen(false)}
           />
 
@@ -1568,7 +1590,7 @@ export default function Dining({ isTabActive = true }) {
               </div>
 
               {/* Right Content Area - Scrollable */}
-              <div ref={rightContentRef} className="flex-1 overflow-y-auto p-4 md:p-6">
+              <div ref={rightContentRef} className="flex-1 overflow-y-auto overscroll-contain p-4 md:p-6">
                 {/* Sort By Tab */}
                 {activeFilterTab === 'sort' && (
                   <div className="space-y-4 mb-8">
@@ -1725,10 +1747,10 @@ export default function Dining({ isTabActive = true }) {
                   <div className="space-y-4 mb-8">
                     <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">Cuisine</h3>
                     <div className="grid grid-cols-2 gap-3">
-                      {(vegMode
-                        ? ['Continental', 'Italian', 'Asian', 'Indian', 'Chinese', 'American', 'Cafe']
-                        : ['Continental', 'Italian', 'Asian', 'Indian', 'Chinese', 'American', 'Seafood', 'Cafe']
-                      ).map((cuisine) => (
+                      {availableCuisines.length === 0 && (
+                        <p className="col-span-2 text-sm text-gray-500 dark:text-gray-400">No cuisines added by restaurants yet.</p>
+                      )}
+                      {availableCuisines.map((cuisine) => (
                         <button
                           key={cuisine}
                           onClick={() => setSelectedCuisine(selectedCuisine === cuisine ? null : cuisine)}

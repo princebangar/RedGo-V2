@@ -7,7 +7,6 @@ import Loader from "@food/components/Loader";
 // Auth Pages (Lazy loaded)
 
 const SignIn = lazy(() => import("./pages/auth/SignIn"))
-const OTP = lazy(() => import("./pages/auth/OTP"))
 const SignupStep1 = lazy(() => import("./pages/auth/SignupStep1"))
 const SignupStep2 = lazy(() => import("./pages/auth/SignupStep2"))
 const VerificationPending = lazy(() => import("./pages/auth/VerificationPending"))

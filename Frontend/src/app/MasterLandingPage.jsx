@@ -156,7 +156,7 @@ export default function MasterLandingPage() {
           playsInline
           className="absolute inset-0 w-full h-full object-cover"
         >
-          <source src="/hero-bg-trim.mp4" type="video/mp4" />
+          <source src="/landing/hero-bg-trim.mp4" type="video/mp4" />
         </video>
 
         {/* Dark overlay */}
@@ -209,7 +209,7 @@ export default function MasterLandingPage() {
               style={{ cursor: 'pointer' }}
               className="cursor-pointer flex items-center gap-3 bg-black border border-gray-600 text-white px-5 py-2 rounded-xl hover:-translate-y-2 hover:scale-[1.03] hover:border-gray-400 hover:shadow-2xl transition-all duration-200 w-48 justify-center relative z-30"
             >
-              <img src="/playstore_img-removebg-preview.webp" alt="Google Play" className="w-6 h-6 object-contain pointer-events-none" />
+              <img src="/landing/playstore-badge.webp" alt="Google Play" className="w-6 h-6 object-contain pointer-events-none" />
               <div className="text-left leading-tight pointer-events-none">
                 <div className="text-[10px] uppercase tracking-wide text-gray-300">GET IT ON</div>
                 <div className="text-sm font-semibold">Google Play</div>
@@ -258,7 +258,7 @@ export default function MasterLandingPage() {
           transition={{ duration: 6, repeat: Infinity, ease: "easeInOut" }}
           className="absolute top-1/2 left-10 md:left-24 -translate-y-1/2 z-10 drop-shadow-[0_20px_30px_rgba(0,0,0,0.2)]"
         >
-          <img src="/burger-real.png" alt="Burger" className="w-20 md:w-64 object-contain opacity-50 md:opacity-100" />
+          <img src="/landing/burger-real.png" alt="Burger" className="w-20 md:w-64 object-contain opacity-50 md:opacity-100" />
         </motion.div>
 
         {/* Dim sums / Momos - Using user's provided dish image */}
@@ -268,7 +268,7 @@ export default function MasterLandingPage() {
           className="absolute top-10 right-10 md:right-20 z-10 drop-shadow-[0_20px_30px_rgba(0,0,0,0.15)]"
         >
           <img
-            src="/dish-img.png"
+            src="/landing/dish-img.png"
             alt="Dim Sums"
             className="w-24 md:w-64 object-contain opacity-50 md:opacity-100"
           />
@@ -280,7 +280,7 @@ export default function MasterLandingPage() {
           transition={{ duration: 8, repeat: Infinity, ease: "easeInOut" }}
           className="absolute bottom-32 right-10 md:right-32 z-10 drop-shadow-[0_20px_30px_rgba(0,0,0,0.2)]"
         >
-          <img src="/pizza-free.png" alt="Pizza" className="w-20 md:w-60 object-contain opacity-50 md:opacity-100" />
+          <img src="/landing/pizza-free.png" alt="Pizza" className="w-20 md:w-60 object-contain opacity-50 md:opacity-100" />
         </motion.div>
 
         {/* Center Content */}
@@ -413,7 +413,7 @@ export default function MasterLandingPage() {
             {/* Right Top Card - Offers */}
             <motion.div whileHover={{ scale: 1.15, zIndex: 50 }} whileTap={{ scale: 0.95 }} animate={{ y: [4, -4, 4] }} transition={{ duration: 3.8, repeat: Infinity, ease: "easeInOut" }} className="flex group absolute right-[15%] sm:right-[20%] md:right-[30%] top-[0%] z-30 bg-white rounded-[20px] shadow-[0_10px_30px_rgba(0,0,0,0.12)] p-2.5 pb-3 border border-gray-100 flex-col gap-2 items-center text-center w-[90px] md:w-[100px] cursor-pointer">
               <div className="w-[36px] md:w-[42px] h-[36px] md:h-[42px] bg-blue-50 rounded-[12px] flex items-center justify-center group-hover:bg-blue-100 group-hover:shadow-[0_0_20px_rgba(59,130,246,0.3)] transition-all duration-300">
-                <img src="/offers.png" alt="Offers" className="w-[20px] h-[20px] md:w-[24px] md:h-[24px] object-contain group-hover:scale-110 transition-transform" />
+                <img src="/landing/offers.png" alt="Offers" className="w-[20px] h-[20px] md:w-[24px] md:h-[24px] object-contain group-hover:scale-110 transition-transform" />
               </div>
               <span className="font-semibold text-[10px] md:text-[11px] text-gray-700 mt-1 group-hover:text-blue-500 transition-colors">Offers</span>
             </motion.div>
@@ -513,7 +513,7 @@ export default function MasterLandingPage() {
               className="absolute bottom-0 left-0 w-[75%] h-[55%] bg-white p-3 rounded-[24px] shadow-[0_20px_50px_rgba(0,0,0,0.2)] z-20"
             >
               <img
-                src="/restaurant-food.jpg"
+                src="/landing/restaurant-food.jpg"
                 alt="Delicious Food"
                 className="w-full h-full object-cover rounded-[16px]"
               />
@@ -595,7 +595,7 @@ export default function MasterLandingPage() {
                   className="cursor-pointer flex items-center gap-3 bg-transparent border border-white/20 text-white px-6 py-3 rounded-2xl hover:-translate-y-2 hover:scale-[1.03] hover:border-gray-400 hover:shadow-2xl transition-all duration-200 w-full sm:w-[230px] justify-center md:justify-start relative z-30"
                 >
                   <div className="w-8 h-8 flex items-center justify-center shrink-0 pointer-events-none">
-                    <img src="/playstore_img-removebg-preview.webp" alt="Google Play" className="w-7 h-7 object-contain scale-110" />
+                    <img src="/landing/playstore-badge.webp" alt="Google Play" className="w-7 h-7 object-contain scale-110" />
                   </div>
                   <div className="text-left flex-1 pointer-events-none">
                     <div className="text-[10px] font-bold uppercase tracking-wide text-gray-400">Get it on</div>
@@ -665,7 +665,7 @@ export default function MasterLandingPage() {
 
                   <div className="flex-1 w-full relative">
                     <img 
-                      src="/phone screen 1.webp" 
+                      src="/landing/phone-screen-1.webp" 
                       alt="App Screen" 
                       className="absolute inset-0 w-full h-full object-cover object-top"
                       style={{ imageRendering: 'high-quality', WebkitFontSmoothing: 'antialiased' }} 
@@ -701,7 +701,7 @@ export default function MasterLandingPage() {
                   className="cursor-pointer w-10 h-10 rounded-full bg-white/5 flex items-center justify-center text-gray-400 hover:bg-[#D32F2F] hover:text-white transition-all group relative z-30"
                   title="Google Play Store"
                 >
-                  <img src="/playstore_img-removebg-preview.webp" alt="Google Play" className="w-5 h-5 object-contain opacity-70 group-hover:opacity-100 transition-all pointer-events-none" />
+                  <img src="/landing/playstore-badge.webp" alt="Google Play" className="w-5 h-5 object-contain opacity-70 group-hover:opacity-100 transition-all pointer-events-none" />
                 </a>
                 <a
                   href="https://apps.apple.com/in/app/redgo-food-delivery-takeaway/id6746978568"

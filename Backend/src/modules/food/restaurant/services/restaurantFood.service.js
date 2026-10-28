@@ -101,7 +101,9 @@ const getRestaurantContext = async (restaurantId) => {
 
 const getAccessibleCategoryFilter = (context) => ({
     $or: [
-        { restaurantId: context.restaurantId, $or: APPROVED_CATEGORY_FILTER },
+        // own categories are usable before admin approval (rejected ones are refused later)
+        { restaurantId: context.restaurantId },
+        { createdByRestaurantId: context.restaurantId },
         {
             $and: [
                 { $or: GLOBAL_CATEGORY_FILTER },
@@ -159,7 +161,15 @@ const resolveCategoryForRestaurant = async (context, body = {}) => {
 
     await backfillLegacyCategoryWorkflow([category]);
 
-    if (String(category.approvalStatus || '') !== 'approved') {
+    // A restaurant's own (private) category can be used right away; admin approval is only
+    // needed before it becomes a global category. A rejected one stays blocked.
+    const ownerIds = [category.restaurantId, category.createdByRestaurantId].map((v) => (v ? String(v) : ''));
+    const isOwnCategory = ownerIds.includes(String(context.restaurantId || ''));
+    const approval = String(category.approvalStatus || '');
+    if (approval === 'rejected') {
+        throw new ValidationError('This category was rejected by admin. Please choose another category.');
+    }
+    if (approval !== 'approved' && !isOwnCategory) {
         throw new ValidationError('This category is awaiting admin approval');
     }
     if (context.pureVegRestaurant && String(category.foodTypeScope || '') !== 'Veg') {
@@ -225,7 +235,7 @@ export async function createRestaurantFood(restaurantId, body = {}) {
     try {
         const { notifyAdminsSafely } = await import('../../../../core/notifications/firebase.service.js');
         void notifyAdminsSafely({
-            title: 'New Product Approval Request ðŸ”',
+            title: 'New Product Approval Request 🍔',
             body: `Restaurant has submitted a new item "${doc.name}" for approval.`,
             data: {
                 type: 'approval_request',

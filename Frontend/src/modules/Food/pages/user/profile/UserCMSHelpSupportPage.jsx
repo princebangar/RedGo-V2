@@ -12,6 +12,7 @@ export default function UserCMSHelpSupportPage() {
       module="USER"
       goBack={goBack}
       fallbackPath="/food/user/auth/login"
+      ticketPath="/food/user/profile/support"
     />
   )
 }

@@ -91,7 +91,7 @@ import {
 } from "@food/components/ui/dropdown-menu";
 import { useLocation, resolveServiceCity } from "@food/hooks/useLocation";
 import { useZone } from "@food/hooks/useZone";
-import quickSpicyLogo from "@food/assets/quicky-spicy-logo.png";
+import { brandLogo } from "@food/constants/brand"
 import offerImage from "@food/assets/offerimage.png";
 import api, { publicGetOnce, restaurantAPI, adminAPI } from "@food/api";
 import { API_BASE_URL } from "@food/api/config";
@@ -135,13 +135,12 @@ let HOME_CATEGORIES_CACHE = getSessionCache(HOME_CATEGORIES_CACHE_KEY);
 
 
 // Explore More Icons
-import exploreOffers from "@food/assets/explore more icons/offers.png";
-import exploreGourmet from "@food/assets/explore more icons/gourmet.png";
-import exploreTop10 from "@food/assets/explore more icons/top 10.png";
-import exploreCollection from "@food/assets/explore more icons/collection.png";
+import exploreOffers from "@food/assets/explore-icons/offers.png";
+import exploreGourmet from "@food/assets/explore-icons/gourmet.svg";
+import exploreCollection from "@food/assets/explore-icons/collection.svg";
 
 // Bundled Explore logos — warm browser cache as soon as Home module loads
-preloadImageUrls([exploreOffers, exploreGourmet, exploreTop10, exploreCollection]);
+preloadImageUrls([exploreOffers, exploreGourmet, exploreCollection]);
 
 const CACHED_EXPLORE_BOOT = (() => {
   try {
@@ -2934,12 +2933,12 @@ export default function Home({ homeMode = null, isTabActive = true }) {
                       >
                         <Avatar className="h-full w-full bg-[#FFF5E6]">
                           <AvatarImage
-                            src={userProfile?.profileImage || "/profile_avatar.webp"}
+                            src={userProfile?.profileImage || "/images/profile-avatar.webp"}
                             alt="Profile"
                             className="object-cover"
                           />
                           <AvatarFallback className="bg-[#FFF5E6] text-[20px] font-black text-[#DC2626] leading-none tracking-tighter antialiased">
-                            <img src="/profile_avatar.webp" alt="Profile" className="object-cover w-full h-full" />
+                            <img src="/images/profile-avatar.webp" alt="Profile" className="object-cover w-full h-full" />
                           </AvatarFallback>
                         </Avatar>
                       </Link>

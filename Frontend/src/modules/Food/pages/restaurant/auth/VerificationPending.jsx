@@ -4,7 +4,9 @@ import { Clock3, ShieldCheck, XCircle, AlertTriangle, X, Loader2 } from "lucide-
 import { toast } from "sonner"
 import { Button } from "@food/components/ui/button"
 import { restaurantAPI } from "@food/api"
+import { getPendingApprovalStatus } from "@/services/api/auth.js"
 import {
+  setAuthData,
   clearRestaurantPendingPhone,
   getModuleToken,
   getRestaurantPendingPhone,
@@ -151,18 +153,38 @@ export default function VerificationPending() {
 
     const checkApprovalStatus = async () => {
       const token = getModuleToken("restaurant")
-      if (!token) {
+      const pendingToken = localStorage.getItem("restaurant_pendingToken")
+      if (!token && !pendingToken) {
         if (!cancelled) setCheckingStatus(false)
         return
       }
 
       try {
-        const response = await restaurantAPI.getCurrentRestaurant()
-        const restaurant =
-          response?.data?.data?.restaurant ||
-          response?.data?.restaurant ||
-          response?.data?.data?.user ||
-          response?.data?.user
+        let restaurant
+        if (token) {
+          const response = await restaurantAPI.getCurrentRestaurant()
+          restaurant =
+            response?.data?.data?.restaurant ||
+            response?.data?.restaurant ||
+            response?.data?.data?.user ||
+            response?.data?.user
+        } else {
+          // Not signed in yet (account was under review at login): ask the server using the pending token.
+          const result = await getPendingApprovalStatus(pendingToken)
+          if (cancelled) return
+          if (result?.status === "approved" && result.accessToken) {
+            setAuthData("restaurant", result.accessToken, result.user, result.refreshToken)
+            window.dispatchEvent(new Event("restaurantAuthChanged"))
+            localStorage.removeItem("restaurant_pendingToken")
+            clearRestaurantPendingPhone()
+            localStorage.removeItem("restaurant_pendingStatus")
+            localStorage.removeItem("restaurant_pendingMessage")
+            toast.success("Your restaurant has been approved!")
+            navigate("/food/restaurant", { replace: true })
+            return
+          }
+          restaurant = { status: result?.status, rejectionReason: result?.rejectionReason }
+        }
 
         if (cancelled) return
 
@@ -222,9 +244,12 @@ export default function VerificationPending() {
 
     window.addEventListener("focus", handleVisibilityOrFocus)
     document.addEventListener("visibilitychange", handleVisibilityOrFocus)
+    // Keep checking while the screen is open so the page moves on by itself once admin decides.
+    const pollId = window.setInterval(handleVisibilityOrFocus, 10000)
 
     return () => {
       cancelled = true
+      window.clearInterval(pollId)
       window.removeEventListener("focus", handleVisibilityOrFocus)
       document.removeEventListener("visibilitychange", handleVisibilityOrFocus)
     }

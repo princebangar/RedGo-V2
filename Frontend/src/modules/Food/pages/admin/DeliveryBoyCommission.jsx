@@ -1,4 +1,5 @@
 import { useState, useMemo, useEffect } from "react"
+import { getNetworkErrorMessage } from "@/shared/utils/networkError"
 import { Search, Edit, Trash2, IndianRupee, Settings, Check, Columns, MapPin, Loader2 } from "lucide-react"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@food/components/ui/dialog"
 import { adminAPI } from "@food/api"
@@ -67,11 +68,8 @@ export default function DeliveryBoyCommission() {
     if (distance < commission.minDistance) return 0
     if (commission.maxDistance !== null && distance > commission.maxDistance) return 0
     
-    // For 0-x slab we usually want per-km on full distance; for other slabs apply per-km after minDistance
-    const min = Number(commission.minDistance) || 0
-    const extraDistance = Math.max(0, distance - min)
-    const kmForRate = min === 0 ? distance : extraDistance
-    return commission.basePayout + (kmForRate * commission.commissionPerKm)
+    // Same rule as the backend: base payout + this slab's flat extra amount (not × km, lower slabs not added)
+    return Number(commission.basePayout || 0) + Number(commission.commissionPerKm || 0)
   }
 
   // Calculate example commission for display (using mid-point of range)
@@ -161,7 +159,7 @@ export default function DeliveryBoyCommission() {
       
       // Handle network errors
       if (error.code === 'ERR_NETWORK' || error.message === 'Network Error') {
-        const errorMessage = `Cannot connect to backend server. Please ensure the backend is running on ${API_BASE_URL.replace('/api', '')}`
+        const errorMessage = getNetworkErrorMessage()
         toast.error(errorMessage)
         debugError('?? Backend connection issue. Check:')
         debugError('   1. Is backend server running? (npm start in backend folder)')
@@ -251,7 +249,7 @@ export default function DeliveryBoyCommission() {
       errors.maxDistance = "Max distance must be greater than or equal to min distance"
     }
     if (!formData.commissionPerKm.trim() || parseFloat(formData.commissionPerKm) < 0) {
-      errors.commissionPerKm = "Amount per km must be 0 or greater"
+      errors.commissionPerKm = "Extra amount must be 0 or greater"
     }
     if (!formData.basePayout.trim() || parseFloat(formData.basePayout) < 0) {
       errors.basePayout = "Base payout must be 0 or greater"
@@ -344,7 +342,7 @@ export default function DeliveryBoyCommission() {
       
       // Handle network errors
       if (error.code === 'ERR_NETWORK' || error.message === 'Network Error') {
-        const errorMessage = `Cannot connect to backend server. Please ensure the backend is running on ${API_BASE_URL.replace('/api', '')}`
+        const errorMessage = getNetworkErrorMessage()
         toast.error(errorMessage)
         debugError('?? Backend connection issue. Check:')
         debugError('   1. Is backend server running? (npm start in backend folder)')
@@ -417,7 +415,7 @@ export default function DeliveryBoyCommission() {
     si: "Serial Number",
     name: "Name",
     distanceSlab: "Distance Slab (km)",
-    commissionPerKm: "Amount Per/Km",
+    commissionPerKm: "Extra Amount",
     basePayout: "Base Payout",
     status: "Status",
     actions: "Actions",
@@ -506,14 +504,14 @@ export default function DeliveryBoyCommission() {
                 <p className="text-slate-600">
                   Payout is calculated as:{" "}
                   <strong>
-                    Base payout (0-2 km slab) + (km in each slab × that slab&apos;s amount per km)
+                    Base payout (0-2 km slab) + the extra amount of the one slab the distance falls in
                   </strong>
                   .
-                  Example: base ₹25 for 0-2 km, then ₹5/km after 2 km → 6 km
-                  earns ₹25 + (4 × ₹5) = ₹45.
+                  Example: base ₹28, 8-9 km slab extra ₹48 → an 8.5 km order earns ₹28 + ₹48 = ₹76.
+                  Lower slabs are not added, and the extra amount is not multiplied by km.
                 </p>
                 <p className="text-slate-600 mt-1">
-                  Only the slab with <strong>min distance = 0</strong> can have a base payout. All other slabs should keep base payout set to 0 and use only amount per km.
+                  Only the slab with <strong>min distance = 0</strong> can have a base payout. All other slabs should keep base payout set to 0 and use only their extra amount.
                 </p>
               </div>
             </div>
@@ -547,7 +545,7 @@ export default function DeliveryBoyCommission() {
                     <th className="px-6 py-4 text-left text-[10px] font-bold text-slate-700 uppercase tracking-wider">Distance Slab (km)</th>
                   )}
                   {visibleColumns.commissionPerKm && (
-                    <th className="px-6 py-4 text-left text-[10px] font-bold text-slate-700 uppercase tracking-wider">Amount Per/Km (₹)</th>
+                    <th className="px-6 py-4 text-left text-[10px] font-bold text-slate-700 uppercase tracking-wider">Extra Amount (₹)</th>
                   )}
                   {visibleColumns.basePayout && (
                     <th className="px-6 py-4 text-left text-[10px] font-bold text-slate-700 uppercase tracking-wider">Base Payout (₹)</th>
@@ -745,7 +743,7 @@ export default function DeliveryBoyCommission() {
             </div>
             <div>
               <label className="block text-sm font-semibold text-slate-700 mb-2">
-                Extra Per Kilometer (₹) <span className="text-red-500">*</span>
+                Extra Amount for this slab (₹) <span className="text-red-500">*</span>
               </label>
               <input
                 type="number"
@@ -779,8 +777,8 @@ export default function DeliveryBoyCommission() {
               {formErrors.basePayout && <p className="text-xs text-red-500 mt-1">{formErrors.basePayout}</p>}
               <p className="text-xs text-slate-500 mt-1">
                 {dialogMinDistance === 0
-                  ? "Base payout is flat for the 0-km slab. Amount per km applies only to km that fall inside each slab."
-                  : "Non-base slabs must keep base payout at 0. Only amount per km is used for km inside this slab."}
+                  ? "Base payout is flat for the 0-km slab. For a longer order, the extra amount of the slab its distance falls in is added once."
+                  : "Non-base slabs must keep base payout at 0. Orders in this distance range get base payout + this extra amount."}
               </p>
             </div>
           </div>

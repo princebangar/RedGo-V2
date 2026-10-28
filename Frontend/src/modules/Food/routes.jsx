@@ -16,6 +16,9 @@ import {
 } from "@food/utils/browseScrollMemory"
 import { isModuleAuthenticated } from "@food/utils/auth"
 import { AppShellSkeleton } from "./components/ui/loading-skeletons"
+
+// Partner apps (restaurant / delivery) load on a plain screen, not the customer home skeleton
+const PartnerAppFallback = () => <div className="fixed inset-0 bg-white dark:bg-[#0a0a0a]" />
 import { Loader2 } from "lucide-react"
 
 const PageLoader = () => (
@@ -338,7 +341,7 @@ export default function App() {
           <Route
             path="restaurant/*"
             element={
-              <Suspense fallback={<AppShellSkeleton />}>
+              <Suspense fallback={<PartnerAppFallback />}>
                 <RestaurantRouter />
               </Suspense>
             }
@@ -348,7 +351,7 @@ export default function App() {
           <Route
             path="delivery/*"
             element={
-              <Suspense fallback={<AppShellSkeleton />}>
+              <Suspense fallback={<PartnerAppFallback />}>
                 <DeliveryRouter />
               </Suspense>
             }

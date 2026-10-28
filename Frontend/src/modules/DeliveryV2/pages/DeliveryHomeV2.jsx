@@ -497,8 +497,10 @@ export default function DeliveryHomeV2({ tab = 'feed' }) {
   // this ensures we ping the backend periodically. This keeps the token fresh (via 401 interceptor)
   // and keeps the Delivery Partner "online" in the backend.
   useEffect(() => {
-    if (!isOnline) return;
-    
+    // Feed only: on Pocket / History / Profile, useRiderLocationSync sends live GPS; this ping
+    // would overwrite it with the last Feed position.
+    if (!isOnline || currentTab !== 'feed') return;
+
     const pingInterval = setInterval(() => {
       const now = Date.now();
       // If no natural GPS update happened in the last 15 seconds, force a ping
@@ -514,7 +516,7 @@ export default function DeliveryHomeV2({ tab = 'feed' }) {
     }, 10000); // Check every 10 seconds
     
     return () => clearInterval(pingInterval);
-  }, [isOnline]);
+  }, [isOnline, currentTab]);
 
   useEffect(() => {
     if (!claimedOrderId) return;
@@ -599,7 +601,13 @@ export default function DeliveryHomeV2({ tab = 'feed' }) {
 
   useEffect(() => {
     if (orderStatusUpdate) {
-      if (orderStatusUpdate.status === 'cancelled') {
+      // Restaurant / admin cancel sends only orderStatus ("cancelled_by_restaurant" etc.), and an
+      // admin delete sends status "deleted" — both must close the rider's trip too.
+      const isCancelled =
+        orderStatusUpdate.status === 'cancelled' ||
+        orderStatusUpdate.status === 'deleted' ||
+        String(orderStatusUpdate.orderStatus || '').startsWith('cancelled');
+      if (isCancelled) {
         toast.error('Order cancelled');
         const cancelledId =
           orderStatusUpdate.orderId ||
@@ -658,7 +666,7 @@ export default function DeliveryHomeV2({ tab = 'feed' }) {
                 onClick={() => navigate('/food/delivery/profile')}
                 className="w-10 h-10 rounded-full border border-white/20 p-0.5 shadow-xl overflow-hidden bg-white/5 cursor-pointer active:scale-95 transition-all"
              >
-                <img src={profileImage || "/profile_avatar.webp"} alt="Profile" className="w-full h-full object-cover rounded-full" />
+                <img src={profileImage || "/images/profile-avatar.webp"} alt="Profile" className="w-full h-full object-cover rounded-full" />
              </div>
               <button 
                 onClick={async () => {

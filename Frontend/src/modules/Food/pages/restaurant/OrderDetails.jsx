@@ -24,7 +24,7 @@ import {
   getRestaurantOrderTotal,
   resolveRestaurantItemUnitPrice,
 } from "@food/utils/restaurantOrderPricing"
-import dishFallbackImage from "@food/assets/dish_fallback.webp"
+import dishFallbackImage from "@food/assets/placeholders/dish_fallback.webp"
 const debugLog = (...args) => {}
 const debugWarn = (...args) => {}
 const debugError = (...args) => {}

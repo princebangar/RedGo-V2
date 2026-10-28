@@ -15,7 +15,7 @@ import {
 } from "@food/utils/vegMode"
 
 // Import banner image
-import offerBanner from "../../assets/offerpagebanner.svg"
+import offerBanner from "@food/assets/banners/offerpagebanner.svg"
 const debugLog = (...args) => {}
 const debugWarn = (...args) => {}
 const debugError = (...args) => {}

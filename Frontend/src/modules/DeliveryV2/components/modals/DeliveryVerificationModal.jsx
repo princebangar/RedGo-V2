@@ -53,6 +53,7 @@ const OtpModal = ({ order, onVerified, onClose }) => {
   const [otp, setOtp] = useState(['', '', '', '']);
   const [isVerifyingOtp, setIsVerifyingOtp] = useState(false);
   const [isOtpVerified, setIsOtpVerified] = useState(false);
+  const [otpError, setOtpError] = useState('');
   const inputRefs = [useRef(), useRef(), useRef(), useRef()];
 
   useEffect(() => {
@@ -70,6 +71,7 @@ const OtpModal = ({ order, onVerified, onClose }) => {
 
   const handleOtpChange = (index, value) => {
     if (value && !/^\d+$/.test(value)) return;
+    if (otpError) setOtpError('');
     const newOtp = [...otp];
     newOtp[index] = value.substring(value.length - 1);
     setOtp(newOtp);
@@ -92,6 +94,9 @@ const OtpModal = ({ order, onVerified, onClose }) => {
         setTimeout(() => onVerified(otpString), 600);
       }
     } catch (err) {
+      // The toast can sit behind this sheet, so also show the error right under the code boxes
+      const apiMessage = err?.response?.data?.message || err?.response?.data?.error;
+      setOtpError(apiMessage || 'Wrong code. Ask the customer for the 4-digit code shown in their app.');
       showUserFacingApiError(err, 'Invalid OTP entered');
       throw err;
     } finally {
@@ -132,6 +137,7 @@ const OtpModal = ({ order, onVerified, onClose }) => {
               type="number"
               disabled={isOtpVerified}
               value={digit}
+              aria-invalid={otpError ? 'true' : 'false'}
               onChange={(e) => handleOtpChange(i, e.target.value)}
               onKeyDown={(e) => handleKeyDown(i, e)}
               className={`w-12 sm:w-14 h-16 sm:h-18 bg-gray-50 border-2 rounded-2xl text-center text-2xl sm:text-3xl font-bold transition-all ${isOtpVerified ? 'border-green-500 bg-green-50 text-green-700' : 'border-gray-200 focus:border-green-600 text-gray-700'
@@ -139,6 +145,11 @@ const OtpModal = ({ order, onVerified, onClose }) => {
             />
           ))}
         </div>
+        {otpError && (
+          <p role="alert" className="-mt-4 mb-4 text-center text-xs font-bold text-red-600">
+            {otpError}
+          </p>
+        )}
 
         <ActionSlider
           key="action-otp"

@@ -82,6 +82,19 @@ export async function fetchDrivingDistanceKm(origin, destination) {
     return null;
   }
 
+  if (Date.now() >= routesApiDisabledUntil) {
+    const km = await fetchRoutesApiDistanceKm(apiKey, oLat, oLng, dLat, dLng);
+    if (km != null) return km;
+  }
+  // Routes API failed or is not enabled for this key: road distance from Distance Matrix instead,
+  // so rider earning / delivery fee do not drop to the straight-line fallback.
+  return fetchDistanceMatrixKm(apiKey, oLat, oLng, dLat, dLng);
+}
+
+/** Set when the Routes API refuses the key (not enabled / key not allowed); skip it for 10 min. */
+let routesApiDisabledUntil = 0;
+
+async function fetchRoutesApiDistanceKm(apiKey, oLat, oLng, dLat, dLng) {
   try {
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 6000);
@@ -113,13 +126,49 @@ export async function fetchDrivingDistanceKm(origin, destination) {
       }
     }
 
-    logger.warn(
-      `Driving distance failed: ${JSON.stringify(data)}`,
-    );
+    const status = String(data?.error?.status || '');
+    if (res.status === 403 || status === 'PERMISSION_DENIED' || /api key/i.test(String(data?.error?.message || ''))) {
+      routesApiDisabledUntil = Date.now() + 10 * 60 * 1000;
+      logger.warn(
+        `Routes API refused the Maps key (${res.status} ${status}); using Distance Matrix for 10 min. Enable "Routes API" for this key's project.`,
+      );
+    } else {
+      logger.warn(`Driving distance failed: ${JSON.stringify(data)}`);
+    }
   } catch (err) {
     logger.error(`Error fetching driving distance: ${err.message}`);
   }
 
+  return null;
+}
+
+async function fetchDistanceMatrixKm(apiKey, oLat, oLng, dLat, dLng) {
+  try {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 6000);
+    const params = new URLSearchParams({
+      origins: `${oLat},${oLng}`,
+      destinations: `${dLat},${dLng}`,
+      mode: 'driving',
+      key: apiKey,
+    });
+    const res = await fetch(
+      `https://maps.googleapis.com/maps/api/distancematrix/json?${params.toString()}`,
+      { signal: controller.signal },
+    );
+    clearTimeout(timeout);
+    const data = await res.json();
+    const element = data?.rows?.[0]?.elements?.[0];
+    const meters = element?.status === 'OK' ? Number(element?.distance?.value) : NaN;
+    if (Number.isFinite(meters) && meters > 0) {
+      return Math.round((meters / 1000) * 100) / 100;
+    }
+    logger.warn(
+      `Distance Matrix failed: status=${data?.status} element=${element?.status || 'n/a'} ${data?.error_message || ''}`,
+    );
+  } catch (err) {
+    logger.error(`Error fetching Distance Matrix distance: ${err.message}`);
+  }
   return null;
 }
 

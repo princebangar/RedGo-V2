@@ -521,12 +521,12 @@ export default function Customers() {
                             onClick={() => handleViewDetails(customer._id || customer.id || customer.sl)}
                           >
                             <img
-                              src={customer.profileImage || "/profile_avatar.webp"}
+                              src={customer.profileImage || "/images/profile-avatar.webp"}
                               alt={customer.name}
                               className="w-full h-full object-cover"
                               style={{ mixBlendMode: 'multiply' }}
                               onError={(e) => {
-                                e.currentTarget.src = "/profile_avatar.webp"
+                                e.currentTarget.src = "/images/profile-avatar.webp"
                               }}
                             />
                           </div>
@@ -711,11 +711,11 @@ export default function Customers() {
                     style={{ background: 'linear-gradient(135deg, #E8EEF7 0%, #C5D3E5 100%)' }}
                   >
                     <img
-                      src={userDetails.profileImage || "/profile_avatar.webp"}
+                      src={userDetails.profileImage || "/images/profile-avatar.webp"}
                       alt={userDetails.name}
                       className="w-full h-full rounded-full object-cover"
                       style={{ mixBlendMode: 'multiply' }}
-                      onError={(e) => { e.currentTarget.src = "/profile_avatar.webp" }}
+                      onError={(e) => { e.currentTarget.src = "/images/profile-avatar.webp" }}
                     />
                   </div>
                   <div className="flex-1 min-w-0">

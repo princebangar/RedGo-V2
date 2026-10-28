@@ -272,6 +272,8 @@ export default function SignupStep2() {
         if (shouldRegister) {
           sessionStorage.removeItem("deliveryNeedsRegistration")
           const phone = String(details.phone || "").replace(/\D/g, "").slice(-10)
+          const registeredPendingToken = response?.data?.data?.pendingToken
+          if (registeredPendingToken) localStorage.setItem("delivery_pendingToken", registeredPendingToken)
           finalizeDeliveryPendingSubmission(navigate, phone, { fcmToken, platform })
         } else {
           toast.success("Profile submitted. Waiting for admin approval.")
@@ -396,7 +398,7 @@ export default function SignupStep2() {
 
   return (
     <div className="min-h-screen bg-gray-100">
-      <div className="bg-white px-4 py-3 flex items-center gap-4 border-b border-gray-200">
+      <div className="sticky top-0 z-30 bg-white px-4 py-3 flex items-center gap-4 border-b border-gray-200">
         <button
           onClick={handleBack}
           className="p-2 hover:bg-gray-100 rounded-full transition-colors"

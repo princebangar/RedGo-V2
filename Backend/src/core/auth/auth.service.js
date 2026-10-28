@@ -9,6 +9,7 @@ import { findDeliveryPartnerByPhone } from "../../modules/food/delivery/services
 import { FoodReferralSettings } from "../../modules/food/admin/models/referralSettings.model.js";
 import { FoodReferralLog } from "../../modules/food/admin/models/referralLog.model.js";
 import { createOrUpdateOtp, verifyOtp, shouldUseStaticOtp } from "../otp/otp.service.js";
+import jwt from "jsonwebtoken";
 import { signAccessToken, signRefreshToken } from "./token.util.js";
 import { FoodRefreshToken } from "../refreshTokens/refreshToken.model.js";
 import { ValidationError, AuthError } from "./errors.js";
@@ -383,6 +384,56 @@ export const adminLogin = async (email, password) => {
   return { accessToken, refreshToken, user: userObj };
 };
 
+// Short-lived token handed to a partner whose account is still under review. It is only issued after a
+// successful OTP login and lets the "under review" screen poll the approval status (and sign in once approved).
+export const signPendingApprovalToken = (role, id) =>
+  jwt.sign({ type: "pending-approval", role, userId: String(id) }, config.jwtRefreshSecret, { expiresIn: "30d" });
+
+export const getPendingApprovalStatus = async (pendingToken) => {
+  let decoded;
+  try {
+    decoded = jwt.verify(String(pendingToken || ""), config.jwtRefreshSecret);
+  } catch {
+    throw new AuthError("Session expired. Please log in again.");
+  }
+  if (decoded?.type !== "pending-approval") throw new AuthError("Invalid token");
+
+  const isRestaurant = decoded.role === ROLES.RESTAURANT;
+  const isDelivery = decoded.role === ROLES.DELIVERY_PARTNER;
+  if (!isRestaurant && !isDelivery) throw new AuthError("Invalid token");
+
+  const doc = isRestaurant
+    ? await FoodRestaurant.findById(decoded.userId)
+    : await FoodDeliveryPartner.findById(decoded.userId);
+  if (!doc) throw new AuthError("Account not found");
+
+  const status = String(doc.status || "pending").toLowerCase();
+  if (status === "banned" || status === "deleted") {
+    return { status: "banned", message: "Your account has been disabled. Reason: Disabled by admin" };
+  }
+  if (status === "rejected") {
+    return { status: "rejected", rejectionReason: doc.rejectionReason || "" };
+  }
+  if (status !== "approved") return { status: "pending" };
+
+  const payload = { userId: doc._id.toString(), role: decoded.role };
+  const accessToken = signAccessToken(payload);
+  const refreshToken = signRefreshToken(payload);
+  await FoodRefreshToken.create({
+    userId: doc._id,
+    token: refreshToken,
+    expiresAt: new Date(Date.now() + ms(config.jwtRefreshExpiresIn || "7d")),
+  });
+  const plain = doc?.toObject?.() || doc;
+  return {
+    status: "approved",
+    token: accessToken,
+    accessToken,
+    refreshToken,
+    user: isRestaurant ? sanitizeRestaurantForAuthResponse(plain) : sanitizeDeliveryForAuthResponse(plain),
+  };
+};
+
 export const requestRestaurantOtp = async (phone) => {
   if (!phone) {
     throw new ValidationError("Phone is required");
@@ -505,6 +556,7 @@ export const verifyRestaurantOtpAndLogin = async (phone, otp, fcmToken, platform
     const isRejected = restaurantStatus === "rejected";
     return {
       pendingApproval: true,
+      pendingToken: signPendingApprovalToken(ROLES.RESTAURANT, restaurant._id),
       isRejected,
       rejectionReason: isRejected ? restaurant.rejectionReason : null,
       message:
@@ -617,6 +669,7 @@ export const verifyDeliveryOtpAndLogin = async (phone, otp, fcmToken, platform, 
     const isRejected = partnerStatus === "rejected";
     return {
       pendingApproval: true,
+      pendingToken: signPendingApprovalToken(ROLES.DELIVERY_PARTNER, deliveryPartner._id),
       isRejected,
       rejectionReason: isRejected ? deliveryPartner.rejectionReason : null,
       message:

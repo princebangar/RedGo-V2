@@ -489,7 +489,7 @@ export default function RestaurantStatus() {
         <DialogContent className="sm:max-w-md p-4 w-[90%] gap-2 flex flex-col">
           <DialogHeader className="text-center">
             <div className="mx-auto mb-3 flex h-16 w-16 items-center justify-center rounded-full bg-orange-100">
-              <span className="text-[#B80B3D]xl">??</span>
+              <span className="text-3xl">??</span>
             </div>
             <DialogTitle className="text-lg font-semibold text-gray-900 text-center">
               Outlet Timings Closed
@@ -518,7 +518,7 @@ export default function RestaurantStatus() {
         <DialogContent className="sm:max-w-md p-4 w-[90%] gap-2 flex flex-col">
           <DialogHeader className="text-center">
             <div className="mx-auto mb-3 flex h-16 w-16 items-center justify-center rounded-full bg-orange-100">
-              <span className="text-[#B80B3D]xl">??</span>
+              <span className="text-3xl">??</span>
             </div>
             <DialogTitle className="text-lg font-semibold text-gray-900 text-center">
               Outside Delivery Timings

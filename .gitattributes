@@ -1,2 +1,18 @@
 # Shell scripts must keep LF endings, otherwise bash on the server fails with "command not found" on every line.
 *.sh text eol=lf
+
+# Media files must never get line-ending conversion (it corrupts them).
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.webp binary
+*.gif binary
+*.ico binary
+*.avif binary
+*.mp3 binary
+*.mp4 binary
+*.wav binary
+*.woff binary
+*.woff2 binary
+*.ttf binary
+*.pdf binary

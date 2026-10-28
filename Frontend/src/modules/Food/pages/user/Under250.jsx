@@ -11,7 +11,7 @@ import { useCart } from "@food/context/CartContext"
 import { useProfile } from "@food/context/ProfileContext"
 import { Avatar, AvatarFallback, AvatarImage } from "@food/components/ui/avatar"
 import { getRestaurantAvailabilityStatus } from "@food/utils/restaurantAvailability"
-import under250Banner from "@food/assets/under250_banner.jpg"
+import under250Banner from "@food/assets/banners/under250_banner.jpg"
 import homeBannerRed from "@food/assets/home-banner-red-clean.png"
 import AddToCartAnimation from "@food/components/user/AddToCartAnimation"
 import OptimizedImage from "@food/components/OptimizedImage"
@@ -776,6 +776,9 @@ export default function Under250({ isTabActive = true }) {
     loadProgressive()
     return () => {
       cancelled = true
+      // This run's results are dropped, so the next run must be allowed to fetch
+      // (the in-flight guard used to skip it and the page stayed on skeleton cards).
+      if (fetchInflightRef.current === key) fetchInflightRef.current = null
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps -- location only used for mapping; GPS remapped separately
   }, [zoneId, under250PriceLimit, isTabActive])
@@ -1257,12 +1260,12 @@ export default function Under250({ isTabActive = true }) {
             >
               <Avatar className="h-full w-full bg-[#FFF5E6] dark:bg-gray-800">
                 <AvatarImage 
-                  src={userProfile?.profileImage || "/profile_avatar.webp"} 
+                  src={userProfile?.profileImage || "/images/profile-avatar.webp"} 
                   alt="Profile" 
                   className="object-cover"
                 />
                 <AvatarFallback className="bg-[#FFF5E6] dark:bg-gray-800 text-[20px] font-black text-[#DC2626] leading-none tracking-tighter antialiased">
-                  <img src="/profile_avatar.webp" alt="Profile" className="object-cover w-full h-full" />
+                  <img src="/images/profile-avatar.webp" alt="Profile" className="object-cover w-full h-full" />
                 </AvatarFallback>
               </Avatar>
             </Link>
@@ -1779,7 +1782,7 @@ export default function Under250({ isTabActive = true }) {
           <>
             {/* Backdrop */}
             <motion.div
-              className="fixed inset-0 bg-black/40 z-[9999]"
+              className="fixed inset-0 bg-black/40 z-[11009]"
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
@@ -1789,7 +1792,7 @@ export default function Under250({ isTabActive = true }) {
 
             {/* Item Detail Bottom Sheet */}
             <motion.div
-              className="fixed left-0 right-0 bottom-0 md:left-1/2 md:right-auto md:-translate-x-1/2 md:max-w-2xl lg:max-w-4xl xl:max-w-5xl z-[10000] bg-white dark:bg-[#1a1a1a] rounded-t-3xl shadow-2xl max-h-[90vh] md:max-h-[85vh] flex flex-col"
+              className="fixed left-0 right-0 bottom-0 md:left-1/2 md:right-auto md:-translate-x-1/2 md:max-w-2xl lg:max-w-4xl xl:max-w-5xl z-[11010] bg-white dark:bg-[#1a1a1a] rounded-t-3xl shadow-2xl max-h-[90vh] md:max-h-[85vh] flex flex-col"
               initial={{ y: "100%" }}
               animate={{ y: 0 }}
               exit={{ y: "100%" }}
@@ -1800,7 +1803,7 @@ export default function Under250({ isTabActive = true }) {
               onWheel={handleItemDetailWheel}
             >
               {/* Close Button - Top Center Above Popup with 4px gap */}
-              <div className="absolute -top-[44px] left-1/2 -translate-x-1/2 z-[10001]">
+              <div className="absolute -top-[44px] left-1/2 -translate-x-1/2 z-[11011]">
                 <motion.button
                   onClick={closeItemDetail}
                   className="h-10 w-10 md:h-12 md:w-12 rounded-full bg-gray-800 dark:bg-gray-700 flex items-center justify-center hover:bg-gray-900 dark:hover:bg-gray-600 transition-colors shadow-lg"
@@ -2028,7 +2031,7 @@ export default function Under250({ isTabActive = true }) {
         {showShareOptions && selectedItem && (
           <>
             <motion.div
-              className="fixed inset-0 bg-black/40 z-[10020]"
+              className="fixed inset-0 bg-black/40 z-[11020]"
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
@@ -2040,7 +2043,7 @@ export default function Under250({ isTabActive = true }) {
               animate={{ y: 0 }}
               exit={{ y: "100%" }}
               transition={{ duration: 0.2, type: "spring", damping: 28, stiffness: 320 }}
-              className="fixed bottom-0 left-0 right-0 z-[10021] bg-white dark:bg-[#1a1a1a] rounded-t-3xl shadow-2xl px-4 py-4"
+              className="fixed bottom-0 left-0 right-0 z-[11021] bg-white dark:bg-[#1a1a1a] rounded-t-3xl shadow-2xl px-4 py-4"
             >
               <div className="flex justify-center pb-3">
                 <div className="w-12 h-1 bg-gray-300 rounded-full" />
