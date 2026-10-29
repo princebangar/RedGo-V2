@@ -38,6 +38,8 @@ import {
   Check,
   Share2,
   Zap,
+  Sparkles,
+  ChevronRight,
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import Footer from "@food/components/user/Footer";
@@ -381,6 +383,79 @@ const RestaurantCardOfferCarousel = React.memo(({ coupons, compact = false }) =>
           </motion.span>
         </AnimatePresence>
       </div>
+    </div>
+  );
+});
+
+// Fills the offer slot on "Recommended For You" cards that have no offer:
+// rotates short highlights built from the restaurant's own data, same slide as the offers.
+const RecommendedHighlightCarousel = React.memo(({ restaurant }) => {
+  const highlights = React.useMemo(() => {
+    const list = [
+      {
+        key: "pick",
+        icon: <Sparkles className="h-3.5 w-3.5 text-[#DC2626]" strokeWidth={2.5} />,
+        text: "RedGo Pick",
+        textClass: "text-[#DC2626]",
+      },
+    ];
+    if (restaurant?.pureVegRestaurant === true) {
+      list.push({
+        key: "veg",
+        icon: <Leaf className="h-3.5 w-3.5 text-green-600 fill-green-600/20" strokeWidth={2.5} />,
+        text: "Pure Veg",
+        textClass: "text-green-700 dark:text-green-500",
+      });
+    }
+    const rating = Number(restaurant?.rating);
+    if (Number.isFinite(rating) && rating >= 4) {
+      list.push({
+        key: "rating",
+        icon: <Star className="h-3.5 w-3.5 text-amber-500 fill-amber-500" strokeWidth={2} />,
+        text: `Top rated · ${rating.toFixed(1)}`,
+        textClass: "text-amber-700 dark:text-amber-500",
+      });
+    }
+    list.push({
+      key: "menu",
+      icon: <UtensilsCrossed className="h-3.5 w-3.5 text-slate-500" strokeWidth={2.5} />,
+      text: "Explore menu",
+      textClass: "text-slate-600 dark:text-slate-300",
+      trailing: <ChevronRight className="h-3 w-3 text-slate-400 flex-shrink-0" strokeWidth={3} />,
+    });
+    return list;
+  }, [restaurant?.pureVegRestaurant, restaurant?.rating]);
+
+  const [currentIndex, setCurrentIndex] = useState(0);
+
+  useEffect(() => {
+    if (highlights.length <= 1) return;
+    const interval = setInterval(() => {
+      setCurrentIndex((prev) => (prev + 1) % highlights.length);
+    }, 3000);
+    return () => clearInterval(interval);
+  }, [highlights.length]);
+
+  const current = highlights[currentIndex] || highlights[0];
+
+  return (
+    <div className="mt-1.5 h-[28px] overflow-hidden relative">
+      <AnimatePresence initial={false}>
+        <motion.div
+          key={`${current.key}-${currentIndex}`}
+          initial={{ top: -16, opacity: 0 }}
+          animate={{ top: 0, opacity: 1 }}
+          exit={{ top: 16, opacity: 0 }}
+          transition={{ duration: 0.22, ease: "easeInOut" }}
+          className="absolute inset-x-0 h-[16px] flex items-center gap-1 min-w-0"
+        >
+          <span className="flex-shrink-0 flex items-center justify-center w-4 h-4">{current.icon}</span>
+          <span className={`text-[10px] font-bold tracking-wide truncate ${current.textClass}`}>
+            {current.text}
+          </span>
+          {current.trailing}
+        </motion.div>
+      </AnimatePresence>
     </div>
   );
 });
@@ -3394,12 +3469,9 @@ export default function Home({ homeMode = null, isTabActive = true }) {
                   .sort((a, b) =>
                     (Number(b.availability.isOpen) - Number(a.availability.isOpen)) || (a.order - b.order),
                   );
-                // Reserve the offer row on every card when any card has one, so the row stays even.
-                const anyRecommendedOffer = recommendedCards.some((card) => card.coupons.length > 0);
                 return recommendedCards.map(({ restaurant, availability, coupons: restaurantCoupons }, index) => {
                 const isOffline =
-                  availability.reason === "inactive" || availability.reason === "not-accepting-orders";
-                const restaurantRouteId = getRestaurantRouteId(restaurant);
+                  availability.reason === "inactive" || availability.reason === "not-accepting-orders";                const restaurantRouteId = getRestaurantRouteId(restaurant);
                 const rawSlug = restaurant.slug || restaurant.name;
                 const restaurantSlug = String(rawSlug || "")
                   .toLowerCase()
@@ -3460,9 +3532,9 @@ export default function Home({ homeMode = null, isTabActive = true }) {
                         )}
                         {restaurantCoupons.length > 0 ? (
                           <RestaurantCardOfferCarousel coupons={restaurantCoupons} compact />
-                        ) : anyRecommendedOffer ? (
-                          <div className="mt-1.5 h-[28px]" aria-hidden="true" />
-                        ) : null}
+                        ) : (
+                          <RecommendedHighlightCarousel restaurant={restaurant} />
+                        )}
                       </div>
                     </Link>
                   </motion.div>

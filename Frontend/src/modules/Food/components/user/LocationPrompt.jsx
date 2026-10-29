@@ -62,11 +62,11 @@ export default function LocationPrompt() {
       }
       if (state === "denied") {
         localStorage.setItem("locationPermissionGranted", "denied")
-      } else if (state === "prompt" && isLocationPermissionGranted()) {
-        // Permission was reset in browser/app settings.
-        localStorage.removeItem("locationPermissionGranted")
+      } else if (isLocationPermissionGranted()) {
+        // Already allowed once. iOS Safari / WKWebView report "prompt" (or no state at all)
+        // even after the user allowed, so only an explicit "denied" brings the prompt back.
+        return
       }
-      if (state === null && isLocationPermissionGranted()) return
       setBlocked(state === "denied")
       open()
     }, 400)

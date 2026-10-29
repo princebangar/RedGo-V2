@@ -162,18 +162,6 @@ export default function Dining({ isTabActive = true }) {
   const { zoneId, loading: zoneLoading } = useZone(location)
   const { addFavorite, removeFavorite, isFavorite, vegMode, vegModeOption, userProfile } = useProfile()
 
-  // Cuisine filter options come from what the dining restaurants actually serve
-  const availableCuisines = useMemo(() => {
-    const seen = new Map()
-    ;(Array.isArray(restaurantList) ? restaurantList : []).forEach((restaurant) => {
-      ;(Array.isArray(restaurant?.cuisines) ? restaurant.cuisines : []).forEach((value) => {
-        const name = String(value || "").trim()
-        if (name && !seen.has(name.toLowerCase())) seen.set(name.toLowerCase(), name)
-      })
-    })
-    return [...seen.values()].sort((a, b) => a.localeCompare(b))
-  }, [restaurantList])
-
   // The page behind the filter sheet must not scroll
   useEffect(() => {
     if (!isFilterOpen) return undefined
@@ -192,6 +180,19 @@ export default function Dining({ isTabActive = true }) {
 
   const [categories, setCategories] = useState([])
   const [restaurantList, setRestaurantList] = useState([])
+
+  // Cuisine filter options come from what the dining restaurants actually serve
+  const availableCuisines = useMemo(() => {
+    const seen = new Map()
+    ;(Array.isArray(restaurantList) ? restaurantList : []).forEach((restaurant) => {
+      ;(Array.isArray(restaurant?.cuisines) ? restaurant.cuisines : []).forEach((value) => {
+        const name = String(value || "").trim()
+        if (name && !seen.has(name.toLowerCase())) seen.set(name.toLowerCase(), name)
+      })
+    })
+    return [...seen.values()].sort((a, b) => a.localeCompare(b))
+  }, [restaurantList])
+
   const [loading, setLoading] = useState(true)
   const diningCacheKeyRef = useRef(null)
   const [diningHeroBanners, setDiningHeroBanners] = useState([])
