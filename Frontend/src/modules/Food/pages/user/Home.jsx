@@ -301,7 +301,19 @@ const formatCouponText = (coupon) => {
 };
 
 // Restaurant Card Offer Carousel Component - cycles through active coupons
-const RestaurantCardOfferCarousel = React.memo(({ coupons }) => {
+// `compact` is the smaller size used on the narrow "Recommended For You" cards:
+// the text wraps onto a second line there instead of being cut off.
+const RestaurantCardOfferCarousel = React.memo(({ coupons, compact = false }) => {
+  const rowClass = compact
+    ? "flex items-start gap-1 mt-1.5 overflow-hidden h-[28px] relative"
+    : "flex items-center gap-2 mt-2 overflow-hidden h-[20px] relative";
+  const iconBoxClass = compact ? "w-4 h-4 mt-px" : "w-5 h-5";
+  const iconClass = compact ? "h-4 w-4 text-[#2563EB]" : "h-5 w-5 text-[#2563EB]";
+  const textSizeClass = compact
+    ? "text-[10px] leading-[14px] tracking-normal line-clamp-2"
+    : "text-[11px] sm:text-xs tracking-wide truncate flex items-center";
+  const slideOffset = compact ? 28 : 14;
+
   const uniqueCoupons = React.useMemo(() => {
     if (!coupons || coupons.length === 0) return [];
     const map = new Map();
@@ -331,13 +343,13 @@ const RestaurantCardOfferCarousel = React.memo(({ coupons }) => {
   // Static display if only 1 unique coupon exists to prevent layout shifting/unwanted sliding
   if (uniqueCoupons.length === 1) {
     return (
-      <div className="flex items-center gap-2 mt-2 overflow-hidden h-[20px] relative">
+      <div className={rowClass}>
         {/* Symmetrical Scallop Icon like Zomato */}
-        <div className="flex-shrink-0 flex items-center justify-center w-5 h-5">
-          <ScallopBadge className="h-5 w-5 text-[#2563EB]" />
+        <div className={`flex-shrink-0 flex items-center justify-center ${iconBoxClass}`}>
+          <ScallopBadge className={iconClass} />
         </div>
         <div className="flex-grow h-full overflow-hidden relative min-w-0">
-          <span className="absolute inset-x-0 top-0 bottom-0 text-[11px] sm:text-xs font-bold text-slate-700 dark:text-slate-300 tracking-wide truncate flex items-center">
+          <span className={`absolute inset-x-0 top-0 bottom-0 ${textSizeClass} font-bold text-slate-700 dark:text-slate-300`}>
             {formatCouponText(uniqueCoupons[0])}
           </span>
         </div>
@@ -348,10 +360,10 @@ const RestaurantCardOfferCarousel = React.memo(({ coupons }) => {
   const currentCoupon = uniqueCoupons[currentIndex] || uniqueCoupons[0];
 
   return (
-    <div className="flex items-center gap-2 mt-2 overflow-hidden h-[20px] relative">
+    <div className={rowClass}>
       {/* Symmetrical Scallop Icon like Zomato */}
-      <div className="flex-shrink-0 flex items-center justify-center w-5 h-5">
-        <ScallopBadge className="h-5 w-5 text-[#2563EB]" />
+      <div className={`flex-shrink-0 flex items-center justify-center ${iconBoxClass}`}>
+        <ScallopBadge className={iconClass} />
       </div>
 
       {/* Animating Coupon Text - sliding down vertically */}
@@ -359,11 +371,11 @@ const RestaurantCardOfferCarousel = React.memo(({ coupons }) => {
         <AnimatePresence initial={false}>
           <motion.span
             key={`${currentCoupon.couponCode || currentCoupon.code || currentIndex}-${currentIndex}`}
-            initial={{ top: -14, opacity: 0 }}
+            initial={{ top: -slideOffset, opacity: 0 }}
             animate={{ top: 0, opacity: 1 }}
-            exit={{ top: 14, opacity: 0 }}
+            exit={{ top: slideOffset, opacity: 0 }}
             transition={{ duration: 0.22, ease: "easeInOut" }}
-            className="absolute inset-x-0 bottom-0 text-[11px] sm:text-xs font-bold text-slate-700 dark:text-slate-300 tracking-wide truncate flex items-center"
+            className={`absolute inset-x-0 bottom-0 ${textSizeClass} font-bold text-slate-700 dark:text-slate-300`}
           >
             {formatCouponText(currentCoupon)}
           </motion.span>
@@ -491,6 +503,31 @@ export default function Home({ homeMode = null, isTabActive = true }) {
     };
   }, []);
 
+  // Active coupons that apply to one restaurant on the current tab (delivery / takeaway).
+  const getRestaurantCoupons = useCallback((restaurant) => {
+    if (!restaurant || restaurant.hasDishes === false) return [];
+    const isTakeawayActive = effectiveOrderType === "takeaway" || isTakeawayPage;
+    return publicOffers.filter((o) => {
+      // 1. Restaurant Scope check
+      if (String(o?.restaurantScope) === "selected") {
+        const couponRestId = String(o.restaurantId || "").trim();
+        const rId = String(restaurant.restaurantId || "").trim();
+        const id = String(restaurant.id || "").trim();
+        const mongoId = String(restaurant.mongoId || "").trim();
+        if (!(couponRestId === rId || couponRestId === id || couponRestId === mongoId)) {
+          return false;
+        }
+      }
+
+      // 2. Order/Tab Type check (couponType: 'delivery', 'takeaway', 'all')
+      const cType = String(o.couponType || "all").trim().toLowerCase();
+      if (isTakeawayActive) {
+        return cType === "takeaway" || cType === "all";
+      }
+      return cType === "delivery" || cType === "all";
+    });
+  }, [publicOffers, effectiveOrderType, isTakeawayPage]);
+
   const [heroBannerImages, setHeroBannerImages] = useState([]);
   const [heroBannersData, setHeroBannersData] = useState([]); // Store full banner data with linked restaurants
   const [loadingBanners, setLoadingBanners] = useState(true);
@@ -523,6 +560,8 @@ export default function Home({ homeMode = null, isTabActive = true }) {
     recommendedRestaurantsFromSettings,
     setRecommendedRestaurantsFromSettings,
   ] = useState([]);
+  // True until the landing settings (which carry the recommended restaurants) have loaded.
+  const [loadingRecommended, setLoadingRecommended] = useState(true);
   const [restaurantsData, setRestaurantsData] = useState(HOME_RESTAURANTS_CACHE || []);
   const [loadingRestaurants, setLoadingRestaurants] = useState(!HOME_RESTAURANTS_CACHE || (Array.isArray(HOME_RESTAURANTS_CACHE) && HOME_RESTAURANTS_CACHE.length === 0));
   const [realCategories, setRealCategories] = useState(HOME_CATEGORIES_CACHE || []);
@@ -1347,6 +1386,9 @@ export default function Home({ homeMode = null, isTabActive = true }) {
             try { localStorage.setItem("CACHED_FEST_BANNER", ""); } catch (e) {}
           }
         }
+      })
+      .finally(() => {
+        if (!cancelled) setLoadingRecommended(false);
       });
     return () => {
       cancelled = true;
@@ -2446,6 +2488,7 @@ export default function Home({ homeMode = null, isTabActive = true }) {
         openingTime: restaurant?.openingTime || null,
         closingTime: restaurant?.closingTime || null,
         openDays: Array.isArray(restaurant?.openDays) ? restaurant.openDays : [],
+        outletTimings: restaurant?.outletTimings || null,
       };
     });
 
@@ -3313,7 +3356,7 @@ export default function Home({ homeMode = null, isTabActive = true }) {
           </AnimatePresence>
         </div>
 
-        {effectiveOrderType !== "takeaway" && !isTakeawayPage && recommendedForYouRestaurants.length > 0 && (
+        {effectiveOrderType !== "takeaway" && !isTakeawayPage && (loadingRecommended || recommendedForYouRestaurants.length > 0) && (
           <motion.section
             className="content-auto pt-1 sm:pt-2"
             initial={false}
@@ -3323,7 +3366,39 @@ export default function Home({ homeMode = null, isTabActive = true }) {
             </h2>
 
             <div className="flex overflow-x-auto gap-3.5 pb-4 scrollbar-hide px-4 mask-edge-fade">
-              {recommendedForYouRestaurants.map((restaurant, index) => {
+              {recommendedForYouRestaurants.length === 0 ? (
+                // Skeleton cards, same size as the real ones, while the list loads.
+                Array.from({ length: 4 }).map((_, i) => (
+                  <div
+                    key={`recommended-skeleton-${i}`}
+                    className="flex-shrink-0 w-[150px] sm:w-[170px] md:w-[190px] rounded-[20px] overflow-hidden border border-gray-200/70 dark:border-gray-800 bg-white dark:bg-[#1a1a1a] shadow-md animate-pulse"
+                    aria-hidden="true">
+                    <div className="h-24 sm:h-28 md:h-32 bg-gray-200 dark:bg-gray-800" />
+                    <div className="p-2.5">
+                      <div className="h-3.5 w-3/4 rounded bg-gray-200 dark:bg-gray-800" />
+                      <div className="h-2.5 w-1/2 rounded bg-gray-100 dark:bg-gray-700 mt-2" />
+                      <div className="h-2.5 w-5/6 rounded bg-gray-100 dark:bg-gray-700 mt-2" />
+                    </div>
+                  </div>
+                ))
+              ) : (() => {
+                const now = new Date(availabilityTick);
+                // Open restaurants first, offline / closed ones last; admin order kept within each group.
+                const recommendedCards = recommendedForYouRestaurants
+                  .map((restaurant, order) => ({
+                    restaurant,
+                    order,
+                    availability: getRestaurantAvailabilityStatus(restaurant, now),
+                    coupons: getRestaurantCoupons(restaurant),
+                  }))
+                  .sort((a, b) =>
+                    (Number(b.availability.isOpen) - Number(a.availability.isOpen)) || (a.order - b.order),
+                  );
+                // Reserve the offer row on every card when any card has one, so the row stays even.
+                const anyRecommendedOffer = recommendedCards.some((card) => card.coupons.length > 0);
+                return recommendedCards.map(({ restaurant, availability, coupons: restaurantCoupons }, index) => {
+                const isOffline =
+                  availability.reason === "inactive" || availability.reason === "not-accepting-orders";
                 const restaurantRouteId = getRestaurantRouteId(restaurant);
                 const rawSlug = restaurant.slug || restaurant.name;
                 const restaurantSlug = String(rawSlug || "")
@@ -3333,10 +3408,8 @@ export default function Home({ homeMode = null, isTabActive = true }) {
                 return (
                   <motion.div
                     key={`recommended-${restaurant.mongoId || restaurant.id || linkId}`}
-                    initial={{ opacity: 0, y: 12 }}
-                    whileInView={{ opacity: 1, y: 0 }}
-                    viewport={{ once: true }}
-                    transition={{ duration: 0.35, delay: index * 0.05 }}
+                    // Cards stay visible from the start: an in-view fade left blank gaps on a fast swipe.
+                    initial={false}
                     className="flex-shrink-0 w-[150px] sm:w-[170px] md:w-[190px]">
                     <Link
                       to={toFoodUserPath(`/user/restaurants/${linkId}`)}
@@ -3347,7 +3420,7 @@ export default function Home({ homeMode = null, isTabActive = true }) {
                           restaurant.mongoId || restaurant.id || linkId,
                         )
                       }
-                      className="block rounded-[20px] overflow-hidden border border-gray-200/70 dark:border-gray-800 bg-white dark:bg-[#1a1a1a] shadow-md hover:shadow-lg transition-all duration-300">
+                      className={`block rounded-[20px] overflow-hidden border border-gray-200/70 dark:border-gray-800 bg-white dark:bg-[#1a1a1a] shadow-md hover:shadow-lg transition-all duration-300 ${isOutOfService || !availability.isOpen ? "grayscale opacity-75" : ""}`}>
                       <div className="relative h-24 sm:h-28 md:h-32 bg-gray-50">
                         <RestaurantImageCarousel
                           restaurant={restaurant}
@@ -3366,15 +3439,36 @@ export default function Home({ homeMode = null, isTabActive = true }) {
                         <p className="text-sm font-semibold text-gray-900 dark:text-white truncate tracking-tight">
                           {restaurant.name}
                         </p>
-                        <p className="text-[10px] text-[#DC2626] font-bold mt-1 flex items-center gap-1 uppercase tracking-wider">
-                          <Flame className="w-3.5 h-3.5 fill-[#DC2626]" />
-                          Near & Fast
-                        </p>
+                        {availability.isOpen ? (
+                          <p className="text-[10px] text-[#DC2626] font-bold mt-1 flex items-center gap-1 uppercase tracking-wider">
+                            <Flame className="w-3.5 h-3.5 fill-[#DC2626]" />
+                            Near & Fast
+                          </p>
+                        ) : (
+                          <p className={`text-[10px] font-bold mt-1 flex items-center gap-1 uppercase tracking-wider truncate ${isOffline ? "text-red-600 dark:text-red-400" : "text-gray-600 dark:text-gray-400"}`}>
+                            {isOffline || !availability.openingTime ? (
+                              <AlertCircle className="w-3.5 h-3.5 flex-shrink-0" strokeWidth={2.5} />
+                            ) : (
+                              <Clock className="w-3.5 h-3.5 flex-shrink-0" strokeWidth={2.5} />
+                            )}
+                            {isOffline
+                              ? "Offline"
+                              : availability.openingTime
+                                ? `Opens at ${availability.openingTime}`
+                                : "Closed"}
+                          </p>
+                        )}
+                        {restaurantCoupons.length > 0 ? (
+                          <RestaurantCardOfferCarousel coupons={restaurantCoupons} compact />
+                        ) : anyRecommendedOffer ? (
+                          <div className="mt-1.5 h-[28px]" aria-hidden="true" />
+                        ) : null}
                       </div>
                     </Link>
                   </motion.div>
                 );
-              })}
+                });
+              })()}
             </div>
           </motion.section>
         )}
@@ -3498,28 +3592,7 @@ export default function Home({ homeMode = null, isTabActive = true }) {
                 // Direct favorite check - isFavorite is already memoized in context
                 const favorite = isFavorite(restaurantSlug);
 
-                const restaurantCoupons = restaurant.hasDishes === false ? [] : publicOffers.filter((o) => {
-                  // 1. Restaurant Scope check
-                  if (String(o?.restaurantScope) === "selected") {
-                    const couponRestId = String(o.restaurantId || "").trim();
-                    const rId = String(restaurant.restaurantId || "").trim();
-                    const id = String(restaurant.id || "").trim();
-                    const mongoId = String(restaurant.mongoId || "").trim();
-                    if (!(couponRestId === rId || couponRestId === id || couponRestId === mongoId)) {
-                      return false;
-                    }
-                  }
-
-                  // 2. Order/Tab Type check (couponType: 'delivery', 'takeaway', 'all')
-                  const isTakeawayActive = effectiveOrderType === "takeaway" || isTakeawayPage;
-                  const cType = String(o.couponType || "all").trim().toLowerCase();
-
-                  if (isTakeawayActive) {
-                    return cType === "takeaway" || cType === "all";
-                  } else {
-                    return cType === "delivery" || cType === "all";
-                  }
-                });
+                const restaurantCoupons = getRestaurantCoupons(restaurant);
 
                 const handleToggleFavorite = (e) => {
                   e.preventDefault();

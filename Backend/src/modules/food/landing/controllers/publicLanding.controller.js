@@ -5,6 +5,7 @@ import { FoodUnder250Banner } from '../models/under250Banner.model.js';
 import { FoodDiningBanner } from '../models/diningBanner.model.js';
 import { FoodExploreIcon } from '../models/exploreIcon.model.js';
 import { FoodRestaurant } from '../../restaurant/models/restaurant.model.js';
+import { FoodRestaurantOutletTimings } from '../../restaurant/models/outletTimings.model.js';
 import { sendResponse } from '../../../../utils/response.js';
 
 /** Public hero banners for user home: active only, sorted, with linkedRestaurants populated for click-through */
@@ -168,6 +169,19 @@ export const getPublicLandingSettingsController = async (req, res, next) => {
             recommendedRestaurants = await FoodRestaurant.find({ _id: { $in: ids }, status: 'approved' })
                 .select('restaurantName area city profileImage coverImages menuImages slug rating cuisines pureVegRestaurant isAcceptingOrders isActive openingTime closingTime openDays zoneId')
                 .lean();
+
+            // Per-day timings live in their own collection; the cards need them to show closed / offline.
+            const timingDocs = await FoodRestaurantOutletTimings.find({
+                restaurantId: { $in: recommendedRestaurants.map((r) => r._id) },
+            }).lean();
+            const timingsMap = {};
+            timingDocs.forEach((t) => {
+                timingsMap[String(t.restaurantId)] = t.timings || [];
+            });
+            recommendedRestaurants = recommendedRestaurants.map((r) => ({
+                ...r,
+                outletTimings: { timings: timingsMap[String(r._id)] || [] },
+            }));
         }
         const payload = {
             ...settings,
