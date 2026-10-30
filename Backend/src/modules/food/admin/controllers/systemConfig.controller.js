@@ -45,6 +45,11 @@ const CUSTOMIZATION_TOGGLES = [
         description: 'Global toggle to enable/disable the automatic COD blocking feature (blocks COD for users with 4 consecutive COD cancellations)'
     },
     {
+        key: 'combo_offers_enabled',
+        defaultValue: true,
+        description: 'Show the Combo Offers section to users (home slider + restaurant page chip)'
+    },
+    {
         key: 'maintenance_mode_enabled',
         defaultValue: false,
         description: 'When enabled, user / restaurant / delivery apps show Under Maintenance (admin stays available)'

@@ -106,6 +106,12 @@ export const adminSidebarMenu = [
         path: "/admin/food/coupons",
         icon: "Gift",
       },
+      {
+        type: "link",
+        label: "Combo Offers",
+        path: "/admin/food/combo-offers",
+        icon: "Package",
+      },
     ],
   },
   // TODO: Referral feature temporarily disabled. Uncomment to re-enable in future.

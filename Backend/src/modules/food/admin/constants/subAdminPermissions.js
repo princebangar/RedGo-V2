@@ -23,6 +23,7 @@ export const SUB_ADMIN_PERMISSION_MODULES = [
   { key: 'orders', label: 'Orders', pathPrefixes: ['/admin/food/orders'] },
   { key: 'order_detect_delivery', label: 'Order Detect Delivery', pathPrefixes: ['/admin/food/order-detect-delivery'] },
   { key: 'restaurant_coupons_offers', label: 'Restaurant Coupons & Offers', pathPrefixes: ['/admin/food/coupons'] },
+  { key: 'combo_offers', label: 'Combo Offers', pathPrefixes: ['/admin/food/combo-offers'] },
   { key: 'customers', label: 'Customers', pathPrefixes: ['/admin/food/customers'] },
   { key: 'support_tickets', label: 'Support Tickets (User & Restaurant)', pathPrefixes: ['/admin/food/support-tickets'] },
   { key: 'delivery_cash_limit', label: 'Delivery Cash Limit', pathPrefixes: ['/admin/food/delivery-cash-limit'] },

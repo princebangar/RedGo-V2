@@ -98,6 +98,7 @@ import offerImage from "@food/assets/offerimage.png";
 import api, { publicGetOnce, restaurantAPI, adminAPI } from "@food/api";
 import { API_BASE_URL } from "@food/api/config";
 import OptimizedImage from "@food/components/OptimizedImage";
+import ComboOffersRow from "@food/components/user/home/ComboOffersRow";
 import RestaurantImageCarousel from "@food/components/user/RestaurantImageCarousel";
 import { getRestaurantAvailabilityStatus } from "@food/utils/restaurantAvailability";
 import { compareRestaurantsByAvailabilityAndDistance } from "@food/utils/restaurantBrowseSort";
@@ -3430,6 +3431,20 @@ export default function Home({ homeMode = null, isTabActive = true }) {
             )}
           </AnimatePresence>
         </div>
+
+        {effectiveOrderType !== "takeaway" && !isTakeawayPage && (
+          <ComboOffersRow
+            zoneId={zoneId}
+            zoneLoading={zoneLoading}
+            isOutOfService={isOutOfService}
+            vegMode={vegMode}
+            onOpenRestaurant={(restaurant, item) => {
+              const dishId = item?.id || item?._id
+              const path = `/user/restaurants/${getRestaurantRouteId(restaurant) || restaurant._id}`
+              navigate(toFoodUserPath(dishId ? `${path}?dish=${encodeURIComponent(dishId)}` : path))
+            }}
+          />
+        )}
 
         {effectiveOrderType !== "takeaway" && !isTakeawayPage && (loadingRecommended || recommendedForYouRestaurants.length > 0) && (
           <motion.section

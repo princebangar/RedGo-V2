@@ -14,6 +14,7 @@ import * as systemConfigController from '../controllers/systemConfig.controller.
 import { upload } from '../../../../middleware/upload.js';
 import { enforceSubAdminPermissions } from '../middleware/subAdminPermission.middleware.js';
 import * as otherPriceController from '../controllers/otherPrice.controller.js';
+import * as comboOfferController from '../controllers/comboOffer.controller.js';
 
 const router = express.Router();
 
@@ -143,6 +144,16 @@ router.post('/offers', adminController.createAdminOffer);
 router.put('/offers/:id', adminController.updateAdminOffer);
 router.patch('/offers/:id/cart-visibility', adminController.updateAdminOfferCartVisibility);
 router.delete('/offers/:id', adminController.deleteAdminOffer);
+
+// ----- Combo Offers (home page slider) -----
+router.get('/combo-offers', comboOfferController.listComboOffers);
+router.get('/combo-offers/search-foods', comboOfferController.searchComboFoods);
+router.post('/combo-offers', comboOfferController.createComboOffer);
+router.post('/combo-offers/bulk', comboOfferController.bulkAddComboOffers);
+router.post('/combo-offers/bulk-remove', comboOfferController.bulkRemoveComboOffers);
+router.delete('/combo-offers/:id', comboOfferController.deleteComboOffer);
+router.patch('/combo-offers/:id/order', comboOfferController.updateComboOrder);
+router.patch('/combo-offers/:id/status', comboOfferController.toggleComboStatus);
 
 // ----- Feedback Experience (Admin) -----
 router.get('/feedback-experiences', feedbackExperienceController.getFeedbackExperiences);

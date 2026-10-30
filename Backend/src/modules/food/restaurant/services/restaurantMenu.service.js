@@ -43,7 +43,7 @@ const toRestaurantOwnedPricedFood = (food) => {
   };
 };
 
-const buildMenuItemFromFood = (food, priced, sectionName, resolvedCategoryId) => {
+export const buildMenuItemFromFood = (food, priced, sectionName, resolvedCategoryId) => {
   const basePrice = Number(priced.basePrice) || 0;
   const sellingPrice = Number(priced.price) || basePrice;
   const markupAmount = Number(priced.markupAmount) || 0;

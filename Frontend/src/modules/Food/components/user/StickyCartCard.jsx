@@ -3,146 +3,164 @@ import { X, ChevronRight } from "lucide-react"
 import { useCart } from "@food/context/CartContext"
 import { useState, useEffect, useRef } from "react"
 import { motion, AnimatePresence } from "framer-motion"
+import dishFallbackImage from "@food/assets/placeholders/dish_fallback.webp"
+import { isBottomNavVisible, subscribeBottomNavVisibility } from "@food/utils/bottomNavEvents"
+import { flyToCart, bumpElement, sourceToViewportPoint } from "@food/utils/flyToCart"
+
+// Mobile: the card sits 16px above the bottom nav (nav = bottom-6 + 72px tall). When the nav
+// hides on scroll, the card slides down but keeps a comfortable gap from the screen edge.
+const CARD_BOTTOM_WITH_NAV_PX = 112
+const CARD_BOTTOM_WITHOUT_NAV_PX = 32
+
+const lineBaseId = (id) => String(id || "").split("::")[0]
 
 export default function StickyCartCard() {
-  const { cart, getCartCount } = useCart()
+  const { cart, getCartCount, lastAddEvent } = useCart()
   const [isVisible, setIsVisible] = useState(true)
-  const [bottomPosition, setBottomPosition] = useState("bottom-[85px]") // Fixed above bottom navigation
+  const [isMobile, setIsMobile] = useState(() => typeof window === "undefined" || window.innerWidth < 768)
+  const [navVisible, setNavVisible] = useState(isBottomNavVisible)
+  const [flying, setFlying] = useState(null)
+  const cardRef = useRef(null)
+  const thumbsRef = useRef(null)
   const cartCount = getCartCount()
+  const prevCountRef = useRef(cartCount)
 
-  // Set fixed position above bottom navigation (no scroll-based movement)
+  // Closed with X? Any new item (ADD or +) brings the card back.
   useEffect(() => {
-    // Set initial position based on screen size
-    const setInitialPosition = () => {
-      if (window.innerWidth >= 768) {
-        setBottomPosition("bottom-6") // Desktop: fixed position
-      } else {
-        setBottomPosition("bottom-[85px]") // Mobile: above bottom nav (fixed, doesn't move with scroll)
-      }
-    }
+    if (cartCount > prevCountRef.current) setIsVisible(true)
+    prevCountRef.current = cartCount
+  }, [cartCount])
 
-    setInitialPosition()
-
-    const handleResize = () => {
-      if (window.innerWidth >= 768) {
-        setBottomPosition("bottom-6") // Desktop: always fixed
-      } else {
-        setBottomPosition("bottom-[85px]") // Mobile: above bottom nav (fixed)
-      }
-    }
-
+  useEffect(() => {
+    const handleResize = () => setIsMobile(window.innerWidth < 768)
     window.addEventListener("resize", handleResize)
-
-    return () => {
-      window.removeEventListener("resize", handleResize)
-    }
+    return () => window.removeEventListener("resize", handleResize)
   }, [])
 
-  // Get restaurant info from first cart item or use default
-  const restaurantName = cart[0]?.restaurant || "Restaurant"
-  const restaurantImage = cart[0]?.image || "https://images.unsplash.com/photo-1512058564366-18510be2db19?w=200&h=200&fit=crop"
+  useEffect(() => {
+    setNavVisible(isBottomNavVisible())
+    return subscribeBottomNavVisibility(setNavVisible)
+  }, [])
 
-  // Create restaurant slug from restaurant name
-  const restaurantSlug = restaurantName.toLowerCase().replace(/\s+/g, "-")
+  // ADD / + tapped somewhere on the page: fly the dish photo from the button into the card.
+  useEffect(() => {
+    const from = sourceToViewportPoint(lastAddEvent?.sourcePosition)
+    if (!from) return undefined
+    const key = `${Date.now()}-${Math.random()}`
+    setIsVisible(true)
+    setFlying({ key, id: String(lastAddEvent.product?.id || "") })
+    // One frame so a card that just mounted (first item) is laid out before we aim at it.
+    const raf = requestAnimationFrame(() => {
+      const target = thumbsRef.current?.getBoundingClientRect()
+      const to = target
+        ? { x: target.left + 20, y: target.top + target.height / 2 }
+        : { x: window.innerWidth / 2, y: window.innerHeight - CARD_BOTTOM_WITH_NAV_PX }
+      flyToCart({ image: lastAddEvent.product?.imageUrl, from, to }).then(() => {
+        setFlying((current) => (current?.key === key ? null : current))
+        bumpElement(cardRef.current)
+      })
+    })
+    return () => cancelAnimationFrame(raf)
+  }, [lastAddEvent])
 
-  // Calculate total price
-  const totalPrice = cart.reduce((sum, item) => sum + (item.price * item.quantity * 83), 0)
-
-  // Animation variants for the popout effect
-  const cardVariants = {
-    initial: {
-      opacity: 1,
-      scale: 1,
-      y: 0,
-      rotate: 0,
-    },
-    animate: {
-      opacity: 1,
-      scale: 1,
-      y: 0,
-      rotate: 0,
-      transition: {
-        type: "spring",
-        stiffness: 300,
-        damping: 25,
-        mass: 0.8,
-      },
-    },
-    exit: {
-      opacity: 0,
-      scale: 0.8,
-      y: 100,
-      rotate: -5,
-      transition: {
-        duration: 0.4,
-        ease: [0.4, 0, 0.2, 1],
-      },
-    },
-  }
-
-  // Don't render if cart is empty
+  // Don't render the card if cart is empty
   if (cartCount === 0) return null
 
+  const restaurantName = cart[0]?.restaurant || "Restaurant"
+  const restaurantSlug = restaurantName.toLowerCase().replace(/\s+/g, "-")
+
+  // Latest 3 dishes, newest on top of the stack (same as the restaurant page "View cart" pill).
+  const thumbnailItems = cart.slice(-3).reverse().filter((item) => item && typeof item === "object")
+  const isFlyingItem = (item) =>
+    Boolean(flying) &&
+    (String(item.id) === flying.id || String(item.itemId || "") === lineBaseId(flying.id))
+
+  const bottomPx = isMobile && !navVisible ? CARD_BOTTOM_WITHOUT_NAV_PX : CARD_BOTTOM_WITH_NAV_PX
+
   return (
-    <AnimatePresence>
-      {isVisible && (
-        <motion.div
-          className={`fixed ${bottomPosition} md:bottom-6 left-0 right-0 md:left-auto md:right-6 z-50 px-4 md:px-0 pb-4 md:pb-0 pointer-events-none`}
-          initial="initial"
-          animate="animate"
-          exit="exit"
-          variants={cardVariants}
-        >
-          <div className="max-w-7xl md:max-w-none mx-auto md:mx-0 pointer-events-auto">
-            <div className="bg-white dark:bg-[#0a0a0a] dark:text-white rounded-3xl shadow-2xl border border-gray-200 dark:border-gray-800 overflow-hidden md:max-w-md md:w-[400px]">
-              <div className="flex items-center gap-3 p-3 md:p-4">
-                {/* Restaurant Image */}
-                <div className="flex-shrink-0">
-                  <img
-                    src={restaurantImage}
-                    alt={restaurantName}
-                    className="w-14 h-14 md:w-16 md:h-16 rounded-lg object-cover"
-                  />
+    <>
+      <AnimatePresence>
+        {isVisible && (
+          <motion.div
+            className="fixed md:!bottom-6 left-0 right-0 md:left-auto md:right-6 z-50 px-4 md:px-0 pointer-events-none flex justify-center"
+            initial={{ opacity: 0, scale: 0.9, bottom: bottomPx }}
+            animate={{ opacity: 1, scale: 1, bottom: bottomPx }}
+            exit={{ opacity: 0, scale: 0.85, y: 60, transition: { duration: 0.3, ease: [0.4, 0, 0.2, 1] } }}
+            // Same feel as the bottom nav's own hide/show.
+            transition={{
+              bottom: { type: "tween", ease: [0.22, 1, 0.36, 1], duration: 0.25 },
+              default: { type: "spring", stiffness: 300, damping: 25, mass: 0.8 },
+            }}
+          >
+            <div
+              ref={cardRef}
+              className="pointer-events-auto relative w-full max-w-[340px] md:w-[360px] md:max-w-none overflow-hidden rounded-full bg-gradient-to-r from-[#991b1b] via-[#DC2626] to-[#991b1b] border border-white/15 shadow-[0_8px_20px_-8px_rgba(0,0,0,0.35)] text-white"
+            >
+              {/* Soft top sheen */}
+              <div aria-hidden="true" className="pointer-events-none absolute inset-x-0 top-0 h-1/2 bg-gradient-to-b from-white/15 to-transparent" />
+
+              <div className="relative flex items-center gap-2.5 py-2 pl-2 pr-2">
+                {/* Stacked dish photos */}
+                <div ref={thumbsRef} className="flex flex-shrink-0 items-center -space-x-4">
+                  {thumbnailItems.map((item, idx) => (
+                    <motion.div
+                      key={item.itemId ? `${item.itemId}::${item.variantId || ""}` : (item.id || `thumb-${idx}`)}
+                      initial={{ scale: 0, opacity: 0 }}
+                      animate={{ scale: isFlyingItem(item) ? 0.6 : 1, opacity: isFlyingItem(item) ? 0 : 1 }}
+                      transition={{ type: "spring", stiffness: 500, damping: 25 }}
+                      className="h-9 w-9 flex-shrink-0 overflow-hidden rounded-full border-2 border-white/90 bg-white shadow-md"
+                      style={{ zIndex: thumbnailItems.length - idx }}
+                    >
+                      <img
+                        src={item.image || item.imageUrl || dishFallbackImage}
+                        alt={item.name || "Item"}
+                        className="h-full w-full object-cover"
+                        onError={(e) => {
+                          if (e.currentTarget.src !== dishFallbackImage) e.currentTarget.src = dishFallbackImage
+                        }}
+                      />
+                    </motion.div>
+                  ))}
                 </div>
 
                 {/* Restaurant Info */}
-                 <Link to={`/food/user/restaurants/${restaurantSlug}`} className="flex-1 min-w-0">
-                  <h3 className="font-bold text-gray-900 dark:text-gray-200 text-base md:text-lg mb-0.5 line-clamp-1">
-                    {restaurantName}
-                  </h3>
-                  <div className="flex items-center gap-1 text-gray-600 dark:text-gray-400 text-sm md:text-base">
+                <Link to={`/food/user/restaurants/${restaurantSlug}`} className="min-w-0 flex-1">
+                  <h3 className="line-clamp-1 text-sm font-bold leading-tight drop-shadow-sm">{restaurantName}</h3>
+                  <div className="flex items-center gap-0.5 text-[11px] font-medium text-white/85">
                     <span>View Menu</span>
-                    <ChevronRight className="h-3 w-3 md:h-4 md:w-4" />
+                    <ChevronRight className="h-3 w-3" />
                   </div>
                 </Link>
 
                 {/* View Cart Button */}
                 <Link
                   to="/food/user/cart"
-                  className="flex-shrink-0 bg-[#DC2626] dark:bg-[#991B1B] hover:bg-[#991B1B] dark:hover:bg-[#7a0d2a] text-white px-4 py-2.5 md:px-5 md:py-3 rounded-lg font-semibold transition-colors"
+                  className="flex flex-shrink-0 items-center gap-1 rounded-full bg-white/25 px-3 py-1.5 leading-tight ring-1 ring-white/30 active:scale-95 transition-transform"
                 >
-                  <div className="text-center">
-                    <div className="text-xs md:text-sm opacity-90">View Cart</div>
-                    <div className="text-xs md:text-sm font-bold">{cartCount} {cartCount === 1 ? 'item' : 'items'}</div>
+                  <div className="text-left">
+                    <div className="text-xs font-bold">View cart</div>
+                    <div className="text-[10px] font-medium opacity-95">{cartCount} {cartCount === 1 ? "item" : "items"}</div>
                   </div>
+                  <ChevronRight className="h-3.5 w-3.5" />
                 </Link>
 
                 {/* Close Button */}
                 <motion.button
+                  type="button"
                   onClick={() => setIsVisible(false)}
-                  className="flex-shrink-0 w-8 h-8 md:w-9 md:h-9 flex items-center justify-center rounded-full hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
-                  whileHover={{ scale: 1.1, rotate: 90 }}
-                  whileTap={{ scale: 0.9 }}
+                  className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-full bg-black/20 ring-1 ring-white/30 shadow-inner backdrop-blur-sm hover:bg-black/30 transition-colors"
+                  whileHover={{ rotate: 90 }}
+                  whileTap={{ scale: 0.85 }}
                   transition={{ type: "spring", stiffness: 400, damping: 17 }}
+                  aria-label="Hide cart"
                 >
-                  <X className="h-4 w-4 md:h-5 md:w-5 text-gray-500 dark:text-gray-400" />
+                  <X className="h-3.5 w-3.5 text-white" strokeWidth={2.75} />
                 </motion.button>
               </div>
             </div>
-          </div>
-        </motion.div>
-      )}
-    </AnimatePresence>
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </>
   )
 }
-

@@ -40,6 +40,7 @@ const STABLE_KEYS_BY_PATH = {
   "/admin/food/orders/payment-recovery": "orders",
   "/admin/food/order-detect-delivery": "order_detect_delivery",
   "/admin/food/coupons": "restaurant_coupons_offers",
+  "/admin/food/combo-offers": "combo_offers",
   "/admin/food/customers": "customers",
   "/admin/food/support-tickets": "support_tickets",
   "/admin/food/delivery-cash-limit": "delivery_cash_limit",

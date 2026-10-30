@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, Component, useMemo } from "react"
+import { useState, useEffect, useLayoutEffect, useRef, Component, useMemo } from "react"
 import { createPortal } from "react-dom"
 import { motion, AnimatePresence } from "framer-motion"
 import { useParams, useNavigate, useSearchParams, useLocation as useRouterLocation } from "react-router-dom"
@@ -65,6 +65,7 @@ import { RestaurantDetailSkeleton } from "@food/components/ui/loading-skeletons"
 import OptimizedImage from "@food/components/OptimizedImage"
 import { isVegMenuItem } from "@food/utils/vegMode"
 import dishFallbackImage from "@food/assets/placeholders/dish_fallback.webp"
+import { useComboOffers } from "@food/components/user/home/ComboOffersRow"
 
 const fssaiLogo = "/images/fssai.png?v=3"
 
@@ -265,6 +266,7 @@ function RestaurantDetailsContent() {
   const [highlightedDishId, setHighlightedDishId] = useState(null)
   const [loadingMenuItems, setLoadingMenuItems] = useState(true)
   const [selectedMenuCategory, setSelectedMenuCategory] = useState("all")
+  const [showCombosOnly, setShowCombosOnly] = useState(false)
   const dishCardRefs = useRef({})
   const hasScrolledRef = useRef(false)
 
@@ -1322,6 +1324,10 @@ function RestaurantDetailsContent() {
     cart.forEach((item) => {
       if (item.restaurant === restaurant.name) {
         cartQuantities[item.id] = item.quantity || 0
+        // Server lines carry their own id; the menu looks dishes up by item+variant.
+        if (item.itemId) {
+          cartQuantities[buildCartLineId(item.itemId, item.variantId || "")] = item.quantity || 0
+        }
       }
     })
     setQuantities(cartQuantities)
@@ -1617,6 +1623,27 @@ function RestaurantDetailsContent() {
       })
       .filter(Boolean)
   }, [restaurant?.menuSections, vegMode])
+
+  // Admin-curated combo offers (Promotions → Combo Offers) that belong to this restaurant.
+  const { comboOffers } = useComboOffers({ zoneId, enabled: !loadingZone })
+  const comboItemIds = useMemo(() => {
+    const ownIds = new Set(
+      [restaurant?.restaurantId, restaurant?._id, restaurant?.id].filter(Boolean).map(String)
+    )
+    return new Set(
+      comboOffers
+        .filter((combo) => ownIds.has(String(combo?.restaurant?._id || "")))
+        .map((combo) => String(combo?.item?.id || combo?.item?._id || ""))
+    )
+  }, [comboOffers, restaurant?.restaurantId, restaurant?._id, restaurant?.id])
+
+  useEffect(() => {
+    setShowCombosOnly(false)
+  }, [slug])
+
+  useEffect(() => {
+    if (comboItemIds.size === 0) setShowCombosOnly(false)
+  }, [comboItemIds])
 
   // Count active filters
   const getActiveFilterCount = () => {
@@ -2069,11 +2096,15 @@ function RestaurantDetailsContent() {
   const getFilteredSections = () => {
     if (!restaurant?.menuSections) return []
 
+    const isShownItem = (item) =>
+      item?.isAvailable !== false &&
+      (!showCombosOnly || comboItemIds.has(String(item?.id || item?._id || "")))
+
     const visibleSections = restaurant.menuSections
       .map((section, index) => {
         const filteredItems = sortMenuItems(
           filterMenuItems(
-            toRenderableArray(section?.items).filter((item) => item?.isAvailable !== false)
+            toRenderableArray(section?.items).filter(isShownItem)
           )
         )
 
@@ -2082,7 +2113,7 @@ function RestaurantDetailsContent() {
             ...subsection,
             items: sortMenuItems(
               filterMenuItems(
-                toRenderableArray(subsection?.items).filter((item) => item?.isAvailable !== false)
+                toRenderableArray(subsection?.items).filter(isShownItem)
               )
             ),
           }))
@@ -2130,6 +2161,7 @@ function RestaurantDetailsContent() {
   }
 
   const hasActiveMenuFilters = Boolean(
+    showCombosOnly ||
     showOnlyUnder250 ||
     searchQuery.trim() ||
     vegMode === true ||
@@ -2141,6 +2173,7 @@ function RestaurantDetailsContent() {
 
   // User-explicitly-applied filters (excludes vegMode — vegMode is a global preference, not a manual filter)
   const hasUserAppliedFilters = Boolean(
+    showCombosOnly ||
     showOnlyUnder250 ||
     searchQuery.trim() ||
     filters.sortBy ||
@@ -2151,7 +2184,7 @@ function RestaurantDetailsContent() {
 
   const filteredSections = useMemo(
     () => getFilteredSections(),
-    [restaurant?.menuSections, showOnlyUnder250, searchQuery, vegMode, filters, selectedMenuCategory]
+    [restaurant?.menuSections, showOnlyUnder250, searchQuery, vegMode, filters, selectedMenuCategory, showCombosOnly, comboItemIds]
   )
 
   useEffect(() => {
@@ -2161,9 +2194,27 @@ function RestaurantDetailsContent() {
     }
   }, [restaurant, filteredSections, windowSize])
 
-  useEffect(() => {
-    if (!hasActiveMenuFilters) return
+  // A filter (e.g. Combo Offers) opens only its matching sections. When the last filter is
+  // cleared, reopen every section like on page load — otherwise the menu stays collapsed.
+  const filtersWereActiveRef = useRef(false)
 
+  useLayoutEffect(() => {
+    if (!hasActiveMenuFilters) {
+      if (filtersWereActiveRef.current) {
+        filtersWereActiveRef.current = false
+        const allExpanded = new Set()
+        toRenderableArray(restaurant?.menuSections).forEach((section, index) => {
+          allExpanded.add(index)
+          toRenderableArray(section?.subsections).forEach((_, subIndex) => {
+            allExpanded.add(`${index}-${subIndex}`)
+          })
+        })
+        setExpandedSections(allExpanded)
+      }
+      return
+    }
+
+    filtersWereActiveRef.current = true
     const nextExpanded = new Set()
     filteredSections.forEach(({ section, originalIndex }) => {
       nextExpanded.add(originalIndex)
@@ -2725,8 +2776,10 @@ function RestaurantDetailsContent() {
 
           {/* Filter/Category Buttons */}
           {restaurant?.menuSections && Array.isArray(restaurant.menuSections) && restaurant.menuSections.length > 0 && (
-            <div className="border-y border-gray-200 py-3 -mx-4 px-4 overflow-x-auto scrollbar-hide">
-              <div className="flex flex-col gap-2 w-max">
+            <div className="border-y border-gray-200 py-3 -mx-4">
+              {/* Each row scrolls on its own: swiping categories must not move the filter chips. */}
+              <div className="flex flex-col gap-2">
+                <div className="overflow-x-auto scrollbar-hide px-4">
                 <div className="flex items-center gap-2 w-max">
                   <Button
                     variant="outline"
@@ -2781,9 +2834,26 @@ function RestaurantDetailsContent() {
                     )}
                   </Button>
                   )}
+                  {comboItemIds.size > 0 && (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className={`flex items-center gap-1.5 whitespace-nowrap border-gray-300 dark:border-gray-700 bg-white dark:bg-[#1a1a1a] dark:text-white rounded-full ${showCombosOnly ? "border-[#DC2626] bg-[#DC262615] text-[#DC2626] font-bold dark:border-red-500 dark:bg-red-900/20 dark:text-red-400" : ""
+                      }`}
+                    onClick={() => setShowCombosOnly((prev) => !prev)}
+                  >
+                    <Tag className="h-3.5 w-3.5 text-[#DC2626]" />
+                    Combo Offers
+                    {showCombosOnly && (
+                      <X className="h-3 w-3 text-gray-600 dark:text-gray-400" />
+                    )}
+                  </Button>
+                  )}
+                </div>
                 </div>
 
                 {menuCategories.length > 0 && (
+                  <div className="overflow-x-auto scrollbar-hide px-4">
                   <div className="flex items-center gap-2 w-max">
                     <button
                       type="button"
@@ -2822,6 +2892,7 @@ function RestaurantDetailsContent() {
                         {category.name}
                       </button>
                     ))}
+                  </div>
                   </div>
                 )}
               </div>

@@ -1,5 +1,6 @@
 import { useLocation, useNavigate } from "react-router-dom"
-import { ShoppingBag, Tag, Truck, UtensilsCrossed } from "lucide-react"
+import { MdDeliveryDining } from "react-icons/md"
+import { IoBag, IoPricetag, IoRestaurant } from "react-icons/io5"
 import { useState, useEffect, useRef, useCallback } from "react"
 import { motion } from "framer-motion"
 import api from "@food/api"
@@ -8,7 +9,7 @@ import {
   getCachedUnder250PriceLimit,
   getLandingSettingsPublic,
 } from "@food/utils/foodPageCache"
-import { subscribeBottomNavShow } from "@food/utils/bottomNavEvents"
+import { emitBottomNavVisibility, subscribeBottomNavShow } from "@food/utils/bottomNavEvents"
 
 const HIDE_LOCK_MS = 900
 
@@ -40,6 +41,12 @@ export default function BottomNavigation() {
       setIsVisible(true)
     }
   }, [])
+
+  // Let floating cards (sticky cart) follow the nav; gone nav = hidden nav.
+  useEffect(() => {
+    emitBottomNavVisibility(isVisible)
+  }, [isVisible])
+  useEffect(() => () => emitBottomNavVisibility(false), [])
 
   // Fetch landing settings to get dynamic price limit (shared cache)
   useEffect(() => {
@@ -184,7 +191,7 @@ export default function BottomNavigation() {
     {
       id: "delivery",
       label: "Delivery",
-      icon: Truck,
+      icon: MdDeliveryDining,
       to: "/food/user",
       active: isDelivery,
       orderType: "delivery",
@@ -192,7 +199,7 @@ export default function BottomNavigation() {
     {
       id: "takeaway",
       label: "Takeaway",
-      icon: ShoppingBag,
+      icon: IoBag,
       to: "/food/user/takeaway",
       active: isTakeaway,
       orderType: "takeaway",
@@ -200,14 +207,14 @@ export default function BottomNavigation() {
     {
       id: "under250",
       label: `Under ₹${under250PriceLimit}`,
-      icon: Tag,
+      icon: IoPricetag,
       to: "/food/user/under-250",
       active: isUnder250,
     },
     {
       id: "dining",
       label: "Dining",
-      icon: UtensilsCrossed,
+      icon: IoRestaurant,
       to: "/food/user/dining",
       active: isDining,
     },
@@ -263,8 +270,8 @@ export default function BottomNavigation() {
 
             <div className="relative z-10 flex flex-col items-center gap-0.5">
               <item.icon
-                className={`h-5 w-5 transition-transform duration-300 ${item.active ? "scale-110" : ""}`}
-                strokeWidth={item.active ? 2.5 : 2}
+                className={`h-[22px] w-[22px] transition-transform duration-300 ${item.active ? "scale-110" : ""}`}
+                aria-hidden="true"
               />
               <span
                 className={`text-[10px] font-black tracking-tight uppercase leading-none ${

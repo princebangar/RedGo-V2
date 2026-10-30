@@ -773,6 +773,25 @@ export const adminAPI = {
       contextModule: "admin",
     }),
 
+  /** Combo Offers (admin) — home page combo slider */
+  getComboOffers: () =>
+    apiClient.get("/food/admin/combo-offers", { contextModule: "admin" }),
+  searchComboFoods: (params = {}) =>
+    apiClient.get("/food/admin/combo-offers/search-foods", { params, contextModule: "admin" }),
+  addComboOffer: (foodId) =>
+    apiClient.post("/food/admin/combo-offers", { foodId: String(foodId) }, { contextModule: "admin" }),
+  addComboOffersBulk: (foodIds) =>
+    apiClient.post("/food/admin/combo-offers/bulk", { foodIds: foodIds.map(String) }, { contextModule: "admin" }),
+  // POST (not DELETE) so the id list travels in the body; sub-admins need "create" permission for it.
+  removeComboOffersBulk: (foodIds) =>
+    apiClient.post("/food/admin/combo-offers/bulk-remove", { foodIds: foodIds.map(String) }, { contextModule: "admin" }),
+  deleteComboOffer: (id) =>
+    apiClient.delete(`/food/admin/combo-offers/${String(id)}`, { contextModule: "admin" }),
+  updateComboOfferOrder: (id, order) =>
+    apiClient.patch(`/food/admin/combo-offers/${String(id)}/order`, { order }, { contextModule: "admin" }),
+  toggleComboOfferStatus: (id) =>
+    apiClient.patch(`/food/admin/combo-offers/${String(id)}/status`, {}, { contextModule: "admin" }),
+
   /** Delivery Partner Bonus (admin) */
   getDeliveryPartnerBonusTransactions: (params = {}) =>
     apiClient.get("/food/admin/delivery/bonus-transactions", {

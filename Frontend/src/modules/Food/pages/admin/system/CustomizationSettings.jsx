@@ -64,6 +64,13 @@ const CUSTOMIZATION_TOGGLES = [
     defaultValue: true,
   },
   {
+    key: "combo_offers_enabled",
+    label: "Combo Offers",
+    description:
+      "Shows the Combo Offers slider on the user home page and the Combo Offers chip on restaurant pages. When OFF, both are hidden for users; the admin Combo Offers list stays as it is.",
+    defaultValue: true,
+  },
+  {
     key: "maintenance_mode_enabled",
     label: "Under Maintenance",
     description:

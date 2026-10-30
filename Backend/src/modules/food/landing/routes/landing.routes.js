@@ -59,6 +59,7 @@ import {
 } from '../controllers/top10GourmetAdmin.controller.js';
 import { getPublicPageController } from '../../admin/controllers/pageContent.controller.js';
 import { getPublicReferralSettingsController } from '../controllers/publicReferralSettings.controller.js';
+import { getPublicComboOffersController } from '../../admin/controllers/comboOffer.controller.js';
 
 const router = express.Router();
 
@@ -131,6 +132,7 @@ router.get('/hero-banners/dining/public', getPublicDiningBannersController);
 router.get('/explore-icons/public', getPublicExploreIconsController);
 router.get('/hero-banners/gourmet/public', getPublicGourmetController);
 router.get('/landing/settings/public', getPublicLandingSettingsController);
+router.get('/combo-offers/public', getPublicComboOffersController);
 router.get('/zones/detect', detectZonePublicController);
 router.get('/zones/nearby', listZonesNearbyPublicController);
 router.get('/zones/public', listZonesPublicController);
