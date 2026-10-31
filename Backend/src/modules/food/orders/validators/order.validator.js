@@ -13,7 +13,9 @@ const orderItemSchema = z.object({
     quantity: z.number().int().min(1),
     isVeg: z.boolean().optional().default(true),
     image: z.string().optional(),
-    notes: z.string().optional()
+    notes: z.string().optional(),
+    // Kept so pricing can drop Buy 1 Get 1 free lines and rebuild them from live offers.
+    isBogoFree: z.boolean().optional()
 });
 
 const addressSchema = z.object({

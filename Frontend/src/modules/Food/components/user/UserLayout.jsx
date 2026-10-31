@@ -22,6 +22,7 @@ import OutOfZoneScreen from "./OutOfZoneScreen"
 import { isModuleAuthenticated } from "../../utils/auth"
 import { AppShellSkeleton } from "@food/components/ui/loading-skeletons"
 import LoginRequiredModal from "./LoginRequiredModal"
+import BogoAppliedPopup from "./BogoAppliedPopup"
 import MainTabKeepAlive from "./MainTabKeepAlive"
 import { getMainTabFromPath, isExactMainTabPath, rememberMainTabBeforeProfile, shouldPreserveMainTabsUnderPath, getCategorySlugFromPath, isRestaurantDetailPath, rememberCategoryKeepAliveSlug, peekCategoryKeepAliveSlug, clearCategoryKeepAliveSlug } from "@food/utils/mainTabRoutes"
 import { registerFoodPageCacheLifecycle } from "@food/utils/foodPageCache"
@@ -601,6 +602,9 @@ function UserLayoutContent() {
       
       {/* Central Login Required Modal */}
       <LoginRequiredModal isOpen={isLoginModalOpen} onClose={() => setIsLoginModalOpen(false)} />
+
+      {/* Buy 1 Get 1: "add 1 more" nudge + "offer applied" popup */}
+      <BogoAppliedPopup />
     </>
   )
 }

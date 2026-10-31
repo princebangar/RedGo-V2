@@ -186,14 +186,15 @@ export async function ensureRiderEarningOnOrder(order) {
     }
   }
 
-  // Keep platformProfit roughly consistent if pricing exists
+  // Keep platformProfit consistent with order creation and the ledger (fees + markup + commission - rider)
   const deliveryFee = Number(order.pricing?.deliveryFee || 0);
   const platformFee = Number(order.pricing?.platformFee || 0);
+  const markupTotal = Number(order.pricing?.markupTotal || 0);
   const restaurantCommission = Number(order.pricing?.restaurantCommission || 0);
   if (Number.isFinite(deliveryFee) || Number.isFinite(platformFee)) {
     order.platformProfit = Math.max(
       0,
-      deliveryFee + platformFee + restaurantCommission - earningResolved.riderEarning,
+      deliveryFee + platformFee + markupTotal + restaurantCommission - earningResolved.riderEarning,
     );
     order.markModified?.('platformProfit');
   }

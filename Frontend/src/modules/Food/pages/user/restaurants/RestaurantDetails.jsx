@@ -63,6 +63,7 @@ import {
 } from "@food/utils/foodVariants"
 import { RestaurantDetailSkeleton } from "@food/components/ui/loading-skeletons"
 import OptimizedImage from "@food/components/OptimizedImage"
+import BogoTag from "@food/components/user/BogoTag"
 import { isVegMenuItem } from "@food/utils/vegMode"
 import dishFallbackImage from "@food/assets/placeholders/dish_fallback.webp"
 import { useComboOffers } from "@food/components/user/home/ComboOffersRow"
@@ -1434,6 +1435,8 @@ function RestaurantDetailsContent() {
       pricingScope: resolvedVariant?.pricingScope ?? item.pricingScope ?? null,
       appliedPricingType: resolvedVariant?.appliedPricingType ?? item.appliedPricingType ?? null,
       appliedPricingValue: resolvedVariant?.appliedPricingValue ?? item.appliedPricingValue ?? null,
+      isBogo: item.isBogo === true,
+      bogoMaxFree: item.bogoMaxFree || 0,
     }
 
     // Get source position for animation from event target
@@ -3120,6 +3123,7 @@ function RestaurantDetailsContent() {
                                       </div>
                                     )}
                                   </div>
+                                  {item.isBogo === true && <BogoTag className="mt-1" />}
                                 </div>
 
                                 {/* Description - Show if available */}
@@ -3356,6 +3360,7 @@ function RestaurantDetailsContent() {
                                                 </div>
                                               )}
                                             </div>
+                                            {item.isBogo === true && <BogoTag className="mt-1" />}
                                           </div>
 
                                           {/* Description - Show if available */}
@@ -4134,6 +4139,8 @@ function RestaurantDetailsContent() {
                         </h2>
                       </div>
                     </div>
+
+                    {selectedItem.isBogo === true && <BogoTag className="mb-3" />}
 
                     {/* Description */}
                     <p className="text-sm text-gray-600 dark:text-gray-400 mb-4 leading-relaxed">

@@ -21,7 +21,12 @@ const orderItemSchema = new mongoose.Schema(
         quantity: { type: Number, required: true, min: 1 },
         isVeg: { type: Boolean, default: true },
         image: { type: String, default: '' },
-        notes: { type: String, default: '' }
+        notes: { type: String, default: '' },
+        /** Buy 1 Get 1 paid line; bogoFreeQuantity more units come free on the ₹0 line after it. */
+        isBogo: { type: Boolean, default: false },
+        bogoFreeQuantity: { type: Number, default: 0, min: 0 },
+        /** The ₹0 free line of a Buy 1 Get 1 item (restaurant-funded). */
+        isBogoFree: { type: Boolean, default: false }
     },
     { _id: false }
 );
@@ -58,6 +63,8 @@ const pricingSchema = new mongoose.Schema(
         platformFee: { type: Number, default: 0, min: 0 },
         restaurantCommission: { type: Number, default: 0, min: 0 },
         discount: { type: Number, default: 0, min: 0 },
+        /** What the customer saved through Buy 1 Get 1 free lines (not deducted from any total). */
+        bogoSavings: { type: Number, default: 0, min: 0 },
         total: { type: Number, required: true, min: 0 },
         currency: { type: String, default: 'INR' },
         couponCode: { type: String, default: null, trim: true, uppercase: true }

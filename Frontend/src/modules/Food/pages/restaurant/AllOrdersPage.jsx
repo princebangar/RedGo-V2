@@ -16,6 +16,8 @@ import {
 import { DateRangeCalendar } from "@food/components/ui/date-range-calendar"
 import { restaurantAPI } from "@food/api"
 import { useRestaurantNotifications } from "@food/hooks/useRestaurantNotifications"
+import { isBogoFreeLine, bogoDishName, getBogoFreeUnitValue, orderHasBogo } from "@food/utils/bogo"
+import { BogoBadge, BogoFreePrice } from "@food/components/BogoOrderBits"
 const debugLog = (...args) => {}
 const debugWarn = (...args) => {}
 const debugError = (...args) => {}
@@ -186,6 +188,9 @@ export default function AllOrdersPage() {
     
     // Format items
     const items = (order.items || []).map(item => ({
+      itemId: item.itemId || '',
+      variantId: item.variantId || '',
+      isBogoFree: item.isBogoFree === true,
       name: item.name || 'Item',
       quantity: item.quantity || 1,
       price: item.price || 0
@@ -656,6 +661,7 @@ export default function AllOrdersPage() {
             {/* Order ID */}
             <div className="flex items-center gap-2 mb-2">
               <span className="text-base font-bold text-gray-900">ID: {order.id}</span>
+              {orderHasBogo(order) && <BogoBadge label="BOGO" />}
               <button
                 onClick={(e) => handleCopyOrderId(order.id, e)}
                 className="p-1 hover:bg-gray-100 rounded transition-colors"
@@ -683,9 +689,14 @@ export default function AllOrdersPage() {
               {order.items.slice(0, 2).map((item, idx) => (
                 <div key={idx} className="flex items-center justify-between">
                   <span className="text-sm text-gray-900">
-                    {item.quantity} x {item.name}
+                    {item.quantity} x {isBogoFreeLine(item) ? bogoDishName(item) : item.name}
+                    {isBogoFreeLine(item) && <BogoBadge className="ml-1.5 align-middle" />}
                   </span>
-                  <span className="text-sm text-gray-500">{formatMoney(item.price)}</span>
+                  {isBogoFreeLine(item) ? (
+                    <BogoFreePrice unitValue={getBogoFreeUnitValue(order.items, item)} />
+                  ) : (
+                    <span className="text-sm text-gray-500">{formatMoney(item.price)}</span>
+                  )}
                 </div>
               ))}
               {order.items.length > 2 && (

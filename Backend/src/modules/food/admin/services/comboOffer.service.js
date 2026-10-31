@@ -65,10 +65,10 @@ const OFFER_CATEGORY_PATTERN = 'offer|combo|deal|meal|special';
 const OFFER_NAME_PATTERN = 'combo|offer|deal|meal|free|buy|\\+';
 
 /**
- * Approved dishes the admin can pick from (search by dish, category or restaurant name).
- * onlyOffers=true (default) limits it to items restaurants have created as offers / combos.
+ * Mongo filter for the approved dishes the admin can pick from (search by dish, category or restaurant
+ * name). onlyOffers=true (default) limits it to items restaurants have created as offers / combos.
  */
-export async function searchComboCandidateFoods({ search = '', restaurantId = '', onlyOffers = 'true' } = {}) {
+export async function buildCandidateFoodFilter({ search = '', restaurantId = '', onlyOffers = 'true' } = {}) {
     const filter = { approvalStatus: 'approved' };
     if (restaurantId && mongoose.Types.ObjectId.isValid(restaurantId)) {
         filter.restaurantId = restaurantId;
@@ -94,12 +94,25 @@ export async function searchComboCandidateFoods({ search = '', restaurantId = ''
             ...(matchingRestaurants.length ? [{ restaurantId: { $in: matchingRestaurants.map((r) => r._id) } }] : [])
         ];
     }
+    return filter;
+}
 
-    const foods = await FoodItem.find(filter)
-        .select('name description image price variants foodType isAvailable categoryName restaurantId')
-        .sort({ restaurantId: 1, _id: -1 })
+/** Order the candidate dishes are listed in, and the fields toCandidateFoodRows needs. */
+export const CANDIDATE_FOOD_SORT = { restaurantId: 1, _id: -1 };
+export const CANDIDATE_FOOD_FIELDS = 'name description image price variants foodType isAvailable categoryName restaurantId';
+
+/** First 200 candidate dishes (see buildCandidateFoodFilter). */
+export async function searchComboCandidateFoods(params = {}) {
+    const foods = await FoodItem.find(await buildCandidateFoodFilter(params))
+        .select(CANDIDATE_FOOD_FIELDS)
+        .sort(CANDIDATE_FOOD_SORT)
         .limit(200)
         .lean();
+    return toCandidateFoodRows(foods);
+}
+
+/** Food docs (CANDIDATE_FOOD_FIELDS) → admin picker rows with the restaurant name. */
+export async function toCandidateFoodRows(foods) {
     const restaurants = await FoodRestaurant.find({ _id: { $in: foods.map((f) => f.restaurantId) } })
         .select('restaurantName')
         .lean();

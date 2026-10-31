@@ -25,6 +25,8 @@ import {
   resolveRestaurantItemUnitPrice,
 } from "@food/utils/restaurantOrderPricing"
 import dishFallbackImage from "@food/assets/placeholders/dish_fallback.webp"
+import { isBogoFreeLine, bogoDishName, getBogoFreeUnitValue } from "@food/utils/bogo"
+import { BogoBadge, BogoFreePrice, BogoBillRow } from "@food/components/BogoOrderBits"
 const debugLog = (...args) => {}
 const debugWarn = (...args) => {}
 const debugError = (...args) => {}
@@ -232,6 +234,9 @@ export default function OrderDetails() {
               distance: order.orderType === 'takeaway' ? '' : (order.deliveryDistance ? `${order.deliveryDistance} km` : '')
             },
             items: order.items?.map(item => ({
+              itemId: item.itemId || '',
+              variantId: item.variantId || '',
+              isBogoFree: item.isBogoFree === true,
               name: item.name,
               quantity: item.quantity,
               price: resolveRestaurantItemUnitPrice(item),
@@ -436,9 +441,9 @@ export default function OrderDetails() {
     // Items Table
     const itemsTableData = orderData.items.map(item => [
       `${item.quantity}x`,
-      item.name,
+      isBogoFreeLine(item) ? `${bogoDishName(item)} (Buy 1 Get 1 offer)` : item.name,
       item.type || "-",
-      formatMoney(item.price)
+      isBogoFreeLine(item) ? "FREE" : formatMoney(item.price)
     ])
 
     // Use autoTable with the doc instance
@@ -890,14 +895,20 @@ export default function OrderDetails() {
                       </div>
                       <div>
                         <p className="text-sm font-semibold text-gray-900">
-                          {item.quantity} x {item.name}
+                          {item.quantity} x {isBogoFreeLine(item) ? bogoDishName(item) : item.name}
                         </p>
                         {item.variantName && (
                           <p className="text-xs text-gray-500 font-medium mt-0.5">{item.variantName}</p>
                         )}
+                        {isBogoFreeLine(item) && <BogoBadge className="mt-1" />}
                       </div>
                     </div>
-                    <p className="text-sm font-semibold text-gray-900">{formatMoney(item.price)}</p>
+                    {isBogoFreeLine(item) ? (
+                      // Price column is per unit here, like the paid lines.
+                      <BogoFreePrice unitValue={getBogoFreeUnitValue(orderData.items, item)} />
+                    ) : (
+                      <p className="text-sm font-semibold text-gray-900">{formatMoney(item.price)}</p>
+                    )}
                   </div>
                   {item.type && (
                     <div className="flex items-center gap-2 text-xs text-gray-500">
@@ -941,6 +952,7 @@ export default function OrderDetails() {
                 <span className="text-sm text-gray-900">{formatMoney(orderData.billing.platformFee)}</span>
               </div>
             )}
+            <BogoBillRow order={orderData} className="mb-3" />
             {Number(orderData.billing.discount) > 0 && (
               <div className="flex items-center justify-between mb-3">
                 <span className="text-sm text-green-700">Discount</span>

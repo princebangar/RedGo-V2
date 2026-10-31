@@ -11,11 +11,13 @@ import {
   enforceMinimumFoodItemPrices,
   resolveCheckoutItems,
 } from './order-item-pricing.service.js';
+import { applyBogoToItems } from '../../admin/services/bogoPricing.service.js';
 
 export async function calculateOrderPricing(userId, dto) {
   const resolved = await resolveCheckoutItems(userId, dto);
-  const items = await enforceMinimumFoodItemPrices(
-    resolved.items,
+  // Buy 1 Get 1 free lines are never priced from input; they are rebuilt below from live offers.
+  const paidItems = await enforceMinimumFoodItemPrices(
+    resolved.items.filter((item) => item?.isBogoFree !== true),
     resolved.restaurantId || dto.restaurantId,
   );
 
@@ -41,20 +43,25 @@ export async function calculateOrderPricing(userId, dto) {
     .trim()
     .toUpperCase();
 
-  const subtotal = items.reduce(
+  const subtotal = paidItems.reduce(
     (sum, it) => sum + (Number(it.price) || 0) * (Number(it.quantity) || 1),
     0,
   );
-  const baseSubtotal = items.reduce((sum, it) => {
+  const baseSubtotal = paidItems.reduce((sum, it) => {
     const base = Number(it.basePrice);
     const unit = Number.isFinite(base) && base >= 0 ? base : Number(it.price) || 0;
     return sum + unit * (Number(it.quantity) || 1);
   }, 0);
-  const markupTotal = items.reduce(
+  const markupTotal = paidItems.reduce(
     (sum, it) =>
       sum + Math.max(0, Number(it.markupAmount) || 0) * (Number(it.quantity) || 1),
     0,
   );
+
+  // Buy 1 Get 1: each bought unit gets one more free as a ₹0 line (restaurant-funded),
+  // so totals above are unchanged; bogoSavings is only what the customer saved.
+  const bogo = await applyBogoToItems(paidItems, userId);
+  const items = bogo.items;
 
   const pricingZoneId = dto.zoneId || restaurant.zoneId || null;
   const feeDoc = await resolveFeeSettingsForZone(pricingZoneId);
@@ -245,6 +252,7 @@ export async function calculateOrderPricing(userId, dto) {
   return {
     pricing: {
       subtotal,
+      bogoSavings: bogo.savings,
       baseSubtotal: Math.round(baseSubtotal * 100) / 100,
       markupTotal: Math.round(markupTotal * 100) / 100,
       tax,

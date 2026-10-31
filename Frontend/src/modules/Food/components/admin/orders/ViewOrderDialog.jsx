@@ -21,6 +21,8 @@ import {
   resolveRestaurantItemUnitPrice,
   resolveItemMarkupUnit,
 } from "@food/utils/restaurantOrderPricing"
+import { isBogoFreeLine, bogoDishName, getBogoFreeUnitValue } from "@food/utils/bogo"
+import { BogoBadge, BogoFreePrice, BogoBillRow } from "@food/components/BogoOrderBits"
 
 const debugLog = (...args) => {}
 const debugWarn = (...args) => {}
@@ -724,8 +726,9 @@ export default function ViewOrderDialog({ isOpen, onOpenChange, order, onOrderUp
                         </span>
                         <div className="min-w-0">
                           <p className="text-sm font-medium text-slate-900">
-                            {item.name || item.foodName || item.title || "Unknown Item"}
+                            {isBogoFreeLine(item) ? bogoDishName(item) : item.name || item.foodName || item.title || "Unknown Item"}
                           </p>
+                          {isBogoFreeLine(item) && <BogoBadge className="mt-1" />}
                           {variantLabel ? (
                             <p className="text-xs text-slate-500 mt-0.5 font-medium">
                               {variantLabel}
@@ -753,6 +756,9 @@ export default function ViewOrderDialog({ isOpen, onOpenChange, order, onOrderUp
                     <div className="text-right shrink-0 ml-3">
                       {(() => {
                         const qty = Number(item.quantity || 1) || 1
+                        if (isBogoFreeLine(item)) {
+                          return <BogoFreePrice unitValue={getBogoFreeUnitValue(order.items, item)} quantity={qty} />
+                        }
                         const sellingUnit =
                           Number(item.customerPrice) ||
                           Number(item.otherPrice) ||
@@ -985,6 +991,7 @@ export default function ViewOrderDialog({ isOpen, onOpenChange, order, onOrderUp
                   </>
                 )
               })()}
+              <BogoBillRow order={order} />
               {order.itemDiscount !== undefined && order.itemDiscount > 0 && (
                 <div className="flex justify-between text-sm">
                   <span className="text-slate-600">Discount</span>

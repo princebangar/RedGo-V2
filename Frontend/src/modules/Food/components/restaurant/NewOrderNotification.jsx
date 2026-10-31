@@ -2,6 +2,8 @@ import { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Bell, X, ShoppingBag, MapPin, Clock, IndianRupee, ChevronDown, ChevronUp } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
+import { isBogoFreeLine, bogoDishName, getBogoFreeUnitValue } from '@food/utils/bogo';
+import { BogoBadge, BogoFreePrice } from '@food/components/BogoOrderBits';
 
 /**
  * New Order Notification Component
@@ -127,8 +129,9 @@ export default function NewOrderNotification({ order, onClose, onViewOrder }) {
                           )}
                           <div className="flex flex-col min-w-0 flex-1">
                             <span className="text-sm sm:text-base font-extrabold text-gray-950 leading-snug">
-                              {item.name}
+                              {isBogoFreeLine(item) ? bogoDishName(item) : item.name}
                             </span>
+                            {isBogoFreeLine(item) && <BogoBadge className="mt-1" />}
                             {variantText && (
                               <div className="mt-1 flex flex-wrap items-center gap-1">
                                 <span className="inline-flex items-center gap-1.5 text-xs sm:text-sm font-black text-rose-900 bg-rose-100 border-2 border-rose-300 px-2.5 py-0.5 rounded-lg shadow-xs">
@@ -148,9 +151,17 @@ export default function NewOrderNotification({ order, onClose, onViewOrder }) {
                             )}
                           </div>
                         </div>
-                        <span className="text-sm sm:text-base font-black text-gray-900 shrink-0 ml-2 bg-gray-100/90 border border-gray-200 px-2.5 py-1 rounded-lg">
-                          ₹{(item.price * item.quantity).toFixed(2)}
-                        </span>
+                        {isBogoFreeLine(item) ? (
+                          <BogoFreePrice
+                            unitValue={getBogoFreeUnitValue(order.items, item)}
+                            quantity={item.quantity}
+                            className="shrink-0 ml-2 bg-emerald-50 border border-emerald-200 px-2.5 py-1 rounded-lg"
+                          />
+                        ) : (
+                          <span className="text-sm sm:text-base font-black text-gray-900 shrink-0 ml-2 bg-gray-100/90 border border-gray-200 px-2.5 py-1 rounded-lg">
+                            ₹{(item.price * item.quantity).toFixed(2)}
+                          </span>
+                        )}
                       </div>
                     );
                   })}

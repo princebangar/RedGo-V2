@@ -15,6 +15,7 @@ import { upload } from '../../../../middleware/upload.js';
 import { enforceSubAdminPermissions } from '../middleware/subAdminPermission.middleware.js';
 import * as otherPriceController from '../controllers/otherPrice.controller.js';
 import * as comboOfferController from '../controllers/comboOffer.controller.js';
+import * as bogoOfferController from '../controllers/bogoOffer.controller.js';
 
 const router = express.Router();
 
@@ -154,6 +155,24 @@ router.post('/combo-offers/bulk-remove', comboOfferController.bulkRemoveComboOff
 router.delete('/combo-offers/:id', comboOfferController.deleteComboOffer);
 router.patch('/combo-offers/:id/order', comboOfferController.updateComboOrder);
 router.patch('/combo-offers/:id/status', comboOfferController.toggleComboStatus);
+
+// ----- Buy One Get One (BOGO) Offers -----
+router.get('/bogo-offers', bogoOfferController.listBogoOffers);
+router.get('/bogo-offers/search-foods', bogoOfferController.searchBogoFoods);
+router.get('/bogo-offers/defaults', bogoOfferController.getBogoDefaults);
+router.put('/bogo-offers/defaults', bogoOfferController.saveBogoDefaults);
+router.post('/bogo-offers', bogoOfferController.createBogoOffer);
+router.post('/bogo-offers/bulk', bogoOfferController.bulkAddBogoOffers);
+router.post('/bogo-offers/bulk-remove', bogoOfferController.bulkRemoveBogoOffers);
+router.post('/bogo-offers/by-filter/add', bogoOfferController.addBogoByFilter);
+router.post('/bogo-offers/by-filter/remove', bogoOfferController.removeBogoByFilter);
+router.get('/bogo-offers/restaurants',bogoOfferController.listBogoRestaurantsHandler);
+router.post('/bogo-offers/restaurants/add', bogoOfferController.addBogoRestaurants);
+router.post('/bogo-offers/restaurants/remove', bogoOfferController.removeBogoRestaurants);
+router.delete('/bogo-offers/:id', bogoOfferController.deleteBogoOffer);
+router.patch('/bogo-offers/:id/order', bogoOfferController.updateBogoOrder);
+router.patch('/bogo-offers/:id/limit', bogoOfferController.updateBogoLimit);
+router.patch('/bogo-offers/:id/status', bogoOfferController.toggleBogoStatus);
 
 // ----- Feedback Experience (Admin) -----
 router.get('/feedback-experiences', feedbackExperienceController.getFeedbackExperiences);

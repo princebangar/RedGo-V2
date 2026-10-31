@@ -34,6 +34,7 @@ import { useRestaurantNotifications } from "@food/hooks/useRestaurantNotificatio
 import { jsPDF } from "jspdf";
 import autoTable from "jspdf-autotable";
 import ResendNotificationButton from "@food/components/restaurant/ResendNotificationButton";
+import { isBogoFreeLine, bogoDishName } from "@food/utils/bogo";
 import {
   getRestaurantItemLineTotal,
   getRestaurantOrderTotal,
@@ -2508,12 +2509,17 @@ function OrdersMainInner() {
         yPos += 8;
 
         // Prepare table data
-        const tableData = orderToPrint.items.map((item) => [
-          item.variantName ? `${item.name || "Item"} (${item.variantName})` : (item.name || "Item"),
-          item.quantity || 1,
-          `₹${(item.price || 0).toFixed(2)}`,
-          `₹${((item.price || 0) * (item.quantity || 1)).toFixed(2)}`,
-        ]);
+        const tableData = orderToPrint.items.map((item) => {
+          const name = isBogoFreeLine(item) ? `${bogoDishName(item)} (Buy 1 Get 1 offer)` : item.name || "Item";
+          const label = item.variantName ? `${name} (${item.variantName})` : name;
+          if (isBogoFreeLine(item)) return [label, item.quantity || 1, "FREE", "FREE"];
+          return [
+            label,
+            item.quantity || 1,
+            `₹${(item.price || 0).toFixed(2)}`,
+            `₹${((item.price || 0) * (item.quantity || 1)).toFixed(2)}`,
+          ];
+        });
 
         autoTable(doc, {
           startY: yPos,

@@ -1,5 +1,7 @@
 import React, { useState, useEffect, useMemo } from "react"
 import { Eye, Printer, ArrowUpDown, Loader2, Check, X, Trash2, ChevronDown, ChevronUp } from "lucide-react"
+import { isBogoFreeLine, bogoDishName, getBogoFreeUnitValue, orderHasBogo } from "@food/utils/bogo"
+import { BogoBadge, BogoFreePrice } from "@food/components/BogoOrderBits"
 import {
   resolveRestaurantItemUnitPrice,
   resolveItemMarkupUnit,
@@ -342,6 +344,7 @@ export default function OrdersTable({
                 {visibleColumns.orderId && (
                   <td className="px-6 py-4 whitespace-nowrap">
                     <span className="text-sm font-medium text-slate-900">{order.orderId}</span>
+                    {orderHasBogo(order) && <BogoBadge label="BOGO" className="ml-2 align-middle" />}
                   </td>
                 )}
                 {visibleColumns.orderDate && (
@@ -395,8 +398,9 @@ export default function OrdersTable({
                                   </span>
                                   <div className="flex-1">
                                     <span className="text-slate-800 font-medium">
-                                      {item.name || item.itemName || item.title || 'Unknown Item'}
+                                      {isBogoFreeLine(item) ? bogoDishName(item) : item.name || item.itemName || item.title || 'Unknown Item'}
                                     </span>
+                                    {isBogoFreeLine(item) && <BogoBadge className="ml-1.5 align-middle" />}
                                     {item.variantName && (
                                       <p className="text-xs text-slate-500 font-medium">{item.variantName}</p>
                                     )}
@@ -445,9 +449,13 @@ export default function OrdersTable({
                                     key={idx || item.itemId || `item-price-${idx}`}
                                     className="text-sm text-left min-h-[20px] flex items-center"
                                   >
-                                    <span className="font-medium text-slate-700">
-                                      {formatINR(baseLine)}
-                                    </span>
+                                    {isBogoFreeLine(item) ? (
+                                      <BogoFreePrice unitValue={getBogoFreeUnitValue(order.items, item)} quantity={qty} />
+                                    ) : (
+                                      <span className="font-medium text-slate-700">
+                                        {formatINR(baseLine)}
+                                      </span>
+                                    )}
                                   </div>
                                 )
                               })}

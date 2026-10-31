@@ -2,7 +2,7 @@ import { useState, useEffect, useRef, useMemo, Fragment } from "react"
 import { getNetworkErrorMessage } from "@/shared/utils/networkError"
 import { createPortal } from "react-dom"
 import { Link, useNavigate, useLocation } from "react-router-dom"
-import { Plus, Minus, ArrowLeft, ChevronRight, Clock, MapPin, Phone, FileText, Utensils, Tag, Percent, Share2, Share, ChevronUp, ChevronDown, X, Check, Settings, CreditCard, Wallet, Building2, Sparkles, Banknote, Zap, CheckCircle2, MessageCircle, Send, Mail, Copy, ShoppingBag, AlertTriangle } from "lucide-react"
+import { Plus, Minus, ArrowLeft, ChevronRight, Clock, MapPin, Phone, FileText, Utensils, Tag, Percent, Share2, Share, ChevronUp, ChevronDown, X, Check, Settings, CreditCard, Wallet, Building2, Sparkles, Banknote, Zap, CheckCircle2, MessageCircle, Send, Mail, Copy, ShoppingBag, AlertTriangle, Info } from "lucide-react"
 import { motion, AnimatePresence } from "framer-motion"
 import confetti from "canvas-confetti"
 
@@ -25,6 +25,8 @@ import { getRestaurantAvailabilityStatus } from "@food/utils/restaurantAvailabil
 import useAppBackNavigation from "@food/hooks/useAppBackNavigation"
 import { filterPublicOffers, mapPublicOfferToCartCoupon } from "@food/utils/offerUtils"
 import dishFallbackImage from "@food/assets/placeholders/dish_fallback.webp"
+import BogoTag from "@food/components/user/BogoTag"
+import { getBogoLimitsLabel, getCartBogoFreeByLine, getCartBogoSavings, isBogoUsedUp } from "@food/utils/bogo"
 const zoopSound = "/zomato_sms.mp3"
 const debugLog = (...args) => { }
 const debugWarn = (...args) => { }
@@ -333,6 +335,10 @@ export default function Cart() {
 
   // Use backend pricing if available, otherwise fallback to item sums
   const subtotal = pricing?.subtotal || cart.reduce((sum, item) => sum + (item.price || 0) * (item.quantity || 1), 0)
+  // Buy 1 Get 1: value of the free units that come with the cart (not charged, not deducted).
+  const bogoFreeByLine = getCartBogoFreeByLine(cart)
+  const bogoSavings = getCartBogoSavings(cart, bogoFreeByLine)
+  const bogoFreeCount = [...bogoFreeByLine.values()].reduce((sum, qty) => sum + qty, 0)
 
   // Auto coupon popup state
   const hasShownPromoPopupRef = useRef({ delivery: false, takeaway: false, dining: false })
@@ -2541,14 +2547,16 @@ export default function Cart() {
         )}
 
         {/* Savings Banner */}
-        {savings > 0 && (
+        {savings + bogoSavings > 0 && (
           <div className="bg-green-50 dark:bg-green-950/20 px-4 md:px-6 py-2.5 flex-shrink-0 border-b border-green-100/30 dark:border-green-900/10">
             <div className="max-w-7xl mx-auto flex items-center gap-2">
               <span className="text-sm md:text-base">🎉</span>
               <p className="text-sm md:text-base font-semibold text-green-700 dark:text-green-400">
-                {appliedCoupon?.code 
-                  ? `You saved ${RUPEE_SYMBOL}${savings} with '${appliedCoupon.code}' on this order!`
-                  : `You saved ${RUPEE_SYMBOL}${savings} on this order!`}
+                {appliedCoupon?.code
+                  ? `You saved ${RUPEE_SYMBOL}${Math.round(savings + bogoSavings)} with '${appliedCoupon.code}'${bogoSavings > 0 ? " & Buy 1 Get 1" : ""} on this order!`
+                  : bogoSavings > 0
+                    ? `You saved ${RUPEE_SYMBOL}${Math.round(savings + bogoSavings)} with Buy 1 Get 1 on this order!`
+                    : `You saved ${RUPEE_SYMBOL}${savings} on this order!`}
               </p>
             </div>
           </div>
@@ -2588,6 +2596,12 @@ export default function Cart() {
                                   {item.variantName}
                                 </p>
                               ) : null}
+                              {(bogoFreeByLine.get(item.id) || 0) > 0 && <BogoTag className="mt-1" />}
+                              {isBogoUsedUp(item) && (
+                                <p className="text-[11px] font-semibold text-gray-500 dark:text-gray-400 mt-1">
+                                  Buy 1 Get 1 already used · limit per customer reached
+                                </p>
+                              )}
                               {isRestaurantClosed && (
                                 <p className="text-[11px] text-red-500 dark:text-red-400 font-semibold mt-1">
                                   Remove this dish to order available dishes
@@ -2619,11 +2633,41 @@ export default function Cart() {
                                 <Plus className="w-3.5 h-3.5" />
                               </button>
                             </div>
+                            {/* The counter is what they pay for; say how many actually arrive with the free units. */}
+                            {(bogoFreeByLine.get(item.id) || 0) > 0 && (
+                              <p className="-mt-1 text-[11px] font-bold text-green-700 dark:text-green-400">
+                                You'll get {(Number(item.quantity) || 0) + (bogoFreeByLine.get(item.id) || 0)}
+                              </p>
+                            )}
                             <p className="text-sm md:text-base font-black text-gray-900 dark:text-gray-100">
                               {RUPEE_SYMBOL}{((item.price || 0) * (item.quantity || 1)).toFixed(0)}
                             </p>
                           </div>
                         </div>
+                        {/* Buy 1 Get 1: the free units follow the bought quantity and cost nothing. */}
+                        {(bogoFreeByLine.get(item.id) || 0) > 0 && (
+                          <div className="mt-3 ml-8 flex items-center justify-between gap-3 rounded-xl border border-dashed border-green-300 bg-green-50/70 px-3 py-2 dark:border-green-900/50 dark:bg-green-950/20">
+                            <div className="min-w-0">
+                              <p className="text-sm font-bold text-gray-900 dark:text-gray-100 truncate">
+                                {(bogoFreeByLine.get(item.id) || 0)} x {item.name}{item.variantName ? ` (${item.variantName})` : ""}
+                              </p>
+                              <span className="mt-1 inline-flex items-center gap-1 rounded-full bg-white px-2 py-0.5 text-[11px] font-semibold text-emerald-700 shadow-sm ring-1 ring-emerald-200 dark:bg-emerald-950/40 dark:text-emerald-300 dark:ring-emerald-800">
+                                <span aria-hidden="true" className="text-[12px] leading-none">🎁</span>
+                                Free with Buy 1 Get 1
+                              </span>
+                              <p className="mt-1.5 flex items-center gap-1 text-[12px] font-medium leading-snug text-gray-700 dark:text-gray-300">
+                                <Info className="h-3.5 w-3.5 shrink-0 text-emerald-600 dark:text-emerald-400" />
+                                {getBogoLimitsLabel(item)}
+                              </p>
+                            </div>
+                            <div className="flex flex-shrink-0 items-baseline gap-1.5">
+                              <span className="text-xs text-gray-400 line-through">
+                                {RUPEE_SYMBOL}{((item.price || 0) * (bogoFreeByLine.get(item.id) || 0)).toFixed(0)}
+                              </span>
+                              <span className="text-sm font-black text-green-700 dark:text-green-400">FREE</span>
+                            </div>
+                          </div>
+                        )}
                         {index < cart.length - 1 && (
                           <div className="mt-6 border-b border-gray-100 dark:border-gray-800/40 border-dashed" />
                         )}
@@ -3201,6 +3245,16 @@ export default function Cart() {
                         )}
                       </span>
                     </div>
+
+                    {bogoFreeCount > 0 && (
+                      <div className="flex justify-between text-sm text-green-600 dark:text-green-400 font-medium">
+                        <span>Buy 1 Get 1 ({bogoFreeCount} free {bogoFreeCount === 1 ? "item" : "items"})</span>
+                        <span className="flex items-baseline gap-1.5">
+                          <span className="text-xs text-gray-400 line-through">{RUPEE_SYMBOL}{bogoSavings.toFixed(2)}</span>
+                          FREE
+                        </span>
+                      </div>
+                    )}
 
                     {orderType !== "takeaway" && (
                       <>

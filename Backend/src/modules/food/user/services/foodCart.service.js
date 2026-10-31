@@ -8,6 +8,7 @@ import {
   applyOtherPriceToFood,
   loadActivePricingRules,
 } from '../../admin/services/otherPrice.service.js';
+import { bogoFreeQuantity, loadActiveBogoOffers } from '../../admin/services/bogoPricing.service.js';
 
 const MAX_QTY = 99;
 
@@ -199,10 +200,15 @@ export async function hydrateFoodCart(cartDoc) {
   const hydrated = [];
   let pricingDirty = false;
 
-  const pricingRules = await loadActivePricingRules({
-    restaurantId: cartDoc.restaurantId || docs[0]?.restaurantId,
-    menuItemIds: docs.map((f) => f._id),
-  });
+  const [pricingRules, bogoOffers] = await Promise.all([
+    loadActivePricingRules({
+      restaurantId: cartDoc.restaurantId || docs[0]?.restaurantId,
+      menuItemIds: docs.map((f) => f._id),
+    }),
+    loadActiveBogoOffers(docs.map((d) => d._id), cartDoc.userId),
+  ]);
+  // Buy 1 Get 1 per-order free limit, shared by all lines (variants) of the same dish.
+  const bogoRemaining = new Map([...bogoOffers].map(([id, o]) => [id, o.exhausted ? 0 : o.limit]));
 
   const addonIds = rawItems.filter((l) => l.itemType === 'addon').map((l) => l.itemId);
   const addonDocs = addonIds.length
@@ -346,6 +352,10 @@ export async function hydrateFoodCart(cartDoc) {
     const unitBase = Number(snapshot.basePrice) || 0;
     const unitPrice = Number(snapshot.sellingPrice ?? unitBase) || unitBase;
     const markupAmount = Math.max(0, Number(snapshot.markupAmount) || 0);
+    const bogoOffer = bogoOffers.get(String(doc._id));
+    const isBogo = Boolean(bogoOffer);
+    const bogoFree = isBogo ? bogoFreeQuantity(quantity, bogoRemaining.get(String(doc._id))) : 0;
+    if (isBogo) bogoRemaining.set(String(doc._id), bogoRemaining.get(String(doc._id)) - bogoFree);
 
     hydrated.push({
       id: lineId,
@@ -380,6 +390,15 @@ export async function hydrateFoodCart(cartDoc) {
       addons: Array.isArray(line.addons) ? line.addons : [],
       notes: typeof line.notes === 'string' ? line.notes : '',
       lineTotal: unitPrice * quantity,
+      // Buy 1 Get 1 (display only; the bill is priced in calculateOrderPricing).
+      isBogo,
+      bogoFreeQuantity: bogoFree,
+      bogoMaxFree: isBogo ? bogoOffer.limit : 0,
+      // Orders one customer can get it in (0 = unlimited), shown with the free line.
+      bogoUsesPerUser: isBogo ? Number(bogoOffer.usesPerUser) || 0 : 0,
+      // This user has used up the offer (admin "uses per user"); no free item.
+      bogoUsageExhausted: Boolean(bogoOffer?.exhausted),
+      bogoServerChecked: true,
       available: true,
     });
   }

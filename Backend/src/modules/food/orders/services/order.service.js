@@ -671,6 +671,7 @@ export async function createOrder(userId, dto, options = {}) {
     deliveryFee: orderType === "takeaway" ? 0 : Number(priced.pricing?.deliveryFee ?? 0),
     platformFee: Number(priced.pricing?.platformFee ?? 0),
     discount: Number(priced.pricing?.discount ?? 0),
+    bogoSavings: Number(priced.pricing?.bogoSavings ?? 0),
     total: Number(priced.pricing?.total ?? 0),
     currency: String(priced.pricing?.currency || "INR"),
     couponCode: priced.pricing?.couponCode || null,
@@ -796,7 +797,9 @@ export async function createOrder(userId, dto, options = {}) {
               updateFields['distanceKm'] = earningResolved.distanceKm;
               updateFields['distanceMode'] = earningResolved.distanceMode || null;
               updateFields['riderEarning'] = earningResolved.riderEarning ?? 0;
-              updateFields['pricing.platformProfit'] = Math.max(
+              // Top-level field (the schema has no pricing.platformProfit, so writing there was dropped
+              // and online orders kept a profit that never had the rider earning taken off).
+              updateFields['platformProfit'] = Math.max(
                 0,
                 (normalizedPricing.deliveryFee ?? 0) +
                   (normalizedPricing.platformFee ?? 0) +

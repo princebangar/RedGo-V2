@@ -3,6 +3,8 @@ import { ValidationError } from '../../../../core/auth/errors.js';
 import { FoodRestaurant } from '../models/restaurant.model.js';
 import { FoodItem } from '../../admin/models/food.model.js';
 import { FoodCategory } from '../../admin/models/category.model.js';
+import { FoodBogoOffer } from '../../admin/models/bogoOffer.model.js';
+import { effectiveBogoLimits, getBogoDefaultLimits } from '../../admin/services/bogoPricing.service.js';
 import {
   applyOtherPriceToFood,
   loadActivePricingRules,
@@ -88,6 +90,8 @@ export const buildMenuItemFromFood = (food, priced, sectionName, resolvedCategor
 
 const buildMenuFromFoods = async (foods = [], options = {}) => {
     const applyAdminPricing = options.applyAdminPricing !== false;
+    // Buy 1 Get 1: food id → per-order free limit.
+    const bogoLimits = options.bogoLimits || new Map();
     const categoryIds = Array.from(
         new Set(
             (foods || [])
@@ -166,6 +170,8 @@ const buildMenuFromFoods = async (foods = [], options = {}) => {
         const resolvedCategoryId = categoryDoc ? String(categoryDoc._id) : (categoryId || null);
 
         const item = buildMenuItemFromFood(food, priced, sectionName, resolvedCategoryId);
+        item.isBogo = bogoLimits.has(String(food._id));
+        item.bogoMaxFree = bogoLimits.get(String(food._id)) || 0;
 
         if (food.isRecommended === true && food.isAvailable !== false && food.approvalStatus === 'approved') {
             recommendedDishes.push(item);
@@ -274,13 +280,24 @@ export async function getPublicApprovedRestaurantMenu(restaurantIdOrSlug) {
     if (!restaurant?._id) {
         return null;
     }
-    const foods = await FoodItem.find({ restaurantId: restaurant._id, approvalStatus: 'approved' })
-        .sort({ createdAt: -1 })
-        .limit(2000)
-        .select('-oldData -newData')
-        .lean();
+    const [foods, bogoDocs, bogoDefaults] = await Promise.all([
+        FoodItem.find({ restaurantId: restaurant._id, approvalStatus: 'approved' })
+            .sort({ createdAt: -1 })
+            .limit(2000)
+            .select('-oldData -newData')
+            .lean(),
+        FoodBogoOffer.find({ restaurantId: restaurant._id, isActive: true })
+            .select('foodId useCustomLimits maxFreePerOrder usageLimitPerUser')
+            .lean(),
+        getBogoDefaultLimits()
+    ]);
     // Public / customer menu includes admin markup in selling price.
-    return buildMenuFromFoods(foods, { applyAdminPricing: true });
+    return buildMenuFromFoods(foods, {
+        applyAdminPricing: true,
+        bogoLimits: new Map(
+            bogoDocs.map((d) => [String(d.foodId), effectiveBogoLimits(d, bogoDefaults).maxFreePerOrder])
+        )
+    });
 }
 
 export async function syncMenuItemApprovalStatus(restaurantId, itemId, status, rejectionReason = '') {

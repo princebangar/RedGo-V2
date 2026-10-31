@@ -478,6 +478,8 @@ export default function OrdersPage({ statusKey = "all" }) {
             if (base == null) base = selling
 
             return {
+              itemId: item.itemId || "",
+              isBogoFree: item.isBogoFree === true,
               quantity: item.quantity || 1,
               name: item.name || item.foodName || item.title || "Item",
               price: selling,

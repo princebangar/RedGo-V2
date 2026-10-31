@@ -351,7 +351,8 @@ export default function Orders() {
     const reorderItems = order.items
       .map((item, index) => {
         const itemId = item.id || item.itemId || item._id
-        if (!itemId) return null
+        // Buy 1 Get 1 free lines come back on their own from the paid line.
+        if (!itemId || item.isBogoFree) return null
 
         return {
           id: itemId,

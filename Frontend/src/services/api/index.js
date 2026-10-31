@@ -792,6 +792,45 @@ export const adminAPI = {
   toggleComboOfferStatus: (id) =>
     apiClient.patch(`/food/admin/combo-offers/${String(id)}/status`, {}, { contextModule: "admin" }),
 
+  /** Buy One Get One (BOGO) Offers (admin) */
+  getBogoOffers: () =>
+    apiClient.get("/food/admin/bogo-offers", { contextModule: "admin" }),
+  searchBogoFoods: (params = {}) =>
+    apiClient.get("/food/admin/bogo-offers/search-foods", { params, contextModule: "admin" }),
+  // limits: { maxFreePerOrder, usageLimitPerUser } (usageLimitPerUser 0 = unlimited)
+  addBogoOffer: (foodId, limits = {}) =>
+    apiClient.post("/food/admin/bogo-offers", { foodId: String(foodId), ...limits }, { contextModule: "admin" }),
+  addBogoOffersBulk: (foodIds, limits = {}) =>
+    apiClient.post("/food/admin/bogo-offers/bulk", { foodIds: foodIds.map(String), ...limits }, { contextModule: "admin" }),
+  // POST (not DELETE) so the id list travels in the body; sub-admins need "create" permission for it.
+  removeBogoOffersBulk: (foodIds) =>
+    apiClient.post("/food/admin/bogo-offers/bulk-remove", { foodIds: foodIds.map(String) }, { contextModule: "admin" }),
+  /** Select / unselect all over every dish matching { search, restaurantId } (all pages). */
+  addBogoOffersByFilter: (filter) =>
+    apiClient.post("/food/admin/bogo-offers/by-filter/add", filter, { contextModule: "admin" }),
+  removeBogoOffersByFilter: (filter) =>
+    apiClient.post("/food/admin/bogo-offers/by-filter/remove", filter, { contextModule: "admin" }),
+  getBogoRestaurants: (params = {}) =>
+    apiClient.get("/food/admin/bogo-offers/restaurants", { params, contextModule: "admin" }),
+  /** Restaurant-wide: { restaurantIds: [...] } or { all: true } (every approved restaurant). */
+  addBogoRestaurants: (body) =>
+    apiClient.post("/food/admin/bogo-offers/restaurants/add", body, { contextModule: "admin" }),
+  removeBogoRestaurants: (body) =>
+    apiClient.post("/food/admin/bogo-offers/restaurants/remove", body, { contextModule: "admin" }),
+  deleteBogoOffer: (id) =>
+    apiClient.delete(`/food/admin/bogo-offers/${String(id)}`, { contextModule: "admin" }),
+  updateBogoOfferOrder: (id, order) =>
+    apiClient.patch(`/food/admin/bogo-offers/${String(id)}/order`, { order }, { contextModule: "admin" }),
+  // "New offers get" limits, stored in DB and used for every offer added without its own limits.
+  getBogoDefaults: () =>
+    apiClient.get("/food/admin/bogo-offers/defaults", { contextModule: "admin" }),
+  saveBogoDefaults: (limits) =>
+    apiClient.put("/food/admin/bogo-offers/defaults", limits, { contextModule: "admin" }),
+  updateBogoOfferLimits: (id, limits) =>
+    apiClient.patch(`/food/admin/bogo-offers/${String(id)}/limit`, limits, { contextModule: "admin" }),
+  toggleBogoOfferStatus: (id) =>
+    apiClient.patch(`/food/admin/bogo-offers/${String(id)}/status`, {}, { contextModule: "admin" }),
+
   /** Delivery Partner Bonus (admin) */
   getDeliveryPartnerBonusTransactions: (params = {}) =>
     apiClient.get("/food/admin/delivery/bonus-transactions", {

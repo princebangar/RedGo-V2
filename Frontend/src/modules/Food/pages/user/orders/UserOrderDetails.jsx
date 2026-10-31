@@ -225,6 +225,7 @@ export default function UserOrderDetails() {
 
   const savings =
     (pricing.discount || 0) +
+    (pricing.bogoSavings || 0) +
     (pricing.originalItemTotal || 0) -
     (pricing.subtotal || 0)
 
@@ -363,7 +364,8 @@ export default function UserOrderDetails() {
     const reorderItems = items
       .map((item, index) => {
         const itemId = item.id || item.itemId || item._id
-        if (!itemId) return null
+        // Buy 1 Get 1 free lines come back on their own from the paid line.
+        if (!itemId || item.isBogoFree) return null
 
         return {
           id: itemId,

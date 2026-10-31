@@ -2,6 +2,7 @@ import { useState, useMemo } from "react"
 import { exportToCSV, exportToExcel, exportToPDF, exportToJSON } from "./ordersExportUtils"
 import { brandLogo } from "@food/constants/brand"
 import { getCachedSettings, loadBusinessSettings } from "@food/utils/businessSettings"
+import { isBogoFreeLine, bogoDishName } from "@food/utils/bogo"
 const debugError = () => {}
 
 
@@ -511,6 +512,9 @@ export function useOrdersManagement(orders, statusKey, title, options = {}) {
       const tableBody = items.length > 0
         ? items.map((item) => {
           const qty = toNumber(item.quantity || 1)
+          if (isBogoFreeLine(item)) {
+            return [qty, `${bogoDishName(item)} (Buy 1 Get 1 offer)`, "FREE", "FREE"]
+          }
           const title = item.name || item.itemName || item.title || "Item"
           const unitPrice = toNumber(item.price)
           const lineTotal = qty * unitPrice
