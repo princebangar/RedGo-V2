@@ -9,7 +9,11 @@ export default function MultiorderSetting() {
   const [loading, setLoading] = useState(true)
   const [savingConcurrent, setSavingConcurrent] = useState(false)
   const [maxConcurrentOrders, setMaxConcurrentOrders] = useState("1")
+  const [savedValue, setSavedValue] = useState(null)
   const isMountedRef = useRef(true)
+  const isDirty =
+    String(maxConcurrentOrders).trim() !== "" &&
+    (savedValue === null || Number(maxConcurrentOrders) !== Number(savedValue))
 
   const fetchSetting = useCallback(async ({ silent = false } = {}) => {
     try {
@@ -20,7 +24,8 @@ export default function MultiorderSetting() {
       const data = response?.data?.data || response?.data || {}
       const maxOrders = data.maxConcurrentOrders ?? 1
       if (!isMountedRef.current) return
-      setMaxConcurrentOrders(maxOrders !== undefined && maxOrders !== null ? String(maxOrders) : "1")
+      setMaxConcurrentOrders(String(maxOrders))
+      setSavedValue(String(maxOrders))
     } catch (error) {
       debugError("Error fetching multiorder setting:", error)
       if (!isMountedRef.current) return
@@ -52,6 +57,7 @@ export default function MultiorderSetting() {
         response?.data?.maxConcurrentOrders ??
         value
       setMaxConcurrentOrders(String(saved))
+      setSavedValue(String(saved))
       toast.success("Concurrent order limit updated successfully")
       await fetchSetting({ silent: true })
     } catch (error) {
@@ -128,7 +134,7 @@ export default function MultiorderSetting() {
               </div>
               <button
                 onClick={saveConcurrentLimit}
-                disabled={loading || savingConcurrent}
+                disabled={loading || savingConcurrent || !isDirty}
                 className="flex items-center justify-center gap-2 self-end rounded-lg bg-blue-600 px-6 py-2.5 text-sm font-medium text-white shadow-md transition-all hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50"
               >
                 {savingConcurrent && <Loader2 className="h-4 w-4 animate-spin" />}

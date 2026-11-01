@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo } from "react"
-import { Eye, Printer, ArrowUpDown, Loader2, Check, X, Trash2, ChevronDown, ChevronUp } from "lucide-react"
+import { Eye, Printer, ArrowUpDown, Loader2, Check, X, Trash2, ChevronDown, ChevronUp, Bike } from "lucide-react"
 import { isBogoFreeLine, bogoDishName, getBogoFreeUnitValue, orderHasBogo } from "@food/utils/bogo"
 import { BogoBadge, BogoFreePrice } from "@food/components/BogoOrderBits"
 import {
@@ -32,6 +32,11 @@ const getStatusColor = (orderStatus) => {
   return colors[orderStatus] || "bg-slate-100 text-slate-700"
 }
 
+/** Home-delivery orders the admin can hand to a rider (preparing / ready / on the way). */
+const ASSIGNABLE_DISPLAY_STATUSES = new Set(["Processing", "Ready for Pickup", "Food On The Way"])
+const canAssignRider = (order) =>
+  order?.orderType === "delivery" && ASSIGNABLE_DISPLAY_STATUSES.has(order?.orderStatus)
+
 const getPaymentStatusColor = (paymentStatus) => {
   if (paymentStatus === "Paid" || paymentStatus === "Collected") return "text-emerald-600"
   if (paymentStatus === "COD Pending" || paymentStatus === "Not Collected") return "text-amber-600"
@@ -49,6 +54,7 @@ export default function OrdersTable({
   onDeleteOrder,
   onAcceptOrder,
   onRejectOrder,
+  onAssignPartner,
   actionLoadingOrderId,
   actionLoadingType,
   deletingOrderId,
@@ -652,7 +658,8 @@ export default function OrdersTable({
                       </div>
 
                       {/* Divider if we have primary actions */}
-                      {( (order.orderStatus === "Pending" && (onAcceptOrder || onRejectOrder)) || 
+                      {( (order.orderStatus === "Pending" && (onAcceptOrder || onRejectOrder)) ||
+                         (onAssignPartner && canAssignRider(order)) ||
                          ( (() => {
                            const isCancelled = order.orderStatus === "Cancelled by Restaurant" || 
                                              order.orderStatus === "Cancelled" || 
@@ -713,6 +720,22 @@ export default function OrdersTable({
                             )}
                             <span>{isRejecting ? 'Rejecting...' : 'Reject'}</span>
                           </button>
+                          )
+                        })()}
+
+                        {onAssignPartner && canAssignRider(order) && (() => {
+                          const hasRider = order.dispatch?.status === "accepted"
+                          return (
+                            <button
+                              onClick={() => onAssignPartner(order)}
+                              className={`px-2.5 py-1.5 rounded text-xs font-semibold text-white transition-colors shadow-sm active:scale-95 flex items-center gap-1 ${
+                                hasRider ? "bg-slate-700 hover:bg-slate-800" : "bg-orange-600 hover:bg-orange-700"
+                              }`}
+                              title={hasRider ? "Reassign to another delivery partner" : "Assign a delivery partner manually"}
+                            >
+                              <Bike className="w-3.5 h-3.5" />
+                              <span>{hasRider ? "Reassign" : "Assign"}</span>
+                            </button>
                           )
                         })()}
 

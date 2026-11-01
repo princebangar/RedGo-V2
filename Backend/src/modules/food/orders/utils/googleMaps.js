@@ -25,6 +25,8 @@ export async function fetchPolyline(origin, destination) {
     logger.warn('Google Maps API key missing. Polyline fetch skipped.');
     return '';
   }
+  // Quota used up (see fetchRoutesApiDistanceKm): don't hold the accept flow for a call that fails.
+  if (Date.now() < routesApiDisabledUntil) return '';
 
   try {
     const controller = new AbortController();
@@ -52,6 +54,11 @@ export async function fetchPolyline(origin, destination) {
 
     if (data.routes && data.routes.length > 0 && data.routes[0].polyline?.encodedPolyline) {
       return data.routes[0].polyline.encodedPolyline;
+    }
+    if (res.status === 429 || data?.error?.status === 'RESOURCE_EXHAUSTED') {
+      routesApiDisabledUntil = Date.now() + 15 * 60 * 1000;
+      warnGoogleUnavailable('Routes API quota exhausted while fetching polyline (429).');
+      return '';
     }
     logger.warn(
       `Google Routes API (Polyline) returned: ${JSON.stringify(data)}`,
@@ -82,17 +89,74 @@ export async function fetchDrivingDistanceKm(origin, destination) {
     return null;
   }
 
-  if (Date.now() >= routesApiDisabledUntil) {
-    const km = await fetchRoutesApiDistanceKm(apiKey, oLat, oLng, dLat, dLng);
-    if (km != null) return km;
+  // Same restaurant -> address pair is asked by the listing, restaurant page, cart bill, order
+  // create and rider earning. One Google call serves all of them.
+  const key = distanceCacheKey(oLat, oLng, dLat, dLng);
+  const cached = distanceCache.get(key);
+  if (cached && cached.expiresAt > Date.now()) return cached.km;
+  if (inFlight.has(key)) return inFlight.get(key);
+
+  const job = (async () => {
+    let km = null;
+    if (Date.now() >= routesApiDisabledUntil) {
+      km = await fetchRoutesApiDistanceKm(apiKey, oLat, oLng, dLat, dLng);
+    }
+    // Routes API failed or is not enabled for this key: road distance from Distance Matrix instead,
+    // so rider earning / delivery fee do not drop to the straight-line fallback.
+    if (km == null && Date.now() >= matrixApiDisabledUntil) {
+      km = await fetchDistanceMatrixKm(apiKey, oLat, oLng, dLat, dLng);
+    }
+    if (km != null) rememberDistance(key, km);
+    return km;
+  })();
+  inFlight.set(key, job);
+  try {
+    return await job;
+  } finally {
+    inFlight.delete(key);
   }
-  // Routes API failed or is not enabled for this key: road distance from Distance Matrix instead,
-  // so rider earning / delivery fee do not drop to the straight-line fallback.
-  return fetchDistanceMatrixKm(apiKey, oLat, oLng, dLat, dLng);
 }
 
-/** Set when the Routes API refuses the key (not enabled / key not allowed); skip it for 10 min. */
+// ----- Distance cache (per process) -----
+const DISTANCE_CACHE_TTL_MS = 12 * 60 * 60 * 1000;
+const DISTANCE_CACHE_MAX = 20000;
+const distanceCache = new Map();
+const inFlight = new Map();
+
+/** 4 decimals ≈ 11 m: a saved address always gives the same key, live GPS jitter mostly does too. */
+function distanceCacheKey(oLat, oLng, dLat, dLng) {
+  return [oLat, oLng, dLat, dLng].map((v) => v.toFixed(4)).join(',');
+}
+
+function rememberDistance(key, km) {
+  if (distanceCache.size >= DISTANCE_CACHE_MAX) {
+    // Map keeps insertion order: drop the oldest 10%.
+    const drop = Math.ceil(DISTANCE_CACHE_MAX / 10);
+    let i = 0;
+    for (const k of distanceCache.keys()) {
+      if (i++ >= drop) break;
+      distanceCache.delete(k);
+    }
+  }
+  distanceCache.set(key, { km, expiresAt: Date.now() + DISTANCE_CACHE_TTL_MS });
+}
+
+// ----- Circuit breakers -----
+/**
+ * Set when the Routes API refuses the key (not enabled / key not allowed / daily quota used up).
+ * While set, calls are skipped: each failed call otherwise costs the user request up to 6 s.
+ */
 let routesApiDisabledUntil = 0;
+/** Same for Distance Matrix (REQUEST_DENIED: billing off / API not enabled; OVER_*_LIMIT). */
+let matrixApiDisabledUntil = 0;
+let lastQuotaWarnAt = 0;
+
+function warnGoogleUnavailable(message) {
+  // One loud line per 10 min instead of one per request.
+  if (Date.now() - lastQuotaWarnAt < 10 * 60 * 1000) return;
+  lastQuotaWarnAt = Date.now();
+  logger.error(`[GoogleMaps] ${message}`);
+}
 
 async function fetchRoutesApiDistanceKm(apiKey, oLat, oLng, dLat, dLng) {
   try {
@@ -127,7 +191,14 @@ async function fetchRoutesApiDistanceKm(apiKey, oLat, oLng, dLat, dLng) {
     }
 
     const status = String(data?.error?.status || '');
-    if (res.status === 403 || status === 'PERMISSION_DENIED' || /api key/i.test(String(data?.error?.message || ''))) {
+    if (res.status === 429 || status === 'RESOURCE_EXHAUSTED') {
+      routesApiDisabledUntil = Date.now() + 15 * 60 * 1000;
+      warnGoogleUnavailable(
+        `Routes API quota exhausted (429 ${status}): ${String(data?.error?.message || '').slice(0, 200)}. ` +
+          'Road distance is unavailable, so delivery fee and rider earning use straight-line distance. ' +
+          'Check billing on the Google Cloud project and the Routes API quota.',
+      );
+    } else if (res.status === 403 || status === 'PERMISSION_DENIED' || /api key/i.test(String(data?.error?.message || ''))) {
       routesApiDisabledUntil = Date.now() + 10 * 60 * 1000;
       logger.warn(
         `Routes API refused the Maps key (${res.status} ${status}); using Distance Matrix for 10 min. Enable "Routes API" for this key's project.`,
@@ -162,6 +233,13 @@ async function fetchDistanceMatrixKm(apiKey, oLat, oLng, dLat, dLng) {
     const meters = element?.status === 'OK' ? Number(element?.distance?.value) : NaN;
     if (Number.isFinite(meters) && meters > 0) {
       return Math.round((meters / 1000) * 100) / 100;
+    }
+    if (['REQUEST_DENIED', 'OVER_DAILY_LIMIT', 'OVER_QUERY_LIMIT'].includes(String(data?.status))) {
+      matrixApiDisabledUntil = Date.now() + 15 * 60 * 1000;
+      warnGoogleUnavailable(
+        `Distance Matrix unavailable (${data?.status}): ${data?.error_message || ''}`,
+      );
+      return null;
     }
     logger.warn(
       `Distance Matrix failed: status=${data?.status} element=${element?.status || 'n/a'} ${data?.error_message || ''}`,

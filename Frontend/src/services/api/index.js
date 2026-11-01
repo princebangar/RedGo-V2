@@ -671,6 +671,18 @@ export const adminAPI = {
     apiClient.patch(`/food/admin/orders/${String(orderId)}/statuses`, body, {
       contextModule: "admin",
     }),
+  /** Manual assign: riders with live load + distance (online first, offline last) */
+  getAssignablePartners: (orderId) =>
+    apiClient.get(`/food/admin/orders/${String(orderId)}/assignable-partners`, {
+      contextModule: "admin",
+    }),
+  /** Manual assign / reassign an order to a rider (counts as accepted) */
+  assignDeliveryPartner: (orderId, deliveryPartnerId) =>
+    apiClient.patch(
+      `/food/admin/orders/${String(orderId)}/assign-partner`,
+      { deliveryPartnerId },
+      { contextModule: "admin" },
+    ),
   /** Dispatch settings – auto vs manual assign (global) */
   /** Create restaurant (admin). Single API: POST /food/admin/restaurants. Body: JSON with image URLs. */
   createRestaurant: (body) =>

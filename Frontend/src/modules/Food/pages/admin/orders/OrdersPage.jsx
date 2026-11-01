@@ -11,6 +11,7 @@ import FilterPanel from "@food/components/admin/orders/FilterPanel"
 import ViewOrderDialog from "@food/components/admin/orders/ViewOrderDialog"
 import SettingsDialog from "@food/components/admin/orders/SettingsDialog"
 import RefundModal from "@food/components/admin/orders/RefundModal"
+import AssignDeliveryPartnerDialog from "@food/components/admin/orders/AssignDeliveryPartnerDialog"
 import { useOrdersManagement } from "@food/components/admin/orders/useOrdersManagement"
 import { Loader2 } from "lucide-react"
 import { OrdersDashboardSkeleton, TableSkeleton } from "@food/components/ui/loading-skeletons"
@@ -59,6 +60,7 @@ export default function OrdersPage({ statusKey = "all" }) {
   const [deletingOrderId, setDeletingOrderId] = useState(null)
   const [refundModalOpen, setRefundModalOpen] = useState(false)
   const [selectedOrderForRefund, setSelectedOrderForRefund] = useState(null)
+  const [assignOrder, setAssignOrder] = useState(null)
   const seenOrderIdsRef = useRef(new Set())
   const isFirstLoadRef = useRef(true)
   const fallbackAudioRef = useRef(null)
@@ -1170,7 +1172,13 @@ export default function OrdersPage({ statusKey = "all" }) {
             onConfirm={handleRefundConfirm}
             isProcessing={processingRefund !== null}
           />
-          <OrdersTable 
+          <AssignDeliveryPartnerDialog
+            isOpen={Boolean(assignOrder)}
+            onOpenChange={(open) => { if (!open) setAssignOrder(null) }}
+            order={assignOrder}
+            onAssigned={() => fetchOrders({ silent: true, withRingCheck: false })}
+          />
+          <OrdersTable
             orders={filteredOrders} 
             visibleColumns={visibleColumns}
             onViewOrder={handleViewOrder}
@@ -1178,6 +1186,7 @@ export default function OrdersPage({ statusKey = "all" }) {
             onRefund={handleRefund}
             onAcceptOrder={(statusKey === "all" || statusKey === "pending") ? handleAcceptOrder : undefined}
             onRejectOrder={(statusKey === "all" || statusKey === "pending") ? handleRejectOrder : undefined}
+            onAssignPartner={setAssignOrder}
             actionLoadingOrderId={processingActionOrderId}
             actionLoadingType={actionLoadingType}
             deletingOrderId={deletingOrderId}

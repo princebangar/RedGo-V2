@@ -600,6 +600,13 @@ export default function DeliveryHomeV2({ tab = 'feed' }) {
   }, [currentTab, isOnline, isSocketConnected, setAcceptedOrders, setCapacity]);
 
   useEffect(() => {
+    if (orderStatusUpdate?.status === 'reassigned') {
+      toast.info(orderStatusUpdate.message || 'This request has been assigned to another rider');
+      const removedId = orderStatusUpdate.orderId || orderStatusUpdate.orderMongoId;
+      if (removedId) removeAcceptedOrder(removedId);
+      clearOrderStatusUpdate();
+      return;
+    }
     if (orderStatusUpdate) {
       // Restaurant / admin cancel sends only orderStatus ("cancelled_by_restaurant" etc.), and an
       // admin delete sends status "deleted" — both must close the rider's trip too.

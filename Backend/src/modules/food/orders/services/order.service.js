@@ -1186,7 +1186,7 @@ export async function verifyPayment(userId, dto) {
   // Notify Customer about payment success
   await notifyOwnersSafely([{ ownerType: "USER", ownerId: userId }], {
     title: "Payment Successful",
-    body: `We have received your payment of ₹${order.payment.amountDue} for Order #${order._id.toString()}.`,
+    body: `We have received your payment of ₹${order.payment.amountDue} for Order #${order.order_id || order._id.toString()}.`,
     data: {
       type: "payment_success",
       orderId: String(order._id.toString()),
@@ -2634,34 +2634,13 @@ export async function listOrdersAdmin(query) {
   };
 }
 
-export async function assignDeliveryPartnerAdmin(
-  orderId,
-  deliveryPartnerId,
-  adminId,
-) {
-  const order = await FoodOrder.findById(orderId);
-  if (!order) throw new NotFoundError("Order not found");
-  if (order.dispatch.status === "accepted")
-    throw new ValidationError("Order already accepted by partner");
+/** Admin manual assign / reassign of a rider (see order-delivery.service). */
+export async function assignDeliveryPartnerAdmin(orderId, deliveryPartnerId, adminId) {
+  return deliveryService.assignOrderToPartnerAdmin(orderId, deliveryPartnerId, adminId);
+}
 
-  const partner = await FoodDeliveryPartner.findById(deliveryPartnerId)
-    .select("status")
-    .lean();
-  if (!partner || partner.status !== "approved")
-    throw new ValidationError("Delivery partner not available");
-
-    order.dispatch.status = 'assigned';
-    order.dispatch.deliveryPartnerId = new mongoose.Types.ObjectId(deliveryPartnerId);
-    order.dispatch.assignedAt = new Date();
-    pushStatusHistory(order, { byRole: 'ADMIN', byId: adminId, from: order.dispatch.status, to: 'assigned' });
-    await order.save();
-    enqueueOrderEvent('delivery_partner_assigned', {
-        orderMongoId: order._id?.toString?.(),
-        orderId: order._id.toString(),
-        deliveryPartnerId,
-        adminId
-    });
-    return normalizeOrderForClient(order);
+export async function listAssignablePartnersAdmin(orderId) {
+  return deliveryService.listAssignablePartnersAdmin(orderId);
 }
 
 export async function deleteOrderAdmin(orderId, adminId) {

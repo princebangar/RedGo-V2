@@ -278,6 +278,8 @@ router.delete('/orders/:orderId', orderController.deleteOrderAdminController);
 router.patch('/orders/:orderId/accept', orderController.acceptOrderAdminController);
 router.patch('/orders/:orderId/reject', orderController.rejectOrderAdminController);
 router.patch('/orders/:orderId/statuses', orderController.updateOrderStatusesAdminController);
+router.get('/orders/:orderId/assignable-partners', orderController.listAssignablePartnersAdminController);
+router.patch('/orders/:orderId/assign-partner', orderController.assignDeliveryPartnerController);
 
 // ----- CMS Pages (About + legal) -----
 router.get('/pages-social-media/:key', getAdminPageController);

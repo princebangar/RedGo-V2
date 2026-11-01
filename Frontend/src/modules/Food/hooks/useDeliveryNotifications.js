@@ -1270,7 +1270,12 @@ export const useDeliveryNotifications = () => {
         setClaimedOrderId(claimedId);
       }
 
-      if (showToast && !isSelf) {
+      // Admin reassign: the previous rider gets its own "assigned to another rider" message.
+      const wasMine =
+        Boolean(deliveryPartnerId) &&
+        String(data?.previousPartnerId || '') === String(deliveryPartnerId);
+
+      if (showToast && !isSelf && !wasMine) {
         toast.info('This request accepted by another rider', {
           id: `order-claimed-${claimedId || 'unknown'}`,
           duration: 4000,
@@ -1295,6 +1300,15 @@ export const useDeliveryNotifications = () => {
       activeOrderRef.current = null;
       setNewOrder(null);
     };
+
+    // Admin moved one of this rider's accepted orders to another rider.
+    socketRef.current.on('order_unassigned_by_admin', (data) => {
+      debugLog('Order unassigned by admin:', data);
+      setOrderStatusUpdate({
+        ...(data || {}),
+        status: 'reassigned',
+      });
+    });
 
     socketRef.current.on('order_reassigned_elsewhere', (data) => {
       debugLog('?? Order reassigned to another partner:', data);

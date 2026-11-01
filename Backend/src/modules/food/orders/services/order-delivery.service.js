@@ -255,16 +255,16 @@ function emitOrderUpdate(order, deliveryPartnerId, options = {}) {
 
     if (status === 'picked_up') {
       userTitle = 'Order on the way!';
-      userBody = `Partner has picked up your order #${orderId} and is heading your way.`;
+      userBody = `Partner has picked up your order #${displayOrderId} and is heading your way.`;
       riderTitle = 'Order picked up!';
       riderBody = `You have picked up order #${displayOrderId}. Proceed to the customer location.`;
     } else if (status === 'reached_drop') {
       userTitle = 'Partner nearby!';
-      userBody = `Your delivery partner has reached your location for order #${orderId}.`;
+      userBody = `Your delivery partner has reached your location for order #${displayOrderId}.`;
       riderTitle = 'Arrived at drop!';
       riderBody = `You have reached the customer location for order #${displayOrderId}.`;
     } else if (status === 'delivered') {
-      userTitle = `Order #${orderId} delivered!`;
+      userTitle = `Order #${displayOrderId} delivered!`;
       userBody = 'Hope you enjoyed your meal! Don\'t forget to rate your experience.';
       riderTitle = 'Delivery successful!';
       riderBody = `Order #${displayOrderId} has been successfully delivered.`;
@@ -663,7 +663,20 @@ export async function acceptOrderDelivery(orderId, deliveryPartnerId) {
   }
 
   const responseOrder = sanitizeOrderForExternal(order);
+  runPostAcceptEffects(order, deliveryPartnerId);
+  return responseOrder;
+}
 
+/**
+ * Work that follows a rider getting an order (rider accept or admin assign): tell other riders the
+ * offer is gone, update apps, start live tracking, set the rider on the transaction, and notify
+ * customer + restaurant.
+ */
+function runPostAcceptEffects(
+  order,
+  deliveryPartnerId,
+  { reassigned = false, previousPartnerId = null } = {},
+) {
   // Notify other riders IMMEDIATELY — do not wait for Firebase/polyline work
   try {
     const io = getIO();
@@ -672,6 +685,8 @@ export async function acceptOrderDelivery(orderId, deliveryPartnerId) {
         orderId: order._id.toString(),
         orderMongoId: order._id?.toString?.(),
         claimedBy: deliveryPartnerId.toString(),
+        // The previous rider gets its own "assigned to another rider" event, not this toast.
+        ...(previousPartnerId ? { previousPartnerId: String(previousPartnerId) } : {}),
         message: 'This request accepted by another rider',
       };
       io.to('all_delivery').emit('order_claimed', claimedPayload);
@@ -685,9 +700,12 @@ export async function acceptOrderDelivery(orderId, deliveryPartnerId) {
         orderStatus: order.orderStatus,
         dispatchStatus: order.dispatch?.status,
       };
+      // restaurantId / userId are populated here: use the id, else the room name is "[object]".
+      const restaurantRoomId = order.restaurantId?._id || order.restaurantId;
+      const userRoomId = order.userId?._id || order.userId;
       io.to(rooms.delivery(deliveryPartnerId)).emit('order_status_update', payload);
-      io.to(rooms.restaurant(order.restaurantId)).emit('order_status_update', payload);
-      io.to(rooms.user(order.userId)).emit('order_status_update', payload);
+      io.to(rooms.restaurant(restaurantRoomId)).emit('order_status_update', payload);
+      io.to(rooms.user(userRoomId)).emit('order_status_update', payload);
     }
   } catch (error) {
     logger.error(`Error emitting order_claimed on accept: ${error?.message || error}`);
@@ -699,7 +717,8 @@ export async function acceptOrderDelivery(orderId, deliveryPartnerId) {
       const userLoc = order.deliveryAddress?.location?.coordinates;
       const restLoc = rest?.location?.coordinates;
 
-      if (restLoc?.[0] && userLoc?.[0]) {
+      // Food already picked up (admin reassign): keep the existing tracking node.
+      if (restLoc?.[0] && userLoc?.[0] && order.orderStatus !== 'picked_up') {
         const polyline = await fetchPolyline(
           { lat: restLoc[1], lng: restLoc[0] },
           { lat: userLoc[1], lng: userLoc[0] },
@@ -747,8 +766,10 @@ export async function acceptOrderDelivery(orderId, deliveryPartnerId) {
       await notifyOwnerSafely(
         { ownerType: 'USER', ownerId: order.userId },
         {
-          title: `Delivery partner assigned`,
-          body: `A delivery partner has accepted Order #${order._id.toString()}.`,
+          title: reassigned ? `Delivery partner changed` : `Delivery partner assigned`,
+          body: reassigned
+            ? `A new delivery partner has been assigned to Order #${order.order_id || order._id.toString()}.`
+            : `A delivery partner has accepted Order #${order.order_id || order._id.toString()}.`,
           data: {
             type: 'delivery_accepted',
             orderId: order._id.toString(),
@@ -763,7 +784,7 @@ export async function acceptOrderDelivery(orderId, deliveryPartnerId) {
         { ownerType: 'RESTAURANT', ownerId: order.restaurantId },
         {
           title: `Rider assigned`,
-          body: `Order #${order._id.toString()} is now assigned to a delivery partner.`,
+          body: `Order #${order.order_id || order._id.toString()} is now assigned to a delivery partner.`,
           data: {
             type: 'delivery_accepted',
             orderId: order._id.toString(),
@@ -789,8 +810,360 @@ export async function acceptOrderDelivery(orderId, deliveryPartnerId) {
     dispatchStatus: order.dispatch?.status,
     orderStatus: order.orderStatus,
   });
+}
 
-  return responseOrder;
+// ----- Admin manual assign -----
+
+/** Order statuses in which admin may hand the order to a rider (same as rider accept). */
+const ADMIN_ASSIGNABLE_ORDER_STATUSES = ['preparing', 'ready_for_pickup', 'picked_up'];
+const ADMIN_LIST_STALE_GPS_MS = 10 * 60 * 1000;
+
+/** Only riders the admin has approved can get orders (list + assign), in every environment. */
+function assignablePartnerStatuses() {
+  return ['approved'];
+}
+
+/**
+ * Riders the admin can pick for an order: every approved rider with live load (accepted trips,
+ * pending offers) and distance to the restaurant. Online riders first (nearest first), offline last.
+ */
+export async function listAssignablePartnersAdmin(orderId) {
+  const identity = buildOrderIdentityFilter(orderId);
+  if (!identity) throw new ValidationError('Order id required');
+
+  const order = await FoodOrder.findOne(identity)
+    .select('order_id orderType orderStatus dispatch restaurantId')
+    .populate({ path: 'restaurantId', select: 'restaurantName location' })
+    .populate({ path: 'dispatch.deliveryPartnerId', select: 'name phone' })
+    .lean();
+  if (!order) throw new NotFoundError('Order not found');
+
+  const restCoords = order.restaurantId?.location?.coordinates;
+  const hasRestGps = Array.isArray(restCoords) && restCoords.length >= 2;
+
+  const partners = await FoodDeliveryPartner.find({
+    status: { $in: assignablePartnerStatuses() },
+  })
+    .select('name phone vehicleType vehicleNumber profilePhoto availabilityStatus lastLat lastLng lastLocationAt')
+    .lean();
+  const ids = partners.map((p) => p._id);
+
+  const [activeAgg, pendingAgg, maxConcurrent] = await Promise.all([
+    ids.length
+      ? FoodOrder.aggregate([
+          {
+            $match: {
+              'dispatch.deliveryPartnerId': { $in: ids },
+              'dispatch.status': 'accepted',
+              orderStatus: { $in: ACTIVE_TRIP_ORDER_STATUSES },
+            },
+          },
+          {
+            $group: {
+              _id: '$dispatch.deliveryPartnerId',
+              accepted: { $sum: 1 },
+              pickedUp: { $sum: { $cond: [{ $eq: ['$orderStatus', 'picked_up'] }, 1, 0] } },
+            },
+          },
+        ])
+      : [],
+    ids.length
+      ? FoodOrder.aggregate([
+          {
+            $match: {
+              _id: { $ne: order._id },
+              orderType: 'delivery',
+              'dispatch.status': 'unassigned',
+              orderStatus: { $in: ['preparing', 'ready_for_pickup'] },
+              createdAt: { $gt: new Date(Date.now() - 6 * 60 * 60 * 1000) },
+              'dispatch.offeredTo.partnerId': { $in: ids },
+            },
+          },
+          { $unwind: '$dispatch.offeredTo' },
+          {
+            $match: {
+              'dispatch.offeredTo.action': 'offered',
+              'dispatch.offeredTo.partnerId': { $in: ids },
+            },
+          },
+          // One order can hold several offer rows for the same rider (retries): count orders.
+          { $group: { _id: { p: '$dispatch.offeredTo.partnerId', o: '$_id' } } },
+          { $group: { _id: '$_id.p', count: { $sum: 1 } } },
+        ])
+      : [],
+    getMaxConcurrentOrders(),
+  ]);
+
+  const activeBy = new Map(activeAgg.map((r) => [String(r._id), r]));
+  const pendingBy = new Map(pendingAgg.map((r) => [String(r._id), Number(r.count || 0)]));
+  const currentPartnerId =
+    order.dispatch?.status === 'accepted' && order.dispatch?.deliveryPartnerId
+      ? String(order.dispatch.deliveryPartnerId._id || order.dispatch.deliveryPartnerId)
+      : null;
+
+  const rows = partners.map((p) => {
+    const id = String(p._id);
+    const active = activeBy.get(id);
+    const acceptedCount = Number(active?.accepted || 0);
+    const hasGps = p.lastLat != null && p.lastLng != null;
+    const distanceKm =
+      hasRestGps && hasGps
+        ? haversineKm(p.lastLat, p.lastLng, restCoords[1], restCoords[0])
+        : null;
+    const lastAt = p.lastLocationAt ? new Date(p.lastLocationAt).getTime() : null;
+    return {
+      id,
+      name: p.name || 'Rider',
+      phone: p.phone || '',
+      vehicleType: p.vehicleType || '',
+      vehicleNumber: p.vehicleNumber || '',
+      profilePhoto: p.profilePhoto || '',
+      isOnline: p.availabilityStatus === 'online',
+      distanceKm: Number.isFinite(distanceKm) ? Math.round(distanceKm * 10) / 10 : null,
+      lastLocationAt: p.lastLocationAt || null,
+      gpsStale: !lastAt || Date.now() - lastAt > ADMIN_LIST_STALE_GPS_MS,
+      acceptedOrders: acceptedCount,
+      pickedUpOrders: Number(active?.pickedUp || 0),
+      pendingRequests: pendingBy.get(id) || 0,
+      atCapacity: acceptedCount >= maxConcurrent,
+      isCurrent: id === currentPartnerId,
+    };
+  });
+
+  const byDistance = (a, b) => {
+    if (a.distanceKm == null && b.distanceKm == null) return a.name.localeCompare(b.name);
+    if (a.distanceKm == null) return 1;
+    if (b.distanceKm == null) return -1;
+    return a.distanceKm - b.distanceKm;
+  };
+  rows.sort((a, b) => {
+    if (a.isOnline !== b.isOnline) return a.isOnline ? -1 : 1;
+    return byDistance(a, b);
+  });
+
+  return {
+    order: {
+      id: String(order._id),
+      orderId: order.order_id || String(order._id),
+      orderType: order.orderType,
+      orderStatus: order.orderStatus,
+      dispatchStatus: order.dispatch?.status || 'unassigned',
+      restaurantName: order.restaurantId?.restaurantName || '',
+      canAssign:
+        order.orderType === 'delivery' &&
+        ADMIN_ASSIGNABLE_ORDER_STATUSES.includes(order.orderStatus),
+      currentPartner: currentPartnerId
+        ? {
+            id: currentPartnerId,
+            name: order.dispatch?.deliveryPartnerId?.name || '',
+            phone: order.dispatch?.deliveryPartnerId?.phone || '',
+          }
+        : null,
+    },
+    maxConcurrent,
+    partners: rows,
+  };
+}
+
+/**
+ * Admin hands an order straight to a rider. It counts as accepted (no 60 s offer), so the auto
+ * dispatch retry chain stops by itself. If another rider had it, the order is taken from them
+ * (vehicle breakdown etc.). The multiorder limit (maxConcurrentOrders) is enforced; zone, distance
+ * and cash limits are not checked: the admin decides.
+ */
+export async function assignOrderToPartnerAdmin(orderId, deliveryPartnerId, adminId) {
+  if (!mongoose.isValidObjectId(deliveryPartnerId)) {
+    throw new ValidationError('Invalid delivery partner id');
+  }
+  const identity = buildOrderIdentityFilter(orderId);
+  if (!identity) throw new ValidationError('Order id required');
+
+  const existing = await FoodOrder.findOne(identity)
+    .select('order_id orderType orderStatus dispatch deliveryState')
+    .lean();
+  if (!existing) throw new NotFoundError('Order not found');
+  if (existing.orderType !== 'delivery') {
+    throw new ValidationError('Only home delivery orders can be assigned to a rider');
+  }
+  if (!ADMIN_ASSIGNABLE_ORDER_STATUSES.includes(existing.orderStatus)) {
+    throw new ValidationError(
+      `A rider can be assigned only once the restaurant is preparing the order (current status: ${existing.orderStatus})`,
+    );
+  }
+
+  const partner = await FoodDeliveryPartner.findById(deliveryPartnerId)
+    .select('name status availabilityStatus')
+    .lean();
+  if (!partner || !assignablePartnerStatuses().includes(partner.status)) {
+    throw new ValidationError('Delivery partner not found or not approved');
+  }
+  if (partner.availabilityStatus !== 'online') {
+    throw new ValidationError('This delivery partner is offline');
+  }
+
+  const prevPartnerId =
+    existing.dispatch?.status === 'accepted' && existing.dispatch?.deliveryPartnerId
+      ? String(existing.dispatch.deliveryPartnerId)
+      : null;
+  if (prevPartnerId === String(deliveryPartnerId)) {
+    throw new ValidationError('This order is already assigned to this rider');
+  }
+
+  const capacity = await getPartnerOrderCapacity(deliveryPartnerId);
+  if (capacity.remaining <= 0) {
+    throw new ValidationError(
+      `${partner.name || 'This rider'} already has ${capacity.active} active order${capacity.active === 1 ? '' : 's'} (limit ${capacity.max} per rider). Choose another rider or increase the limit in Multiorder Setting.`,
+    );
+  }
+
+  const now = new Date();
+  const partnerObjectId = new mongoose.Types.ObjectId(deliveryPartnerId);
+  const set = {
+    'dispatch.deliveryPartnerId': partnerObjectId,
+    'dispatch.status': 'accepted',
+    'dispatch.assignedAt': now,
+    'dispatch.acceptedAt': now,
+  };
+  // The new rider has not reached the restaurant yet, even if the previous one had.
+  if (prevPartnerId && existing.orderStatus !== 'picked_up') {
+    set.deliveryState = {
+      ...(existing.deliveryState || {}),
+      currentPhase: 'en_route_to_pickup',
+      status: '',
+      reachedPickupAt: null,
+    };
+  }
+
+  // Match the dispatch state we read, so a rider accepting at the same moment is not overwritten.
+  const dispatchGuard = prevPartnerId
+    ? {
+        'dispatch.status': 'accepted',
+        'dispatch.deliveryPartnerId': new mongoose.Types.ObjectId(prevPartnerId),
+      }
+    : { 'dispatch.status': { $ne: 'accepted' } };
+
+  const order = await FoodOrder.findOneAndUpdate(
+    {
+      _id: existing._id,
+      orderType: 'delivery',
+      orderStatus: { $in: ADMIN_ASSIGNABLE_ORDER_STATUSES },
+      ...dispatchGuard,
+    },
+    {
+      $set: set,
+      $push: {
+        statusHistory: {
+          byRole: 'ADMIN',
+          ...(mongoose.isValidObjectId(adminId)
+            ? { byId: new mongoose.Types.ObjectId(adminId) }
+            : {}),
+          from: prevPartnerId ? 'accepted' : existing.dispatch?.status || 'unassigned',
+          to: 'accepted',
+          note: prevPartnerId
+            ? `Admin reassigned rider ${prevPartnerId} -> ${deliveryPartnerId}`
+            : `Admin assigned rider ${deliveryPartnerId}`,
+          at: now,
+        },
+      },
+    },
+    { new: true },
+  ).populate('restaurantId userId');
+
+  if (!order) {
+    throw new ValidationError(
+      'The order changed while assigning (a rider may have just accepted it). Refresh and try again.',
+    );
+  }
+
+  try {
+    const before = Number(order.riderEarning || 0);
+    await ensureRiderEarningOnOrder(order);
+    if (Number(order.riderEarning || 0) > before) await order.save();
+  } catch (err) {
+    logger.warn(`ensureRiderEarningOnOrder on admin assign failed: ${err?.message || err}`);
+  }
+
+  runPostAcceptEffects(order, deliveryPartnerId, {
+    reassigned: Boolean(prevPartnerId),
+    previousPartnerId: prevPartnerId,
+  });
+
+  const orderLabel = order.order_id || order._id.toString();
+  const restaurantName = order.restaurantId?.restaurantName || 'the restaurant';
+  const io = getIO();
+
+  // New rider: put the order straight into the app's active trips + push.
+  try {
+    const [trips, capacity] = await Promise.all([
+      getActiveTripsDelivery(deliveryPartnerId),
+      getPartnerOrderCapacity(deliveryPartnerId),
+    ]);
+    if (io) {
+      const room = rooms.delivery(deliveryPartnerId);
+      const assigned = trips.find((t) => String(t?._id) === String(order._id));
+      if (assigned) io.to(room).emit('active_order', assigned);
+      io.to(room).emit('delivery_capacity', capacity);
+    }
+  } catch (err) {
+    logger.warn(`Admin assign socket emit to rider failed: ${err?.message || err}`);
+  }
+  void notifyOwnerSafely(
+    { ownerType: 'DELIVERY_PARTNER', ownerId: deliveryPartnerId },
+    {
+      title: 'Order assigned by admin',
+      body: `Order #${orderLabel} is assigned to you. ${
+        order.orderStatus === 'picked_up' ? 'Contact admin for handover.' : `Pick it up from ${restaurantName}.`
+      }`,
+      data: {
+        type: 'admin_assigned_order',
+        orderId: order._id.toString(),
+        orderMongoId: order._id.toString(),
+      },
+    },
+  ).catch(() => {});
+
+  // Previous rider: remove the order from their app + push.
+  if (prevPartnerId) {
+    try {
+      if (io) {
+        const room = rooms.delivery(prevPartnerId);
+        io.to(room).emit('order_unassigned_by_admin', {
+          orderId: order._id.toString(),
+          orderMongoId: order._id.toString(),
+          message: 'This request has been assigned to another rider',
+        });
+        io.to(room).emit('delivery_capacity', await getPartnerOrderCapacity(prevPartnerId));
+      }
+    } catch (err) {
+      logger.warn(`Admin reassign socket emit to old rider failed: ${err?.message || err}`);
+    }
+    void notifyOwnerSafely(
+      { ownerType: 'DELIVERY_PARTNER', ownerId: prevPartnerId },
+      {
+        title: 'Order reassigned',
+        body: `This request (Order #${orderLabel}) has been assigned to another rider.`,
+        data: {
+          type: 'order_unassigned_by_admin',
+          orderId: order._id.toString(),
+          orderMongoId: order._id.toString(),
+        },
+      },
+    ).catch(() => {});
+  }
+
+  enqueueOrderEvent('delivery_partner_assigned', {
+    orderMongoId: order._id.toString(),
+    orderId: order._id.toString(),
+    deliveryPartnerId: String(deliveryPartnerId),
+    previousDeliveryPartnerId: prevPartnerId,
+    adminId: adminId ? String(adminId) : null,
+  });
+
+  return {
+    order: sanitizeOrderForExternal(order),
+    reassigned: Boolean(prevPartnerId),
+    partner: { id: String(deliveryPartnerId), name: partner.name || '' },
+  };
 }
 
 export async function rejectOrderDelivery(orderId, deliveryPartnerId) {
@@ -891,7 +1264,7 @@ export async function confirmReachedPickupDelivery(orderId, deliveryPartnerId) {
         title: 'Rider arrived!',
         body: `${partner?.name || 'The delivery partner'} has arrived at ${
           restaurant?.restaurantName || 'your restaurant'
-        } to pick up Order #${order._id.toString()}.`,
+        } to pick up Order #${order.order_id || order._id.toString()}.`,
         data: {
           type: 'rider_arrived',
           orderId: String(order._id.toString()),
@@ -1236,7 +1609,7 @@ export async function completeDelivery(orderId, deliveryPartnerId, body = {}) {
 
   // Create inbox notifications for user and restaurant
   try {
-    const orderId = order.orderId || order._id.toString();
+    const orderId = order.order_id || order.orderId || order._id.toString();
     const notifs = [];
     if (order.userId) {
       notifs.push({
