@@ -2661,7 +2661,7 @@ export default function Cart() {
                               </p>
                             </div>
                             <div className="flex flex-shrink-0 items-baseline gap-1.5">
-                              <span className="text-xs text-gray-400 line-through">
+                              <span className="text-[13px] font-semibold text-gray-600 line-through decoration-gray-500 dark:text-gray-300">
                                 {RUPEE_SYMBOL}{((item.price || 0) * (bogoFreeByLine.get(item.id) || 0)).toFixed(0)}
                               </span>
                               <span className="text-sm font-black text-green-700 dark:text-green-400">FREE</span>
@@ -3215,11 +3215,11 @@ export default function Cart() {
                 >
                   <div className="flex items-center gap-3">
                     <FileText className="h-5 w-5 text-gray-700 dark:text-gray-300 group-hover:text-[#DC2626] transition-colors" />
-                    <span className="text-base text-gray-900 dark:text-gray-100 font-black tracking-tight group-hover:text-[#DC2626] transition-colors">Bill Details</span>
+                    <span className="text-sm md:text-base font-bold text-gray-800 dark:text-gray-200 group-hover:text-[#DC2626] transition-colors">Bill Details</span>
                   </div>
                   <div className="flex items-center gap-3">
                     <div className="text-right">
-                      <p className="text-sm font-black text-gray-900 dark:text-white">
+                      <p className="text-sm font-bold text-gray-800 dark:text-gray-100">
                         {loadingPricing ? (
                           <span className="inline-block h-5 w-16 rounded bg-gray-200 dark:bg-gray-700 animate-pulse align-middle" />
                         ) : (
