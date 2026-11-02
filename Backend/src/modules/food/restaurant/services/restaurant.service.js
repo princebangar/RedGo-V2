@@ -12,7 +12,7 @@ import { FoodOrder } from '../../orders/models/order.model.js';
 import { FoodRestaurantOutletTimings } from '../models/outletTimings.model.js';
 import { seedOutletTimingsForRestaurant } from './outletTimings.service.js';
 import { logger } from '../../../../utils/logger.js';
-import { fetchDrivingDistancesKmBatch, fetchDrivingDistanceKm } from '../../orders/utils/googleMaps.js';
+
 import { resolveRestaurantZone } from '../../utils/zoneGeo.js';
 
 const normalizeName = (value) =>
@@ -1720,27 +1720,13 @@ export const listApprovedRestaurants = async (query = {}) => {
             : (r.profileImage ? [r.profileImage] : [])
     }));
 
-    // Replace geoNear air distance with Google driving/road distance (same as cart bill).
-    // Keep air distance as fallback if Matrix API fails for a restaurant.
-    if (lat !== null && lng !== null && restaurants.length > 0) {
-        try {
-            const destinations = restaurants.map((r) => extractRestaurantLatLng(r));
-            const drivingKms = await fetchDrivingDistancesKmBatch(
-                { lat, lng },
-                destinations,
-            );
-            restaurants.forEach((r, i) => {
-                const km = drivingKms[i];
-                if (!Number.isFinite(km) || km <= 0) return;
-                r.distanceInKm = km;
-                r.distance = formatRestaurantDistanceLabel(km);
-                r.distanceMode = 'driving';
-            });
-        } catch (err) {
-            logger.warn(
-                `Driving distance enrich skipped for restaurant list: ${err?.message || err}`,
-            );
-        }
+    // Cards show the straight-line distance from $geoNear. No Google call here: a road distance
+    // per restaurant cost one Routes call per card on every listing load (40 per Home open).
+    // Road distance is used only where money depends on it (cart bill, order, rider earning).
+    if (lat !== null && lng !== null) {
+        restaurants.forEach((r) => {
+            if (Number.isFinite(Number(r.distanceInKm))) r.distanceMode = 'air';
+        });
     }
 
     return { restaurants, total, page, limit };
@@ -1818,39 +1804,21 @@ export const getApprovedRestaurantByIdOrSlug = async (idOrSlug, userId = null, c
             : (doc.profileImage ? [doc.profileImage] : [])
     };
 
-    // Same driving-distance helper AND direction as cart bill:
-    // restaurant (origin) → delivery address (destination).
+    // Display only: straight-line distance, same as the listing cards. No Google call here;
+    // the cart bill / order fetch the road distance where the fee depends on it.
     const userLat = toFiniteNumber(coords?.lat);
     const userLng = toFiniteNumber(coords?.lng);
     const restaurantPoint = extractRestaurantLatLng(doc);
     if (userLat !== null && userLng !== null && restaurantPoint) {
-        try {
-            const drivingKm = await fetchDrivingDistanceKm(
-                restaurantPoint,
-                { lat: userLat, lng: userLng },
-            );
-            if (Number.isFinite(drivingKm) && drivingKm > 0) {
-                result.distanceInKm = drivingKm;
-                result.distance = formatRestaurantDistanceLabel(drivingKm);
-                result.distanceMode = 'driving';
-            }
-        } catch (err) {
-            logger.warn(
-                `Driving distance for restaurant ${doc._id} failed: ${err?.message || err}`,
-            );
-        }
-        // Same fallback as the restaurant list: straight-line distance when road distance is unavailable
-        if (!result.distanceMode) {
-            const toRad = (d) => (d * Math.PI) / 180;
-            const dLat = toRad(userLat - restaurantPoint.lat);
-            const dLng = toRad(userLng - restaurantPoint.lng);
-            const a = Math.sin(dLat / 2) ** 2 +
-                Math.cos(toRad(restaurantPoint.lat)) * Math.cos(toRad(userLat)) * Math.sin(dLng / 2) ** 2;
-            const airKm = 6371 * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-            result.distanceInKm = Math.round(airKm * 100) / 100;
-            result.distance = formatRestaurantDistanceLabel(result.distanceInKm);
-            result.distanceMode = 'air';
-        }
+        const toRad = (d) => (d * Math.PI) / 180;
+        const dLat = toRad(userLat - restaurantPoint.lat);
+        const dLng = toRad(userLng - restaurantPoint.lng);
+        const a = Math.sin(dLat / 2) ** 2 +
+            Math.cos(toRad(restaurantPoint.lat)) * Math.cos(toRad(userLat)) * Math.sin(dLng / 2) ** 2;
+        const airKm = 6371 * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+        result.distanceInKm = Math.round(airKm * 100) / 100;
+        result.distance = formatRestaurantDistanceLabel(result.distanceInKm);
+        result.distanceMode = 'air';
     }
 
     return result;

@@ -79,6 +79,27 @@ function buildDirectionsResult(pathPoints) {
   return { routes: [{ overview_path, overview_polyline }] };
 }
 
+const OFF_ROUTE_METERS = 60;
+const MIN_ROUTE_INTERVAL_MS = 30000;
+const FALLBACK_RETRY_MS = 120000;
+
+/** True when the rider is within OFF_ROUTE_METERS of the drawn route (local check, no API call). */
+function isOnRoute(point, path) {
+  const g = window.google?.maps;
+  if (!point || !Array.isArray(path) || path.length < 2 || !g?.geometry?.poly) return false;
+  try {
+    const line = new g.Polyline({ path });
+    // isLocationOnEdge takes its tolerance in degrees; 1 degree of latitude ≈ 111,320 m.
+    return g.geometry.poly.isLocationOnEdge(
+      new g.LatLng(point.lat, point.lng),
+      line,
+      OFF_ROUTE_METERS / 111320,
+    );
+  } catch {
+    return false;
+  }
+}
+
 async function computeDrivingRoute(origin, destination) {
   const { Route } = await window.google.maps.importLibrary('routes');
   const { routes } = await Route.computeRoutes({
@@ -110,6 +131,10 @@ export const LiveMap = ({ onMapClick, onMapLoad, onPathReceived, onPolylineRecei
   const [zones, setZones] = useState([]);
   const [lastDirectionsAt, setLastDirectionsAt] = useState(0);
   const routeFetchInFlightRef = useRef(false);
+  // Each route fetch is a billed Routes API call. A new route is fetched only when the rider
+  // leaves the current one (see the route effect below), not on a timer.
+  const routeIsFallbackRef = useRef(false);
+  const routeGenerationRef = useRef(0);
 
   const handleMapLoad = (mapInstance) => {
     mapInstance.setOptions({
@@ -129,6 +154,8 @@ export const LiveMap = ({ onMapClick, onMapLoad, onPathReceived, onPolylineRecei
   useEffect(() => {
     setLastDirectionsAt(0);
     setDirections(null);
+    routeIsFallbackRef.current = false;
+    routeGenerationRef.current += 1; // drop answers for the previous leg
   }, [tripStatus, activeOrder?._id]);
 
   const parsePoint = useCallback((raw) => {
@@ -166,46 +193,47 @@ export const LiveMap = ({ onMapClick, onMapLoad, onPathReceived, onPolylineRecei
     if (currentZoom !== zoom) map.setZoom(zoom);
   }, [zoom, map]);
 
-  const routeThrottleMs = useMemo(() => {
-    if (!parsedRiderLocation || !targetLocation || !window.google?.maps?.geometry) return 20000;
-    try {
-      const dist = distanceBetweenMeters(parsedRiderLocation, targetLocation);
-      if (dist > 2000) return 60000;
-      if (dist > 500) return 20000;
-      return 5000;
-    } catch {
-      return 20000;
-    }
-  }, [parsedRiderLocation, targetLocation]);
-
-  // Routes API (new) — replaces legacy DirectionsService which is blocked on new GCP projects
+  // Routes API (new) — replaces legacy DirectionsService which is blocked on new GCP projects.
+  // Fetch a route when there is none, then again only when the rider leaves it (more than
+  // OFF_ROUTE_METERS off the drawn line). ETA and auto-arrival use GPS distance, not this route.
   useEffect(() => {
     if (!isLoaded || !window.google?.maps) return;
     if (!parsedRiderLocation || !targetLocation) return;
-
-    const now = Date.now();
-    if (directions && now - lastDirectionsAt < routeThrottleMs) return;
     if (routeFetchInFlightRef.current) return;
 
-    let cancelled = false;
-    routeFetchInFlightRef.current = true;
+    const sinceLast = Date.now() - lastDirectionsAt;
+    if (directions) {
+      if (routeIsFallbackRef.current) {
+        // Last call failed and a straight line is on screen: retry at most every 2 min.
+        if (sinceLast < FALLBACK_RETRY_MS) return;
+      } else {
+        if (sinceLast < MIN_ROUTE_INTERVAL_MS) return;
+        if (isOnRoute(parsedRiderLocation, directions.routes?.[0]?.overview_path)) return;
+      }
+    }
 
+    routeFetchInFlightRef.current = true;
+    const generation = routeGenerationRef.current;
+    const origin = { lat: parsedRiderLocation.lat, lng: parsedRiderLocation.lng };
+    const target = { lat: targetLocation.lat, lng: targetLocation.lng };
+
+    // Not cancelled on re-render: GPS updates re-run this effect every few seconds, and a
+    // dropped answer is still billed and then fetched again. Only a new leg discards it.
     (async () => {
       try {
-        const result = await computeDrivingRoute(parsedRiderLocation, targetLocation);
-        if (cancelled || !result) return;
+        const result = await computeDrivingRoute(origin, target);
+        if (generation !== routeGenerationRef.current || !result) return;
+        routeIsFallbackRef.current = false;
         setDirections(result);
         setLastDirectionsAt(Date.now());
         const encoded = result.routes?.[0]?.overview_polyline;
         if (encoded && onPolylineReceived) onPolylineReceived(encoded);
       } catch (err) {
         console.warn('[LiveMap] Routes API failed, using straight-line fallback:', err?.message || err);
-        if (cancelled) return;
-        const fallback = buildDirectionsResult([
-          { lat: parsedRiderLocation.lat, lng: parsedRiderLocation.lng },
-          { lat: targetLocation.lat, lng: targetLocation.lng },
-        ]);
+        if (generation !== routeGenerationRef.current) return;
+        const fallback = buildDirectionsResult([origin, target]);
         if (fallback) {
+          routeIsFallbackRef.current = true;
           setDirections(fallback);
           setLastDirectionsAt(Date.now());
         }
@@ -213,17 +241,12 @@ export const LiveMap = ({ onMapClick, onMapLoad, onPathReceived, onPolylineRecei
         routeFetchInFlightRef.current = false;
       }
     })();
-
-    return () => {
-      cancelled = true;
-    };
   }, [
     isLoaded,
     parsedRiderLocation?.lat,
     parsedRiderLocation?.lng,
     targetLocation?.lat,
     targetLocation?.lng,
-    routeThrottleMs,
     lastDirectionsAt,
     directions,
     onPolylineReceived,
