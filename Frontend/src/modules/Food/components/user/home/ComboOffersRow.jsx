@@ -191,7 +191,7 @@ const VegMark = ({ isVeg }) => (
  * offline / closed ones go last in black & white with ADD disabled, like "Recommended For You".
  * Veg mode hides non-veg combos.
  */
-export default function ComboOffersRow({ zoneId, zoneLoading = false, isOutOfService = false, vegMode = false, onOpenRestaurant }) {
+export default function ComboOffersRow({ zoneId, zoneLoading = false, isOutOfService = false, vegMode = false }) {
   const { comboOffers, loading } = useComboOffers({ zoneId, enabled: !zoneLoading })
 
   // Re-check open/closed every minute so cards flip without a reload.
@@ -270,7 +270,7 @@ export default function ComboOffersRow({ zoneId, zoneLoading = false, isOutOfSer
                 <h3 className="text-sm sm:text-base font-bold leading-snug text-gray-900 dark:text-white line-clamp-2 min-h-[2.75em]">{item.name}</h3>
               </div>
               {/* No description here (the restaurant menu shows it): keeps every combo card the same layout. */}
-              <div className="mt-1.5 flex items-center justify-between gap-2">
+              <div className="mt-1.5 mb-2.5 flex items-center justify-between gap-2">
                 <p className="text-base font-bold text-gray-900 dark:text-white">₹{Math.round(Number(item.price) || 0)}</p>
                 <div className="flex min-w-0 items-center gap-2">
                   {!availability.isOpen && (
@@ -278,10 +278,10 @@ export default function ComboOffersRow({ zoneId, zoneLoading = false, isOutOfSer
                       {isOffline ? "Offline" : availability.openingTime ? `Opens at ${availability.openingTime}` : "Closed"}
                     </span>
                   )}
-                  {/* Combo Offers badge (two lines, matches the price height): blue like the restaurant-card offers, glossy top edge. */}
-                  <span className="relative inline-flex flex-shrink-0 items-center gap-1 overflow-hidden rounded-md bg-gradient-to-br from-[#3b82f6] to-[#1d4ed8] px-2 py-1 text-[9px] font-medium uppercase leading-[1.15] tracking-[0.08em] antialiased text-white shadow-sm shadow-blue-900/25 ring-1 ring-inset ring-white/20">
+                  {/* Combo Offers badge (two lines): blue like the restaurant-card offers, glossy top edge. */}
+                  <span className="relative inline-flex flex-shrink-0 items-center gap-0.5 overflow-hidden rounded-md bg-gradient-to-br from-[#3b82f6] to-[#1d4ed8] px-1.5 py-0.5 text-[8px] font-medium uppercase leading-[1.1] tracking-[0.08em] antialiased text-white shadow-sm shadow-blue-900/25 ring-1 ring-inset ring-white/20">
                     <span aria-hidden="true" className="pointer-events-none absolute inset-x-0 top-0 h-px bg-white/40" />
-                    <OfferScallop className="h-4 w-4" />
+                    <OfferScallop className="h-3.5 w-3.5" />
                     <span className="flex flex-col items-start">
                       <span>Combo</span>
                       <span>Offers</span>
@@ -290,17 +290,11 @@ export default function ComboOffersRow({ zoneId, zoneLoading = false, isOutOfSer
                 </div>
               </div>
               <div className="mt-auto flex items-center justify-between gap-2 pt-2.5 border-t border-gray-100 dark:border-gray-800">
-                <button
-                  type="button"
-                  onClick={(e) => {
-                    e.stopPropagation()
-                    onOpenRestaurant?.(restaurant, item)
-                  }}
-                  className="flex min-w-0 items-center gap-1.5 text-xs font-semibold text-gray-600 dark:text-gray-300"
-                >
+                {/* Label only: the combo card adds straight to the cart, it doesn't open the restaurant. */}
+                <div className="flex min-w-0 items-center gap-1.5 text-xs font-semibold text-gray-600 dark:text-gray-300">
                   <Store className="h-3.5 w-3.5 flex-shrink-0" />
                   <span className="truncate">{restaurant.name}</span>
-                </button>
+                </div>
                 <ComboAddButton
                   item={item}
                   restaurant={restaurant}

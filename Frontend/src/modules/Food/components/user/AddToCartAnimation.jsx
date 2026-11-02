@@ -3,8 +3,11 @@ import { useLocation, useNavigate } from 'react-router-dom';
 import { useCart } from "@food/context/CartContext";
 import { useProfile } from "@food/context/ProfileContext";
 import { useEffect, useRef, useState } from 'react';
-import { flyToCart, bumpElement, sourceToViewportPoint } from "@food/utils/flyToCart";
+import { flyToCart, sourceToViewportPoint, FLY_ARRIVE_MS } from "@food/utils/flyToCart";
 import dishFallbackImage from "@food/assets/placeholders/dish_fallback.webp";
+
+/** Cart line ids are "<itemId>::<variantId>"; thumbnails are matched on the dish id alone. */
+const thumbBaseId = (id) => String(id || '').split('::')[0];
 const debugLog = (...args) => {}
 const debugWarn = (...args) => {}
 const debugError = (...args) => {}
@@ -48,35 +51,49 @@ export default function AddToCartAnimation({
   const isAccountPage = location.pathname === '/account';
   const shouldHidePill = hideOnPages && (iscartPage || isOrderPage || isAccountPage);
 
+  // Get up to 3 most recently added items for thumbnails
+  // Since items are added to the end of the array, we take the last 3
+  const safeItems = Array.isArray(items) ? items : [];
+  const thumbnailItems = safeItems
+    .slice(-3)
+    .reverse()
+    .filter((item) => item && typeof item === 'object');
+  // Dishes whose photo was already in the pill before this render (read by the add effect below).
+  const shownThumbIdsRef = useRef(new Set());
+
   // Dish added (ADD or +): fly its photo from the button into the pill. Only adds animate;
   // removing just updates the count. Runs off the main thread, so it stays smooth.
   useEffect(() => {
     const from = sourceToViewportPoint(lastAddEvent?.sourcePosition)
     if (!from) return undefined
     const key = `${Date.now()}-${Math.random()}`
-    setFlyingProduct({ key, product: { ...lastAddEvent.product } })
+    const productId = String(lastAddEvent.product?.id || '')
+    // "+" on a dish already in the pill: its photo stays put; only a new dish waits for the flight.
+    if (!shownThumbIdsRef.current.has(thumbBaseId(productId))) {
+      setFlyingProduct({ key, product: { ...lastAddEvent.product } })
+    }
     // One frame so a pill that just mounted (first item) is laid out before we aim at it.
     const raf = requestAnimationFrame(() => {
       const pillRect = linkRef.current?.getBoundingClientRect()
       const to = pillRect
         ? { x: pillRect.left + 22, y: pillRect.top + pillRect.height / 2 }
         : { x: window.innerWidth / 2, y: window.innerHeight - (bottomOffset || 20) - 24 }
-      flyToCart({ image: lastAddEvent.product?.imageUrl, from, to }).then(() => {
+      flyToCart({ image: lastAddEvent.product?.imageUrl, from, to })
+      // Show the thumbnail the moment the flying photo reaches the pill, not after it fades out.
+      setTimeout(() => {
         setFlyingProduct((current) => (current?.key === key ? null : current))
-        bumpElement(linkRef.current)
-      })
+      }, FLY_ARRIVE_MS)
     })
     return () => cancelAnimationFrame(raf)
   }, [lastAddEvent]);
 
-  // Get up to 3 most recently added items for thumbnails
-  // Since items are added to the end of the array, we take the last 3
+  useEffect(() => {
+    shownThumbIdsRef.current = new Set(
+      thumbnailItems.map((item) => thumbBaseId(item?.itemId || item?.id)),
+    );
+  });
+
   const flyingId = flyingProduct ? String(flyingProduct.product?.id || '') : '';
-  const safeItems = Array.isArray(items) ? items : [];
-  const thumbnailItems = safeItems
-    .slice(-3)
-    .reverse()
-    .filter((item) => item && typeof item === 'object');
 
   return (
     <>
@@ -117,19 +134,15 @@ export default function AddToCartAnimation({
               {/* Left: Product thumbnails */}
               <div className="flex items-center -space-x-4">
                 {thumbnailItems.map((item, idx) => {
-                  const isFlying = flyingId && (String(item?.id) === flyingId || String(item?.itemId || '') === flyingId.split('::')[0])
+                  const isFlying = Boolean(flyingId) && (String(item?.id) === flyingId || String(item?.itemId || '') === thumbBaseId(flyingId))
                   const imgSrc = item?.image || item?.product?.imageUrl || item?.imageUrl || dishFallbackImage
                   return (
                     <motion.div
                       key={item?.itemId ? `${item.itemId}::${item.variantId || ''}` : (item?.id || `thumb-${idx}`)}
                       initial={{ scale: 0, opacity: 0 }}
                       animate={{ scale: isFlying ? 0.6 : 1, opacity: isFlying ? 0 : 1 }}
-                      transition={{
-                        delay: idx * 0.1,
-                        type: 'spring',
-                        stiffness: 500,
-                        damping: 25,
-                      }}
+                      // Short tween, no stagger: the photo appears right as the flying one lands.
+                      transition={{ type: 'tween', duration: 0.15, ease: 'easeOut' }}
                       className="w-7 h-7 rounded-full border-2 border-white/90 overflow-hidden bg-white flex-shrink-0 shadow-md"
                     >
                       <img

@@ -5,7 +5,7 @@ import { useState, useEffect, useRef } from "react"
 import { motion, AnimatePresence } from "framer-motion"
 import dishFallbackImage from "@food/assets/placeholders/dish_fallback.webp"
 import { isBottomNavVisible, subscribeBottomNavVisibility } from "@food/utils/bottomNavEvents"
-import { flyToCart, bumpElement, sourceToViewportPoint } from "@food/utils/flyToCart"
+import { flyToCart, sourceToViewportPoint, FLY_ARRIVE_MS } from "@food/utils/flyToCart"
 
 // Mobile: the card sits 16px above the bottom nav (nav = bottom-6 + 72px tall). When the nav
 // hides on scroll, the card slides down but keeps a comfortable gap from the screen edge.
@@ -24,6 +24,9 @@ export default function StickyCartCard() {
   const thumbsRef = useRef(null)
   const cartCount = getCartCount()
   const prevCountRef = useRef(cartCount)
+  // Dishes whose photo was already in the card before this render (read by the add effect below).
+  const shownThumbIdsRef = useRef(new Set())
+  const thumbnailItems = (Array.isArray(cart) ? cart : []).slice(-3).reverse().filter((item) => item && typeof item === "object")
 
   // Closed with X? Any new item (ADD or +) brings the card back.
   useEffect(() => {
@@ -48,20 +51,29 @@ export default function StickyCartCard() {
     if (!from) return undefined
     const key = `${Date.now()}-${Math.random()}`
     setIsVisible(true)
-    setFlying({ key, id: String(lastAddEvent.product?.id || "") })
+    const productId = String(lastAddEvent.product?.id || "")
+    // "+" on a dish already in the card: its photo stays put; only a new dish waits for the flight.
+    if (!shownThumbIdsRef.current.has(lineBaseId(productId))) {
+      setFlying({ key, id: productId })
+    }
     // One frame so a card that just mounted (first item) is laid out before we aim at it.
     const raf = requestAnimationFrame(() => {
       const target = thumbsRef.current?.getBoundingClientRect()
       const to = target
         ? { x: target.left + 20, y: target.top + target.height / 2 }
         : { x: window.innerWidth / 2, y: window.innerHeight - CARD_BOTTOM_WITH_NAV_PX }
-      flyToCart({ image: lastAddEvent.product?.imageUrl, from, to }).then(() => {
+      flyToCart({ image: lastAddEvent.product?.imageUrl, from, to })
+      // Show the thumbnail the moment the flying photo reaches the card, not after it fades out.
+      setTimeout(() => {
         setFlying((current) => (current?.key === key ? null : current))
-        bumpElement(cardRef.current)
-      })
+      }, FLY_ARRIVE_MS)
     })
     return () => cancelAnimationFrame(raf)
   }, [lastAddEvent])
+
+  useEffect(() => {
+    shownThumbIdsRef.current = new Set(thumbnailItems.map((item) => lineBaseId(item.itemId || item.id)))
+  })
 
   // Don't render the card if cart is empty
   if (cartCount === 0) return null
@@ -69,8 +81,7 @@ export default function StickyCartCard() {
   const restaurantName = cart[0]?.restaurant || "Restaurant"
   const restaurantSlug = restaurantName.toLowerCase().replace(/\s+/g, "-")
 
-  // Latest 3 dishes, newest on top of the stack (same as the restaurant page "View cart" pill).
-  const thumbnailItems = cart.slice(-3).reverse().filter((item) => item && typeof item === "object")
+  // thumbnailItems (above): latest 3 dishes, newest on top of the stack.
   const isFlyingItem = (item) =>
     Boolean(flying) &&
     (String(item.id) === flying.id || String(item.itemId || "") === lineBaseId(flying.id))
@@ -107,7 +118,8 @@ export default function StickyCartCard() {
                       key={item.itemId ? `${item.itemId}::${item.variantId || ""}` : (item.id || `thumb-${idx}`)}
                       initial={{ scale: 0, opacity: 0 }}
                       animate={{ scale: isFlyingItem(item) ? 0.6 : 1, opacity: isFlyingItem(item) ? 0 : 1 }}
-                      transition={{ type: "spring", stiffness: 500, damping: 25 }}
+                      // Short tween: the photo appears right as the flying one lands.
+                      transition={{ type: "tween", duration: 0.15, ease: "easeOut" }}
                       className="h-9 w-9 flex-shrink-0 overflow-hidden rounded-full border-2 border-white/90 bg-white shadow-md"
                       style={{ zIndex: thumbnailItems.length - idx }}
                     >

@@ -3438,11 +3438,6 @@ export default function Home({ homeMode = null, isTabActive = true }) {
             zoneLoading={zoneLoading}
             isOutOfService={isOutOfService}
             vegMode={vegMode}
-            onOpenRestaurant={(restaurant, item) => {
-              const dishId = item?.id || item?._id
-              const path = `/user/restaurants/${getRestaurantRouteId(restaurant) || restaurant._id}`
-              navigate(toFoodUserPath(dishId ? `${path}?dish=${encodeURIComponent(dishId)}` : path))
-            }}
           />
         )}
 

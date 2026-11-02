@@ -2,6 +2,9 @@ import dishFallbackImage from "@food/assets/placeholders/dish_fallback.webp"
 
 const FLY_SIZE_PX = 36
 const ARC_STEPS = 24
+export const FLY_DURATION_MS = 650
+/** Point in the flight (ms) where the photo reaches the target and starts fading out. */
+export const FLY_ARRIVE_MS = Math.round(FLY_DURATION_MS * 0.85)
 
 /**
  * Flies a round dish photo from `from` to `to` (viewport points) along a smooth arc.
@@ -70,22 +73,13 @@ export function flyToCart({ image, from, to, size = FLY_SIZE_PX }) {
       return
     }
     const anim = el.animate(keyframes, {
-      duration: 650,
+      duration: FLY_DURATION_MS,
       easing: "cubic-bezier(0.45, 0, 0.25, 1)",
       fill: "forwards",
     })
     anim.onfinish = done
     anim.oncancel = done
   })
-}
-
-/** Small "got it" bump on the cart pill/card once a dish lands (compositor-only too). */
-export function bumpElement(el) {
-  if (!el || typeof el.animate !== "function") return
-  el.animate(
-    [{ transform: "scale(1)" }, { transform: "scale(1.05)" }, { transform: "scale(1)" }],
-    { duration: 280, easing: "ease-out" },
-  )
 }
 
 /** Viewport point of a captured add-button position, corrected for scroll since the tap. */
