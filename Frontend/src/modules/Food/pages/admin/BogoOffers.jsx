@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from "react"
+import { useSearchParams } from "react-router-dom"
 import { Search, Trash2, ArrowLeft, ChevronRight, Plus, Loader2, Pencil } from "lucide-react"
 import { adminAPI } from "@food/api"
 import { toast } from "sonner"
@@ -6,6 +7,10 @@ import { Dialog, DialogContent, DialogTitle } from "@food/components/ui/dialog"
 import { Switch } from "@food/components/ui/switch"
 import dishFallbackImage from "@food/assets/placeholders/dish_fallback.webp"
 import AdminListPagination from "@food/components/admin/AdminListPagination"
+import OfferZoneFilter, { readSavedZone, saveZone, zoneName } from "@food/components/admin/OfferZoneFilter"
+
+const ZONE_KEY = "admin_bogo_zone"
+const VIEWS = ["added", "all", "restaurants"]
 
 const errorMessage = (err, fallback) => err?.response?.data?.message || fallback
 
@@ -291,6 +296,11 @@ const ConfirmDialog = ({ confirm, busy, onClose }) => (
   </Dialog>
 )
 
+/** Grey pulsing bar shown in place of a count while it loads. */
+const CountSkeleton = ({ className = "" }) => (
+  <span className={`inline-block h-3.5 rounded bg-slate-200 animate-pulse align-middle ${className}`} />
+)
+
 /** Restaurant logo, or its first letter when there's no photo. */
 const RestaurantThumb = ({ src, name }) =>
   src ? (
@@ -348,8 +358,23 @@ export default function BogoOffers() {
   const [editingLimits, setEditingLimits] = useState(null)
 
   // "added" = current BOGO offers; "all" = every approved dish; "restaurants" = restaurant list,
-  // or one restaurant's dishes once openRestaurant is set.
-  const [view, setView] = useState("added")
+  // or one restaurant's dishes once openRestaurant is set. Kept in the URL (?tab=) so a refresh
+  // stays on the same tab.
+  const [searchParams, setSearchParams] = useSearchParams()
+  const view = VIEWS.includes(searchParams.get("tab")) ? searchParams.get("tab") : "added"
+  const setView = useCallback(
+    (next) =>
+      setSearchParams(
+        (prev) => {
+          const params = new URLSearchParams(prev)
+          if (next === "added") params.delete("tab")
+          else params.set("tab", next)
+          return params
+        },
+        { replace: true },
+      ),
+    [setSearchParams],
+  )
   const [openRestaurant, setOpenRestaurant] = useState(null)
   const [searchQuery, setSearchQuery] = useState("")
   const [searchResults, setSearchResults] = useState([])
@@ -360,17 +385,31 @@ export default function BogoOffers() {
   const [restaurantQuery, setRestaurantQuery] = useState("")
   const [restaurants, setRestaurants] = useState([])
   const [loadingRestaurants, setLoadingRestaurants] = useState(false)
+  // False until the restaurant list has loaded once (and again after a zone change). Until then the
+  // counts show skeletons, not 0 — the first request only starts after the search debounce.
+  const [restaurantsLoaded, setRestaurantsLoaded] = useState(false)
+  const restaurantsPending = !restaurantsLoaded || (loadingRestaurants && restaurants.length === 0)
 
+  // Zone filter: Added BOGO, All Items, All Restaurants and every search show only that zone's
+  // restaurants, and the bulk actions (select / unselect all) only touch that zone.
+  const [zoneId, setZoneId] = useState(() => readSavedZone(ZONE_KEY))
+  const [zone, setZone] = useState(null)
+
+  // Only the latest request may write the list (switching zones fast must not show the old zone).
+  const offersRequestRef = useRef(0)
   const loadBogoOffers = useCallback(async () => {
+    const requestId = ++offersRequestRef.current
     try {
-      const res = await adminAPI.getBogoOffers()
+      const res = await adminAPI.getBogoOffers({ zoneId })
+      if (requestId !== offersRequestRef.current) return
       setBogoOffers(res?.data?.data?.bogoOffers || [])
     } catch (err) {
-      toast.error(errorMessage(err, "Failed to load BOGO offers"))
+      if (requestId === offersRequestRef.current) toast.error(errorMessage(err, "Failed to load BOGO offers"))
     } finally {
-      setLoading(false)
+      // An older (superseded) request must not end the loading state of the newer one.
+      if (requestId === offersRequestRef.current) setLoading(false)
     }
-  }, [])
+  }, [zoneId])
 
   useEffect(() => {
     loadBogoOffers()
@@ -416,6 +455,7 @@ export default function BogoOffers() {
         const res = await adminAPI.searchBogoFoods({
           search: searchQuery.trim(),
           restaurantId: openRestaurantId,
+          zoneId,
           page: dishPage,
           limit: dishPageSize,
         })
@@ -440,7 +480,7 @@ export default function BogoOffers() {
       cancelled = true
       clearTimeout(t)
     }
-  }, [searchQuery, showDishes, openRestaurantId, dishPage, dishPageSize, refreshKey, dishReloadKey])
+  }, [searchQuery, showDishes, openRestaurantId, zoneId, dishPage, dishPageSize, refreshKey, dishReloadKey])
 
   // Added BOGO tab: searched and paged here (the whole list is loaded); rows can be ticked for Remove
   // selected. A restaurant with every dish BOGO shows as one row; opening it lists its dishes.
@@ -458,25 +498,32 @@ export default function BogoOffers() {
     if (view !== "added") return
     let cancelled = false
     adminAPI
-      .getBogoRestaurants()
+      .getBogoRestaurants({ zoneId })
       .then((res) => !cancelled && setRestaurantStats(res?.data?.data?.restaurants || []))
       .catch((err) => !cancelled && toast.error(errorMessage(err, "Failed to load restaurants")))
     return () => {
       cancelled = true
     }
-  }, [view, offerCount, refreshKey])
+  }, [view, offerCount, refreshKey, zoneId])
 
+  // Only the latest request may write the list (a slow old-zone reply must not overwrite the new zone).
+  const restaurantsRequestRef = useRef(0)
   const loadRestaurants = useCallback(async (search) => {
+    const requestId = ++restaurantsRequestRef.current
     setLoadingRestaurants(true)
     try {
-      const res = await adminAPI.getBogoRestaurants({ search: search.trim() })
+      const res = await adminAPI.getBogoRestaurants({ search: search.trim(), zoneId })
+      if (requestId !== restaurantsRequestRef.current) return
       setRestaurants(res?.data?.data?.restaurants || [])
     } catch (err) {
-      toast.error(errorMessage(err, "Failed to load restaurants"))
+      if (requestId === restaurantsRequestRef.current) toast.error(errorMessage(err, "Failed to load restaurants"))
     } finally {
-      setLoadingRestaurants(false)
+      if (requestId === restaurantsRequestRef.current) {
+        setLoadingRestaurants(false)
+        setRestaurantsLoaded(true)
+      }
     }
-  }, [])
+  }, [zoneId])
 
   useEffect(() => {
     if (view !== "restaurants" || openRestaurant) return
@@ -498,6 +545,28 @@ export default function BogoOffers() {
     resetDishList()
   }
 
+  // New zone: back to the tab's top level (an open restaurant may not be in the new zone), page 1,
+  // and no ticks left over from the old zone.
+  const zoneIdRef = useRef(zoneId)
+  const handleZoneChange = useCallback((id, z) => {
+    setZone(z)
+    saveZone(ZONE_KEY, id)
+    if (zoneIdRef.current === id) return
+    zoneIdRef.current = id
+    setZoneId(id)
+    // Drop the old zone's data so its counts don't show while the new zone loads.
+    setLoading(true)
+    setBogoOffers([])
+    setRestaurants([])
+    setRestaurantsLoaded(false)
+    setRestaurantStats([])
+    setOpenRestaurant(null)
+    setOpenAddedRestaurant(null)
+    setSelectedIds(new Set())
+    setDishPage(1)
+    setAddedPage(1)
+  }, [])
+
   const openAddedRestaurantDishes = (restaurant) => {
     setOpenAddedRestaurant(restaurant)
     setAddedQuery("")
@@ -513,7 +582,8 @@ export default function BogoOffers() {
 
   // Select (restaurant only) / unselect all act on every dish matching the search (all pages), on the
   // server; out-of-stock dishes are included.
-  const dishFilter = { search: searchQuery.trim(), restaurantId: openRestaurantId }
+  const dishFilter = { search: searchQuery.trim(), restaurantId: openRestaurantId, zoneId }
+  const zoneLabel = zoneId ? (zone ? zoneName(zone) : "this zone") : ""
 
   // Added BOGO tab: fully-BOGO restaurants as restaurant rows, every other offer as an item row.
   const offersByRestaurant = new Map()
@@ -629,14 +699,14 @@ export default function BogoOffers() {
 
   const askUnselectAllRestaurants = () =>
     setConfirm({
-      title: "Remove every BOGO offer?",
-      message: `All ${pluralItems(bogoOffers.length)} will no longer be Buy 1 Get 1 Free, from every restaurant. You can add them again anytime.`,
+      title: zoneId ? `Remove every BOGO offer in ${zoneLabel}?` : "Remove every BOGO offer?",
+      message: `All ${pluralItems(bogoOffers.length)} will no longer be Buy 1 Get 1 Free, from every restaurant${zoneId ? ` in ${zoneLabel}` : ""}. You can add them again anytime.`,
       confirmLabel: "Yes, remove all",
       busyLabel: "Removing...",
       tone: "danger",
       run: () =>
         runBulk(async () => {
-          const res = await adminAPI.removeBogoRestaurants({ all: true })
+          const res = await adminAPI.removeBogoRestaurants({ all: true, zoneId })
           toast.success(`${pluralItems(res?.data?.data?.removed ?? 0)} removed from BOGO offers`)
         }, "Failed to remove offers"),
     })
@@ -732,9 +802,19 @@ export default function BogoOffers() {
             <DefaultLimitsPanel onSaved={loadBogoOffers} />
           </div>
 
-          <div className="flex flex-wrap items-center gap-2 mt-5">
+          <div className="flex flex-wrap items-start justify-between gap-3 mt-5">
+          <div className="flex flex-wrap items-center gap-2">
             {[
-              { value: "added", label: `Added BOGO (${bogoOffers.length})` },
+              {
+                value: "added",
+                label: loading ? (
+                  <span className="inline-flex items-center gap-1.5">
+                    Added BOGO <CountSkeleton className={`w-5 ${view === "added" ? "bg-white/40" : ""}`} />
+                  </span>
+                ) : (
+                  `Added BOGO (${bogoOffers.length})`
+                ),
+              },
               { value: "all", label: "All Items" },
               { value: "restaurants", label: "All Restaurants" },
             ].map((tab) => (
@@ -747,6 +827,15 @@ export default function BogoOffers() {
                 {tab.label}
               </button>
             ))}
+          </div>
+          <div className="flex flex-col items-end gap-1 ml-auto">
+            <OfferZoneFilter value={zoneId} onChange={handleZoneChange} disabled={bulkBusy} />
+            {zoneId && (
+              <p className="text-xs text-slate-500 text-right">
+                Showing only restaurants in <span className="font-semibold text-slate-700">{zoneLabel}</span> · bulk actions apply to this zone only
+              </p>
+            )}
+          </div>
           </div>
         </div>
 
@@ -766,10 +855,17 @@ export default function BogoOffers() {
                 />
               </div>
               <div className="flex flex-wrap items-center justify-between gap-2 mb-3">
+                {/* First load (or new zone): counts aren't known yet, so show placeholders instead of 0. */}
+                {restaurantsPending ? (
+                  <div className="flex items-center gap-2 text-xs text-slate-500" aria-label="Loading counts">
+                    Total <CountSkeleton className="w-20" /> · <CountSkeleton className="w-36" />
+                  </div>
+                ) : (
                 <p className="text-xs text-slate-500">
                   Total <span className="font-semibold text-slate-700">{restaurants.length} {restaurants.length === 1 ? "restaurant" : "restaurants"}</span>
                   {restaurantQuery.trim() ? " (matching your search)" : ""} · {restaurantsWithBogo} {restaurantsWithBogo === 1 ? "restaurant" : "restaurants"} with BOGO offer
                 </p>
+                )}
                 <div className="flex items-center gap-2">
                   <button
                     type="button"
@@ -781,7 +877,7 @@ export default function BogoOffers() {
                   </button>
                 </div>
               </div>
-              {loadingRestaurants && restaurants.length === 0 ? (
+              {restaurantsPending ? (
                 <div className="flex items-center gap-2 text-sm text-slate-500 py-4">
                   <Loader2 className="h-4 w-4 animate-spin" /> Loading restaurants...
                 </div>
@@ -861,7 +957,9 @@ export default function BogoOffers() {
                   <p className="text-sm font-semibold text-slate-900 truncate">{openRestaurant.name}</p>
                 </div>
               ) : (
-                <p className="text-xs text-slate-500 mb-3">All approved dishes from every restaurant.</p>
+                <p className="text-xs text-slate-500 mb-3">
+                  All approved dishes from every restaurant{zoneId ? ` in ${zoneLabel}` : ""}.
+                </p>
               )}
               <div className="relative mb-3">
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
@@ -992,7 +1090,7 @@ export default function BogoOffers() {
             </div>
           ) : bogoOffers.length === 0 ? (
             <p className="text-sm text-slate-500 text-center py-12">
-              No BOGO offers yet. Open "All Items" or "All Restaurants" to add dishes as Buy 1 Get 1 Free.
+              {zoneId ? `No BOGO offers in ${zoneLabel} yet.` : "No BOGO offers yet."} Open "All Items" or "All Restaurants" to add dishes as Buy 1 Get 1 Free.
             </p>
           ) : (
             <>

@@ -20,7 +20,7 @@ import {
 
 export async function listBogoOffers(req, res, next) {
     try {
-        const bogoOffers = await listBogoOffersAdmin();
+        const bogoOffers = await listBogoOffersAdmin(req.query || {});
         return sendResponse(res, 200, 'BOGO offers fetched', { bogoOffers });
     } catch (error) {
         next(error);

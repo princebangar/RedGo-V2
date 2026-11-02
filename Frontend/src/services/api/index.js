@@ -786,8 +786,9 @@ export const adminAPI = {
     }),
 
   /** Combo Offers (admin) — home page combo slider */
-  getComboOffers: () =>
-    apiClient.get("/food/admin/combo-offers", { contextModule: "admin" }),
+  /** params: { zoneId } — empty = every zone */
+  getComboOffers: (params = {}) =>
+    apiClient.get("/food/admin/combo-offers", { params, contextModule: "admin" }),
   searchComboFoods: (params = {}) =>
     apiClient.get("/food/admin/combo-offers/search-foods", { params, contextModule: "admin" }),
   addComboOffer: (foodId) =>
@@ -805,8 +806,9 @@ export const adminAPI = {
     apiClient.patch(`/food/admin/combo-offers/${String(id)}/status`, {}, { contextModule: "admin" }),
 
   /** Buy One Get One (BOGO) Offers (admin) */
-  getBogoOffers: () =>
-    apiClient.get("/food/admin/bogo-offers", { contextModule: "admin" }),
+  /** params: { zoneId } — empty = every zone */
+  getBogoOffers: (params = {}) =>
+    apiClient.get("/food/admin/bogo-offers", { params, contextModule: "admin" }),
   searchBogoFoods: (params = {}) =>
     apiClient.get("/food/admin/bogo-offers/search-foods", { params, contextModule: "admin" }),
   // limits: { maxFreePerOrder, usageLimitPerUser } (usageLimitPerUser 0 = unlimited)

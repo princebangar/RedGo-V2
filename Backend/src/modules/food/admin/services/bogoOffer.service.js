@@ -9,7 +9,9 @@ import {
     buildCandidateFoodFilter,
     toCandidateFoodRows,
     CANDIDATE_FOOD_SORT,
-    CANDIDATE_FOOD_FIELDS
+    CANDIDATE_FOOD_FIELDS,
+    zoneRestaurantMatch,
+    offerZoneFilter
 } from './comboOffer.service.js';
 import { invalidateCache } from '../../../../middleware/cache.js';
 import { BOGO_DEFAULT_LIMITS_KEY, effectiveBogoLimits, getBogoDefaultLimits } from './bogoPricing.service.js';
@@ -31,9 +33,9 @@ async function invalidateMenuCache() {
     }
 }
 
-/** Admin list: every BOGO entry (active or not) with the dish + restaurant it points at. */
-export async function listBogoOffersAdmin() {
-    const docs = await FoodBogoOffer.find({}).sort({ sortOrder: 1, createdAt: 1 }).lean();
+/** Admin list: every BOGO entry (active or not) with the dish + restaurant it points at. zoneId narrows it to one zone. */
+export async function listBogoOffersAdmin({ zoneId = '' } = {}) {
+    const docs = await FoodBogoOffer.find(await offerZoneFilter(zoneId)).sort({ sortOrder: 1, createdAt: 1 }).lean();
     return toAdminBogoRows(docs);
 }
 
@@ -89,10 +91,13 @@ async function toAdminBogoRows(docs) {
  * be a BOGO, not just restaurant offer/combo items. Without a restaurant only approved restaurants
  * count (banned / deleted ones aren't shown to users), so All Items matches the All Restaurants totals.
  */
-async function buildBogoCandidateFilter({ search = '', restaurantId = '' } = {}) {
-    const filter = await buildCandidateFoodFilter({ search, restaurantId, onlyOffers: 'false' });
-    if (!filter.restaurantId) {
-        const restaurants = await FoodRestaurant.find({ status: 'approved' }).select('_id').lean();
+async function buildBogoCandidateFilter({ search = '', restaurantId = '', zoneId = '' } = {}) {
+    const filter = await buildCandidateFoodFilter({ search, restaurantId, zoneId, onlyOffers: 'false' });
+    // No restaurant picked: only approved restaurants (of the zone, if one is selected).
+    if (!restaurantId || !mongoose.Types.ObjectId.isValid(restaurantId)) {
+        const restaurants = await FoodRestaurant.find({ status: 'approved', ...zoneRestaurantMatch(zoneId) })
+            .select('_id')
+            .lean();
         filter.restaurantId = { $in: restaurants.map((r) => r._id) };
     }
     return filter;
@@ -118,9 +123,9 @@ const isAddableCandidate = (food) => !food.isBogo;
  * (already BOGO) and addable (what Select all would add). Counts run in the DB; only the page's
  * dishes are read.
  */
-export async function searchBogoCandidateFoods({ search = '', restaurantId = '', page = 1, limit = 20 } = {}) {
+export async function searchBogoCandidateFoods({ search = '', restaurantId = '', zoneId = '', page = 1, limit = 20 } = {}) {
     const size = Math.min(100, Math.max(1, parseInt(limit, 10) || 20));
-    const filter = await buildBogoCandidateFilter({ search, restaurantId });
+    const filter = await buildBogoCandidateFilter({ search, restaurantId, zoneId });
     const bogo = await FoodBogoOffer.find({ restaurantId: filter.restaurantId }).select('foodId').lean();
     const bogoFoodIds = bogo.map((d) => d.foodId);
 
@@ -149,16 +154,16 @@ export async function searchBogoCandidateFoods({ search = '', restaurantId = '',
     };
 }
 
-/** Select all: every addable dish matching the search / restaurant, across all pages. */
-export async function addBogoOffersByFilter({ search = '', restaurantId = '', ...limits } = {}) {
+/** Select all: every addable dish matching the search / restaurant / zone, across all pages. */
+export async function addBogoOffersByFilter({ search = '', restaurantId = '', zoneId = '', ...limits } = {}) {
     const limitFields = addLimitFields(limits);
-    const all = await findBogoCandidates({ search, restaurantId });
+    const all = await findBogoCandidates({ search, restaurantId, zoneId });
     return insertBogoOffers(all.filter((f) => isAddableCandidate(f)), limitFields);
 }
 
-/** Unselect all: drops the BOGO of every dish matching the search / restaurant, across all pages. */
-export async function removeBogoOffersByFilter({ search = '', restaurantId = '' } = {}) {
-    const ids = (await findBogoCandidates({ search, restaurantId })).filter((f) => f.isBogo).map((f) => f._id);
+/** Unselect all: drops the BOGO of every dish matching the search / restaurant / zone, across all pages. */
+export async function removeBogoOffersByFilter({ search = '', restaurantId = '', zoneId = '' } = {}) {
+    const ids = (await findBogoCandidates({ search, restaurantId, zoneId })).filter((f) => f.isBogo).map((f) => f._id);
     if (ids.length === 0) return { removed: 0 };
     const result = await FoodBogoOffer.deleteMany({ foodId: { $in: ids } });
     await invalidateMenuCache();
@@ -166,8 +171,8 @@ export async function removeBogoOffersByFilter({ search = '', restaurantId = '' 
 }
 
 /** All Restaurants tab: approved restaurants with their approved dish count and how many of those are BOGO. */
-export async function listBogoRestaurants({ search = '' } = {}) {
-    const filter = { status: 'approved' };
+export async function listBogoRestaurants({ search = '', zoneId = '' } = {}) {
+    const filter = { status: 'approved', ...zoneRestaurantMatch(zoneId) };
     const term = String(search || '').trim();
     if (term) {
         filter.restaurantName = { $regex: term.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), $options: 'i' };
@@ -205,10 +210,12 @@ export async function listBogoRestaurants({ search = '' } = {}) {
     });
 }
 
-/** Restaurant ids for a restaurant-wide action: { all: true } = every approved restaurant. */
-async function resolveRestaurantIds({ restaurantIds = [], all = false } = {}) {
+/** Restaurant ids for a restaurant-wide action: { all: true } = every approved restaurant (of the zone, if given). */
+async function resolveRestaurantIds({ restaurantIds = [], all = false, zoneId = '' } = {}) {
     if (all === true) {
-        const restaurants = await FoodRestaurant.find({ status: 'approved' }).select('_id').lean();
+        const restaurants = await FoodRestaurant.find({ status: 'approved', ...zoneRestaurantMatch(zoneId) })
+            .select('_id')
+            .lean();
         return restaurants.map((r) => r._id);
     }
     const ids = [...new Set((Array.isArray(restaurantIds) ? restaurantIds : []).map(String))].filter((id) =>
@@ -312,9 +319,9 @@ export async function addBogoOffersBulk({ foodIds = [], ...limits } = {}) {
  * Restaurant-wide add: every approved dish (in stock or not) of the given restaurants, or of every
  * approved restaurant with { all: true }. Dishes that are already BOGO are left as they are.
  */
-export async function addBogoOffersForRestaurants({ restaurantIds, all, ...limits } = {}) {
+export async function addBogoOffersForRestaurants({ restaurantIds, all, zoneId = '', ...limits } = {}) {
     const limitFields = addLimitFields(limits);
-    const ids = await resolveRestaurantIds({ restaurantIds, all });
+    const ids = await resolveRestaurantIds({ restaurantIds, all, zoneId });
     const foods = await FoodItem.find({ restaurantId: { $in: ids }, approvalStatus: 'approved' })
         .select('restaurantId')
         .sort({ restaurantId: 1, _id: -1 })
@@ -322,9 +329,14 @@ export async function addBogoOffersForRestaurants({ restaurantIds, all, ...limit
     return insertBogoOffers(foods, limitFields);
 }
 
-/** Restaurant-wide remove: drops every BOGO of the given restaurants, or every BOGO with { all: true }. */
-export async function removeBogoOffersForRestaurants({ restaurantIds, all } = {}) {
-    const filter = all === true ? {} : { restaurantId: { $in: await resolveRestaurantIds({ restaurantIds }) } };
+/**
+ * Restaurant-wide remove: drops every BOGO of the given restaurants, or with { all: true } every BOGO
+ * (only those of the zone's restaurants when zoneId is given).
+ */
+export async function removeBogoOffersForRestaurants({ restaurantIds, all, zoneId = '' } = {}) {
+    const filter = all === true
+        ? await offerZoneFilter(zoneId)
+        : { restaurantId: { $in: await resolveRestaurantIds({ restaurantIds }) } };
     const result = await FoodBogoOffer.deleteMany(filter);
     await invalidateMenuCache();
     return { removed: result.deletedCount || 0 };

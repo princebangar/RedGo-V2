@@ -13,7 +13,7 @@ import {
 
 export async function listComboOffers(req, res, next) {
     try {
-        const comboOffers = await listComboOffersAdmin();
+        const comboOffers = await listComboOffersAdmin(req.query || {});
         return sendResponse(res, 200, 'Combo offers fetched', { comboOffers });
     } catch (error) {
         next(error);

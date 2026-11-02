@@ -1,10 +1,14 @@
-import { useState, useEffect, useCallback } from "react"
+import { useState, useEffect, useCallback, useRef } from "react"
+import { useSearchParams } from "react-router-dom"
 import { Search, Trash2, ArrowUp, ArrowDown, Plus, Loader2 } from "lucide-react"
 import { adminAPI } from "@food/api"
 import { toast } from "sonner"
 import { Dialog, DialogContent, DialogTitle } from "@food/components/ui/dialog"
 import { Switch } from "@food/components/ui/switch"
 import dishFallbackImage from "@food/assets/placeholders/dish_fallback.webp"
+import OfferZoneFilter, { readSavedZone, saveZone, zoneName } from "@food/components/admin/OfferZoneFilter"
+
+const ZONE_KEY = "admin_combo_zone"
 
 const errorMessage = (err, fallback) => err?.response?.data?.message || fallback
 
@@ -34,23 +38,51 @@ export default function ComboOffers() {
   const [pendingRemove, setPendingRemove] = useState(null)
 
   // "added" = what users currently see; "offers" = restaurant offer/combo items to pick from.
-  const [view, setView] = useState("added")
+  // Kept in the URL (?tab=) so a refresh stays on the same tab.
+  const [searchParams, setSearchParams] = useSearchParams()
+  const view = searchParams.get("tab") === "offers" ? "offers" : "added"
+  const setView = useCallback(
+    (next) =>
+      setSearchParams(
+        (prev) => {
+          const params = new URLSearchParams(prev)
+          if (next === "added") params.delete("tab")
+          else params.set("tab", next)
+          return params
+        },
+        { replace: true },
+      ),
+    [setSearchParams],
+  )
   const [searchQuery, setSearchQuery] = useState("")
   const [searchResults, setSearchResults] = useState([])
   const [searching, setSearching] = useState(false)
   const [bulkBusy, setBulkBusy] = useState(false)
   const [confirmUnselectAll, setConfirmUnselectAll] = useState(false)
 
+  // Zone filter: every list (added combos, offer items, search) shows only that zone's restaurants.
+  const [zoneId, setZoneId] = useState(() => readSavedZone(ZONE_KEY))
+  const [zone, setZone] = useState(null)
+  const handleZoneChange = useCallback((id, z) => {
+    setZoneId(id)
+    setZone(z)
+    saveZone(ZONE_KEY, id)
+  }, [])
+
+  // Only the latest request may write the list (switching zones fast must not show the old zone).
+  const offersRequestRef = useRef(0)
   const loadComboOffers = useCallback(async () => {
+    const requestId = ++offersRequestRef.current
     try {
-      const res = await adminAPI.getComboOffers()
+      const res = await adminAPI.getComboOffers({ zoneId })
+      if (requestId !== offersRequestRef.current) return
       setComboOffers(res?.data?.data?.comboOffers || [])
     } catch (err) {
       toast.error(errorMessage(err, "Failed to load combo offers"))
     } finally {
       setLoading(false)
     }
-  }, [])
+  }, [zoneId])
 
   useEffect(() => {
     loadComboOffers()
@@ -74,7 +106,7 @@ export default function ComboOffers() {
     const t = setTimeout(async () => {
       setSearching(true)
       try {
-        const res = await adminAPI.searchComboFoods({ search: searchQuery.trim(), onlyOffers: true })
+        const res = await adminAPI.searchComboFoods({ search: searchQuery.trim(), onlyOffers: true, zoneId })
         if (!cancelled) setSearchResults(res?.data?.data?.foods || [])
       } catch (err) {
         if (!cancelled) toast.error(errorMessage(err, "Failed to search food items"))
@@ -86,7 +118,7 @@ export default function ComboOffers() {
       cancelled = true
       clearTimeout(t)
     }
-  }, [searchQuery, view, refreshKey])
+  }, [searchQuery, view, refreshKey, zoneId])
 
   const comboByFoodId = new Map(comboOffers.map((c) => [String(c.foodId), c]))
 
@@ -172,18 +204,26 @@ export default function ComboOffers() {
     }
   }
 
-  // Swap with the neighbour, then persist both positions as their list index.
+  // Swap with the neighbour by swapping their saved sort orders. The list can be one zone only, so
+  // writing list positions would clash with other zones' combos.
   const handleMove = async (index, direction) => {
     const target = index + direction
     if (target < 0 || target >= comboOffers.length) return
+    const moving = comboOffers[index]
+    const other = comboOffers[target]
+    let movingOrder = Number(other.sortOrder) || 0
+    let otherOrder = Number(moving.sortOrder) || 0
+    // Same saved order (old data): nudge so the swap actually changes the order.
+    if (movingOrder === otherOrder) movingOrder = otherOrder + (direction < 0 ? -1 : 1)
     const next = [...comboOffers]
-    ;[next[index], next[target]] = [next[target], next[index]]
+    next[target] = { ...moving, sortOrder: movingOrder }
+    next[index] = { ...other, sortOrder: otherOrder }
     setComboOffers(next)
-    setBusyId(next[target]._id)
+    setBusyId(moving._id)
     try {
       await Promise.all([
-        adminAPI.updateComboOfferOrder(next[index]._id, index + 1),
-        adminAPI.updateComboOfferOrder(next[target]._id, target + 1),
+        adminAPI.updateComboOfferOrder(moving._id, movingOrder),
+        adminAPI.updateComboOfferOrder(other._id, otherOrder),
       ])
     } catch (err) {
       toast.error(errorMessage(err, "Failed to update order"))
@@ -207,7 +247,8 @@ export default function ComboOffers() {
             </p>
           </div>
 
-          <div className="flex flex-wrap items-center gap-2 mt-5">
+          <div className="flex flex-wrap items-start justify-between gap-3 mt-5">
+          <div className="flex flex-wrap items-center gap-2">
             {[
               { value: "added", label: `Added Combos (${comboOffers.length})` },
               { value: "offers", label: "Restaurant Offers & Combos" },
@@ -221,6 +262,15 @@ export default function ComboOffers() {
                 {tab.label}
               </button>
             ))}
+          </div>
+          <div className="flex flex-col items-end gap-1 ml-auto">
+            <OfferZoneFilter value={zoneId} onChange={handleZoneChange} disabled={bulkBusy} />
+            {zoneId && (
+              <p className="text-xs text-slate-500 text-right">
+                Showing only restaurants in <span className="font-semibold text-slate-700">{zone ? zoneName(zone) : "this zone"}</span>
+              </p>
+            )}
+          </div>
           </div>
         </div>
 
@@ -335,7 +385,8 @@ export default function ComboOffers() {
             </div>
           ) : comboOffers.length === 0 ? (
             <p className="text-sm text-slate-500 text-center py-12">
-              No combo offers yet. Open "Restaurant Offers & Combos" and click Add on the items you want on the home page.
+              {zoneId ? "No combo offers in this zone yet. " : "No combo offers yet. "}
+              Open "Restaurant Offers & Combos" and click Add on the items you want on the home page.
             </p>
           ) : (
             <table className="w-full text-sm">

@@ -15,9 +15,35 @@ const toObjectIdOrThrow = (value, label) => {
     return id;
 };
 
-/** Admin list: every entry (active or not) with the dish + restaurant it points at. */
-export async function listComboOffersAdmin() {
-    const docs = await FoodComboOffer.find({}).sort({ sortOrder: 1, createdAt: 1 }).lean();
+/** Valid zone id from the admin zone filter, or '' (= every zone). */
+export const cleanZoneId = (zoneId) => {
+    const id = String(zoneId || '').trim();
+    return id && mongoose.Types.ObjectId.isValid(id) ? id : '';
+};
+
+/** Restaurant match for the admin zone filter: {} for every zone, else { zoneId }. */
+export const zoneRestaurantMatch = (zoneId) => {
+    const id = cleanZoneId(zoneId);
+    return id ? { zoneId: id } : {};
+};
+
+/** Ids of the restaurants in a zone (any status), or null when no zone is selected. */
+export async function restaurantIdsInZone(zoneId) {
+    const id = cleanZoneId(zoneId);
+    if (!id) return null;
+    const restaurants = await FoodRestaurant.find({ zoneId: id }).select('_id').lean();
+    return restaurants.map((r) => r._id);
+}
+
+/** Offer docs filter for the admin lists: every offer, or only those of the zone's restaurants. */
+export async function offerZoneFilter(zoneId) {
+    const ids = await restaurantIdsInZone(zoneId);
+    return ids ? { restaurantId: { $in: ids } } : {};
+}
+
+/** Admin list: every entry (active or not) with the dish + restaurant it points at. zoneId narrows it to one zone. */
+export async function listComboOffersAdmin({ zoneId = '' } = {}) {
+    const docs = await FoodComboOffer.find(await offerZoneFilter(zoneId)).sort({ sortOrder: 1, createdAt: 1 }).lean();
     if (docs.length === 0) return [];
 
     const [foods, restaurants] = await Promise.all([
@@ -68,10 +94,14 @@ const OFFER_NAME_PATTERN = 'combo|offer|deal|meal|free|buy|\\+';
  * Mongo filter for the approved dishes the admin can pick from (search by dish, category or restaurant
  * name). onlyOffers=true (default) limits it to items restaurants have created as offers / combos.
  */
-export async function buildCandidateFoodFilter({ search = '', restaurantId = '', onlyOffers = 'true' } = {}) {
+export async function buildCandidateFoodFilter({ search = '', restaurantId = '', onlyOffers = 'true', zoneId = '' } = {}) {
     const filter = { approvalStatus: 'approved' };
     if (restaurantId && mongoose.Types.ObjectId.isValid(restaurantId)) {
         filter.restaurantId = restaurantId;
+    } else {
+        // Zone filter: only dishes of restaurants in that zone.
+        const zoneIds = await restaurantIdsInZone(zoneId);
+        if (zoneIds) filter.restaurantId = { $in: zoneIds };
     }
     if (String(onlyOffers) !== 'false') {
         filter.$and = [{
@@ -84,7 +114,10 @@ export async function buildCandidateFoodFilter({ search = '', restaurantId = '',
     const term = String(search || '').trim();
     if (term) {
         const escaped = term.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-        const matchingRestaurants = await FoodRestaurant.find({ restaurantName: { $regex: escaped, $options: 'i' } })
+        const matchingRestaurants = await FoodRestaurant.find({
+            restaurantName: { $regex: escaped, $options: 'i' },
+            ...zoneRestaurantMatch(zoneId)
+        })
             .select('_id')
             .limit(50)
             .lean();
