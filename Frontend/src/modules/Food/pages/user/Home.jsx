@@ -525,8 +525,24 @@ export default function Home({ homeMode = null, isTabActive = true }) {
   const [isApplyingVegMode, setIsApplyingVegMode] = useState(false);
   const [isSwitchingOffVegMode, setIsSwitchingOffVegMode] = useState(false);
   const [popupPosition, setPopupPosition] = useState({ top: 0, left: 0, triangleLeft: 0 });
+  // Two Veg Mode toggles: one in the page header, one in the sticky header. Each needs its own
+  // ref: a shared ref went null when the sticky header unmounted, and the popup opened at (0,0).
   const vegModeToggleRef = useRef(null);
+  const stickyVegModeToggleRef = useRef(null);
   const [isStickyHeaderVisible, setIsStickyHeaderVisible] = useState(false);
+
+  /** Popup position under whichever Veg Mode toggle is on screen (right-aligned to it). */
+  const computeVegPopupPosition = useCallback(() => {
+    const isOnScreen = (r) => r && r.width > 0 && r.bottom > 0 && r.top < window.innerHeight;
+    const stickyRect = stickyVegModeToggleRef.current?.getBoundingClientRect();
+    const headerRect = vegModeToggleRef.current?.getBoundingClientRect();
+    const rect = isOnScreen(stickyRect) ? stickyRect : isOnScreen(headerRect) ? headerRect : null;
+    if (!rect) return null;
+    const screenWidth = window.innerWidth;
+    const popupWidth = Math.min(screenWidth - 32, 320);
+    const left = Math.max(16, Math.min(rect.right - popupWidth, screenWidth - popupWidth - 16));
+    return { top: rect.bottom + 10, left, triangleLeft: rect.left + rect.width / 2 - left };
+  }, []);
   const [showStickySearch, setShowStickySearch] = useState(false);
   const lastScrollY = useRef(0);
 
@@ -1033,24 +1049,15 @@ export default function Home({ homeMode = null, isTabActive = true }) {
     }
 
     if (newValue && !prevVegMode) {
-      // Veg mode was just turned ON
-      // Calculate popup position relative to toggle (right-aligned to button)
-      if (vegModeToggleRef.current) {
-        const rect = vegModeToggleRef.current.getBoundingClientRect();
-        const screenWidth = window.innerWidth;
-        const popupWidth = Math.min(screenWidth - 32, 320);
-
-        // Right-align popup to the button's right edge
-        let left = rect.right - popupWidth;
-        left = Math.max(16, Math.min(left, screenWidth - popupWidth - 16));
-
-        const triangleLeft = rect.left + rect.width / 2 - left;
-
-        setPopupPosition({
-          top: rect.bottom + 10,
-          left: left,
-          triangleLeft: triangleLeft
-        });
+      // Veg mode was just turned ON: open the popup under the toggle that was tapped.
+      const position = computeVegPopupPosition();
+      if (position) {
+        setPopupPosition(position);
+      } else {
+        // Toggle not measurable: centre the popup near the top instead of pinning it to (0,0).
+        const popupWidth = Math.min(window.innerWidth - 32, 320);
+        const left = (window.innerWidth - popupWidth) / 2;
+        setPopupPosition({ top: 80, left, triangleLeft: popupWidth - 30 });
       }
       setShowVegModePopup(true);
       // Don't update context yet - wait for user to apply or cancel
@@ -1080,23 +1087,10 @@ export default function Home({ homeMode = null, isTabActive = true }) {
   useEffect(() => {
     if (!showVegModePopup) return;
 
+    // No toggle on screen (e.g. mid header swap): keep the last good position.
     const updatePosition = () => {
-      if (vegModeToggleRef.current) {
-        const rect = vegModeToggleRef.current.getBoundingClientRect();
-        const screenWidth = window.innerWidth;
-        const popupWidth = Math.min(screenWidth - 32, 320);
-
-        let left = rect.right - popupWidth;
-        left = Math.max(16, Math.min(left, screenWidth - popupWidth - 16));
-
-        const triangleLeft = rect.left + rect.width / 2 - left;
-
-        setPopupPosition({
-          top: rect.bottom + 10,
-          left: left,
-          triangleLeft: triangleLeft
-        });
-      }
+      const position = computeVegPopupPosition();
+      if (position) setPopupPosition(position);
     };
 
     window.addEventListener("scroll", updatePosition, true);
@@ -1106,7 +1100,7 @@ export default function Home({ homeMode = null, isTabActive = true }) {
       window.removeEventListener("scroll", updatePosition, true);
       window.removeEventListener("resize", updatePosition);
     };
-  }, [showVegModePopup]);
+  }, [showVegModePopup, computeVegPopupPosition]);
 
 
   // Keep index within current banner bounds after admin updates/reloads.
@@ -3277,7 +3271,7 @@ export default function Home({ homeMode = null, isTabActive = true }) {
 
                             {/* Veg Mode Toggle in Sticky Header */}
                             <div
-                              ref={vegModeToggleRef}
+                              ref={stickyVegModeToggleRef}
                               className="flex flex-col items-center gap-1 shrink-0 antialiased"
                             >
                               <span className="text-[8px] font-black text-gray-500 dark:text-gray-400 uppercase tracking-[0.1em] leading-none">Veg Mode</span>
