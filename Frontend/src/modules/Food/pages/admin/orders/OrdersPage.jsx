@@ -16,8 +16,8 @@ import { useOrdersManagement } from "@food/components/admin/orders/useOrdersMana
 import { Loader2 } from "lucide-react"
 import { OrdersDashboardSkeleton, TableSkeleton } from "@food/components/ui/loading-skeletons"
 import { refreshSidebarBadges } from "@food/components/admin/AdminSidebar"
-const alertSound = "/restaurant_alert.mp3"
-const originalSound = "/original.mp3"
+// Admin's own "tick tick" order alert (restaurant_alert.mp3 is the restaurant app's sound).
+const alertSound = "/alert.mp3"
 const debugLog = (...args) => {}
 const debugWarn = (...args) => {}
 const debugError = (...args) => {}
@@ -84,10 +84,8 @@ export default function OrdersPage({ statusKey = "all" }) {
   }, [])
 
   const playDeliveryStyleBuzz = useCallback(async () => {
-    const selectedSound = localStorage.getItem("delivery_alert_sound") || "zomato_tone"
-    const soundFile = selectedSound === "original"
-      ? resolveAudioSource(originalSound, "admin-original")
-      : resolveAudioSource(alertSound, "admin-alert")
+    // Always the admin alert; the rider app's "delivery_alert_sound" setting does not apply here.
+    const soundFile = resolveAudioSource(alertSound, "admin-alert")
 
     try {
       if (!notificationAudioRef.current) {
@@ -267,10 +265,7 @@ export default function OrdersPage({ statusKey = "all" }) {
         fallbackAudioRef.current.muted = false
 
         if (!notificationAudioRef.current) {
-          const selectedSound = localStorage.getItem("delivery_alert_sound") || "zomato_tone"
-          const soundFile = selectedSound === "original"
-            ? resolveAudioSource(originalSound, "admin-original")
-            : resolveAudioSource(alertSound, "admin-alert")
+          const soundFile = resolveAudioSource(alertSound, "admin-alert")
           notificationAudioRef.current = new Audio(soundFile)
           notificationAudioRef.current.preload = "auto"
           notificationAudioRef.current.volume = 1
