@@ -817,35 +817,18 @@ export async function createOrder(userId, dto, options = {}) {
               await FoodOrder.updateOne({ _id: order._id }, { $set: updateFields });
             }
             // The ledger row was created before the rider earning was known (it was 0 then).
-            // Keep riderShare / platformNetProfit in sync with the order.
+            // Keep riderShare / platformNetProfit in sync with the order. Use the order's value:
+            // the ledger's pricing snapshot has no markupTotal, so recomputing from it drops the markup.
             if (earningResolved.distanceKm != null) {
-              const rider = Number(earningResolved.riderEarning ?? 0);
-              await FoodTransaction.updateOne({ orderId: order._id }, [
+              await FoodTransaction.updateOne(
+                { orderId: order._id },
                 {
                   $set: {
-                    'amounts.riderShare': rider,
-                    'amounts.platformNetProfit': {
-                      $max: [
-                        0,
-                        {
-                          $subtract: [
-                            {
-                              $add: [
-                                { $ifNull: ['$pricing.platformFee', 0] },
-                                { $ifNull: ['$pricing.deliveryFee', 0] },
-                                { $ifNull: ['$pricing.restaurantCommission', 0] },
-                                { $ifNull: ['$pricing.markupTotal', 0] },
-                              ],
-                            },
-                            // platform-funded coupon discount + rider earning
-                            { $add: [{ $ifNull: ['$pricing.discount', 0] }, rider] },
-                          ],
-                        },
-                      ],
-                    },
+                    'amounts.riderShare': Number(earningResolved.riderEarning ?? 0),
+                    'amounts.platformNetProfit': updateFields.platformProfit,
                   },
                 },
-              ]);
+              );
             }
             // Backfill restaurant coords when missing
             if (earningResolved.restaurantGeocoded && earningResolved.restaurantPoint) {
