@@ -5,7 +5,7 @@ import { useState, useEffect, useRef } from "react"
 import { motion, AnimatePresence } from "framer-motion"
 import dishFallbackImage from "@food/assets/placeholders/dish_fallback.webp"
 import { isBottomNavVisible, subscribeBottomNavVisibility } from "@food/utils/bottomNavEvents"
-import { flyToCart, sourceToViewportPoint, FLY_ARRIVE_MS } from "@food/utils/flyToCart"
+import { flyToCart, sourceToViewportPoint, isShownOnScreen, FLY_ARRIVE_MS } from "@food/utils/flyToCart"
 
 // Mobile: the card sits 16px above the bottom nav (nav = bottom-6 + 72px tall). When the nav
 // hides on scroll, the card slides down but keeps a comfortable gap from the screen edge.
@@ -22,6 +22,8 @@ export default function StickyCartCard() {
   const [flying, setFlying] = useState(null)
   const cardRef = useRef(null)
   const thumbsRef = useRef(null)
+  // Always rendered: tells us whether this page is on screen or kept alive in a hidden tab.
+  const anchorRef = useRef(null)
   const cartCount = getCartCount()
   const prevCountRef = useRef(cartCount)
   // Dishes whose photo was already in the card before this render (read by the add effect below).
@@ -49,6 +51,9 @@ export default function StickyCartCard() {
   useEffect(() => {
     const from = sourceToViewportPoint(lastAddEvent?.sourcePosition)
     if (!from) return undefined
+    // Home stays mounted (hidden) behind restaurant pages and the other Home tab. Only the
+    // visible page may fly, otherwise a second photo shoots to the top-left corner.
+    if (!isShownOnScreen(anchorRef.current)) return undefined
     const key = `${Date.now()}-${Math.random()}`
     setIsVisible(true)
     const productId = String(lastAddEvent.product?.id || "")
@@ -76,7 +81,7 @@ export default function StickyCartCard() {
   })
 
   // Don't render the card if cart is empty
-  if (cartCount === 0) return null
+  if (cartCount === 0) return <span ref={anchorRef} aria-hidden="true" className="sr-only" />
 
   const restaurantName = cart[0]?.restaurant || "Restaurant"
   const restaurantSlug = restaurantName.toLowerCase().replace(/\s+/g, "-")
@@ -90,6 +95,7 @@ export default function StickyCartCard() {
 
   return (
     <>
+      <span ref={anchorRef} aria-hidden="true" className="sr-only" />
       <AnimatePresence>
         {isVisible && (
           <motion.div

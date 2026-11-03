@@ -82,6 +82,15 @@ export function flyToCart({ image, from, to, size = FLY_SIZE_PX }) {
   })
 }
 
+/**
+ * True when `el` is actually laid out on screen. Pages kept alive in a hidden tab pane
+ * (display: none) still get cart events; their cart pill must not launch a flight, or the
+ * photo flies to (0, 0) at the top-left of the screen.
+ */
+export function isShownOnScreen(el) {
+  return Boolean(el?.isConnected) && el.getClientRects().length > 0
+}
+
 /** Viewport point of a captured add-button position, corrected for scroll since the tap. */
 export function sourceToViewportPoint(source) {
   if (!source || source.viewportX === undefined) return null

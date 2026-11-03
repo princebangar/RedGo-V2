@@ -3,7 +3,7 @@ import { useLocation, useNavigate } from 'react-router-dom';
 import { useCart } from "@food/context/CartContext";
 import { useProfile } from "@food/context/ProfileContext";
 import { useEffect, useRef, useState } from 'react';
-import { flyToCart, sourceToViewportPoint, FLY_ARRIVE_MS } from "@food/utils/flyToCart";
+import { flyToCart, sourceToViewportPoint, isShownOnScreen, FLY_ARRIVE_MS } from "@food/utils/flyToCart";
 import dishFallbackImage from "@food/assets/placeholders/dish_fallback.webp";
 
 /** Cart line ids are "<itemId>::<variantId>"; thumbnails are matched on the dish id alone. */
@@ -40,6 +40,8 @@ export default function AddToCartAnimation({
   const location = useLocation();
   const navigate = useNavigate();
   const linkRef = useRef(null);
+  // Always rendered: tells us whether this page is on screen or kept alive in a hidden tab.
+  const anchorRef = useRef(null);
   const [flyingProduct, setFlyingProduct] = useState(null);
 
   // Hide pill on cart pages, order pages, and account page (if enabled)
@@ -66,6 +68,8 @@ export default function AddToCartAnimation({
   useEffect(() => {
     const from = sourceToViewportPoint(lastAddEvent?.sourcePosition)
     if (!from) return undefined
+    // Hidden kept-alive page (e.g. Under250 tab behind another page): only the visible page flies.
+    if (!isShownOnScreen(anchorRef.current)) return undefined
     const key = `${Date.now()}-${Math.random()}`
     const productId = String(lastAddEvent.product?.id || '')
     // "+" on a dish already in the pill: its photo stays put; only a new dish waits for the flight.
@@ -97,6 +101,7 @@ export default function AddToCartAnimation({
 
   return (
     <>
+      <span ref={anchorRef} aria-hidden="true" className="sr-only" />
       <AnimatePresence>
         {itemCount > 0 && !shouldHidePill && (
           <motion.div

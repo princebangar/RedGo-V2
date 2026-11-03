@@ -120,7 +120,9 @@ export async function getActiveTripsDelivery(deliveryPartnerId) {
         'restaurantName name phone ownerPhone primaryContactNumber location addressLine1 addressLine2 area city state pincode landmark profileImage',
     })
     .populate({ path: 'userId', select: 'name phone' })
-    .sort({ updatedAt: -1 })
+    // Queue order: the order the rider got first stays on top, later ones (auto or admin
+    // assigned) go below. updatedAt would reshuffle the list on every status change.
+    .sort({ 'dispatch.acceptedAt': 1, createdAt: 1 })
     .lean();
 
   const enriched = await Promise.all(

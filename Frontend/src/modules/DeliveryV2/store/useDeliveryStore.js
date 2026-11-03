@@ -53,6 +53,31 @@ const dedupeOrdersByIdentity = (orders = []) => {
 
 const defaultCapacity = () => ({ max: 1, active: 0, remaining: 1 });
 
+const acceptedAtMs = (order) => {
+  const raw = order?.dispatch?.acceptedAt || order?.dispatch?.assignedAt || order?.acceptedAt;
+  const ms = raw ? new Date(raw).getTime() : NaN;
+  return Number.isFinite(ms) ? ms : Number.POSITIVE_INFINITY;
+};
+
+/**
+ * Accepted queue in the order the rider got them: the first order stays on top, later ones
+ * (auto-accepted or admin-assigned) go below. Stable, so orders without a timestamp keep
+ * their position (a just-accepted one is appended, so it lands last).
+ */
+const sortAcceptedQueue = (orders = []) =>
+  orders
+    .map((order, index) => ({ order, index, at: acceptedAtMs(order) }))
+    .sort((a, b) => (a.at === b.at ? a.index - b.index : a.at - b.at))
+    .map((entry) => entry.order);
+
+/** Keep the focused order if it is still in the queue; otherwise fall back to the first one. */
+const resolveFocusInQueue = (orders, preferredId) => {
+  if (preferredId && orders.some((order) => orderMatchesKey(order, preferredId))) {
+    return String(preferredId);
+  }
+  return resolveOrderKey(orders[0]) || null;
+};
+
 const mapDeliveryPhaseToTripStatus = (order) => {
   const backendStatus = String(
     order?.deliveryStatus ||
@@ -178,13 +203,15 @@ export const useDeliveryStore = create(
         if (!orderId) return;
         set((state) => {
           const newOrders = state.newOrders.filter((item) => !ordersShareIdentity(item, order));
-          const acceptedOrders = [
-            order,
-            ...state.acceptedOrders.filter((item) => !ordersShareIdentity(item, order)),
-          ];
-          const hadAcceptedOrders = state.acceptedOrders.length > 0;
-          const focusedOrderId = hadAcceptedOrders || state.focusedOrderId
-            ? (state.focusedOrderId || resolveOrderKey(state.acceptedOrders[0]) || orderId)
+          const existingIndex = state.acceptedOrders.findIndex((item) => ordersShareIdentity(item, order));
+          const acceptedOrders = sortAcceptedQueue(
+            existingIndex >= 0
+              ? state.acceptedOrders.map((item, index) => (index === existingIndex ? { ...item, ...order } : item))
+              : [...state.acceptedOrders, order],
+          );
+          // Rider already on a trip: the feed stays on that trip; the new order waits in the queue.
+          const focusedOrderId = state.acceptedOrders.length > 0
+            ? resolveFocusInQueue(state.acceptedOrders, state.focusedOrderId) || orderId
             : orderId;
           const orderSessions = {
             ...state.orderSessions,
@@ -212,13 +239,14 @@ export const useDeliveryStore = create(
       },
 
       setAcceptedOrders: (orders, options = {}) => {
-        const list = Array.isArray(orders) ? orders : [];
+        const list = sortAcceptedQueue(Array.isArray(orders) ? orders : []);
         set((state) => {
-          const focusedOrderId =
-            options.focusedOrderId ??
-            state.focusedOrderId ??
-            resolveOrderKey(list[0]) ??
-            null;
+          // A stale focus (order already done / moved away) falls back to the oldest order,
+          // never to whichever order was assigned last.
+          const focusedOrderId = resolveFocusInQueue(
+            list,
+            options.focusedOrderId ?? state.focusedOrderId,
+          );
           const max = options.capacity?.max ?? state.capacity?.max ?? 1;
           const active = list.length;
           const orderSessions = { ...state.orderSessions };

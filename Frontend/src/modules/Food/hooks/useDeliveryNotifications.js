@@ -1203,9 +1203,22 @@ export const useDeliveryNotifications = () => {
       if (!orderData) return;
       const mapped = mapOrderLocations(orderData);
       if (mapped) {
+        // Admin assigned this order. It joins the Accepted queue below the current trip;
+        // the feed keeps showing the order the rider is already on.
+        const alreadyQueued = isOrderInAcceptedQueue(mapped);
+        const hadActiveTrip = (useDeliveryStore.getState().acceptedOrders || []).length > 0;
         markOrderIdsProcessed(mapped);
         clearOrderMuteState(mapped);
         useDeliveryStore.getState().acceptOrderToQueue(mapped);
+        if (!alreadyQueued) {
+          const label = mapped.orderId || mapped.order_id || '';
+          toast.success(
+            hadActiveTrip
+              ? `New order ${label ? `#${label} ` : ''}assigned to you. Check Orders > Accepted.`
+              : `New order ${label ? `#${label} ` : ''}assigned to you.`,
+            { id: `admin-assigned-${resolveOrderKey(mapped) || label}`, duration: 5000 },
+          );
+        }
         stopAlertLoop();
         activeOrderRef.current = null;
         setNewOrder(null);
