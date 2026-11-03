@@ -1,4 +1,5 @@
 import { FoodRestaurant } from '../../restaurant/models/restaurant.model.js';
+import { FoodTransaction } from '../models/foodTransaction.model.js';
 import { logger } from '../../../../utils/logger.js';
 import {
   resolveOrderDistanceKm,
@@ -186,17 +187,35 @@ export async function ensureRiderEarningOnOrder(order) {
     }
   }
 
-  // Keep platformProfit consistent with order creation and the ledger (fees + markup + commission - rider)
+  // Keep platformProfit consistent with order creation and the ledger
+  // (fees + markup + commission - platform-funded coupon discount - rider)
   const deliveryFee = Number(order.pricing?.deliveryFee || 0);
   const platformFee = Number(order.pricing?.platformFee || 0);
   const markupTotal = Number(order.pricing?.markupTotal || 0);
   const restaurantCommission = Number(order.pricing?.restaurantCommission || 0);
+  const couponDiscount = Math.max(0, Number(order.pricing?.discount || 0) || 0);
   if (Number.isFinite(deliveryFee) || Number.isFinite(platformFee)) {
     order.platformProfit = Math.max(
       0,
-      deliveryFee + platformFee + markupTotal + restaurantCommission - earningResolved.riderEarning,
+      deliveryFee + platformFee + markupTotal + restaurantCommission - couponDiscount - earningResolved.riderEarning,
     );
     order.markModified?.('platformProfit');
+
+    // The ledger row was created when the rider earning was still 0. Keep its rider share and
+    // platform net in step with the order (otherwise the ledger keeps the rider-less profit).
+    try {
+      await FoodTransaction.updateOne(
+        { orderId: order._id },
+        {
+          $set: {
+            'amounts.riderShare': Number(earningResolved.riderEarning || 0),
+            'amounts.platformNetProfit': order.platformProfit,
+          },
+        },
+      );
+    } catch (err) {
+      logger.warn(`Ledger sync after rider earning backfill failed for ${order._id}: ${err?.message || err}`);
+    }
   }
 
   logger.info(

@@ -799,12 +799,14 @@ export async function createOrder(userId, dto, options = {}) {
               updateFields['riderEarning'] = earningResolved.riderEarning ?? 0;
               // Top-level field (the schema has no pricing.platformProfit, so writing there was dropped
               // and online orders kept a profit that never had the rider earning taken off).
+              // Coupon discount is platform-funded (restaurant share is not reduced), so it comes off too.
               updateFields['platformProfit'] = Math.max(
                 0,
                 (normalizedPricing.deliveryFee ?? 0) +
                   (normalizedPricing.platformFee ?? 0) +
                   (normalizedPricing.markupTotal ?? 0) +
                   (normalizedPricing.restaurantCommission ?? 0) -
+                  (normalizedPricing.discount ?? 0) -
                   (earningResolved.riderEarning ?? 0),
               );
             }
@@ -835,7 +837,8 @@ export async function createOrder(userId, dto, options = {}) {
                                 { $ifNull: ['$pricing.markupTotal', 0] },
                               ],
                             },
-                            rider,
+                            // platform-funded coupon discount + rider earning
+                            { $add: [{ $ifNull: ['$pricing.discount', 0] }, rider] },
                           ],
                         },
                       ],
@@ -940,12 +943,15 @@ export async function createOrder(userId, dto, options = {}) {
 
   normalizedPricing.restaurantCommission = restaurantCommission || 0;
 
+  // Coupon discount is platform-funded (the restaurant share is not reduced), so it comes off the
+  // platform's profit, the same as in the ledger (foodTransaction.service createInitialTransaction).
   const platformProfit = Math.max(
     0,
     (Number.isFinite(normalizedPricing.deliveryFee) ? normalizedPricing.deliveryFee : 0) +
       (Number.isFinite(normalizedPricing.platformFee) ? normalizedPricing.platformFee : 0) +
       (Number.isFinite(normalizedPricing.markupTotal) ? normalizedPricing.markupTotal : 0) +
       restaurantCommission -
+      (Number.isFinite(normalizedPricing.discount) ? normalizedPricing.discount : 0) -
       riderEarning,
   );
 

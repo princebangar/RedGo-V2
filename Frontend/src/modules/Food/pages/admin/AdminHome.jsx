@@ -181,12 +181,17 @@ export default function AdminHome() {
                     `This ${selectedPeriod}'s`
 
   const activityFeed = dashboardData?.liveSignals || []
-  const totalRevenueHelper = [
-    `Comm: ${formatCurrency(commissionTotal)}`,
-    `Platform: ${formatCurrency(platformFeeTotal)}`,
-    `Delivery Net: ${formatCurrency(deliveryProfit)}`,
-    `GST: ${formatCurrency(gstTotal)}`,
-  ].join(" + ")
+  const markupTotal = dashboardData?.markup?.total || 0
+  const couponDiscountTotal = dashboardData?.couponDiscount?.total || 0
+  const totalRevenueHelper =
+    [
+      `Comm: ${formatCurrency(commissionTotal)}`,
+      `Platform: ${formatCurrency(platformFeeTotal)}`,
+      ...(markupTotal > 0 ? [`Markup: ${formatCurrency(markupTotal)}`] : []),
+      `Delivery Net: ${formatCurrency(deliveryProfit)}`,
+      `GST: ${formatCurrency(gstTotal)}`,
+    ].join(" + ") +
+    (couponDiscountTotal > 0 ? ` − Coupons: ${formatCurrency(couponDiscountTotal)}` : "")
 
   if (isLoading && !dashboardData) {
     return <DashboardSkeleton />

@@ -340,13 +340,18 @@ export default function TransactionReport() {
     gst: 0,
     ...(summary.platformTotalBreakdown || {}),
   }
-  const platformTotalHelper = [
-    `Comm: ${formatCurrency(platformBreakdown.commission)}`,
-    `Platform: ${formatCurrency(platformBreakdown.platformFee)}`,
-    `Admin Pricing: ${formatCurrency(platformBreakdown.markup)}`,
-    `Delivery Net: ${formatCurrency(platformBreakdown.deliveryNet)}`,
-    `GST: ${formatCurrency(platformBreakdown.gst)}`,
-  ].join(" + ")
+  const platformTotalHelper =
+    [
+      `Comm: ${formatCurrency(platformBreakdown.commission)}`,
+      `Platform: ${formatCurrency(platformBreakdown.platformFee)}`,
+      `Admin Pricing: ${formatCurrency(platformBreakdown.markup)}`,
+      `Delivery Net: ${formatCurrency(platformBreakdown.deliveryNet)}`,
+      `GST: ${formatCurrency(platformBreakdown.gst)}`,
+    ].join(" + ") +
+    // Coupon discounts are paid by the platform, so they come off the Platform Total.
+    (Number(platformBreakdown.couponDiscount) > 0
+      ? ` − Coupons: ${formatCurrency(platformBreakdown.couponDiscount)}`
+      : "")
   const markupByRestaurant = Array.isArray(summary.markupByRestaurant)
     ? summary.markupByRestaurant
     : []

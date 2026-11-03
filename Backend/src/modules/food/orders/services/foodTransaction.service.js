@@ -103,12 +103,16 @@ export async function createInitialTransaction(order) {
         Number(order.pricing?.baseSubtotal ?? order.pricing?.subtotal ?? 0) || 0;
     const markupTotal = Math.max(0, Number(order.pricing?.markupTotal ?? 0) || 0);
     const restaurantNet = baseSubtotal + (order.pricing?.packagingFee || 0) - restaurantCommission;
+    // Coupon discount is platform-funded: the restaurant keeps its full share, so the
+    // platform's net goes down by the discount (total = restaurant + rider + platform).
+    const couponDiscount = Math.max(0, Number(order.pricing?.discount || 0) || 0);
     const platformNetProfit = Math.max(
         0,
         (order.pricing?.platformFee || 0) +
             (order.pricing?.deliveryFee || 0) +
             restaurantCommission +
             markupTotal -
+            couponDiscount -
             riderShare,
     );
 

@@ -651,10 +651,16 @@ export async function getDashboardStats(query = {}) {
                             $cond: [DELIVERED_ORDER_STATUS_EXPR, DASHBOARD_RIDER_EARNING_EXPR, 0]
                         }
                     },
-                    gstTotal: { 
-                        $sum: { 
-                            $cond: [DELIVERED_ORDER_STATUS_EXPR, { $ifNull: ['$pricing.tax', 0] }, 0] 
-                        } 
+                    gstTotal: {
+                        $sum: {
+                            $cond: [DELIVERED_ORDER_STATUS_EXPR, { $ifNull: ['$pricing.tax', 0] }, 0]
+                        }
+                    },
+                    // Coupon discounts are platform-funded: they come off the Platform Total.
+                    couponDiscountTotal: {
+                        $sum: {
+                            $cond: [DELIVERED_ORDER_STATUS_EXPR, { $ifNull: ['$pricing.discount', 0] }, 0]
+                        }
                     },
                     // COD pipeline: include pending/processing cash orders (not only delivered)
                     codCollectedTotal: {
@@ -936,11 +942,12 @@ export async function getDashboardStats(query = {}) {
     const deliveryFeeTotal = Number(totals.deliveryFeeTotal || 0);
     const riderEarningTotal = Number(totals.riderEarningTotal || 0);
     const gstTotal = Number(totals.gstTotal || 0);
+    const couponDiscountTotal = Number(totals.couponDiscountTotal || 0);
     // Delivery fee kept by platform after paying riders
     const deliveryProfit = Math.max(0, deliveryFeeTotal - riderEarningTotal);
-    // Platform Total = Comm + Platform fee + Admin markup + Delivery net + GST
+    // Platform Total = Comm + Platform fee + Admin markup + Delivery net + GST - coupon discounts (platform-funded)
     const totalAdminEarnings =
-        Math.round((commissionTotal + platformFeeTotal + markupTotal + deliveryProfit + gstTotal) * 100) / 100;
+        Math.round((commissionTotal + platformFeeTotal + markupTotal + deliveryProfit + gstTotal - couponDiscountTotal) * 100) / 100;
 
     return {
         orders: {
@@ -971,6 +978,7 @@ export async function getDashboardStats(query = {}) {
         deliveryBoyEarning: Number(totals.deliveryBoyEarningTotal || 0),
         restaurantEarning: Number(totals.restaurantEarningTotal || 0),
         gst: { total: gstTotal },
+        couponDiscount: { total: couponDiscountTotal },
         totalAdminEarnings,
         deliveryProfit,
         restaurants: {
@@ -1228,6 +1236,7 @@ export async function getTransactionReport(query = {}) {
     let adminMarkup = 0;
     let adminDeliveryNet = 0;
     let adminGst = 0;
+    let adminCouponDiscount = 0;
     let restaurantEarning = 0;
     let deliverymanEarning = 0;
     const markupByRestaurantMap = new Map();
@@ -1244,6 +1253,7 @@ export async function getTransactionReport(query = {}) {
         const baseSubtotal = toNum(pricing.baseSubtotal ?? pricing.subtotal);
         const markupTotal = toNum(pricing.markupTotal);
         const packaging = toNum(pricing.packagingFee);
+        const couponDiscount = toNum(pricing.discount);
         const os = String(order.orderStatus || '').toLowerCase();
         const pay = String(order?.payment?.status || '').toLowerCase();
         const deliveryNet = Math.max(0, deliveryFee - rider);
@@ -1252,8 +1262,9 @@ export async function getTransactionReport(query = {}) {
 
         if (os === 'delivered') {
             completedTransaction += orderTotal;
-            // Align with dashboard Platform Total components
-            adminEarning += commission + platformFee + markupTotal + deliveryNet + tax;
+            // Align with dashboard Platform Total components (coupon discount is platform-funded)
+            adminEarning += commission + platformFee + markupTotal + deliveryNet + tax - couponDiscount;
+            adminCouponDiscount += couponDiscount;
             adminCommission += commission;
             adminPlatformFee += platformFee;
             adminMarkup += markupTotal;
@@ -1303,6 +1314,7 @@ export async function getTransactionReport(query = {}) {
                 markup: Math.round(adminMarkup * 100) / 100,
                 deliveryNet: Math.round(adminDeliveryNet * 100) / 100,
                 gst: Math.round(adminGst * 100) / 100,
+                couponDiscount: Math.round(adminCouponDiscount * 100) / 100,
             },
             adminMarkupTotal: Math.round(adminMarkup * 100) / 100,
             markupByRestaurant: [...markupByRestaurantMap.values()]
@@ -2932,7 +2944,8 @@ function posDeliveredOrderMoneyBreakdown(order) {
     const rider = toNum(order?.riderEarning);
     const riderShare = order?.dispatch?.deliveryPartnerId ? rider : 0;
     const restaurantShare = Math.max(0, baseSubtotal + packagingFee - commission);
-    const platformNetProfit = Math.max(0, platformFee + deliveryFee + commission + markupTotal - riderShare);
+    // Coupon discount is platform-funded (restaurant share is not reduced).
+    const platformNetProfit = Math.max(0, platformFee + deliveryFee + commission + markupTotal - discount - riderShare);
 
     return {
         subtotal,
