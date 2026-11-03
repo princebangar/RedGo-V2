@@ -3,6 +3,7 @@ import { useNavigate } from "react-router-dom"
 import { MapPin, ArrowLeft, Search, Bike } from "lucide-react"
 import { adminAPI } from "@food/api"
 import { getGoogleMapsApiKey } from "@food/utils/googleMapsApiKey"
+import { createPlacesAutocomplete } from "@food/utils/googlePlaces"
 import { Loader } from "@googlemaps/js-api-loader"
 import { subscribeAllDeliveryLocations } from "@food/realtimeTracking"
 import bikeLogo from "@food/assets/map/bikelogo.png"
@@ -88,7 +89,7 @@ export default function DeliveryBoyViewMap() {
   // Initialize Places Autocomplete when map is loaded
   useEffect(() => {
     if (!mapLoading && mapInstanceRef.current && autocompleteInputRef.current && window.google?.maps?.places && !autocompleteRef.current) {
-      const autocomplete = new window.google.maps.places.Autocomplete(autocompleteInputRef.current, {
+      const autocomplete = createPlacesAutocomplete(autocompleteInputRef.current, {
         componentRestrictions: { country: 'in' }
       })
       

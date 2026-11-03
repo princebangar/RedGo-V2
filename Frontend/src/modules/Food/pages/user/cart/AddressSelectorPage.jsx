@@ -14,6 +14,7 @@ import { Loader } from '@googlemaps/js-api-loader'
 import AnimatedPage from "@food/components/user/AnimatedPage"
 import useAppBackNavigation from "@food/hooks/useAppBackNavigation"
 import { reverseGeocodeWithGoogle, geocodeGooglePlaceId, getFreshGpsCoordinates } from "@food/utils/googleGeocoding"
+import { fetchNewAutocompletePredictions } from "@food/utils/googlePlaces"
 
 const MAP_SEARCH_INPUT_CLASS =
   "pl-12 pr-10 h-14 bg-white dark:bg-[#1a1a1a] border-2 border-zinc-200/90 dark:border-zinc-700 rounded-2xl focus:ring-0 focus-visible:ring-0 focus-visible:ring-offset-0 focus:border-zinc-400 dark:focus:border-zinc-500 text-zinc-900 dark:text-zinc-50 placeholder:!text-neutral-400 dark:placeholder:!text-neutral-500 font-medium text-sm transition-all shadow-sm w-full"
@@ -153,7 +154,6 @@ export default function AddressSelectorPage() {
   const [GOOGLE_MAPS_API_KEY, setGOOGLE_MAPS_API_KEY] = useState(null)
   const [googleMapsLoaded, setGoogleMapsLoaded] = useState(false)
   const googleMapsRef = useRef(null)
-  const autocompleteServiceRef = useRef(null)
   const geocodeDebounceRef = useRef(null)
   const initialMapCenterRef = useRef(mapPosition)
   const pendingMapCenterRef = useRef(null)
@@ -242,7 +242,6 @@ export default function AddressSelectorPage() {
           const google = await loader.load()
           if (cancelled) return
           googleMapsRef.current = google
-          autocompleteServiceRef.current = new google.maps.places.AutocompleteService()
           setGoogleMapsLoaded(true)
         } catch (err) {
           debugError("Google Maps load error:", err)
@@ -283,45 +282,38 @@ export default function AddressSelectorPage() {
     if (cleanFormatted) setCurrentAddress(cleanFormatted)
   }, [location?.formattedAddress, location?.address, location?.latitude, location?.longitude])
 
-  // Google Places autocomplete search
+  // Google Places autocomplete search — Places API (New). The legacy AutocompleteService is not
+  // enabled on the Maps project (REQUEST_DENIED), so it never returned any suggestion.
   useEffect(() => {
     const q = String(addressAutocompleteValue || "").trim()
-    if (!googleMapsLoaded || !autocompleteServiceRef.current || q.length < 3) {
+    if (!googleMapsLoaded || q.length < 3) {
       setKeywordAddressSuggestions([])
       setIsKeywordSearching(false)
       return
     }
 
-    const t = setTimeout(() => {
+    let cancelled = false
+    const t = setTimeout(async () => {
       setIsKeywordSearching(true)
-      const google = googleMapsRef.current
-      const service = autocompleteServiceRef.current
-      const request = {
-        input: q,
-        componentRestrictions: { country: "in" },
-      }
-      if (Number.isFinite(location?.latitude) && Number.isFinite(location?.longitude)) {
-        request.location = new google.maps.LatLng(location.latitude, location.longitude)
-        request.radius = 50000
-      }
-
-      service.getPlacePredictions(request, (predictions, status) => {
-        setIsKeywordSearching(false)
-        if (status !== google.maps.places.PlacesServiceStatus.OK || !Array.isArray(predictions)) {
-          setKeywordAddressSuggestions([])
-          return
-        }
-        setKeywordAddressSuggestions(
-          predictions.slice(0, 6).map((p) => ({
-            id: p.place_id,
-            placeId: p.place_id,
-            display: p.description,
-          }))
-        )
+      const results = await fetchNewAutocompletePredictions(q, {
+        latitude: location?.latitude,
+        longitude: location?.longitude,
       })
+      if (cancelled) return
+      setIsKeywordSearching(false)
+      setKeywordAddressSuggestions(
+        results.slice(0, 6).map((p) => ({
+          id: p.placeId,
+          placeId: p.placeId,
+          display: p.display,
+        }))
+      )
     }, 350)
 
-    return () => clearTimeout(t)
+    return () => {
+      cancelled = true
+      clearTimeout(t)
+    }
   }, [addressAutocompleteValue, googleMapsLoaded, location?.latitude, location?.longitude])
 
   const applyGeocodedAddressToForm = useCallback((parsed, formattedOverride) => {
@@ -383,9 +375,6 @@ export default function AddressSelectorPage() {
         const google = await loader.load()
         if (!isMounted || !mapContainerRef.current) return
         googleMapsRef.current = google
-        if (!autocompleteServiceRef.current) {
-          autocompleteServiceRef.current = new google.maps.places.AutocompleteService()
-        }
 
         const initialPos = {
           lat: initialMapCenterRef.current[0],

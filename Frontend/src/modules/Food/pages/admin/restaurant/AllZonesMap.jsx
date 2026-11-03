@@ -3,6 +3,7 @@ import { useNavigate } from "react-router-dom"
 import { MapPin, ArrowLeft, Search } from "lucide-react"
 import { adminAPI } from "@food/api"
 import { getGoogleMapsApiKey } from "@food/utils/googleMapsApiKey"
+import { createPlacesAutocomplete } from "@food/utils/googlePlaces"
 import { Loader } from "@googlemaps/js-api-loader"
 const debugLog = (...args) => {}
 const debugWarn = (...args) => {}
@@ -35,7 +36,7 @@ export default function AllZonesMap() {
   // Initialize Places Autocomplete when map is loaded
   useEffect(() => {
     if (!mapLoading && mapInstanceRef.current && autocompleteInputRef.current && window.google?.maps?.places && !autocompleteRef.current) {
-      const autocomplete = new window.google.maps.places.Autocomplete(autocompleteInputRef.current, {
+      const autocomplete = createPlacesAutocomplete(autocompleteInputRef.current, {
         componentRestrictions: { country: 'in' } // Restrict to India
       })
       

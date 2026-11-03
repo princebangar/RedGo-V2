@@ -6,6 +6,7 @@ import { clearModuleAuth } from "@food/utils/auth"
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from "@food/components/ui/dropdown-menu"
 import { exportRestaurantsToPDF } from "@food/components/admin/restaurants/restaurantsExportUtils"
 import { getGoogleMapsApiKey } from "@food/utils/googleMapsApiKey"
+import { createPlacesAutocomplete } from "@food/utils/googlePlaces"
 import { formatRestaurantDisplayAddress, getRestaurantDisplayAddress } from "@food/utils/restaurantLocation"
 
 // Import icons from Dashboard-icons
@@ -598,7 +599,7 @@ export default function RestaurantsList() {
       return
     }
 
-    placesAutocompleteRef.current = new window.google.maps.places.Autocomplete(
+    placesAutocompleteRef.current = createPlacesAutocomplete(
       locationSearchInputRef.current,
       {
         fields: ["formatted_address", "address_components", "geometry"],
@@ -802,6 +803,7 @@ export default function RestaurantsList() {
     requestAnimationFrame(() => initPlacesAutocomplete())
 
     return () => {
+      placesAutocompleteRef.current?.dispose?.()
       placesAutocompleteRef.current = null
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps

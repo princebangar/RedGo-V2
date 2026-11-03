@@ -5,6 +5,7 @@ import { Input } from "@food/components/ui/input"
 import { Button } from "@food/components/ui/button"
 import { Label } from "@food/components/ui/label"
 import { getGoogleMapsApiKey } from "@food/utils/googleMapsApiKey"
+import { createPlacesAutocomplete } from "@food/utils/googlePlaces"
 import { ArrowLeft, Loader2 } from "lucide-react"
 
 const debugError = (..._args) => {}
@@ -224,7 +225,7 @@ export default function EditRestaurant() {
         return
       }
 
-      placesAutocompleteRef.current = new window.google.maps.places.Autocomplete(
+      placesAutocompleteRef.current = createPlacesAutocomplete(
         locationSearchInputRef.current,
         {
           fields: ["formatted_address", "address_components", "geometry"],
@@ -280,6 +281,7 @@ export default function EditRestaurant() {
     requestAnimationFrame(init)
     return () => {
       cancelled = true
+      placesAutocompleteRef.current?.dispose?.()
       placesAutocompleteRef.current = null
     }
   }, [])

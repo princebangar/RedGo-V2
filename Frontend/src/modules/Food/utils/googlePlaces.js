@@ -3,7 +3,10 @@ import { geocodeGooglePlaceId } from "./googleGeocoding"
 import { Loader } from "@googlemaps/js-api-loader"
 
 let mapsLoadPromise = null
-let autocompleteService = null
+
+// NOTE: the Maps project has only the NEW Places API / Routes API. Legacy services
+// (places.AutocompleteService, places.Autocomplete, DirectionsService) answer REQUEST_DENIED,
+// so everything here uses AutocompleteSuggestion / Place (Places API New).
 
 const normalizePlaceId = (placeId = "") => {
   const raw = String(placeId).trim()
@@ -12,10 +15,7 @@ const normalizePlaceId = (placeId = "") => {
 }
 
 export async function ensureGoogleMapsPlacesLoaded() {
-  if (window.google?.maps?.places?.AutocompleteService) {
-    if (!autocompleteService) {
-      autocompleteService = new window.google.maps.places.AutocompleteService()
-    }
+  if (window.google?.maps?.importLibrary && window.google?.maps?.places) {
     return window.google
   }
 
@@ -30,17 +30,11 @@ export async function ensureGoogleMapsPlacesLoaded() {
         libraries: ["places"],
       })
 
-      const google = await loader.load()
-      autocompleteService = new google.maps.places.AutocompleteService()
-      return google
+      return loader.load()
     })()
   }
 
-  const google = await mapsLoadPromise
-  if (!autocompleteService && google?.maps?.places?.AutocompleteService) {
-    autocompleteService = new google.maps.places.AutocompleteService()
-  }
-  return google
+  return mapsLoadPromise
 }
 
 export function mapGeocodeParsedToLocation(parsed) {
@@ -117,46 +111,11 @@ function mergeSuggestions(query, lists = []) {
     .slice(0, 8)
 }
 
-function fetchLegacyAutocompletePredictions(google, query, options = {}) {
-  return new Promise((resolve) => {
-    if (!autocompleteService) {
-      resolve([])
-      return
-    }
-
-    const request = {
-      input: query,
-      componentRestrictions: { country: "in" },
-    }
-
-    const lat = Number(options.latitude)
-    const lng = Number(options.longitude)
-    if (Number.isFinite(lat) && Number.isFinite(lng)) {
-      request.location = new google.maps.LatLng(lat, lng)
-      request.radius = 50000
-    }
-
-    autocompleteService.getPlacePredictions(request, (predictions, status) => {
-      if (status !== google.maps.places.PlacesServiceStatus.OK || !Array.isArray(predictions)) {
-        resolve([])
-        return
-      }
-
-      resolve(
-        predictions.map((prediction) => ({
-          id: prediction.place_id,
-          placeId: prediction.place_id,
-          display: prediction.description,
-          mainText: prediction.structured_formatting?.main_text || prediction.description,
-          secondaryText: prediction.structured_formatting?.secondary_text || "",
-          source: "autocomplete_legacy",
-        }))
-      )
-    })
-  })
-}
-
-async function fetchNewAutocompletePredictions(query, options = {}) {
+/**
+ * Place suggestions from Places API (New). Same shape as fetchPlaceSuggestions items
+ * ({ id, placeId, display, mainText, secondaryText }); resolve a pick with geocodeGooglePlaceId.
+ */
+export async function fetchNewAutocompletePredictions(query, options = {}) {
   if (!window.google?.maps?.importLibrary) return []
 
   try {
@@ -247,21 +206,280 @@ async function fetchTextSearchPredictions(query, options = {}) {
 }
 
 /**
- * Fetch Google place suggestions using legacy autocomplete + new autocomplete + text search.
+ * Fetch Google place suggestions using Places API (New) autocomplete + text search.
  */
 export async function fetchPlaceSuggestions(input, options = {}) {
   const query = String(input || "").trim()
   if (query.length < 3) return []
 
-  const google = await ensureGoogleMapsPlacesLoaded()
+  await ensureGoogleMapsPlacesLoaded()
 
-  const [legacyResults, newResults, textResults] = await Promise.all([
-    fetchLegacyAutocompletePredictions(google, query, options),
+  const [newResults, textResults] = await Promise.all([
     fetchNewAutocompletePredictions(query, options),
     fetchTextSearchPredictions(query, options),
   ])
 
-  return mergeSuggestions(query, [textResults, legacyResults, newResults])
+  return mergeSuggestions(query, [textResults, newResults])
+}
+
+const toLegacyAddressComponents = (components = []) =>
+  (Array.isArray(components) ? components : []).map((c) => ({
+    long_name: c?.longText ?? c?.long_name ?? "",
+    short_name: c?.shortText ?? c?.short_name ?? "",
+    types: Array.isArray(c?.types) ? c.types : [],
+  }))
+
+/**
+ * Drop-in replacement for `new google.maps.places.Autocomplete(input, options)` built on
+ * Places API (New). Same surface the pages use: addListener("place_changed", fn) and
+ * getPlace() → { place_id, name, formatted_address, address_components, geometry.location }.
+ * The dropdown keeps the legacy "pac-container" / "pac-item" classes, so existing
+ * z-index / cleanup code that targets `.pac-container` keeps working.
+ * Supported options: componentRestrictions.country, bounds (used as location bias).
+ */
+export function createPlacesAutocomplete(input, options = {}) {
+  const maps = typeof window !== "undefined" ? window.google?.maps : null
+  if (!input || !maps?.importLibrary) {
+    // Maps not loaded: a no-op object so callers that do `.addListener(...)` don't crash.
+    return { addListener: () => ({ remove() {} }), getPlace: () => null, setBounds() {}, setComponentRestrictions() {}, dispose() {}, unbindAll() {} }
+  }
+
+  const country = options?.componentRestrictions?.country
+  let regionCodes = country ? [].concat(country).map((c) => String(c).toLowerCase()) : undefined
+  let bounds = options?.bounds || null
+  const listeners = new Set()
+  let place = null
+  let sessionToken = null
+  let suggestions = []
+  let activeIndex = -1
+  let debounceId = null
+  let requestSeq = 0
+  let disposed = false
+
+  // Some pages force every `.pac-container` to display:block (z-index fixes). An empty list
+  // must never show as a bare bordered box, so empty = hidden, whatever inline style says.
+  if (!document.getElementById("redgo-places-new-style")) {
+    const style = document.createElement("style")
+    style.id = "redgo-places-new-style"
+    style.textContent = ".redgo-places-new:empty{display:none !important}"
+    document.head.appendChild(style)
+  }
+
+  const box = document.createElement("div")
+  box.className = "pac-container redgo-places-new"
+  box.setAttribute("role", "listbox")
+  Object.assign(box.style, {
+    position: "fixed",
+    zIndex: "10050",
+    display: "none",
+    background: "#ffffff",
+    border: "1px solid #e5e7eb",
+    borderRadius: "10px",
+    boxShadow: "0 10px 28px rgba(15, 23, 42, 0.18)",
+    maxHeight: "280px",
+    overflowY: "auto",
+  })
+  document.body.appendChild(box)
+
+  const position = () => {
+    const r = input.getBoundingClientRect()
+    box.style.left = `${r.left}px`
+    box.style.top = `${r.bottom + 4}px`
+    box.style.width = `${Math.max(r.width, 220)}px`
+  }
+  const hide = () => {
+    box.style.display = "none"
+    box.replaceChildren()
+    activeIndex = -1
+  }
+  const paintActive = () => {
+    Array.from(box.children).forEach((el, i) => {
+      el.style.background = i === activeIndex ? "#f1f5f9" : "#ffffff"
+    })
+  }
+
+  const select = async (index) => {
+    const s = suggestions[index]
+    if (!s) return
+    hide()
+    input.value = s.text
+    try {
+      // toPlace() carries the autocomplete session token, so the pick closes the session.
+      const p = s.prediction.toPlace()
+      await p.fetchFields({ fields: ["location", "formattedAddress", "addressComponents"] })
+      place = {
+        place_id: p.id || s.placeId,
+        name: s.mainText,
+        formatted_address: p.formattedAddress || s.text,
+        address_components: toLegacyAddressComponents(p.addressComponents),
+        geometry: p.location ? { location: p.location } : undefined,
+      }
+    } catch (err) {
+      console.warn("[places] place details failed:", err?.message || err)
+      place = { place_id: s.placeId, name: s.mainText, formatted_address: s.text, address_components: [] }
+    }
+    sessionToken = null
+    suggestions = []
+    listeners.forEach((fn) => {
+      try {
+        fn()
+      } catch (err) {
+        console.error(err)
+      }
+    })
+  }
+
+  const render = () => {
+    box.replaceChildren()
+    if (!suggestions.length || document.activeElement !== input) {
+      hide()
+      return
+    }
+    suggestions.forEach((s, i) => {
+      const item = document.createElement("div")
+      item.className = "pac-item"
+      item.setAttribute("role", "option")
+      Object.assign(item.style, {
+        padding: "9px 12px",
+        cursor: "pointer",
+        lineHeight: "1.35",
+        borderTop: i ? "1px solid #f1f5f9" : "none",
+      })
+      const main = document.createElement("div")
+      main.className = "pac-item-query"
+      main.textContent = s.mainText
+      Object.assign(main.style, { fontSize: "13px", fontWeight: "600", color: "#0f172a" })
+      item.appendChild(main)
+      if (s.secondaryText) {
+        const sec = document.createElement("div")
+        sec.textContent = s.secondaryText
+        Object.assign(sec.style, { fontSize: "12px", color: "#64748b" })
+        item.appendChild(sec)
+      }
+      // mousedown (not click) so the input does not blur and close the list first
+      item.addEventListener("mousedown", (e) => {
+        e.preventDefault()
+        select(i)
+      })
+      item.addEventListener("mouseenter", () => {
+        activeIndex = i
+        paintActive()
+      })
+      box.appendChild(item)
+    })
+    position()
+    box.style.display = "block"
+    // pages may have set visibility:hidden on `.pac-container` while the query was empty
+    box.style.visibility = "visible"
+  }
+
+  const search = async (query) => {
+    const seq = ++requestSeq
+    try {
+      const { AutocompleteSuggestion, AutocompleteSessionToken } = await maps.importLibrary("places")
+      if (!sessionToken) sessionToken = new AutocompleteSessionToken()
+      const request = { input: query, sessionToken }
+      if (regionCodes?.length) request.includedRegionCodes = regionCodes
+      if (bounds) request.locationBias = bounds
+      const res = await AutocompleteSuggestion.fetchAutocompleteSuggestions(request)
+      if (disposed || seq !== requestSeq) return
+      suggestions = (res?.suggestions || [])
+        .map((x) => x.placePrediction)
+        .filter(Boolean)
+        .slice(0, 5)
+        .map((pr) => ({
+          prediction: pr,
+          placeId: normalizePlaceId(pr.placeId),
+          text: pr.text?.text || "",
+          mainText: pr.mainText?.text || pr.text?.text || "",
+          secondaryText: pr.secondaryText?.text || "",
+        }))
+      activeIndex = -1
+      render()
+    } catch (err) {
+      if (seq !== requestSeq) return
+      console.warn("[places] autocomplete failed:", err?.message || err)
+      suggestions = []
+      hide()
+    }
+  }
+
+  const onInput = () => {
+    clearTimeout(debounceId)
+    const q = String(input.value || "").trim()
+    if (q.length < 3) {
+      requestSeq += 1
+      suggestions = []
+      hide()
+      return
+    }
+    debounceId = setTimeout(() => search(q), 300)
+  }
+  const onKeyDown = (e) => {
+    if (!box.childElementCount || !suggestions.length) return
+    if (e.key === "ArrowDown") {
+      e.preventDefault()
+      activeIndex = (activeIndex + 1) % suggestions.length
+      paintActive()
+    } else if (e.key === "ArrowUp") {
+      e.preventDefault()
+      activeIndex = activeIndex <= 0 ? suggestions.length - 1 : activeIndex - 1
+      paintActive()
+    } else if (e.key === "Enter") {
+      // like the legacy widget: Enter on a highlighted row picks it and does not submit the form
+      e.preventDefault()
+      select(activeIndex >= 0 ? activeIndex : 0)
+    } else if (e.key === "Escape") {
+      hide()
+    }
+  }
+  const onBlur = () => setTimeout(hide, 150)
+  const onFocus = () => {
+    if (suggestions.length) render()
+  }
+  const onViewportChange = () => {
+    if (box.childElementCount) position()
+  }
+
+  input.setAttribute("autocomplete", "off")
+  input.addEventListener("input", onInput)
+  input.addEventListener("keydown", onKeyDown)
+  input.addEventListener("blur", onBlur)
+  input.addEventListener("focus", onFocus)
+  window.addEventListener("resize", onViewportChange)
+  window.addEventListener("scroll", onViewportChange, true)
+
+  const dispose = () => {
+    if (disposed) return
+    disposed = true
+    clearTimeout(debounceId)
+    listeners.clear()
+    input.removeEventListener("input", onInput)
+    input.removeEventListener("keydown", onKeyDown)
+    input.removeEventListener("blur", onBlur)
+    input.removeEventListener("focus", onFocus)
+    window.removeEventListener("resize", onViewportChange)
+    window.removeEventListener("scroll", onViewportChange, true)
+    box.remove()
+  }
+
+  return {
+    addListener(eventName, fn) {
+      if (eventName !== "place_changed" || typeof fn !== "function") return { remove() {} }
+      listeners.add(fn)
+      return { remove: () => listeners.delete(fn) }
+    },
+    getPlace: () => place,
+    setBounds(nextBounds) {
+      bounds = nextBounds || null
+    },
+    setComponentRestrictions(restrictions) {
+      const c = restrictions?.country
+      regionCodes = c ? [].concat(c).map((x) => String(x).toLowerCase()) : undefined
+    },
+    dispose,
+    unbindAll: dispose,
+  }
 }
 
 export async function resolvePlaceSuggestion(suggestion) {

@@ -2,8 +2,7 @@ import React, { useEffect, useRef, useState, useCallback, useMemo } from 'react'
 import { 
   GoogleMap, 
   useJsApiLoader, 
-  OverlayView, 
-  DirectionsService, 
+  OverlayView,
   Polyline
 } from '@react-google-maps/api';
 import io from 'socket.io-client';
@@ -300,34 +299,42 @@ const DeliveryTrackingMap = ({
     debugLog(`[Camera] Focusing on ${isOrderPickedUp ? 'Delivery' : 'Pickup'} leg`);
   }, [map, riderLocation, normRestCoords, normCustCoords, isOrderPickedUp, isLoaded]);
 
-  // 6. Baseline Directions callback — stores the overview_path as fullRoutePath
-  const baselineDirectionsCallback = useCallback((result, status) => {
-    if (status === 'OK' && result) {
-      const rawPath = result.routes?.[0]?.overview_path || [];
-      const plain = rawPath.map(normPt).filter(Boolean);
-      if (plain.length > 1) {
-        setFullRoutePath(plain);
-        debugLog(`✅ Baseline route stored: ${plain.length} points`);
+  // 6. Baseline route (restaurant → customer) until the rider's live polyline arrives.
+  // Routes API (new): the legacy DirectionsService is not enabled on the Maps project
+  // (REQUEST_DENIED), so the customer only ever saw a straight line. One call per map mount.
+  const currentEtaRef = useRef(currentEta);
+  currentEtaRef.current = currentEta;
+  useEffect(() => {
+    if (!isLoaded || fullRoutePath || cloudPolyline || !normRestCoords || !normCustCoords) return;
+    if (baselineRequestedRef.current || !window.google?.maps?.importLibrary) return;
+    baselineRequestedRef.current = true;
+    (async () => {
+      try {
+        const { Route } = await window.google.maps.importLibrary('routes');
+        const { routes } = await Route.computeRoutes({
+          origin: normRestCoords,
+          destination: normCustCoords,
+          travelMode: 'DRIVING',
+          fields: ['path', 'durationMillis'],
+        });
+        const plain = (routes?.[0]?.path || []).map(normPt).filter(Boolean);
+        if (plain.length > 1) {
+          // The rider's live polyline wins if it arrived meanwhile.
+          setFullRoutePath((prev) => prev || plain);
+          debugLog(`✅ Baseline route stored: ${plain.length} points`);
+        }
+        const ms = Number(routes?.[0]?.durationMillis);
+        if (Number.isFinite(ms) && ms > 0 && !currentEtaRef.current) {
+          const mins = Math.max(1, Math.round(ms / 60000));
+          const etaText = `${mins} min${mins === 1 ? '' : 's'}`;
+          setCurrentEta(etaText);
+          if (onEtaUpdate) onEtaUpdate(etaText);
+        }
+      } catch (err) {
+        console.warn('[DeliveryTrackingMap] Baseline route (Routes API) failed:', err?.message || err);
       }
-      // Also extract ETA from baseline if no real-time ETA yet
-      const durationText = result?.routes?.[0]?.legs?.[0]?.duration?.text;
-      if (durationText && !currentEta) {
-        setCurrentEta(durationText);
-        if (onEtaUpdate) onEtaUpdate(durationText);
-      }
-    } else if (status !== 'OK') {
-      console.error('[DeliveryTrackingMap] Baseline DirectionsService failed:', status);
-    }
-  }, [currentEta, onEtaUpdate]);
-
-  const baselineDirectionsOptions = useMemo(() => {
-    if (!normRestCoords || !normCustCoords || cloudPolyline) return null;
-    return {
-      origin: normRestCoords,
-      destination: normCustCoords,
-      travelMode: 'DRIVING'
-    };
-  }, [normRestCoords?.lat, normRestCoords?.lng, normCustCoords?.lat, normCustCoords?.lng, cloudPolyline]);
+    })();
+  }, [isLoaded, fullRoutePath, cloudPolyline, normRestCoords, normCustCoords, onEtaUpdate]);
 
   /**
    * SPLIT POLYLINE LOGIC:
@@ -396,17 +403,6 @@ const DeliveryTrackingMap = ({
           ]
         }}
       >
-        {/* BASELINE DIRECTIONS API CALL (only needed if no cloudPolyline) */}
-        {!fullRoutePath && baselineDirectionsOptions && !baselineRequestedRef.current && (
-          <DirectionsService
-            options={baselineDirectionsOptions}
-            callback={(r, s) => {
-              baselineRequestedRef.current = true;
-              baselineDirectionsCallback(r, s);
-            }}
-          />
-        )}
-
         {/* ── TRAVELED PATH: dashed grey (already covered by driver) ── */}
         {traveledPath.length > 1 && (
           <Polyline

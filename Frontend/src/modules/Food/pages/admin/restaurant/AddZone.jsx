@@ -3,6 +3,7 @@ import { useNavigate, useParams } from "react-router-dom"
 import { MapPin, ArrowLeft, Save, X, Hand, Shapes, Search } from "lucide-react"
 import { adminAPI } from "@food/api"
 import { getGoogleMapsApiKey } from "@food/utils/googleMapsApiKey"
+import { createPlacesAutocomplete } from "@food/utils/googlePlaces"
 const debugLog = (...args) => {}
 const debugWarn = (...args) => {}
 const debugError = (...args) => {}
@@ -90,7 +91,7 @@ export default function AddZone() {
       return
     }
 
-    const autocomplete = new window.google.maps.places.Autocomplete(autocompleteInputRef.current, {
+    const autocomplete = createPlacesAutocomplete(autocompleteInputRef.current, {
       // No `geocode` type — it routes predictions through Geocoding-style endpoints.
       componentRestrictions: { country: 'in' }, // Restrict to India
       fields: ['geometry', 'formatted_address', 'name'],
