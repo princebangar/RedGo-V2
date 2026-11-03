@@ -53,6 +53,11 @@ const CUSTOMIZATION_TOGGLES = [
         key: 'maintenance_mode_enabled',
         defaultValue: false,
         description: 'When enabled, user / restaurant / delivery apps show Under Maintenance (admin stays available)'
+    },
+    {
+        key: 'driver_simulation_enabled',
+        defaultValue: false,
+        description: 'Testing only: shows the route simulation button on the rider app feed (fakes rider movement). Keep OFF on live.'
     }
 ];
 

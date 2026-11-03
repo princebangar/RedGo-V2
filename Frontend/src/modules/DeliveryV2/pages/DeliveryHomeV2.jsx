@@ -6,6 +6,7 @@ import { useOrderManager } from '@/modules/DeliveryV2/hooks/useOrderManager';
 import { useDeliveryNotificationsContext } from '@/modules/DeliveryV2/components/DeliveryRealtimeShell';
 import { writeOrderTracking } from '@food/realtimeTracking';
 import { deliveryAPI } from '@food/api';
+import apiClient from '@food/api/axios';
 import { toast } from 'sonner';
 import { mapOrderLocations } from '@/modules/DeliveryV2/utils/orderMapping';
 
@@ -26,7 +27,7 @@ import ProfileV2 from '@/modules/DeliveryV2/pages/ProfileV2';
 // Icons
 import { 
   Bell, HelpCircle, AlertTriangle, 
-  Plus, Minus, Navigation2, Target, Play, CheckCircle2, Clock, ChevronDown,
+  Plus, Minus, Navigation2, Target, Play, Square, CheckCircle2, Clock, ChevronDown,
   Contact, Phone, Navigation, Package
 } from 'lucide-react';
 
@@ -111,6 +112,9 @@ export default function DeliveryHomeV2({ tab = 'feed' }) {
 
   const [zoom, setZoom] = useState(14);
   const [isSimMode, setIsSimMode] = useState(false);
+  // Admin > Customization Settings > "Testing simulation for driver" (default OFF).
+  // The simulation buttons only show while that toggle is ON.
+  const [simAllowed, setSimAllowed] = useState(false);
   const [simPath, setSimPath] = useState([]);
   const [simIndex, setSimIndex] = useState(0);
   const [simProgress, setSimProgress] = useState(0); // 0 to 1 between points
@@ -151,6 +155,33 @@ export default function DeliveryHomeV2({ tab = 'feed' }) {
     window.addEventListener('authRefreshFailed', onAuthFailure);
     return () => window.removeEventListener('authRefreshFailed', onAuthFailure);
   }, [handleLogout]);
+
+  // Read the admin "Testing simulation for driver" toggle on open and whenever the app comes back.
+  useEffect(() => {
+    let cancelled = false;
+    const loadSimToggle = async () => {
+      try {
+        const res = await apiClient.get('/food/public/customization-settings');
+        if (!cancelled) setSimAllowed(res?.data?.data?.driver_simulation_enabled === true);
+      } catch {
+        // keep the last known value
+      }
+    };
+    loadSimToggle();
+    const onVisible = () => {
+      if (document.visibilityState === 'visible') loadSimToggle();
+    };
+    document.addEventListener('visibilitychange', onVisible);
+    return () => {
+      cancelled = true;
+      document.removeEventListener('visibilitychange', onVisible);
+    };
+  }, []);
+
+  // Toggle turned OFF while a simulation runs: stop it so real GPS takes over again.
+  useEffect(() => {
+    if (!simAllowed && isSimMode) setIsSimMode(false);
+  }, [simAllowed, isSimMode]);
 
   // 0. Auto-Simulation Effect (High-Precision Smooth Glide)
   const lastSimUpdateSentAt = useRef(0);
@@ -697,12 +728,22 @@ export default function DeliveryHomeV2({ tab = 'feed' }) {
                 <motion.div animate={{ x: isOnline ? 59 : 0 }} className="absolute left-1 w-6 h-6 bg-white rounded-full shadow-sm" />
               </button>
 
-              {/* DEV SIMULATION TOGGLE */}
-              {import.meta.env.DEV && (
-                 <button 
+              {/* SIMULATION TOGGLE (dev + live, only when admin "Testing simulation for driver" is ON) */}
+              {simAllowed && (
+                 <button
                    onClick={() => setIsSimMode(!isSimMode)}
-                   className={`px-3 h-8 rounded-lg text-[9px] font-black border transition-all ${isSimMode ? 'bg-orange-500 border-orange-400 text-white animate-pulse' : 'bg-white/10 border-white/20 text-white/40'}`}
+                   aria-pressed={isSimMode}
+                   // Inline colours: the delivery theme repaints Tailwind orange/green classes.
+                   className="h-8 px-3 rounded-full inline-flex items-center gap-1.5 text-[10px] font-black uppercase tracking-wider transition-all active:scale-95"
+                   style={isSimMode
+                     ? { background: '#EA580C', border: '1px solid #FDBA74', color: '#FFFFFF', boxShadow: '0 4px 14px rgba(234,88,12,0.45)' }
+                     : { background: 'rgba(255,255,255,0.14)', border: '1px solid rgba(255,255,255,0.4)', color: '#FFFFFF' }}
                  >
+                   {isSimMode ? (
+                     <span className="w-2 h-2 rounded-full animate-pulse" style={{ background: '#FFFFFF' }} />
+                   ) : (
+                     <Play className="w-3 h-3 fill-current" style={{ color: '#FFFFFF' }} />
+                   )}
                    SIM
                  </button>
               )}
@@ -841,7 +882,9 @@ export default function DeliveryHomeV2({ tab = 'feed' }) {
                    <button onClick={() => setZoom(z => Math.min(22, z + 1))} className="p-3 hover:bg-gray-50 border-b border-gray-100 text-gray-900 active:scale-90 transition-all" aria-label="Zoom in"><Plus className="w-5 h-5 stroke-[2.75]" /></button>
                    <button onClick={() => setZoom(z => Math.max(8, z - 1))} className="p-3 hover:bg-gray-50 text-gray-900 active:scale-90 transition-all" aria-label="Zoom out"><Minus className="w-5 h-5 stroke-[2.75]" /></button>
                 </div>
-                <button 
+                {/* Simulation button: only when admin "Testing simulation for driver" is ON (default OFF) */}
+                {simAllowed && (
+                <button
                   onClick={() => {
                     const nextSimState = !isSimMode;
                     setIsSimMode(nextSimState);
@@ -884,13 +927,27 @@ export default function DeliveryHomeV2({ tab = 'feed' }) {
                       }
                     }
                   }}
-                  className={`w-14 h-14 rounded-full shadow-2xl flex items-center justify-center border border-gray-100 transition-all ${isSimMode ? 'bg-orange-500 text-white' : 'bg-white text-green-500'}`}
+                  aria-label={isSimMode ? 'Stop simulation' : 'Start simulation'}
+                  aria-pressed={isSimMode}
+                  // Inline colours: the delivery theme repaints Tailwind orange/green classes.
+                  className="w-14 h-14 rounded-full shadow-2xl flex items-center justify-center transition-all active:scale-90"
+                  style={isSimMode
+                    ? { background: '#EA580C', border: '1px solid #FDBA74', boxShadow: '0 10px 24px rgba(234,88,12,0.45)' }
+                    : { background: '#FFFFFF', border: '1px solid #F3F4F6' }}
                 >
-                  <div className={`w-8 h-8 rounded-full border-2 flex items-center justify-center ${isSimMode ? 'border-white' : 'border-green-500'}`}>
-                    <Play className={`w-4 h-4 fill-current ml-0.5 ${isSimMode ? 'animate-pulse' : ''}`} />
+                  <div
+                    className="w-8 h-8 rounded-full flex items-center justify-center"
+                    style={{ border: `2px solid ${isSimMode ? '#FFFFFF' : '#EA580C'}` }}
+                  >
+                    {isSimMode ? (
+                      <Square className="w-3.5 h-3.5 fill-current" style={{ color: '#FFFFFF' }} />
+                    ) : (
+                      <Play className="w-4 h-4 fill-current ml-0.5" style={{ color: '#EA580C' }} />
+                    )}
                   </div>
                 </button>
-                <button 
+                )}
+                <button
                    onClick={() => mapRef.current?.setOptions({ gestureHandling: 'greedy' })} 
                    className="w-14 h-14 bg-white rounded-full shadow-2xl flex items-center justify-center text-blue-600 border border-gray-100 active:scale-90 transition-all"
                 >

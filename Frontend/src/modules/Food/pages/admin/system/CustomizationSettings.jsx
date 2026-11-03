@@ -77,6 +77,13 @@ const CUSTOMIZATION_TOGGLES = [
       "When ON, user / restaurant / delivery apps show the Under Maintenance screen. Admin panel stays available. Default is OFF.",
     defaultValue: false,
   },
+  {
+    key: "driver_simulation_enabled",
+    label: "Testing simulation for driver",
+    description:
+      "Testing only. When ON, the rider app feed shows the simulation (play) button that moves the rider along the route automatically. Keep OFF on live. Default is OFF.",
+    defaultValue: false,
+  },
 ];
 
 const getAdminToastOffsetPx = () => {
